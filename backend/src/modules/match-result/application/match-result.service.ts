@@ -1,4 +1,5 @@
 import { getPool } from '../../../database/mysql.js';
+import type { PoolConnection } from 'mysql2/promise';
 import { recordAudit } from '../../audit-log/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
@@ -497,22 +498,75 @@ export class MatchResultService {
     };
     const oldParticipants = await matchResultRepository.getParticipants(record.id);
 
-    await matchResultRepository.updateResult(record.id, {
-      raw_result: payload,
-      finalResult: validated.finalResult,
-      outcome: validated.outcome === 'abandoned' ? 'no_result' : validated.outcome,
-      resolution_note: 'corrected',
-    });
-    await matchResultRepository.replaceParticipants(record.id, record.matchId, record.participantPayload.map((s) => ({
+    // The corrected participant rows are derived ONCE and reused both as the
+    // persisted write and as the winner input for the knockout reconciliation —
+    // so the bracket can only ever be reseated from the row set that is actually
+    // committed.
+    const correctedRows = record.participantPayload.map((s) => ({
       userId: s.userId,
       teamIndex: s.teamIndex,
       side: s.side,
       outcome: validated.finalResult.sideOutcomes[s.side],
       matchEvidence: validated.finalResult.sideEvidence[s.side],
       evidenceCounted: outcomeCountsForRating(validated.outcome),
-    })));
+    }));
+
+    const resultWrite = async (conn?: PoolConnection) => {
+      const updateFields = {
+        raw_result: payload,
+        finalResult: validated.finalResult,
+        outcome: validated.outcome === 'abandoned' ? 'no_result' : validated.outcome,
+        resolution_note: 'corrected',
+      } as Record<string, unknown>;
+      if (conn) {
+        await matchResultRepository.updateResult(record.id, updateFields, conn);
+        await matchResultRepository.replaceParticipants(record.id, record.matchId, correctedRows, conn);
+        return;
+      }
+      await matchResultRepository.updateResult(record.id, updateFields);
+      await matchResultRepository.replaceParticipants(record.id, record.matchId, correctedRows);
+    };
+
+    // G8-D-KO-CORRECTION — resolve the match context ONCE. It carries the live
+    // tournament provenance (a result row can be a legacy NULL), and it scopes
+    // every realtime event emitted below.
+    const correctionScope = await matchResultRepository.getMatchContext(record.matchId);
+    const tournamentId = correctionScope?.tournamentId ?? record.tournamentId ?? null;
+
+    // G8-D-KO-CORRECTION — a tournament-bound result may be corrected ONLY while
+    // the downstream bracket is still safely repairable. The planner is
+    // READ-ONLY and throws `TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED` (409) when
+    // the downstream match crossed the live-play boundary; the reconciler then
+    // commits the corrected result AND the downstream bracket reseat in ONE
+    // transaction, so `source = NEW WINNER` can never be committed while
+    // `downstream = OLD WINNER`. A result with no tournament provenance has no
+    // bracket downstream, so it keeps the historical single-writer path.
+    let reconciliation: { case: string; targetSlotId: number | null; cancelledSharedMatchId: number | null; rematerialisedSharedMatchId: number | null } | null = null;
+    if (tournamentId != null) {
+      const { tournamentService } = await import('../../tournaments/application/tournament.service.js');
+      const plan = await tournamentService.planKnockoutResultCorrection({
+        resultId: record.id,
+        sharedMatchId: record.matchId,
+        tournamentId: Number(tournamentId),
+        resultParticipants: correctedRows.map((r) => ({ userId: r.userId, side: r.side, outcome: r.outcome })),
+      });
+      const outcome = await tournamentService.reconcileKnockoutResultCorrection(plan, async (conn) => {
+        await resultWrite(conn);
+      });
+      reconciliation = {
+        case: outcome.case,
+        targetSlotId: outcome.reseatedTargetSlotId,
+        cancelledSharedMatchId: outcome.cancelledSharedMatchId,
+        rematerialisedSharedMatchId: outcome.rematerialisedSharedMatchId,
+      };
+    } else {
+      await resultWrite();
+    }
 
     // Part C1 — re-apply evidence idempotently and recalculate immediately.
+    // Rating runs AFTER the correction transaction has committed (it manages its
+    // own connection), so a failed/rolled-back correction can never leave rating
+    // evidence written for a result that was never corrected.
     const wasCounted = outcomeCountsForRating(record.outcome);
     const nowCounted = outcomeCountsForRating(validated.outcome);
     if (nowCounted) {
@@ -529,10 +583,15 @@ export class MatchResultService {
       entityType: 'match_result_records',
       entityId: record.id,
       beforeState: beforeState as unknown as Record<string, unknown>,
-      afterState: validated.finalResult as unknown as Record<string, unknown>,
+      // G8-D-KO-CORRECTION — the bracket reconciliation outcome rides on the
+      // EXISTING audit action. No new audit action and no new provenance table:
+      // a correction remains exactly one `match.result.corrected` entry.
+      afterState: {
+        ...(validated.finalResult as unknown as Record<string, unknown>),
+        ...(reconciliation ? { knockout_reconciliation: reconciliation } : {}),
+      },
       ipAddress: ip,
     });
-    const correctionScope = await matchResultRepository.getMatchContext(record.matchId);
     await eventBusV2.emit('match:result-corrected', scopeResultPayload({
       matchId: record.matchId, resultId: record.id, approvedBy: actorId,
       allUserIds: record.participantPayload.map((p) => p.userId),

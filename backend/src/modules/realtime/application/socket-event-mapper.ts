@@ -565,6 +565,13 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       bookingId: p.bookingId,
       scheduled: p.scheduled,
       skipped: p.skipped,
+      // G8-D — generic cache-invalidation hints carried on the EXISTING
+      // `tournament:updated` lifecycle event. Result correction and the
+      // knockout-correction reconciliation re-emit this event with
+      // `standings: true` / `bracket: true`; without forwarding them the
+      // frontend's targeted invalidation checks could never fire.
+      standings: p.standings,
+      bracket: p.bracket,
     },
     rooms: roomsForScopedAudience(p, { includeBookingRoom: true }),
   };

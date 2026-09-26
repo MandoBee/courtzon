@@ -162,8 +162,15 @@ export class TournamentRepository {
     return rows.length ? Number(rows[0].organisation_id) ?? null : null;
   }
 
-  async findById(id: number): Promise<Tournament | null> {
-    const [rows] = await getPool().query<RowData>('SELECT * FROM tournaments WHERE id = ?', [id]);
+  /**
+   * G8-D-KO-CORRECTION — `conn` above is OPTIONAL and purely additive: when
+   * supplied the read is served from the caller's transaction connection, so a
+   * knockout correction re-verifies the tournament status against the SAME
+   * snapshot it reseats the bracket in. Callers that omit it are unchanged.
+   */
+  async findById(id: number, conn?: PoolConnection): Promise<Tournament | null> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>('SELECT * FROM tournaments WHERE id = ?', [id]);
     return rows.length ? (rows[0] as Tournament) : null;
   }
 

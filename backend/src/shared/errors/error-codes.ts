@@ -185,6 +185,9 @@ export const ErrorCodes = {
   TOURNAMENT_BYE_MATCH: 'TOURNAMENT_BYE_MATCH',
   // ── Group 9 — participant-aware progression ──
   TOURNAMENT_PROGRESSION_AMBIGUOUS_WINNER: 'TOURNAMENT_PROGRESSION_AMBIGUOUS_WINNER',
+  // ── Group 8-D — pre-start knockout result correction ──
+  /** A knockout result cannot be corrected because a downstream match already crossed the live-play boundary. */
+  TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED: 'TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED',
 
   // ── Shared — court slot availability (used by the booking reservation capability) ──
   COURT_SLOT_UNAVAILABLE: 'COURT_SLOT_UNAVAILABLE',

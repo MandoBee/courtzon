@@ -3,12 +3,21 @@ import { participantDrawRepository } from '../infrastructure/repositories/partic
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
-import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
+import {
+  evaluateKnockoutCorrectionBlockReason,
+  throwKnockoutCorrectionBlocked,
+  type KnockoutCorrectionCase,
+  type KnockoutCorrectionDownstreamState,
+  type KnockoutCorrectionOutcome,
+  type KnockoutCorrectionPlan,
+} from '../domain/knockout-correction.js';
 import { AppError, NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { getPool } from '../../../database/mysql.js';
+import type { PoolConnection } from 'mysql2/promise';
 import { withTransaction, runProvidedTransaction } from '../../../database/database.transaction.js';
 import { tournamentEligibilityService } from './tournament-eligibility.service.js';
 import { recordAudit } from '../../audit-log/index.js';
@@ -1806,6 +1815,423 @@ export class TournamentService {
     // attach returned null: G9-D3 eligibility rejection or materialisation not
     // applicable — a deterministic business state, never an endless retry loop.
     return { outcome: 'no_repair' };
+  }
+
+  // ── G8-D-KO-CORRECTION: pre-start knockout result correction ───────────────
+
+  /**
+   * G8-D-KO-CORRECTION — READ-ONLY planner + the correction guard.
+   *
+   * Decides, without writing anything, whether an approved knockout result may
+   * be corrected and WHICH reconciliation shape applies:
+   *
+   *   CASE A — no downstream bracket target at all (final round, non-bracket /
+   *             round-robin slot, or the result is not a bracket slot).
+   *             The result and its projection are updated; the downstream Match
+   *             is NEVER pre-created here.
+   *   CASE B — the target `tournament_matches` row exists but carries NO shared
+   *             Match. The corrected winner is reseated on the target; bracket
+   *             topology is preserved and NO Match is materialised (that stays
+   *             the job of the normal progression path).
+   *   CASE C — the target has a shared Match that has NOT started. It is
+   *             released/cancelled and the corrected winner is re-materialised.
+   *
+   * The guard throws `TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED` (409) when the
+   * downstream shared Match has crossed the irreversible live-play boundary
+   * (`in_progress` / `completed` / `void`), already holds a submitted, disputed
+   * or approved result, or the tournament itself is `completed`.
+   *
+   * "Downstream" is deliberately SCOPED to the single bracket target derived from
+   * the source slot's `progression_meta` — unrelated tournament matches are
+   * never scanned, so an unrelated live match elsewhere in the tournament can
+   * never block a legitimate correction.
+   */
+  async planKnockoutResultCorrection(input: {
+    resultId: number;
+    sharedMatchId: number;
+    tournamentId: number;
+    resultParticipants: Array<{ userId: number; side?: 'home' | 'away' | null; outcome: string }>;
+  }): Promise<KnockoutCorrectionPlan> {
+    const source = await tournamentRepository.findMatchBySharedMatchId(input.sharedMatchId);
+    // No bracket slot owns this Match (or it belongs to a different tournament) —
+    // nothing downstream can be stale, so CASE A.
+    if (!source || source.id == null || Number(source.tournament_id) !== input.tournamentId) {
+      return this.correctionPlanCaseA(input.resultId, input.sharedMatchId, input.tournamentId, null, null);
+    }
+    const t = await tournamentRepository.findById(input.tournamentId);
+    if (!t) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
+
+    const meta = this.parseProgressionMeta(source);
+    const hasTarget = meta != null && meta.is_bracket === true && meta.target_round != null && meta.target_bracket_position != null;
+    const targetSide: 'player1' | 'player2' = meta?.target_side === 'player2' ? 'player2' : 'player1';
+
+    let target: TournamentMatch | null = null;
+    if (hasTarget) {
+      target = await tournamentRepository.findBracketSlot(input.tournamentId, meta!.target_round!, meta!.target_bracket_position!);
+    }
+
+    if (target == null || target.id == null) {
+      // CASE A — the tournament-level block still applies, then result + mirror only.
+      const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream: null });
+      if (reason) {
+        console.warn('planKnockoutResultCorrection: blocked (no downstream target)', { resultId: input.resultId, tournamentId: input.tournamentId, reason });
+        throwKnockoutCorrectionBlocked(reason);
+      }
+      // The corrected winner is still resolved: CASE A has no downstream seat to
+      // move, but the SOURCE projection must be corrected to the new winner
+      // (never left pointing at the old one).
+      return {
+        ...this.correctionPlanCaseA(input.resultId, input.sharedMatchId, input.tournamentId, source, targetSide),
+        ...(await this.resolveCorrectionSeat(source, input.resultParticipants)),
+      };
+    }
+
+    // The ONLY downstream observation: the target's own shared Match.
+    const downstream = await this.readDownstreamCorrectionState(
+      target.match_id != null ? Number(target.match_id) : null,
+    );
+    const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream });
+    if (reason) {
+      // The precise reason stays server-side; the client only ever sees the
+      // generic, business-level message.
+      console.warn('planKnockoutResultCorrection: blocked', {
+        resultId: input.resultId, tournamentId: input.tournamentId, sourceSlotId: source.id, targetSlotId: target.id, reason,
+      });
+      throwKnockoutCorrectionBlocked(reason);
+    }
+
+    const seat = await this.resolveCorrectionSeat(source, input.resultParticipants);
+
+    const correctionCase: KnockoutCorrectionCase = target.match_id != null ? 'C' : 'B';
+    return {
+      resultId: input.resultId,
+      sourceSharedMatchId: input.sharedMatchId,
+      tournamentId: input.tournamentId,
+      sourceSlotId: Number(source.id),
+      case: correctionCase,
+      targetSlotId: Number(target.id),
+      targetSharedMatchId: target.match_id != null ? Number(target.match_id) : null,
+      targetSide,
+      winnerParticipantId: seat.winnerParticipantId,
+      winnerPrimaryUserId: seat.winnerPrimaryUserId,
+      previousTargetParticipantId: targetSide === 'player1'
+        ? (target.participant1_id != null ? Number(target.participant1_id) : null)
+        : (target.participant2_id != null ? Number(target.participant2_id) : null),
+    };
+  }
+
+  /**
+   * G8-D-KO-CORRECTION — the corrected winner to seat, or `null` when there is
+   * none to seat.
+   *
+   * M10 (G9-D3) parity: a participant that is NOT progression-eligible (e.g.
+   * `withdrawn_after_start`) is never seated as the future progressing
+   * participant. Exactly as forward progression leaves the target, the stale
+   * side is CLEARED rather than replaced, leaving a lone slot for the opponent.
+   */
+  private async resolveCorrectionSeat(
+    source: TournamentMatch,
+    resultParticipants: Array<{ userId: number; side?: 'home' | 'away' | null; outcome: string }>,
+  ): Promise<{ winnerParticipantId: number | null; winnerPrimaryUserId: number | null }> {
+    const winner = await this.classifyCorrectedWinner(source, resultParticipants);
+    if (winner.kind === 'unresolvable') {
+      throw new ConflictError(
+        'The corrected result winner cannot be resolved to a single tournament participant',
+        ErrorCodes.TOURNAMENT_PROGRESSION_AMBIGUOUS_WINNER,
+      );
+    }
+    if (winner.kind === 'winner' && isTournamentParticipantProgressionEligible(winner.participantStatus)) {
+      return { winnerParticipantId: winner.participantId, winnerPrimaryUserId: winner.primaryUserId };
+    }
+    return { winnerParticipantId: null, winnerPrimaryUserId: null };
+  }
+
+  /** CASE A plan — nothing downstream to reconcile (no target, or no bracket slot). */
+  private correctionPlanCaseA(
+    resultId: number,
+    sharedMatchId: number,
+    tournamentId: number,
+    source: TournamentMatch | null,
+    targetSide: 'player1' | 'player2' | null,
+  ): KnockoutCorrectionPlan {
+    return {
+      resultId,
+      sourceSharedMatchId: sharedMatchId,
+      tournamentId,
+      sourceSlotId: source?.id != null ? Number(source.id) : 0,
+      case: 'A',
+      targetSlotId: null,
+      targetSharedMatchId: null,
+      targetSide,
+      winnerParticipantId: null,
+      winnerPrimaryUserId: null,
+      previousTargetParticipantId: null,
+    };
+  }
+
+  /** Read-only observation of the downstream shared Match for the guard. */
+  private async readDownstreamCorrectionState(sharedMatchId: number | null): Promise<KnockoutCorrectionDownstreamState | null> {
+    if (sharedMatchId == null) return null;
+    const { matchService } = await import('../../match/application/services/match.service.js');
+    const state = await matchService.inspectPreStartState(sharedMatchId);
+    if (!state) return null;
+    return { matchStatus: state.status, resultSubmissionStatus: state.result?.submissionStatus ?? null };
+  }
+
+  /**
+   * G8-D-KO-CORRECTION — classify the CORRECTED result's winning participant.
+   *
+   * Reuses the existing participant-aware `resolveWinningParticipantForResult`
+   * (singles / doubles / team, side + team_index aware via
+   * tournament_participant_members) — never a second resolution algorithm and
+   * never an "exactly two players" assumption. The only thing added here is the
+   * three-way classification that the correction needs:
+   *   * `no_winner`     — the corrected result has no winning side (draw,
+   *                       no_result, abandoned). Legitimate: the stale seat is
+   *                       cleared, exactly as forward progression behaves.
+   *   * `winner`        — the corrected winner resolved to exactly one
+   *                       participant of this tournament, with its roster.
+   *   * `unresolvable`  — there IS a winner but it cannot be mapped to exactly
+   *                       one participant (ambiguous / cross-tournament /
+   *                       non-member). Never silently treated as "no winner":
+   *                       the caller refuses the correction instead of clearing a
+   *                       legitimately occupied seat.
+   */
+  private async classifyCorrectedWinner(
+    source: TournamentMatch,
+    resultParticipants: Array<{ userId: number; side?: 'home' | 'away' | null; outcome: string }>,
+  ): Promise<
+    | { kind: 'no_winner' }
+    | { kind: 'winner'; participantId: number; primaryUserId: number; participantStatus: TournamentParticipantStatus }
+    | { kind: 'unresolvable' }
+  > {
+    const winning = resultParticipants.find((p) => p.outcome === 'win');
+    if (!winning || winning.side == null) return { kind: 'no_winner' };
+    const resolved = await this.resolveWinningParticipantForResult(source, resultParticipants);
+    if (!resolved) return { kind: 'unresolvable' };
+    return {
+      kind: 'winner',
+      participantId: Number(resolved.participant.id),
+      primaryUserId: resolved.primaryUserId,
+      participantStatus: resolved.participant.status,
+    };
+  }
+
+  /**
+   * G8-D-KO-CORRECTION — execute a planned correction ATOMICALLY.
+   *
+   * `applyResultWrite(conn)` is invoked INSIDE the reconciling transaction with
+   * the caller's connection, so the corrected result rows and the downstream
+   * bracket reseat are committed together. The invariant this guarantees is the
+   * one the business actually needs: the system is NEVER left with
+   * `source = NEW WINNER` while `downstream = OLD WINNER`, and never with a
+   * half-applied correction.
+   *
+   * Order of operations:
+   *   0. CASE C pre-commit remediation — release the court and cancel the stale
+   *      downstream Match through the EXISTING idempotent, tournament-aware
+   *      services. This runs FIRST and on its own connections: until the stale
+   *      Match is cancelled it is still startable, so a window in which the slot
+   *      already shows the new player while a playable Match still holds the old
+   *      one is unacceptable. If step 1 then fails, the leftover state (cancelled
+   *      Match, stale seat) is fully recoverable by re-running the correction.
+   *   1. ONE transaction — re-read the tournament, re-verify the SAME guard on
+   *      the locked rows, apply the result write, project the corrected winner on
+   *      the source slot, then reseat/clear the target.
+   *   2. CASE C post-commit re-materialisation through the EXISTING
+   *      idempotent, lock-safe, eligibility-gated `attachSharedMatchToTarget` —
+   *      so exactly one shared Match can ever exist per target slot and the
+   *      G9-C/G9-D3 guarantees are inherited rather than re-implemented.
+   *   3. Realtime + audit, strictly AFTER a successful commit.
+   */
+  async reconcileKnockoutResultCorrection(
+    plan: KnockoutCorrectionPlan,
+    applyResultWrite: (conn: PoolConnection) => Promise<void>,
+  ): Promise<KnockoutCorrectionOutcome> {
+    const cancelled = { sharedMatchId: null as number | null, courtReleased: false };
+
+    // ── 0. CASE C: retire the stale downstream Match (pre-commit, idempotent).
+    if (plan.case === 'C' && plan.targetSharedMatchId != null) {
+      const staleMatchId = plan.targetSharedMatchId;
+      const { matchService } = await import('../../match/application/services/match.service.js');
+      await matchService.cancelTournamentMatch(staleMatchId, 'knockout result corrected upstream');
+      const { courtReservationService } = await import('../../booking/application/court-reservation.service.js');
+      const release = await courtReservationService.releaseCourt(staleMatchId);
+      cancelled.sharedMatchId = staleMatchId;
+      cancelled.courtReleased = release.released === true;
+    }
+
+    // ── 1. The single atomic correction transaction.
+    const applied = await withTransaction(async (conn) => {
+      const t = await tournamentRepository.findById(plan.tournamentId, conn);
+      if (!t) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
+
+      // Lock order: SOURCE then TARGET.
+      //
+      // This is deliberately the SAME order the forward-progression path uses
+      // (`progressFromApprovedResult` updates the source slot and only then the
+      // target), and the same order `attachSharedMatchToTarget` implicitly needs
+      // (it locks the target alone). A consistent global order is what keeps a
+      // correction that races a still-in-flight progression from deadlocking.
+      // Forward-progression locking itself is untouched — nothing here weakens
+      // it; this path simply joins the order it already established.
+      const source = plan.sourceSlotId > 0
+        ? await tournamentRepository.lockMatchById(plan.sourceSlotId, conn)
+        : null;
+      if (plan.sourceSlotId > 0 && !source) {
+        throw new ConflictError('The corrected bracket slot no longer exists — reload the bracket and try again', ErrorCodes.TOURNAMENT_MATCH_NOT_FOUND);
+      }
+      const target = plan.targetSlotId != null ? await tournamentRepository.lockMatchById(plan.targetSlotId, conn) : null;
+      if (plan.targetSlotId != null && target == null) {
+        // The downstream slot vanished between the plan and the write — refuse
+        // rather than commit a source-only correction.
+        throw new ConflictError('The downstream bracket slot no longer exists — reload the bracket and try again', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
+      }
+
+      // Re-verify the SAME guard on the live rows, inside the same transaction
+      // that performs the write. A downstream Match that started (or produced a
+      // result) between the plan and here is now caught deterministically.
+      if (plan.case === 'C' && target != null) {
+        const downstream = await this.readDownstreamCorrectionState(
+          target.match_id != null ? Number(target.match_id) : plan.targetSharedMatchId,
+        );
+        const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream });
+        if (reason) {
+          console.warn('reconcileKnockoutResultCorrection: blocked on re-verify', { resultId: plan.resultId, targetSlotId: plan.targetSlotId, reason });
+          throwKnockoutCorrectionBlocked(reason);
+        }
+      } else {
+        const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream: null });
+        if (reason) throwKnockoutCorrectionBlocked(reason);
+      }
+
+      // THE atomic write (corrected result + participant rows).
+      await applyResultWrite(conn);
+
+      // Source projection — the corrected winner, committed in the SAME
+      // transaction as the downstream reseat below. CASE A with no bracket slot
+      // (a tournament result whose slot row is gone) still updates the corrected
+      // result atomically; there is simply no projection to refresh.
+      if (source) {
+        await tournamentRepository.updateMatch(plan.sourceSlotId, {
+          winner_id: plan.winnerPrimaryUserId ?? null,
+          status: 'completed',
+          progression_state: 'completed',
+        } as Partial<TournamentMatch>, conn);
+      }
+
+      let reseatedTargetSlotId: number | null = null;
+      if (target != null && plan.targetSlotId != null) {
+        const participantField = plan.targetSide === 'player2' ? 'participant2_id' : 'participant1_id';
+        const userField = plan.targetSide === 'player2' ? 'player2_id' : 'player1_id';
+        // CASE B: the seat only. CASE C: the seat AND the linkage back to the
+        // canonical pre-match state, so the EXISTING attach path can rebuild it
+        // exactly as it does after ordinary progression. `null` is applied by
+        // updateMatch (only `undefined` is skipped), so `match_id` is genuinely
+        // cleared and the slot can never point at two shared Matches.
+        await tournamentRepository.updateMatch(plan.targetSlotId, ({
+          match_id: null,
+          progression_state: 'pending',
+          status: 'scheduled',
+          [participantField]: plan.winnerParticipantId,
+          [userField]: plan.winnerPrimaryUserId,
+        } as Partial<TournamentMatch>), conn);
+        // Keep the in-memory row authoritative for the post-commit attach.
+        (target as any)[participantField] = plan.winnerParticipantId;
+        (target as any)[userField] = plan.winnerPrimaryUserId;
+        (target as any).match_id = null;
+        reseatedTargetSlotId = plan.targetSlotId;
+      }
+
+      return { tournament: t, target, reseatedTargetSlotId, sourceUserIds: source ? [source.player1_id, source.player2_id] : [] };
+    });
+
+    // ── 2. CASE C: re-materialise through the EXISTING attach path.
+    let rematerialisedSharedMatchId: number | null = null;
+    let materialised = false;
+    if (plan.case === 'C' && applied.target != null && plan.winnerParticipantId != null) {
+      const attached = await this.attachSharedMatchToTarget(applied.target, applied.tournament);
+      if (attached) {
+        rematerialisedSharedMatchId = attached.matchId;
+        materialised = attached.created;
+      }
+    }
+
+    // ── 3. Realtime + audit — strictly post-commit.
+    await recordAudit({
+      actorId: null,
+      action: 'TOURNAMENT.KNOCKOUT_CORRECTION_RECONCILED',
+      entityType: 'tournament_match',
+      entityId: plan.targetSlotId ?? plan.sourceSlotId,
+      afterState: {
+        result_id: plan.resultId,
+        tournament_id: plan.tournamentId,
+        case: plan.case,
+        source_slot_id: plan.sourceSlotId,
+        target_slot_id: plan.targetSlotId,
+        target_side: plan.targetSide,
+        previous_target_participant_id: plan.previousTargetParticipantId,
+        winner_participant_id: plan.winnerParticipantId,
+        cancelled_shared_match_id: cancelled.sharedMatchId,
+        rematerialised_shared_match_id: rematerialisedSharedMatchId,
+      },
+    });
+
+    if (plan.case !== 'A') {
+      // Reuse the EXISTING progression event: the frontend already refreshes the
+      // bracket, the standings and the tournament detail on it. No new event
+      // type, no socket.emit, nothing before commit.
+      eventBusV2.emit('tournament:match-progressed', {
+        tournamentId: plan.tournamentId,
+        matchId: plan.sourceSharedMatchId,
+        resultId: plan.resultId,
+        winnerId: plan.winnerPrimaryUserId,
+        participantWinnerId: plan.winnerParticipantId,
+        fromSlotId: plan.sourceSlotId,
+        toSlotId: plan.targetSlotId,
+        stageId: applied.target?.stage_id ?? null,
+        corrected: true,
+        ...this.tournamentRealtimeScope(applied.tournament, [
+          plan.winnerPrimaryUserId,
+          ...applied.sourceUserIds,
+          applied.target?.player1_id,
+          applied.target?.player2_id,
+        ]),
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(plan.tournamentId), aggregateVersion: 1,
+      });
+      if (materialised && rematerialisedSharedMatchId != null) {
+        eventBusV2.emit('tournament:match-created', {
+          tournamentId: plan.tournamentId,
+          matchId: rematerialisedSharedMatchId,
+          tournamentMatchId: plan.targetSlotId,
+          winnerId: plan.winnerPrimaryUserId,
+          participantWinnerId: plan.winnerParticipantId,
+          ...this.tournamentRealtimeScope(applied.tournament, [plan.winnerPrimaryUserId]),
+        } as Record<string, unknown>, {
+          aggregateType: 'tournament', aggregateId: String(plan.tournamentId), aggregateVersion: 1,
+        });
+      }
+      // Standings + bracket targeted invalidation on the EXISTING lifecycle
+      // event (`standings` is emitted today by result correction; `bracket` is
+      // the new, equally generic invalidation hint for this reconciliation).
+      eventBusV2.emit('tournament:updated', {
+        tournamentId: plan.tournamentId,
+        standings: true,
+        bracket: true,
+        ...this.tournamentRealtimeScope(applied.tournament),
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(plan.tournamentId), aggregateVersion: 1,
+      });
+    }
+
+    return {
+      case: plan.case,
+      reseatedTargetSlotId: applied.reseatedTargetSlotId,
+      cancelledSharedMatchId: cancelled.sharedMatchId,
+      courtReleased: cancelled.courtReleased,
+      rematerialisedSharedMatchId,
+    };
   }
 
   // ── G9-B: participant-aware winner resolution ─────────────────────────────

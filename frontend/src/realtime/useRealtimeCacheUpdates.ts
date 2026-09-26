@@ -1004,10 +1004,17 @@ export function useRealtimeCacheUpdates(): void {
   // automatic no-result expiry reconciliation with `standings: true`. Besides
   // the lifecycle refresh, that payload must also invalidate the authoritative
   // standings query so connected users never see stale RR standings.
+  // G8-D-KO-CORRECTION — the same event additionally carries `bracket: true`
+  // when a knockout correction reconciled downstream seating, so the bracket
+  // cache is refreshed without a manual reload.
   useSocketEvent('tournament.updated', (p: any) => {
     invalidateRegistrationLifecycle(qc, p);
     if (p?.standings === true) {
       invalidateTournamentStandings(qc, p?.tournamentId);
+    }
+    if (p?.bracket === true) {
+      qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'bracket'] });
+      qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'matches'] });
     }
   });
 

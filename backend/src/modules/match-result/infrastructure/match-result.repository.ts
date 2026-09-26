@@ -1,5 +1,6 @@
 import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
+import type { PoolConnection } from 'mysql2/promise';
 import type {
   FinalResult,
   MatchParticipantSlot,
@@ -510,8 +511,15 @@ export class MatchResultRepository {
     return Number((res as any).insertId);
   }
 
-  async updateResult(resultId: number, fields: Partial<ResultInsert> & Record<string, unknown>): Promise<void> {
-    const pool = getPool();
+  /**
+   * G8-D-KO-CORRECTION — `conn` is OPTIONAL and purely additive: when supplied the
+   * UPDATE runs on the caller's connection so a knockout correction can commit
+   * the corrected result and the downstream bracket reseat in ONE transaction
+   * (source = NEW WINNER can never be committed without the downstream side
+   * moving with it). When omitted the behaviour is unchanged (pool execute).
+   */
+  async updateResult(resultId: number, fields: Partial<ResultInsert> & Record<string, unknown>, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
     const sets: string[] = [];
     const params: any[] = [];
     for (const [key, value] of Object.entries(fields)) {
@@ -521,29 +529,49 @@ export class MatchResultRepository {
     }
     if (!sets.length) return;
     params.push(resultId);
-    await pool.execute(`UPDATE match_result_records SET ${sets.join(', ')} WHERE id = ?`, params);
+    await db.execute(`UPDATE match_result_records SET ${sets.join(', ')} WHERE id = ?`, params);
   }
 
-  async replaceParticipants(resultId: number, matchId: number, participants: Array<{ userId: number; teamIndex: number; side: 'home' | 'away'; outcome: 'win' | 'draw' | 'loss'; matchEvidence: number | null; evidenceCounted: boolean }>): Promise<void> {
+  /**
+   * G8-D-KO-CORRECTION — `conn` is OPTIONAL and purely additive. When supplied the
+   * delete+re-insert runs inside the caller's EXISTING transaction (no nested
+   * begin/commit), so the corrected participant rows are committed atomically with
+   * the bracket reconciliation. When omitted the historical self-managed
+   * transaction is used, exactly as before.
+   */
+  async replaceParticipants(resultId: number, matchId: number, participants: Array<{ userId: number; teamIndex: number; side: 'home' | 'away'; outcome: 'win' | 'draw' | 'loss'; matchEvidence: number | null; evidenceCounted: boolean }>, conn?: PoolConnection): Promise<void> {
+    if (conn) {
+      await this.writeParticipants(conn, resultId, matchId, participants);
+      return;
+    }
     const pool = getPool();
-    const conn = await pool.getConnection();
+    const own = await pool.getConnection();
     try {
-      await conn.beginTransaction();
-      await conn.execute('DELETE FROM match_result_participants WHERE result_id = ?', [resultId]);
-      for (const p of participants) {
-        await conn.execute(
-          `INSERT INTO match_result_participants
-             (result_id, match_id, user_id, team_index, side, outcome, match_evidence, evidence_counted)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [resultId, matchId, p.userId, p.teamIndex, p.side, p.outcome, p.matchEvidence, p.evidenceCounted ? 1 : 0],
-        );
-      }
-      await conn.commit();
+      await own.beginTransaction();
+      await this.writeParticipants(own, resultId, matchId, participants);
+      await own.commit();
     } catch (err) {
-      await conn.rollback();
+      await own.rollback();
       throw err;
     } finally {
-      conn.release();
+      own.release();
+    }
+  }
+
+  private async writeParticipants(
+    conn: PoolConnection,
+    resultId: number,
+    matchId: number,
+    participants: Array<{ userId: number; teamIndex: number; side: 'home' | 'away'; outcome: 'win' | 'draw' | 'loss'; matchEvidence: number | null; evidenceCounted: boolean }>,
+  ): Promise<void> {
+    await conn.execute('DELETE FROM match_result_participants WHERE result_id = ?', [resultId]);
+    for (const p of participants) {
+      await conn.execute(
+        `INSERT INTO match_result_participants
+           (result_id, match_id, user_id, team_index, side, outcome, match_evidence, evidence_counted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [resultId, matchId, p.userId, p.teamIndex, p.side, p.outcome, p.matchEvidence, p.evidenceCounted ? 1 : 0],
+      );
     }
   }
 

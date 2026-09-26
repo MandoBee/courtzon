@@ -12,7 +12,8 @@ import { sessionService } from './session.service.js';
 import { Match } from '../../domain/match.entity.js';
 import { Participant } from '../../domain/participant.entity.js';
 import { assignNextParticipantSide } from '../../domain/participant-side.js';
-import type { MatchFormatSnapshot, MatchFormatType } from '../../domain/match.types.js';
+import type { MatchFormatSnapshot, MatchFormatType, MatchStatus } from '../../domain/match.types.js';
+import type { MatchResultOutcome, MatchResultSubmissionStatus } from '../../../match-result/domain/match-result.types.js';
 import { matchResultRepository } from '../../../match-result/infrastructure/match-result.repository.js';
 import { AppError } from '../../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../../shared/utils/logger.js';
@@ -322,6 +323,39 @@ export class MatchService {
     } finally {
       conn.release();
     }
+  }
+
+  /**
+   * G8-D-KO-CORRECTION — read-only observation of a Match's pre-start state.
+   *
+   * The knockout correction guard needs exactly two facts about the DOWNSTREAM
+   * shared Match: its current status, and whether a result record already exists
+   * for it (and in which submission status). This is a single narrow read that
+   * does NOT mutate, cancel, or otherwise touch the match — it exists so the
+   * tournament module never has to reach into the Match state machine just to
+   * make a correction decision.
+   *
+   * Returns `null` when the Match no longer exists (the caller treats a vanished
+   * downstream Match as "nothing to repair"). A match with no result record
+   * reports `result: null`.
+   */
+  async inspectPreStartState(matchId: number): Promise<{
+    status: MatchStatus;
+    result: { id: number; submissionStatus: MatchResultSubmissionStatus; outcome: MatchResultOutcome } | null;
+  } | null> {
+    const match = await matchRepository.findById(matchId);
+    if (!match) return null;
+    const record = await matchResultRepository.findByMatchId(matchId);
+    return {
+      status: match.status as MatchStatus,
+      result: record
+        ? {
+          id: record.id,
+          submissionStatus: record.submissionStatus,
+          outcome: record.outcome,
+        }
+        : null,
+    };
   }
 
   /**
