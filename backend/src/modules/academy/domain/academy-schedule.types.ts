@@ -112,6 +112,7 @@ export type AcademyConflictState =
 export type AcademyConflictReason =
   | 'player_booking_conflict'
   | 'academy_conflict'
+  | 'coach_conflict'
   | 'lower_priority'
   | 'resource_unavailable'
   | 'resource_not_in_branch'

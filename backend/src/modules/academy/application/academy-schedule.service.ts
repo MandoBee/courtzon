@@ -38,6 +38,25 @@ function parseWeekdays(raw: string): AcademyScheduleWeekday[] {
   return raw.split(',').filter(Boolean).sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)) as AcademyScheduleWeekday[];
 }
 
+/**
+ * G5-B — conflict_metadata object for an evaluation. Keeps the existing
+ * `{ reason }` shape intact for every conflict type; when the conflict is a
+ * COACH conflict the authoritative coach detail (coachId + reason, plus the
+ * original court reason when both exist) is preserved instead of being
+ * overwritten.
+ */
+function conflictMetaObject(ev: any): Record<string, any> {
+  const meta: Record<string, any> = { reason: ev.reason };
+  if (ev.reason === 'coach_conflict' && ev.conflict) meta.coach = ev.conflict;
+  return meta;
+}
+
+/** G5-B — same as `conflictMetaObject` but serialized for the session INSERT. */
+function conflictMetaJson(ev: any): string | null {
+  if (!ev?.reason) return null;
+  return JSON.stringify(conflictMetaObject(ev));
+}
+
 function dailyRange(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
   let cur = new Date(`${startDate}T00:00:00Z`);
@@ -131,7 +150,7 @@ function applyEvaluationToSession(patch: Record<string, any>, prev: any, ev: { s
     patch.pending_expires_at = null;
   }
   patch.conflict_metadata = ev.state === 'CONFLICT' || ev.state === 'ADMIN_TIME_RESOLUTION_REQUIRED'
-    ? { reason: ev.reason }
+    ? conflictMetaObject(ev)
     : patch.conflict_metadata ?? prev.conflict_metadata ?? null;
   if (needsHold || needsSnapshot) {
     patch.court_id = ev.court_id;
@@ -474,7 +493,7 @@ export class AcademyScheduleService {
             : null,
           original_session_date: date, original_start_time: schedule.local_start_time,
           original_end_time: schedule.local_end_time, original_court_id: schedule.preferred_court_id!,
-          conflict_metadata: ev.reason ? JSON.stringify({ reason: ev.reason }) : null,
+          conflict_metadata: conflictMetaJson(ev),
           generation_ref: `${scheduleId}:${date}:${schedule.local_start_time}`,
         };
         try {
@@ -565,7 +584,7 @@ export class AcademyScheduleService {
           reservation_status: toDbReservationStatus(ev.state), priority_seq: Number(existing.id),
           pending_expires_at: ev.state === 'PENDING_COURT' ? new Date(new Date(now).getTime() + newPriorityMinutes * 60_000).toISOString() : null,
           original_session_date: date, original_start_time: newStartT, original_end_time: newEndT, original_court_id: newCourt!,
-          conflict_metadata: ev.reason ? JSON.stringify({ reason: ev.reason }) : null,
+          conflict_metadata: conflictMetaJson(ev),
           generation_ref: `${existing.id}:${date}:${newStartT}`,
         };
         await academyScheduleRepository.insertSession(patch as any, ctx.conn);

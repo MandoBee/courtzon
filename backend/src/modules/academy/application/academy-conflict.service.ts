@@ -12,11 +12,14 @@
 import { TimeEngine } from '../../time/time-engine.js';
 import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
 import { academyScheduleRepository } from '../infrastructure/repositories/academy-schedule.repository.js';
+import { getPool } from '../../../database/mysql.js';
 import type {
   AcademyConflictAlternative,
   AcademyConflictEvaluation,
   AcademySchedule,
 } from '../domain/academy-schedule.types.js';
+
+type RowData = import('mysql2').RowDataPacket[];
 
 export interface AcademyResourceView {
   id: number;
@@ -71,6 +74,114 @@ async function isSlotFree(courtId: number, date: string, start: string, end: str
   return TimeEngine.isSlotAvailable(startUtc, endUtc, conflicts);
 }
 
+/**
+ * G5-B — resolve whether a candidate Academy slot conflicts with the group
+ * coach's availability. READ-SIDE ONLY (no locks); reuses the shared coach data
+ * tables and the canonical coach_sessions overlap semantics (scheduling-booking
+ * `checkCoachAvailable`): DATE(start_time)=coach-local date + active statuses +
+ * `start_time < end AND end_time > start`. The candidate Academy window is
+ * converted from the branch-local frame into the coach venue-local frame via
+ * TimeEngine (no new timezone abstraction); the venue timezone falls back to the
+ * Academy branch timezone (mirrors the shared `getCoachVenueTimezone` fallback).
+ */
+async function resolveAcademyCoachBusy(
+  coachUserId: number,
+  date: string,
+  start: string,
+  end: string,
+  academyTz: string,
+  branchId: number | undefined,
+  excludeSessionId: number | null,
+): Promise<{ busy: boolean; reason: string | null }> {
+  const pool = getPool();
+
+  // Group.coach_id is a USER id; the shared coach tables are keyed by profile id.
+  const [profiles] = await pool.query<RowData>(
+    'SELECT id FROM coach_profiles WHERE user_id = ? AND deleted_at IS NULL LIMIT 1',
+    [coachUserId],
+  );
+  const profileId = profiles.length ? Number((profiles[0] as any).id) : null;
+  if (!profileId) return { busy: false, reason: null };
+
+  // Coach venue-local timezone (shared infrastructure); fall back to the Academy branch timezone.
+  const [tzRows] = await pool.query<RowData>(
+    `SELECT b.timezone FROM coach_service_locations csl
+     JOIN branches b ON b.id = csl.branch_id AND b.deleted_at IS NULL
+     WHERE csl.coach_id = ? ORDER BY csl.id ASC LIMIT 1`,
+    [profileId],
+  );
+  const coachTz = tzRows.length && (tzRows[0] as any).timezone ? String((tzRows[0] as any).timezone) : academyTz;
+
+  // Candidate Academy window mapped into the coach-local frame.
+  let localDate: string; let localStart: string; let localEnd: string;
+  try {
+    const startUtc = TimeEngine.localToUtc(date, fmtTime(start), academyTz);
+    const endUtc = TimeEngine.localToUtc(date, fmtTime(end), academyTz);
+    const ls = TimeEngine.utcToLocal(startUtc, coachTz);
+    const le = TimeEngine.utcToLocal(endUtc, coachTz);
+    localDate = ls.date; localStart = fmtTime(ls.time); localEnd = fmtTime(le.time);
+  } catch {
+    // DST-unsafe candidate — the court/DST outcome governs; do not fabricate a coach block.
+    return { busy: false, reason: null };
+  }
+
+  // A. Weekly availability — coach-local window overlap (day_of_week: 0=Sun..6=Sat).
+  const dow = new Date(`${localDate}T12:00:00Z`).getUTCDay();
+  const [availRows] = await pool.query<RowData>(
+    'SELECT start_time, end_time FROM coach_availability WHERE coach_id = ? AND day_of_week = ?',
+    [profileId, dow],
+  );
+  if (availRows.length) {
+    const hasOverlap = (availRows as any[]).some((slot) => windowOverlaps(fmtTime(String(slot.start_time)), fmtTime(String(slot.end_time)), localStart, localEnd));
+    if (!hasOverlap) {
+      return { busy: true, reason: `outside weekly availability (${localDate} ${localStart}-${localEnd})` };
+    }
+  }
+
+  // B. Blackout — coach-local date.
+  const [bRows] = await pool.query<RowData>(
+    'SELECT id FROM coach_availability_blackouts WHERE coach_id = ? AND blackout_date = ? LIMIT 1',
+    [profileId, localDate],
+  );
+  if (bRows.length) return { busy: true, reason: `blackout on ${localDate}` };
+
+  // C. 1:1 coach sessions — canonical overlap semantics (reused, not duplicated).
+  const [sRows] = await pool.query<RowData>(
+    `SELECT id FROM coach_sessions
+     WHERE coach_id = ? AND DATE(start_time) = ?
+       AND status NOT IN ('cancelled','no_show','completed')
+       AND start_time < ? AND end_time > ?
+     LIMIT 1`,
+    [profileId, localDate, `${localDate}T${localEnd}:00`, `${localDate}T${localStart}:00`],
+  );
+  if (sRows.length) return { busy: true, reason: `overlapping 1:1 coach session #${(sRows[0] as any).id}` };
+
+  // D. Other Academy sessions assigned to the same coach (branch-local frame,
+  // tenant-scoped by the academy group/session), current session excluded.
+  const [aRows] = await pool.query<RowData>(
+    `SELECT id FROM academy_group_sessions
+     WHERE coach_id = ? AND session_date = ? AND status <> 'cancelled' AND id <> ?
+       AND ((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?))
+     LIMIT 1`,
+    [coachUserId, date, excludeSessionId ?? 0, fmtTime(end), fmtTime(start), fmtTime(end), fmtTime(start)],
+  );
+  if (aRows.length) return { busy: true, reason: `overlapping Academy session #${(aRows[0] as any).id} for the same coach` };
+
+  return { busy: false, reason: null };
+}
+
+/** Overlap helper for 'HH:mm'/'HH:mm:ss' local times (supports overnight slots). */
+function windowOverlaps(slotStart: string, slotEnd: string, candStart: string, candEnd: string): boolean {
+  const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+  const ss = toMin(slotStart); const se = toMin(slotEnd);
+  const cs = toMin(candStart); const ce = toMin(candEnd);
+  if (se <= ss) {
+    // Slot spans midnight: [ss,1440) ∪ [0,se).
+    return (cs >= ss && cs < 1440) || cs < se;
+  }
+  return cs < se && ce > ss;
+}
+
 export class AcademyConflictService {
   /** Deterministic horizon: the normal player booking window (7 days ahead). */
   playerHorizonUtc(tz: string): { horizonUtc: string; horizonDate: string } {
@@ -80,11 +191,73 @@ export class AcademyConflictService {
   }
 
   /**
+   * G5-B — evaluate a candidate Academy slot including the COACH dimension.
+   * Runs the existing court/resource evaluation first, then layers a coach
+   * availability/conflict overlay on top: when the group coach is busy for the
+   * candidate window (weekly availability, blackout, an overlapping active 1:1
+   * coach session, or another Academy session of the same coach), the result is
+   * the existing CONFLICT state with `coach_conflict` reason and conflict
+   * metadata. When both a court and a coach conflict exist, ALL relevant
+   * conflict information is preserved (merged metadata, silent-overwrite
+   * prevented).
+   */
+  async evaluate(
+    courtId: number,
+    date: string,
+    start: string,
+    end: string,
+    ctx: AcademyConflictContext,
+  ): Promise<AcademyConflictEvaluation> {
+    const base = await this.evaluateBase(courtId, date, start, end, ctx);
+
+    const coachUserId = ctx.groupCoachId ? Number(ctx.groupCoachId) : null;
+    if (!coachUserId) return base;
+
+    const busy = await resolveAcademyCoachBusy(
+      coachUserId,
+      date,
+      start,
+      end,
+      ctx.schedule.timezone,
+      ctx.schedule.branch_id != null ? Number(ctx.schedule.branch_id) : undefined,
+      ctx.sessionId ?? null,
+    );
+    if (!busy.busy) return base;
+
+    const coachMeta = {
+      type: null as 'booking' | 'academy_session' | null,
+      id: null as number | null,
+      prioritySeq: null as number | null,
+      detail: busy.reason,
+    };
+
+    if (base.state === 'CONFLICT') {
+      // Preserve the court conflict; append the coach detail (never overwrite).
+      const merged: any = {
+        ...(base.conflict ?? coachMeta),
+        coach: { coachId: coachUserId, reason: busy.reason, originalConflictReason: base.reason },
+      };
+      return {
+        ...base,
+        reason: 'coach_conflict',
+        conflict: merged,
+      };
+    }
+    if (base.state === 'ADMIN_TIME_RESOLUTION_REQUIRED') {
+      // DST gap/overlap already requires admin resolution — keep that outcome.
+      return base;
+    }
+    // PENDING_COURT / DEFERRED → dominate to the existing CONFLICT model.
+    const dominated: any = { ...coachMeta, coach: { coachId: coachUserId, reason: busy.reason } };
+    return this.result(ctx, courtId, date, fmtTime(start), fmtTime(end), 'CONFLICT', 'coach_conflict', dominated, `Coach is unavailable for this Academy session (${busy.reason})`, null);
+  }
+
+  /**
    * Evaluate a candidate Academy slot. Never modifies the session (the caller
    * persists the returned state), except for the deterministic priority rule:
    * a later-priority holder is downgraded to `conflict` (values untouched).
    */
-  async evaluate(
+  async evaluateBase(
     courtId: number,
     date: string,
     start: string,

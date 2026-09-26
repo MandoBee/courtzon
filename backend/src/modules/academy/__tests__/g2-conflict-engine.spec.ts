@@ -17,6 +17,15 @@ const scheduleRepo = vi.hoisted(() => ({
 }));
 vi.mock('../infrastructure/repositories/academy-schedule.repository.js', () => ({ academyScheduleRepository: scheduleRepo }));
 
+// G5-B — coach-conflict evaluation reads shared coach tables; return empty data
+// so unit tests exercise only the court/resource engine deterministically.
+vi.mock('../../../database/mysql.js', () => ({
+  getPool: () => ({
+    query: async () => [[], []],
+    execute: async () => [[], []],
+  }),
+}));
+
 import { academyConflictService } from '../application/academy-conflict.service.js';
 import type { AcademyConflictContext } from '../application/academy-conflict.service.js';
 
