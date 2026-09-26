@@ -391,13 +391,64 @@ function mapOrganisationEvent(eventName: string, p: Record<string, any>): Mapped
   return { type: `organisation.${eventName.split(':')[1] || 'updated'}`, payload: { organisationId: p.organisationId, userId: p.userId }, rooms };
 }
 
+/**
+ * G4-A — Academy administrative-scope events. Routed to the organisation /
+ * branch / super-admin rooms ONLY — never to player rooms. `attendance-updated`
+ * also joins its authoritative group-coach user room (`user:{coachId}`).
+ */
+const ACADEMY_ADMIN_EVENTS = new Set([
+  'academy:session:hold-expired',
+  'academy:group-updated',
+  'academy:schedule-updated',
+  'academy:attendance-updated',
+]);
+
+/**
+ * G4-A — Academy enrollment lifecycle events. Player delivery is preserved;
+ * the organisation + super-admin rooms are added so the admin roster/capacity
+ * workbench receives enrollment changes in realtime.
+ */
+const ACADEMY_ENROLLMENT_EVENTS = new Set([
+  'academy:enrollment-accepted',
+  'academy:enrollment-waitlisted',
+  'academy:promoted',
+  'academy:enrollment-cancelled',
+  'academy:enrollment-completed',
+  'academy:payment-acknowledged',
+  'academy:enrollment-paid',
+]);
+
 function mapAcademyEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const isAdminEvent = ACADEMY_ADMIN_EVENTS.has(eventName);
+  const isCoaching = eventName.startsWith('coaching:');
   const rooms: string[] = [];
-  const userId = p.userId || p.playerId;
-  if (userId) rooms.push(`user:${userId}`);
+
+  // Player delivery ONLY for player-scoped events — administrative state
+  // (hold expiry, group/schedule/attendance workbench) must never reach a
+  // player room.
+  if (!isAdminEvent) {
+    const userId = p.userId || p.playerId;
+    if (userId) rooms.push(`user:${userId}`);
+  }
   if (p.academyId) rooms.push(`academy:${p.academyId}`);
-  if (p.coachId) rooms.push(`coach:${p.coachId}`);
-  const prefix = eventName.startsWith('coaching:') ? 'coaching' : 'academy';
+  // Coach delivery uses the coach's AUTHORITATIVE user room — every socket
+  // joins `user:{id}`; the legacy `coach:{id}` room is never joined server-side.
+  // Coach audience is contract-limited to events about their own sessions/work:
+  // only attendance-updated carries an authoritative group-coach today.
+  if (eventName === 'academy:attendance-updated' && p.coachId) rooms.push(`user:${p.coachId}`);
+
+  if (isAdminEvent) {
+    // Administrative audience — server-derived IDs only.
+    if (p.organisationId) rooms.push(`organisation:${p.organisationId}`);
+    if (p.branchId) rooms.push(`branch:${p.branchId}`);
+    rooms.push(ADMIN_ROOM);
+  } else if (ACADEMY_ENROLLMENT_EVENTS.has(eventName) && p.organisationId) {
+    // Roster/capacity admin workbench follows the enrollment lifecycle.
+    rooms.push(`organisation:${p.organisationId}`);
+    rooms.push(ADMIN_ROOM);
+  }
+
+  const prefix = isCoaching ? 'coaching' : 'academy';
   // Preserve the FULL event name after the domain prefix: `academy:session:hold-expired`
   // must map to `academy.session.hold-expired`, never the truncated `academy.session`.
   // For single-colon events this yields the exact historical type, so existing
@@ -409,12 +460,14 @@ function mapAcademyEvent(eventName: string, p: Record<string, any>): MappedSocke
     type: `${prefix}.${sub}`,
     payload: {
       academyId: p.academyId,
-      userId,
+      userId: p.userId || p.playerId,
       playerId: p.playerId,
       sessionId: p.sessionId,
       programId: p.programId,
       enrollmentId: p.enrollmentId,
       groupId: p.groupId,
+      scheduleId: p.scheduleId,
+      date: p.date,
       organisationId: p.organisationId,
       branchId: p.branchId,
       coachId: p.coachId,

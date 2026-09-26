@@ -1,8 +1,35 @@
 import { attendanceRepository } from '../infrastructure/repositories/attendance.repository.js';
 import { enrollmentRepository } from '../infrastructure/repositories/enrollment.repository.js';
+import { groupRepository } from '../infrastructure/repositories/group.repository.js';
+import { programRepository } from '../infrastructure/repositories/program.repository.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import type { AcademyAttendanceAttributes } from '../domain/academy.types.js';
+
+/**
+ * G4-A — administrative attendance realtime (workbench refresh, NEVER a player
+ * notification). Fired after the attendance write commits, with authoritative
+ * server-side IDs only. Routes via SocketPublisher to the organisation/branch/
+ * super-admin rooms and to the group coach's own user room.
+ */
+async function emitAttendanceUpdated(payload: {
+  attendanceId: number; sessionId: number; groupId: number; enrollmentId: number;
+  playerId: number; organisationId: number | null; branchId: number | null; coachId: number | null;
+}): Promise<void> {
+  const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+  eventBusV2.emit('academy:attendance-updated', payload as any);
+}
+
+/** G4-A — resolve the authoritative org/branch/coach scope for a session's group. */
+async function resolveAttendanceScope(groupId: number): Promise<{ organisationId: number | null; branchId: number | null; coachId: number | null }> {
+  const group = await groupRepository.getById(groupId);
+  const program = group ? await programRepository.getById(Number(group.program_id)) : null;
+  return {
+    organisationId: program?.organisation_id ?? null,
+    branchId: program?.branch_id ?? null,
+    coachId: group?.coach_id ? Number(group.coach_id) : null,
+  };
+}
 
 class AttendanceService {
   async list(filters: { page?: number; limit?: number; groupSessionId?: number; enrollmentId?: number; scopeWhere?: string; scopeParams?: number[] }) {
@@ -59,6 +86,16 @@ class AttendanceService {
       throw err;
     }
 
+    const scope = await resolveAttendanceScope(Number(session.group_id));
+    await emitAttendanceUpdated({
+      attendanceId: id,
+      sessionId: Number(session.id),
+      groupId: Number(session.group_id),
+      enrollmentId: Number(enrollment.id),
+      playerId: Number(enrollment.player_id),
+      ...scope,
+    });
+
     return { id };
   }
 
@@ -74,6 +111,18 @@ class AttendanceService {
     await attendanceRepository.update(id, {
       attendance_status: data.attendance_status as any,
       notes: data.notes,
+    });
+
+    // G4-A — administrative realtime workbench refresh after a committed update.
+    const enrollment = await enrollmentRepository.getById(Number(ctx.attendance.enrollment_id));
+    const scope = await resolveAttendanceScope(Number(ctx.session.group_id));
+    await emitAttendanceUpdated({
+      attendanceId: id,
+      sessionId: Number(ctx.attendance.group_session_id),
+      groupId: Number(ctx.session.group_id),
+      enrollmentId: Number(ctx.attendance.enrollment_id),
+      playerId: enrollment ? Number(enrollment.player_id) : 0,
+      ...scope,
     });
   }
 

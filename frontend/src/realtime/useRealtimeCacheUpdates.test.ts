@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, academyEnrollmentEvents } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -423,6 +423,74 @@ describe('G8-D-MINIMAL — result-correction standings invalidation', () => {
   });
 });
 
+describe('G4-A — academy administrative realtime invalidation helpers', () => {
+  function fakeQc() {
+    const invalidated: string[][] = [];
+    return {
+      qc: { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => { invalidated.push([...queryKey]); } },
+      invalidated,
+    };
+  }
+
+  it('session-started refreshes the player session + attendance lists', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateAcademySessionStarted(qc as any);
+    expect(invalidated).toContainEqual(['my', 'academy', 'sessions']);
+    expect(invalidated).toContainEqual(['my', 'academy', 'attendance']);
+  });
+
+  it('hold-expiry refreshes admin sessions + schedules (never player keys)', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateAcademyHoldExpiry(qc as any);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'sessions']);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'schedules']);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'schedules', 'sessions']);
+    expect(invalidated.some((k) => k[0] === 'my')).toBe(false);
+  });
+
+  it('group-updated refreshes admin groups + dashboard', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateAcademyGroupUpdated(qc as any);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'groups']);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'dashboard']);
+  });
+
+  it('schedule-updated refreshes admin schedules + sessions + dashboard', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateAcademyScheduleUpdated(qc as any);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'schedules']);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'schedules', 'sessions']);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'sessions']);
+  });
+
+  it('attendance-updated refreshes admin attendance + roster + coach sessions', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateAcademyAttendance(qc as any);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'attendance']);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'session-roster']);
+    expect(invalidated).toContainEqual(['coach', 'academy', 'sessions']);
+  });
+
+  it('enrollment events have the roster admin root on top of the G3-A set', () => {
+    const { qc, invalidated } = fakeQc();
+    invalidateAcademyAdminEnrollment(qc as any);
+    expect(invalidated).toContainEqual(['admin', 'academy', 'session-roster']);
+  });
+
+  it('reconnect reconciliation now includes the Academy workbench roots', () => {
+    const reconcileKeys: string[][] = [];
+    const fakeQc = { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => reconcileKeys.push([...queryKey]) };
+    invalidateRealtimeReconcile(fakeQc as any);
+    expect(reconcileKeys).toContainEqual(['admin', 'academy', 'sessions']);
+    expect(reconcileKeys).toContainEqual(['admin', 'academy', 'schedules']);
+    expect(reconcileKeys).toContainEqual(['admin', 'academy', 'groups']);
+    expect(reconcileKeys).toContainEqual(['admin', 'academy', 'attendance']);
+    expect(reconcileKeys).toContainEqual(['admin', 'academy', 'enrollments']);
+    expect(reconcileKeys).toContainEqual(['my', 'academy', 'sessions']);
+    expect(reconcileKeys).toContainEqual(['coach', 'academy', 'sessions']);
+  });
+});
+
 describe('G3-A — academy enrollment realtime invalidation set', () => {
   it('includes the G1-emitted cancelled/completed events alongside the live lifecycle events', () => {
     expect(academyEnrollmentEvents).toContain('academy.enrollment-cancelled');
@@ -446,12 +514,18 @@ describe('G3-A — academy enrollment realtime invalidation set', () => {
   });
 
   it('does not touch reconnect reconciliation roots', () => {
-    // No academy roots were added to the global reconnect reconcile set.
+    // G3-A added NO reconnect roots... (G4-A extends the reconcile set with the
+    // Academy workbench roots that now receive realtime updates).
+    expect(academyEnrollmentEvents.length).toBe(7);
     const reconcileKeys: string[] = [];
     const fakeQc = {
       invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => reconcileKeys.push(queryKey[0]),
     };
     invalidateRealtimeReconcile(fakeQc as any);
-    expect(reconcileKeys.some((k) => k.startsWith('admin:academy') || k.startsWith('my:academy'))).toBe(false);
+    // G4-A — the Academy workbench roots are now reconciled; enrollment events
+    // themselves drive invalidation via handlers, not via reconnect.
+    expect(reconcileKeys).toContain('admin');
+    expect(reconcileKeys).toContain('my');
+    expect(reconcileKeys).toContain('coach');
   });
 });

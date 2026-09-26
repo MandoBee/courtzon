@@ -5,6 +5,22 @@ import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { resolveProgramScope, assertCanManageAcademy, isApprovedCoach, getCoachOrgRelation, type AcademyScope, type CoachRelation } from './academy-scope.js';
 import type { AcademyGroupAttributes, CoachCompensationType } from '../domain/academy.types.js';
 
+/**
+ * G4-A — administrative group realtime. Fired AFTER the group mutation has
+ * committed (single autocommit write, then emit), with authoritative server-side
+ * IDs only. Routes via SocketPublisher to organisation/branch/super-admin rooms.
+ */
+async function emitGroupUpdated(group: any, program: any): Promise<void> {
+  const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+  eventBusV2.emit('academy:group-updated', {
+    groupId: Number(group.id),
+    programId: Number(group.program_id ?? program?.id),
+    organisationId: program?.organisation_id ?? null,
+    branchId: program?.branch_id ?? null,
+    coachId: group?.coach_id ? Number(group.coach_id) : null,
+  } as any);
+}
+
 class GroupService {
   async listByProgram(programId: number, filters?: { page?: number; limit?: number; status?: string; scopeWhere?: string; scopeParams?: number[] }) {
     const program = await programRepository.getById(programId);
@@ -36,6 +52,7 @@ class GroupService {
       if (!ok) throw new ConflictError('Selected user is not an approved coach', ErrorCodes.ACADEMY_COACH_NOT_FOUND);
     }
     const id = await groupRepository.create(data);
+    await emitGroupUpdated({ id, program_id: data.program_id, coach_id: data.coach_id ?? null }, program);
     return groupRepository.getById(id);
   }
 
@@ -56,7 +73,10 @@ class GroupService {
     }
 
     await groupRepository.update(id, data);
-    return groupRepository.getById(id);
+    const updated = await groupRepository.getById(id);
+    const program = await programRepository.getById(Number(existing.program_id));
+    await emitGroupUpdated(updated, program);
+    return updated;
   }
 
   /**
@@ -101,7 +121,10 @@ class GroupService {
       }
       throw new ConflictError('Coach assignment no longer applies — the group changed concurrently', ErrorCodes.ACADEMY_INVALID_TRANSITION);
     }
-    return { group: await groupRepository.getById(id), relation };
+    const assigned = await groupRepository.getById(id);
+    const program = await programRepository.getById(Number(existing.program_id));
+    await emitGroupUpdated(assigned, program);
+    return { group: assigned, relation };
   }
 
   /**
@@ -147,6 +170,8 @@ class GroupService {
     const existing = await groupRepository.getById(id);
     if (!existing) throw new NotFoundError('Academy group', ErrorCodes.ACADEMY_GROUP_NOT_FOUND);
     await groupRepository.update(id, { status: 'archived' });
+    const program = await programRepository.getById(Number(existing.program_id));
+    await emitGroupUpdated({ ...existing, status: 'archived' }, program);
   }
 }
 

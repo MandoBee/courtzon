@@ -176,10 +176,11 @@ describe('G3-A — realtime allowlist (published, tightly scoped)', () => {
     }
   });
 
-  it('does NOT allowlist hold-expired or enrollment-paid (both out of G3-A scope)', () => {
-    expect(SOCKET_PUBLISHER_SOURCE).not.toContain("'academy:session:hold-expired'");
-    // enrollment-paid remains realtime (pre-existing) but is NOT added to the
-    // notification engine in this group.
+  it('hold-expired is allowlisted since G4-A (administrative); enrollment-paid stays out of the notification engine', () => {
+    // G4-A moved hold-expired into the admin realtime allowlist.
+    expect(SOCKET_PUBLISHER_SOURCE).toContain("'academy:session:hold-expired'");
+    // enrollment-paid remains realtime (pre-existing) but is NOT subscribed by
+    // the notification engine in this group.
     expect(ENGINE_SOURCE).not.toContain("'academy:enrollment-paid'");
   });
 });

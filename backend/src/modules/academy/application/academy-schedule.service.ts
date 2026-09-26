@@ -233,7 +233,9 @@ export class AcademyScheduleService {
     });
 
     await this._regenerate(id, actorId);
-    
+    // G4-A — administrative schedule realtime (org/branch/super-admin rooms).
+    await this.emitScheduleUpdated(id, group, { id: group.program_id, organisation_id: createScope?.organisationId ?? null, branch_id: createScope?.branchId ?? null });
+
     return academyScheduleRepository.getScheduleById(id);
   }
 
@@ -255,7 +257,7 @@ export class AcademyScheduleService {
     pending_priority_minutes: number;
   }>, actorId: number) {
     await assertManage(scheduleId, actorId);
-    const { schedule: existing, ctx } = await loadScheduleAndCtx(scheduleId);
+    const { schedule: existing, group, program, ctx } = await loadScheduleAndCtx(scheduleId);
     if (data.branch_id && Number(data.branch_id) !== Number(existing.branch_id)) {
       throw new ConflictError('Branch cannot be changed after schedule creation', ErrorCodes.ACADEMY_INVALID_SCOPE);
     }
@@ -273,18 +275,22 @@ export class AcademyScheduleService {
     }
     const result = await this._computePreviewOrApply(existing, data, ctx, true);
     await academyScheduleRepository.updateSchedule(scheduleId, { ...data, updated_by: actorId });
-    
+    await this.emitScheduleUpdated(scheduleId, group, program);
+
     return { ...result, schedule: await academyScheduleRepository.getScheduleById(scheduleId) };
   }
 
   async regenerate(scheduleId: number, actorId: number) {
     await assertManage(scheduleId, actorId);
-    return this._regenerate(scheduleId, actorId);
+    const result = await this._regenerate(scheduleId, actorId);
+    const { group, program } = await loadScheduleAndCtx(scheduleId);
+    await this.emitScheduleUpdated(scheduleId, group, program);
+    return result;
   }
 
   async resync(scheduleId: number, actorId: number) {
     await assertManage(scheduleId, actorId);
-    const { schedule, ctx } = await loadScheduleAndCtx(scheduleId);
+    const { schedule, group, program, ctx } = await loadScheduleAndCtx(scheduleId);
     const now = TimeEngine.now();
     const futureSessions = await academyScheduleRepository.listScheduleSessions(scheduleId, true);
     const evaluations: any[] = [];
@@ -299,6 +305,7 @@ export class AcademyScheduleService {
       if (Object.keys(patch).length) await academyScheduleRepository.updateSessionG2(Number(session.id), patch, ctx.conn);
       evaluations.push({ sessionId: Number(session.id), ...ev });
     }
+    await this.emitScheduleUpdated(scheduleId, group, program);
     return { schedule, evaluations, resynced: evaluations.length };
   }
 
@@ -372,8 +379,27 @@ export class AcademyScheduleService {
   async setStatus(scheduleId: number, status: 'active' | 'paused' | 'archived', actorId: number) {
     await assertManage(scheduleId, actorId);
     await academyScheduleRepository.setScheduleStatus(scheduleId, status, actorId);
-    
+    const { group, program } = await loadScheduleAndCtx(scheduleId);
+    await this.emitScheduleUpdated(scheduleId, group, program);
+
     return academyScheduleRepository.getScheduleById(scheduleId);
+  }
+
+  /**
+   * G4-A — administrative schedule realtime. Fired AFTER the schedule mutation
+   * has committed, with authoritative server-side IDs only. Routes via
+   * SocketPublisher to organisation/branch/super-admin rooms (workbench refresh;
+   * never a player/coach/notification).
+   */
+  private async emitScheduleUpdated(scheduleId: number, group: any, program: any): Promise<void> {
+    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+    eventBusV2.emit('academy:schedule-updated', {
+      scheduleId,
+      groupId: Number(group?.id),
+      programId: Number(program?.id ?? group?.program_id),
+      organisationId: program?.organisation_id ?? null,
+      branchId: program?.branch_id ?? null,
+    } as any);
   }
 
   async expireHolds() {
@@ -383,7 +409,16 @@ export class AcademyScheduleService {
     for (const row of expired) {
       await academyScheduleRepository.markHoldExpired(Number(row.id));
       const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
-      eventBusV2.emit('academy:session:hold-expired', { sessionId: Number(row.id), groupId: Number(row.group_id), scheduleId: Number(row.schedule_id), date: row.session_date });
+      // G4-A — administrative realtime for hold expiry. org/branch are resolved
+      // inside findExpiredHolds from authoritative programme joins.
+      eventBusV2.emit('academy:session:hold-expired', {
+        sessionId: Number(row.id),
+        groupId: Number(row.group_id),
+        scheduleId: Number(row.schedule_id) ?? null,
+        date: row.session_date,
+        organisationId: row.organisation_id ?? null,
+        branchId: row.branch_id ?? null,
+      });
       recordAudit({ actorId: 0, action: 'ACADEMY_SESSION.HOLD_EXPIRED', entityType: 'academy_group_session', entityId: Number(row.id), afterState: { reservation_status: 'pending_expired', session_date: row.session_date }, ipAddress: undefined, userAgent: undefined });
       count++;
     }

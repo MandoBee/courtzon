@@ -89,6 +89,23 @@ export interface DomainEventMap {
     paymentTransactionId: number | null; amount: number; currency: string;
     paymentMethod: string; collector: 'courtzon' | 'org';
   };
+  'academy:session:hold-expired': BaseEvent & {
+    sessionId: number; groupId: number; scheduleId: number | null;
+    date: string; organisationId: number | null; branchId: number | null;
+  };
+  'academy:group-updated': BaseEvent & {
+    groupId: number; programId: number; organisationId: number | null;
+    branchId: number | null; coachId: number | null;
+  };
+  'academy:schedule-updated': BaseEvent & {
+    scheduleId: number; groupId: number; programId: number;
+    organisationId: number | null; branchId: number | null;
+  };
+  'academy:attendance-updated': BaseEvent & {
+    attendanceId: number; sessionId: number; groupId: number; enrollmentId: number;
+    playerId: number; organisationId: number | null; branchId: number | null;
+    coachId: number | null;
+  };
   'coaching:session-scheduled': BaseEvent & { sessionId: number; coachId: number; userId: number; startTime: Date };
   'coaching:session-cancelled': BaseEvent & { sessionId: number; userId: number; reason?: string };
   'coaching:session-reminder': BaseEvent & { sessionId: number; userId: number; startTime: Date; coachName: string };

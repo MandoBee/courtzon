@@ -508,10 +508,14 @@ export class AcademyScheduleRepository {
   async findExpiredHolds(conn?: mysql.PoolConnection): Promise<any[]> {
     const db = this.resolve(conn);
     const [rows] = await db.query<RowData>(
-      `SELECT id, group_id, schedule_id, session_date FROM academy_group_sessions
-       WHERE reservation_status IN ('pending_court','resolved')
-         AND pending_expires_at IS NOT NULL AND pending_expires_at < NOW()
-         AND status NOT IN ('completed','cancelled')`,
+      `SELECT s.id, s.group_id, s.schedule_id, s.session_date,
+              p.organisation_id, p.branch_id
+       FROM academy_group_sessions s
+       JOIN academy_groups g ON g.id = s.group_id
+       JOIN academy_programs p ON p.id = g.program_id
+       WHERE s.reservation_status IN ('pending_court','resolved')
+         AND s.pending_expires_at IS NOT NULL AND s.pending_expires_at < NOW()
+         AND s.status NOT IN ('completed','cancelled')`,
     );
     return rows;
   }

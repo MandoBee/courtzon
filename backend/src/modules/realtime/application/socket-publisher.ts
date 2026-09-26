@@ -77,6 +77,7 @@ export class SocketPublisher {
       'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:graduated',
       'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged', 'academy:enrollment-paid',
       'academy:enrollment-cancelled', 'academy:enrollment-completed',
+      'academy:session:hold-expired', 'academy:group-updated', 'academy:schedule-updated', 'academy:attendance-updated',
       'coaching:session-scheduled', 'coaching:session-cancelled',
       'referee:assigned', 'referee:unassigned',
       'coach:application-submitted', 'coach:application-approved', 'coach:application-rejected',

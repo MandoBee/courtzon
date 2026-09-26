@@ -46,6 +46,9 @@ vi.mock('../infrastructure/repositories/enrollment.repository.js', () => ({ enro
 const programRepo = vi.hoisted(() => ({ getById: vi.fn() }));
 vi.mock('../infrastructure/repositories/program.repository.js', () => ({ programRepository: programRepo }));
 
+const groupRepo = vi.hoisted(() => ({ getById: vi.fn() }));
+vi.mock('../infrastructure/repositories/group.repository.js', () => ({ groupRepository: groupRepo }));
+
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn(async () => undefined) }));
 vi.mock('../../audit-log/index.js', () => audit);
 
@@ -82,6 +85,8 @@ beforeEach(() => {
   attendanceRepo.getByIdWithSession.mockResolvedValue({ attendance: { id: 1, group_session_id: 10, enrollment_id: 100 }, session: { status: 'in_progress', group_id: 2 } });
   attendanceRepo.create.mockResolvedValue(7);
   attendanceRepo.update.mockResolvedValue(undefined);
+  groupRepo.getById.mockResolvedValue({ id: 2, program_id: 1, coach_id: 201 });
+  programRepo.getById.mockResolvedValue({ id: 1, organisation_id: 7, branch_id: 5 });
   enrollmentRepo.getById.mockResolvedValue(makeEnrollment());
   enrollmentRepo.getConfirmedUserIdsByGroup.mockResolvedValue([200, 201]);
   programRepo.getById.mockResolvedValue({ id: 1, name: 'Tennis Academy' });

@@ -332,6 +332,22 @@ export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { qu
     ['tournament-matches'],
     ['tournament-schedule'],
     ['player-nav-counts'],
+    // G4-A — Academy workbench roots that receive realtime updates (recovered
+    // on reconnect so stale Academy state cannot survive a dropped connection).
+    ['admin', 'academy', 'programs'],
+    ['admin', 'academy', 'groups'],
+    ['admin', 'academy', 'schedules'],
+    ['admin', 'academy', 'sessions'],
+    ['admin', 'academy', 'session-roster'],
+    ['admin', 'academy', 'attendance'],
+    ['admin', 'academy', 'enrollments'],
+    ['admin', 'academy', 'capacity'],
+    ['admin', 'academy', 'dashboard'],
+    ['my', 'academy', 'enrollments'],
+    ['my', 'academy', 'sessions'],
+    ['my', 'academy', 'attendance'],
+    ['coach', 'academy', 'sessions'],
+    ['academy', 'public'],
   ]) {
     qc.invalidateQueries({ queryKey });
   }
@@ -370,6 +386,47 @@ export const academyEnrollmentEvents = [
   'academy.promoted', 'academy.payment-acknowledged', 'academy.enrollment-paid',
   'academy.enrollment-cancelled', 'academy.enrollment-completed',
 ];
+
+/**
+ * G4-A — Academy session-started player invalidation (player session list).
+ */
+export function invalidateAcademySessionStarted(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  qc.invalidateQueries({ queryKey: ['my', 'academy', 'sessions'] });
+  qc.invalidateQueries({ queryKey: ['my', 'academy', 'attendance'] });
+}
+
+/** G4-A — hold-expiry → admin session + schedule surfaces (never a player). */
+export function invalidateAcademyHoldExpiry(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'sessions'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'schedules'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'schedules', 'sessions'] });
+}
+
+/** G4-A — group mutations → admin groups + dashboard. */
+export function invalidateAcademyGroupUpdated(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'groups'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'dashboard'] });
+}
+
+/** G4-A — schedule mutations → admin schedules + sessions + dashboard. */
+export function invalidateAcademyScheduleUpdated(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'schedules'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'schedules', 'sessions'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'sessions'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'dashboard'] });
+}
+
+/** G4-A — attendance mark/update → admin attendance + roster + coach sessions. */
+export function invalidateAcademyAttendance(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'attendance'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'session-roster'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'sessions'] });
+  qc.invalidateQueries({ queryKey: ['coach', 'academy', 'sessions'] });
+}
+
+export function invalidateAcademyAdminEnrollment(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+  qc.invalidateQueries({ queryKey: ['admin', 'academy', 'session-roster'] });
+}
 
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
@@ -738,11 +795,14 @@ export function useRealtimeCacheUpdates(): void {
   // Enrollment lifecycle: admin workbench, the player's own enrollments, the
   // public program/detail capacity and the admin academy dashboard all refresh.
   // G3-A — the G1-emitted cancelled/completed events join the same set.
+  // G4-A — enrollment events now also reach admin rooms; refresh the admin
+  // roster surface (session roster follows group membership changes).
   for (const eventName of academyEnrollmentEvents) {
     useSocketEvent(eventName, (p: any) => {
       qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });
       qc.invalidateQueries({ queryKey: ['admin', 'academy', 'dashboard'] });
       qc.invalidateQueries({ queryKey: ['admin', 'academy', 'capacity'] });
+      invalidateAcademyAdminEnrollment(qc);
       qc.invalidateQueries({ queryKey: ['my', 'academy', 'enrollments'] });
       qc.invalidateQueries({ queryKey: ['academy', 'public'] });
       if (p?.programId) {
@@ -750,6 +810,24 @@ export function useRealtimeCacheUpdates(): void {
       }
     });
   }
+
+  // ── G4-A — Academy administrative realtime (org/branch/super-admin rooms) ──
+  // session-started stays player-scoped: complete the player session-list
+  // invalidation so a started session appears immediately.
+  useSocketEvent('academy.session-started', () => invalidateAcademySessionStarted(qc));
+
+  // Hold expiry → admin session/schedule surfaces (never a player room).
+  useSocketEvent('academy.session.hold-expired', () => invalidateAcademyHoldExpiry(qc));
+
+  // Group mutations → admin groups + dashboard (coach assignment, capacity, …).
+  useSocketEvent('academy.group-updated', () => invalidateAcademyGroupUpdated(qc));
+
+  // Schedule mutations/regeneration → admin schedules/sessions/dashboard.
+  useSocketEvent('academy.schedule-updated', () => invalidateAcademyScheduleUpdated(qc));
+
+  // Attendance mark/update → admin attendance + roster, and the group coach's
+  // own session workbench (coach receives the event on their user room).
+  useSocketEvent('academy.attendance-updated', () => invalidateAcademyAttendance(qc));
 
   // ── Coaching events ────────────────────────────────────────────
   useSocketEvent('coaching.session-scheduled', () => {
