@@ -128,8 +128,15 @@ export async function cancelBookingHandler(request: FastifyRequest, reply: Fasti
 export async function getResourceSlotsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { resourceId } = request.params as any;
   const { date } = request.query as any;
-  const slots = await bookingService.getResourceSlots(Number(resourceId), date);
-  return reply.send({ data: slots });
+  const userId = (request as any).userId;
+  const [slots, bookingWindow] = await Promise.all([
+    bookingService.getResourceSlots(Number(resourceId), date),
+    bookingService.getResourceBookingWindow(Number(resourceId), userId),
+  ]);
+  // `data` remains the slot array (backward compatible); `bookingWindow` is the
+  // authoritative player window ({ timezone, minDate, maxDate|null }) so the
+  // frontend can cap the date picker using the branch timezone, not the browser.
+  return reply.send({ data: slots, bookingWindow });
 }
 
 export async function checkInHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -11,6 +11,9 @@ import { getPool } from '../../../database/mysql.js';
 import { withTransaction, runProvidedTransaction } from '../../../database/database.transaction.js';
 import { TimeEngine } from '../../time/index.js';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../../shared/errors/app-error.js';
+import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import { BookingWindowPolicy } from '../domain/booking-window.policy.js';
+import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { generateUUID } from '../../../shared/utils/token.js';
 import type { CreateBookingInput, PrepareBookingInput } from '../presentation/booking.dto.js';
@@ -117,6 +120,64 @@ export class BookingService {
   }
 
   /**
+   * R1 — Can this user create bookings outside the 7-day player window?
+   *
+   * The player advance-booking window is bypassed ONLY when the user holds one
+   * of the following EXISTING authorities (no new permission is introduced):
+   *   - the `super_admin` / `super-admin` role, OR
+   *   - the `admin.bookings.update-status` permission, OR
+   *   - the `org.bookings.manage` permission.
+   *
+   * The decision is resolved from the user's DB roles/permissions — never from
+   * the request body or any client-supplied state. Bypassing the window keeps
+   * ALL normal availability, resource, pricing, booking, payment, locking and
+   * ownership rules intact; only the date-window restriction is lifted.
+   */
+  async canBypassPlayerBookingWindow(userId: number): Promise<boolean> {
+    if (!userId) return false;
+    const [roles, permissionKeys] = await Promise.all([
+      rbacRepository.getUserRoles(userId),
+      rbacRepository.getUserPermissionKeys(userId),
+    ]);
+    const isSuperAdmin = roles.some(
+      (r: any) => r.role_slug === 'super_admin' || r.role_slug === 'super-admin',
+    );
+    if (isSuperAdmin) return true;
+    return permissionKeys.includes('admin.bookings.update-status')
+      || permissionKeys.includes('org.bookings.manage');
+  }
+
+  /**
+   * R1 — Server-side player booking-window guard (authoritative).
+   *
+   * For non-bypass users, the requested booking calendar date must fall within
+   * the branch-local 7-day window (today .. today + 6). The window is computed
+   * in the branch IANA timezone (calendar-date based, DST-safe). Applies BEFORE
+   * pricing, availability checks, Redis locks, booking-row inserts and payment
+   * gateway charges — an out-of-window request is rejected early and never
+   * creates any workflow state.
+   *
+   * The "now" used for the window is `TimeEngine.now()` so tests can freeze the
+   * clock deterministically via TimeEngine.setClock(new FakeClock(...)).
+   */
+  private async assertPlayerBookingWindow(input: CreateBookingInput, branchTz: string, userId: number): Promise<void> {
+    if (await this.canBypassPlayerBookingWindow(userId)) return;
+    const verdict = BookingWindowPolicy.evaluate({
+      bookingDate: input.bookingDate,
+      timezone: branchTz,
+    });
+    if (verdict.reason === 'INVALID_TIMEZONE' || verdict.reason === 'INVALID_DATE') {
+      throw new ForbiddenError('Players can book only within the next 7 days', ErrorCodes.BOOKING_OUTSIDE_WINDOW);
+    }
+    if (!verdict.allowed) {
+      throw new ForbiddenError(
+        `Players can book only within the next 7 days (${verdict.minDate} to ${verdict.maxDate})`,
+        ErrorCodes.BOOKING_OUTSIDE_WINDOW,
+      );
+    }
+  }
+
+  /**
    * Resolve the authoritative coach-session fee for booking_type='coach_session'.
    *
    * SECURITY: the client can never supply the coach amount. The coach is
@@ -179,6 +240,12 @@ export class BookingService {
     const branchData = branchRows[0] as any;
     const organisationId = branchData.organisation_id;
     const branchTz = branchData.timezone || 'Africa/Cairo';
+
+    // R1 — server-side player booking-window guard (authoritative).
+    // Rejects an out-of-window date BEFORE pricing, availability, locks,
+    // booking-row inserts or payment gateway charges. Administrative bypass is
+    // decided server-side from the caller's authority (never the request body).
+    await this.assertPlayerBookingWindow(input, branchTz, userId);
 
     // Compute UTC timestamps and business date using TimeEngine
     let endDate = input.bookingDate;
@@ -518,6 +585,11 @@ export class BookingService {
     const organisationId = branchData.organisation_id;
     const branchTz = branchData.timezone || 'Africa/Cairo';
 
+    // R1 — same server-side player booking-window guard for the card "prepare"
+    // flow. Rejected BEFORE the gateway intention is charged / any prepare
+    // session lock is acquired. Administrative bypass is server-side only.
+    await this.assertPlayerBookingWindow(input, branchTz, userId);
+
     // Normalise midnight crossing: "24:00" is not a valid local time.
     // Convert to "00:00" on the following calendar day.
     let endDate = input.bookingDate;
@@ -691,6 +763,20 @@ export class BookingService {
     if (data.userId !== userId) throw new ForbiddenError('Not your preparation');
 
     const pool = getPool();
+    // R1 — re-validate the player booking window at confirm time. The prepare
+    // session may have been created within the window and confirmed later (e.g.
+    // a player prepared on day 6 and returns on day 12). Resolve the branch
+    // timezone and apply the same authoritative guard before any booking row is
+    // inserted. Administrative bypass is resolved server-side.
+    if (data.branchId) {
+      const [branchRows] = await pool.execute<RowData>('SELECT timezone FROM branches WHERE id = ?', [data.branchId]);
+      const branchTz = (branchRows[0] as any)?.timezone || 'Africa/Cairo';
+      await this.assertPlayerBookingWindow(
+        { bookingDate: data.bookingDate, branchId: data.branchId, resourceId: data.resourceId, bookingType: data.bookingType, startTime: data.startTime, endTime: data.endTime } as CreateBookingInput,
+        branchTz,
+        userId,
+      );
+    }
     let bookingId: number | undefined;
     const conn = await pool.getConnection();
     try {
@@ -1338,6 +1424,33 @@ export class BookingService {
     }));
   }
 
+  /**
+   * R1 — Authoritative player booking window for the resource availability
+   * response (window is always BRANCH-local; never browser/server-local).
+   *
+   * Returns { timezone, minDate, maxDate } where maxDate is null when the user
+   * holds the administrative bypass (super_admin / admin.bookings.update-status
+   * / org.bookings.manage) — the frontend then does not cap the date picker for
+   * those users. This is a small non-DB response field on the existing slots
+   * endpoint; no new database column is introduced.
+   */
+  async getResourceBookingWindow(resourceId: number, userId?: number): Promise<{ timezone: string; minDate: string; maxDate: string | null }> {
+    const resource = await resourceRepository.findById(resourceId);
+    if (!resource) throw new NotFoundError('Resource');
+    const pool = getPool();
+    const [branchRows] = await pool.execute<RowData>(
+      `SELECT timezone FROM branches WHERE id = ?`, [resource.branch_id]
+    );
+    const tz = (branchRows[0] as any)?.timezone || 'Africa/Cairo';
+    const window = BookingWindowPolicy.getWindow({ timezone: tz });
+    const bypassed = userId ? await this.canBypassPlayerBookingWindow(userId) : false;
+    return {
+      timezone: tz,
+      minDate: window.minDate,
+      maxDate: bypassed ? null : window.maxDate,
+    };
+  }
+
   async checkIn(id: number, userId: number) {
     // Authorization: the booking owner (player) or an authorized organisation
     // staff member (who has the `bookings.check-in` permission via the route
@@ -1969,6 +2082,11 @@ export class BookingService {
     const branchData = branchRows[0] as any;
     const organisationId = branchData.organisation_id;
     const branchTz = branchData.timezone || 'Africa/Cairo';
+
+    // R1 — server-side player booking-window guard (authoritative). Same rule
+    // as the V1 path: reject before pricing/availability/locks/booking row/
+    // any payment workflow state is acquired.
+    await this.assertPlayerBookingWindow(input, branchTz, userId);
 
     let endDate = input.bookingDate;
     let endTime = input.endTime;

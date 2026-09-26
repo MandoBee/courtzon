@@ -24,6 +24,7 @@ async function cleanupFixtures(exec: (sql: string, params?: any[]) => Promise<an
   await exec(`DELETE FROM booking_participants WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await exec(`DELETE FROM booking_slots WHERE booking_id IN (SELECT id FROM bookings WHERE user_id = ${TEST_USER})`);
   await exec(`DELETE FROM bookings WHERE user_id = ${TEST_USER}`);
+  await exec(`DELETE FROM user_roles WHERE user_id = ${TEST_USER}`);
   await exec(`DELETE FROM resources WHERE id = ${TEST_RESOURCE}`);
   await exec(`DELETE FROM branches WHERE id = ${TEST_BRANCH}`);
   await exec(`DELETE FROM tax_rates WHERE organisation_id = ${TEST_ORG} AND org_scope = 'bd-fixture'`);
@@ -52,6 +53,10 @@ beforeAll(async () => {
   await pool.execute(`INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
     VALUES (${TEST_USER}, UUID(), 1, '01299999992', '+201299999992', 'test-bd@test.com', '$2b$10$test', 'BD User', 'male', 'active')`);
   await pool.execute(`INSERT INTO user_wallets (user_id, balance, currency_code, version) VALUES (${TEST_USER}, 9999999, 'EGP', 1)`);
+  // R1 booking-window: this spec exercises business-date/deadline parity with
+  // fixed dates (past/future). Grant the super_admin window bypass so the
+  // pre-existing assertions remain focused on their original contract.
+  await pool.execute(`INSERT INTO user_roles (user_id, role_id, assigned_by) SELECT ${TEST_USER}, id, ${TEST_USER} FROM roles WHERE slug = 'super_admin' LIMIT 1`);
 
   const [ot] = await pool.execute<any[]>(`SELECT id FROM organisation_types LIMIT 1`);
   await pool.execute(`INSERT INTO organisations (id, public_id, org_type_id, owner_id, name, slug, is_active)

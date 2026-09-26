@@ -26,6 +26,9 @@ export const ErrorCodes = {
   BOOKING_LOCK_FAILED: 'BOOKING_LOCK_FAILED',
   BOOKING_PREP_EXPIRED: 'BOOKING_PREP_EXPIRED',
   BOOKING_PREP_NOT_OWNER: 'BOOKING_PREP_NOT_OWNER',
+  // Player advance-booking window (R1) — a player requested a date outside
+  // the branch-local 7-day booking window (today .. today+6).
+  BOOKING_OUTSIDE_WINDOW: 'BOOKING_OUTSIDE_WINDOW',
 
   // ── Payment ──
   PAYMENT_FAILED: 'PAYMENT_FAILED',

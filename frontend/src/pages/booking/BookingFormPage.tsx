@@ -71,11 +71,32 @@ export default function BookingFormPage() {
     enabled: !!resourceId,
   });
 
-  const { data: slotsData } = useQuery({
+  const { data: slotsResponse } = useQuery({
     queryKey: ['resource-slots', resourceId, date],
-    queryFn: () => api.get(`/resources/${resourceId}/slots?date=${date}`).then((r) => r.data.data),
+    queryFn: () => api.get(`/resources/${resourceId}/slots?date=${date}`).then((r) => r.data),
     enabled: !!resourceId && !!date,
   });
+
+  // Authoritative booking window from the backend (BRANCH timezone). The
+  // backend never trusts the browser clock for policy; this is UX only.
+  const slotsData: any[] = slotsResponse?.data || [];
+  const bookingWindow = (slotsResponse?.bookingWindow as { minDate?: string; maxDate?: string | null } | undefined);
+  const minDate = bookingWindow?.minDate || today;
+  const maxDate = bookingWindow?.maxDate || undefined;
+
+  // If the browser's local date is behind the branch-local today (branch tz
+  // ahead of the browser), or a deep-link `/book?date=` lands outside the
+  // authoritative window, bring the default into the allowed window.
+  useEffect(() => {
+    if (!bookingWindow?.minDate) return;
+    const current = watch('bookingDate');
+    if (!current) return;
+    let next: string | undefined;
+    if (current < bookingWindow.minDate) next = bookingWindow.minDate;
+    if (bookingWindow.maxDate && current > bookingWindow.maxDate) next = bookingWindow.maxDate;
+    if (next && next !== current) setValue('bookingDate', next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingWindow?.minDate, bookingWindow?.maxDate]);
 
   // Orchestrated coach session booking (Flow B): when a coach is selected, the
   // court + coach are booked together via the scheduling engine, which derives
@@ -134,6 +155,16 @@ export default function BookingFormPage() {
 
   const onSubmit = (data: BookingForm) => {
     if (!resource) return;
+    // Client-side UX guard (backend remains authoritative): a player date
+    // outside the branch-local 7-day window is reported immediately.
+    if (data.bookingDate < minDate) {
+      showToast('Booking date cannot be in the past.', 'error');
+      return;
+    }
+    if (maxDate && data.bookingDate > maxDate) {
+      showToast('Players can book only within the next 7 days.', 'error');
+      return;
+    }
     if (coachId) {
       // Orchestrated coach+session booking — duration derived from the court slot.
       coachBookingMutation.mutate({
@@ -206,7 +237,8 @@ export default function BookingFormPage() {
               label="Select Date"
               type="date"
               {...register('bookingDate')}
-              min={today}
+              min={minDate}
+              max={maxDate}
               onChange={(e) => { setValue('bookingDate', e.target.value); setValue('startTime', ''); setValue('endTime', ''); }}
               error={errors.bookingDate?.message}
             />

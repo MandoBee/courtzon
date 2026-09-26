@@ -54,6 +54,7 @@ describe('Coach Booking Financial Wiring', () => {
       await pool.execute(`DELETE FROM user_wallets WHERE user_id = ?`, [uid]);
       await pool.execute(`DELETE FROM coach_sessions WHERE player_id = ?`, [uid]);
       await pool.execute(`DELETE FROM bookings WHERE user_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM user_roles WHERE user_id = ?`, [uid]);
       await pool.execute(`DELETE FROM users WHERE id = ?`, [uid]);
     }
 
@@ -65,6 +66,13 @@ describe('Coach Booking Financial Wiring', () => {
       `INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
        VALUES (?, UUID(), 1, '01299990002', '+201299990002', 'coach-fin-coach@test.com', '$2b$10$x', 'CoachFin Coach', 'male', 'active')`, [COACH_USER]);
     await pool.execute(`INSERT INTO user_wallets (user_id, balance, currency_code, version) VALUES (?, 999999, 'EGP', 1)`, [PLAYER_USER]);
+    // R1 booking-window: this spec exercises coach-booking financial wiring
+    // (fees / splits / payouts) with fixed dates across multiple months. Grant
+    // the super_admin window bypass to the BOOKING actor so the pre-existing
+    // financial assertions remain focused on their original contract. The coach
+    // user does NOT receive the bypass — a later test asserts the coach is
+    // denied org-access (check-in by a non-scoped user).
+    await pool.execute(`INSERT INTO user_roles (user_id, role_id, assigned_by) SELECT ${PLAYER_USER}, id, ${PLAYER_USER} FROM roles WHERE slug = 'super_admin' LIMIT 1`);
 
     // Org + branch + court
     const [ot] = await pool.execute<RowData>('SELECT id FROM organisation_types LIMIT 1');
@@ -133,6 +141,7 @@ describe('Coach Booking Financial Wiring', () => {
       await pool.execute(`DELETE FROM user_wallets WHERE user_id = ?`, [uid]);
       await pool.execute(`DELETE FROM coach_sessions WHERE player_id = ?`, [uid]);
       await pool.execute(`DELETE FROM bookings WHERE user_id = ?`, [uid]);
+      await pool.execute(`DELETE FROM user_roles WHERE user_id = ?`, [uid]);
       await pool.execute(`DELETE FROM users WHERE id = ?`, [uid]);
     }
     await pool.end();
