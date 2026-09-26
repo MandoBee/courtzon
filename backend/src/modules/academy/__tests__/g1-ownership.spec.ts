@@ -63,7 +63,7 @@ vi.mock('../infrastructure/repositories/program.repository.js', () => ({ program
 
 const groupRepo = vi.hoisted(() => ({
   listByProgram: vi.fn(), listAll: vi.fn(), getById: vi.fn(), create: vi.fn(), update: vi.fn(),
-  updateCoach: vi.fn(), confirmLock: vi.fn(), getEnrolledCount: vi.fn(), getMemberCount: vi.fn(),
+  updateCoach: vi.fn(async () => true), confirmLock: vi.fn(), getEnrolledCount: vi.fn(), getMemberCount: vi.fn(),
 }));
 vi.mock('../infrastructure/repositories/group.repository.js', () => ({ groupRepository: groupRepo }));
 
@@ -157,7 +157,7 @@ describe('G1 TEST 4/5 — contracted vs external coach', () => {
     scopeSetup();
     const { relation } = await academyGroupService.assignCoach(1, 42, 5);
     expect(relation).toBe('contracted');
-    expect(groupRepo.updateCoach).toHaveBeenCalledWith(1, 42);
+    expect(groupRepo.updateCoach).toHaveBeenCalledWith(1, 42, null);
   });
 
   it('external independent coach is assigned as external', async () => {
@@ -189,8 +189,8 @@ describe('G1 TEST 7 — coach change during setup (audit captured at controller)
     groupRepo.getById.mockResolvedValue(makeGroup({ coach_id: 10 }));
     await academyGroupService.assignCoach(1, 10, 5);
     await academyGroupService.assignCoach(1, 20, 5);
-    expect(groupRepo.updateCoach).toHaveBeenNthCalledWith(1, 1, 10);
-    expect(groupRepo.updateCoach).toHaveBeenNthCalledWith(2, 1, 20);
+    expect(groupRepo.updateCoach).toHaveBeenNthCalledWith(1, 1, 10, 10);
+    expect(groupRepo.updateCoach).toHaveBeenNthCalledWith(2, 1, 20, 10);
   });
 });
 

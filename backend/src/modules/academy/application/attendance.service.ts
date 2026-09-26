@@ -40,12 +40,24 @@ class AttendanceService {
     const existing = await attendanceRepository.getBySessionAndEnrollment(data.group_session_id, data.enrollment_id);
     if (existing) throw new ConflictError('Attendance already recorded for this session and enrollment', ErrorCodes.ACADEMY_ATTENDANCE_EXISTS);
 
-    const id = await attendanceRepository.create({
-      group_session_id: data.group_session_id,
-      enrollment_id: data.enrollment_id,
-      attendance_status: (data.attendance_status as any) ?? 'present',
-      notes: data.notes,
-    });
+    // The unique `uk_session_enrollment (group_session_id, enrollment_id)`
+    // constraint is the final authority. A concurrent identical insert can
+    // surface ER_DUP_ENTRY here — map it into the Academy attendance conflict
+    // vocabulary rather than leaking a raw DB driver error / HTTP 500.
+    let id: number;
+    try {
+      id = await attendanceRepository.create({
+        group_session_id: data.group_session_id,
+        enrollment_id: data.enrollment_id,
+        attendance_status: (data.attendance_status as any) ?? 'present',
+        notes: data.notes,
+      });
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') {
+        throw new ConflictError('Attendance already recorded for this session and enrollment', ErrorCodes.ACADEMY_ATTENDANCE_EXISTS);
+      }
+      throw err;
+    }
 
     return { id };
   }

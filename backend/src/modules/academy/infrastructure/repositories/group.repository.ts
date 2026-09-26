@@ -97,10 +97,24 @@ class GroupRepository {
     );
   }
 
-  async updateCoach(id: number, coachId: number | null): Promise<void> {
-    await getPool().execute(
-      'UPDATE academy_groups SET coach_id = ?, updated_at = NOW() WHERE id = ?', [coachId, id],
+  /**
+   * Conditional coach assignment. Applies ONLY when the group is still unlocked
+   * (`coach_locked_at IS NULL`) AND its currently-recorded coach still matches
+   * the caller-observed value (NULL-safe `<=>`). This closes the read-then-write
+   * TOCTOU race in `assignCoach`: of two concurrent assignments, exactly one
+   * UPDATE applies; the loser matches zero rows and the caller reports a
+   * deterministic conflict instead of a last-writer-wins overwrite. Returns true
+   * when the assignment applied.
+   */
+  async updateCoach(id: number, coachId: number | null, expectedCoachId: number | null, conn?: import('mysql2/promise').PoolConnection): Promise<boolean> {
+    const db = conn ?? getPool();
+    const [result] = await db.execute<ResultSet>(
+      `UPDATE academy_groups
+       SET coach_id = ?, updated_at = NOW()
+       WHERE id = ? AND coach_locked_at IS NULL AND (coach_id <=> ?)`,
+      [coachId, id, expectedCoachId],
     );
+    return (result as any).affectedRows > 0;
   }
 
   /**

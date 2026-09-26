@@ -63,6 +63,11 @@ class GroupService {
    * G1 — assign/change the Academy coach during setup. Independent from normal
    * coach eligibility: a valid approved coach (contracted or external) is
    * allowed. Contracted vs external is recorded for display/audit, not as a gate.
+   *
+   * Concurrency: the underlying `updateCoach` is a conditional write keyed to
+   * (unlocked AND still the caller-observed coach). Two concurrent assignments
+   * therefore have exactly one winner; the loser receives a deterministic
+   * conflict instead of a last-writer-wins overwrite.
    */
   async assignCoach(id: number, coachId: number | null, actorId: number): Promise<{ group: any; relation: CoachRelation | null }> {
     const existing = await groupRepository.getById(id);
@@ -85,7 +90,17 @@ class GroupService {
       }
     }
 
-    await groupRepository.updateCoach(id, coachId);
+    const applied = await groupRepository.updateCoach(id, coachId, existing.coach_id ?? null);
+    if (!applied) {
+      // Deterministic loser: the row moved underneath us (concurrent assignment)
+      // or the group was locked between read and write. The re-read is the
+      // authority — a lock marker means the confirmation path already won.
+      const now = await groupRepository.getById(id);
+      if (now?.coach_locked_at) {
+        throw new ConflictError('Coach is locked after Academy confirmation', ErrorCodes.ACADEMY_COACH_LOCKED);
+      }
+      throw new ConflictError('Coach assignment no longer applies — the group changed concurrently', ErrorCodes.ACADEMY_INVALID_TRANSITION);
+    }
     return { group: await groupRepository.getById(id), relation };
   }
 

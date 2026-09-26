@@ -100,6 +100,20 @@ export class AcademyScheduleRepository {
     return rows.length ? this.mapSchedule(rows[0] as any) : null;
   }
 
+  /**
+   * G2 — schedule row FOR UPDATE. The single-writer gate for regeneration:
+   * two concurrent regenerations of the same schedule serialize here, so the
+   * loser re-reads the winner's already-committed generated sessions and skips
+   * them (idempotent) instead of racing a `generation_ref` ER_DUP_ENTRY.
+   */
+  async lockScheduleRow(id: number, conn: mysql.PoolConnection): Promise<AcademySchedule | null> {
+    const [rows] = await conn.query<RowData>(
+      'SELECT * FROM academy_schedules WHERE id = ? FOR UPDATE',
+      [id],
+    );
+    return rows.length ? this.mapSchedule(rows[0] as any) : null;
+  }
+
   async listSchedulesByGroup(groupId: number, conn?: mysql.PoolConnection): Promise<AcademySchedule[]> {
     const db = this.resolve(conn);
     const [rows] = await db.query<RowData>(
@@ -230,8 +244,27 @@ export class AcademyScheduleRepository {
   }
 
   private mapSchedule(row: any): AcademySchedule {
+    // DATE/DATETIME columns are returned as JS Date objects by mysql2, but the
+    // domain type (and dailyRange / horizon filters / conflict engine) expect
+    // 'YYYY-MM-DD' strings. Normalize here so every consumer gets the contract
+    // type — otherwise dailyRange produces an empty set and regeneration
+    // silently generates nothing against a real database.
+    const dateToStr = (v: any): string | null => {
+      if (v == null) return null;
+      if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+      return String(v).slice(0, 10);
+    };
+    const timeToStr = (v: any): string | null => {
+      if (v == null) return null;
+      const s = String(v);
+      return s.includes(':') ? s.slice(0, 8) : s;
+    };
     return {
       ...row,
+      start_date: dateToStr(row.start_date),
+      end_date: dateToStr(row.end_date),
+      local_start_time: timeToStr(row.local_start_time),
+      local_end_time: timeToStr(row.local_end_time),
       weekdays: (row.weekdays || '').split(',').filter(Boolean),
       branch_id: row.branch_id == null ? null : Number(row.branch_id),
       preferred_court_id: row.preferred_court_id == null ? null : Number(row.preferred_court_id),

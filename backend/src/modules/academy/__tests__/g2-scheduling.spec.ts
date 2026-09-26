@@ -53,6 +53,7 @@ const scheduleRepo = vi.hoisted(() => ({
   createSchedule: vi.fn(), updateSchedule: vi.fn(), setScheduleStatus: vi.fn(),
   insertSession: vi.fn(), updateSessionG2: vi.fn(), getSessionById: vi.fn(),
   findCompetingHolds: vi.fn(), downgradeLaterHolders: vi.fn(), findExpiredHolds: vi.fn(), markHoldExpired: vi.fn(),
+  lockScheduleRow: vi.fn(),
 }));
 vi.mock('../infrastructure/repositories/academy-schedule.repository.js', () => ({ academyScheduleRepository: scheduleRepo }));
 
@@ -118,6 +119,7 @@ beforeEach(() => {
   bookingRepo.checkSlotAvailability.mockResolvedValue(true);
   bookingRepo.findBookingsByBusinessDate.mockResolvedValue([]);
   scheduleRepo.getScheduleById.mockImplementation(async () => makeSchedule());
+  scheduleRepo.lockScheduleRow.mockImplementation(async () => makeSchedule());
   scheduleRepo.getSessionById.mockImplementation(async () => makeSession());
   scheduleRepo.listScheduleSessions.mockResolvedValue([]);
   scheduleRepo.findRecurringSessionByDate.mockResolvedValue(null);

@@ -393,40 +393,73 @@ export class AcademyScheduleService {
   // ── internals ──
 
   private async _regenerate(scheduleId: number, actorId: number) {
-    const { schedule, ctx } = await loadScheduleAndCtx(scheduleId);
-    if (schedule.status !== 'active') return { schedule, generated: 0, evaluations: [] };
-    const now = TimeEngine.now();
-    const horizonDate = academyConflictService.playerHorizonUtc(schedule.timezone).horizonDate;
-    const dates = dailyRange(schedule.start_date, schedule.end_date)
-      .filter((d) => (schedule.weekdays as string[]).includes(dayOrder[new Date(`${d}T12:00:00Z`).getUTCDay()]))
-      .filter((d) => d >= horizonDate);
-    const evaluations: any[] = [];
-    for (const date of dates) {
-      const existing = await academyScheduleRepository.findRecurringSessionByDate(scheduleId, date, ctx.conn);
-      if (existing) continue;
-      const ev = await academyConflictService.evaluate(
-        schedule.preferred_court_id!, date, schedule.local_start_time, schedule.local_end_time, ctx,
-      );
-      const patch: Record<string, any> = {
-        group_id: Number(schedule.group_id), schedule_id: scheduleId,
-        source_type: 'recurring', session_date: date,
-        start_time: schedule.local_start_time, end_time: schedule.local_end_time,
-        court_id: schedule.preferred_court_id!, coach_id: ctx.groupCoachId,
-        status: 'scheduled', timezone: schedule.timezone,
-        start_at_utc: ev.startAtUtc ?? null, end_at_utc: ev.endAtUtc ?? null,
-        reservation_status: toDbReservationStatus(ev.state), priority_seq: schedule.id,
-        pending_expires_at: ev.state === 'PENDING_COURT'
-          ? new Date(new Date(now).getTime() + schedule.pending_priority_minutes * 60_000).toISOString()
-          : null,
-        original_session_date: date, original_start_time: schedule.local_start_time,
-        original_end_time: schedule.local_end_time, original_court_id: schedule.preferred_court_id!,
-        conflict_metadata: ev.reason ? JSON.stringify({ reason: ev.reason }) : null,
-        generation_ref: `${scheduleId}:${date}:${schedule.local_start_time}`,
-      };
-      await academyScheduleRepository.insertSession(patch as any, ctx.conn);
-      evaluations.push({ date, ...ev });
+    const conn = await getPool().getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // G2 atomicity — single-writer gate on the schedule row.
+      //
+      // Lock-order analysis (required by the audit): we acquire the schedule-row
+      // X lock FIRST and only afterwards, inside `evaluate`, the resource-row X
+      // lock (via bookingRepository.checkSlotAvailability) and Academy session
+      // writes (downgradeLaterHolders). No other Academy/booking path inverts
+      // this order: booking creation locks resources but never academy_schedules;
+      // resolveSession locks resources without a schedule lock; session
+      // start/complete lock only their own session row. No lock cycle is
+      // therefore introduced.
+      await academyScheduleRepository.lockScheduleRow(scheduleId, conn);
+
+      const { schedule, ctx } = await loadScheduleAndCtx(scheduleId, conn);
+      if (schedule.status !== 'active') {
+        await conn.commit();
+        return { schedule, generated: 0, evaluations: [] };
+      }
+      const now = TimeEngine.now();
+      const horizonDate = academyConflictService.playerHorizonUtc(schedule.timezone).horizonDate;
+      const dates = dailyRange(schedule.start_date, schedule.end_date)
+        .filter((d) => (schedule.weekdays as string[]).includes(dayOrder[new Date(`${d}T12:00:00Z`).getUTCDay()]))
+        .filter((d) => d >= horizonDate);
+      const evaluations: any[] = [];
+      for (const date of dates) {
+        const existing = await academyScheduleRepository.findRecurringSessionByDate(scheduleId, date, ctx.conn);
+        if (existing) continue;
+        const ev = await academyConflictService.evaluate(
+          schedule.preferred_court_id!, date, schedule.local_start_time, schedule.local_end_time, ctx,
+        );
+        const patch: Record<string, any> = {
+          group_id: Number(schedule.group_id), schedule_id: scheduleId,
+          source_type: 'recurring', session_date: date,
+          start_time: schedule.local_start_time, end_time: schedule.local_end_time,
+          court_id: schedule.preferred_court_id!, coach_id: ctx.groupCoachId,
+          status: 'scheduled', timezone: schedule.timezone,
+          start_at_utc: ev.startAtUtc ?? null, end_at_utc: ev.endAtUtc ?? null,
+          reservation_status: toDbReservationStatus(ev.state), priority_seq: schedule.id,
+          pending_expires_at: ev.state === 'PENDING_COURT'
+            ? new Date(new Date(now).getTime() + schedule.pending_priority_minutes * 60_000).toISOString()
+            : null,
+          original_session_date: date, original_start_time: schedule.local_start_time,
+          original_end_time: schedule.local_end_time, original_court_id: schedule.preferred_court_id!,
+          conflict_metadata: ev.reason ? JSON.stringify({ reason: ev.reason }) : null,
+          generation_ref: `${scheduleId}:${date}:${schedule.local_start_time}`,
+        };
+        try {
+          await academyScheduleRepository.insertSession(patch as any, ctx.conn);
+          evaluations.push({ date, ...ev });
+        } catch (err: any) {
+          // A concurrent generator (e.g. an overlapping schedule update) already
+          // created this generation slot. Treat it as pre-existing — the loop
+          // continues and nothing partial is left behind.
+          if (err?.code !== 'ER_DUP_ENTRY') throw err;
+        }
+      }
+      await conn.commit();
+      return { schedule, generated: evaluations.length, evaluations };
+    } catch (err) {
+      try { await conn.rollback(); } catch { /* already rolled back */ }
+      throw err;
+    } finally {
+      conn.release();
     }
-    return { schedule, generated: evaluations.length, evaluations };
   }
 
   private async _computePreviewOrApply(
