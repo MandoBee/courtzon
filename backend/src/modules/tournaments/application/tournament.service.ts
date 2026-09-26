@@ -975,7 +975,24 @@ export class TournamentService {
   }
   async closeRegistration(id: number) { return this.updateStatus(id, 'registration_closed'); }
   async startTournament(id: number) { return this.updateStatus(id, 'running'); }
-  async complete(id: number) { return this.updateStatus(id, 'completed'); }
+  async complete(id: number): Promise<Tournament> {
+    // G8-D — Round Robin completion contract: NO auto-completion; operator-driven
+    // ONLY. The operator may complete when all REQUIRED matches are terminal.
+    // Backend guard is authoritative (admin + org both funnel through this).
+    // Scope: round_robin only — knockout keeps its engine auto-completion paths
+    // (final-round / max-order stage) completely unchanged.
+    const t = await this.getById(id);
+    if (t.format === 'round_robin') {
+      const unresolved = await tournamentRepository.countUnresolvedRequiredMatches(id);
+      if (unresolved > 0) {
+        throw new ConflictError(
+          `Tournament cannot be completed: ${unresolved} required match(es) are still unresolved (scheduled, in progress or disputed)`,
+          ErrorCodes.TOURNAMENT_MATCHES_UNRESOLVED,
+        );
+      }
+    }
+    return this.updateStatus(id, 'completed');
+  }
   async cancel(id: number) { return this.updateStatus(id, 'cancelled'); }
   async archive(id: number) { return this.updateStatus(id, 'archived'); }
 

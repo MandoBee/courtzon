@@ -478,6 +478,13 @@ export interface TournamentMatch {
   start_time?: string | null;
   end_time?: string | null;
   score_summary?: string | null;
+  /** Joined (G8-D) — frozen StandingsRules points applied to this match for standings
+   * recalculation. Attached transiently by the standings reader (never persisted);
+   * absent → legacy fallback { win: 3, draw: 0, loss: 0 }. */
+  standingsPoints?: { win: number; draw: number; loss: number } | null;
+  /** Joined (G8-D) — authoritative result classification for standings scoring:
+   * 'win' | 'draw' | 'no_result'. Attached by the standings reader. */
+  standingsOutcome?: 'win' | 'draw' | 'no_result' | null;
   /** Joined (G8) — court reservation state via the shared Match → booking. */
   booking_id?: number | null;
   participant1_name?: string | null;
@@ -750,6 +757,22 @@ export function generateStageMatches(
   return generateRoundRobinMatches(participantIds).map((m) => ({ round: m.round, bracketPosition: 0, player1Id: m.player1Id, player2Id: m.player2Id }));
 }
 
+/**
+ * G8-D — deterministic standings computation (the single standings authority).
+ *
+ * Scoring is RULES-DRIVEN per match: each contributing row carries the frozen
+ * `standingsPoints` (from `sport_rule_sets.standings_rules.points`, which is
+ * versioned + immutable, referenced by the authoritative result) and its
+ * authoritative `standingsOutcome`:
+ *   win        → winner gets points.win, loser gets points.loss
+ *   draw       → BOTH sides get points.draw, draw counts increment
+ *   no_result  → contributes NOTHING (point-neutral, no win/loss/draw)
+ *
+ * Legacy rows with no attached points/outcome fall back to the pre-G8-D
+ * contract ({ win: 3, draw: 0, loss: 0 }, winner-based) so historical standings
+ * stay reproducible. Ranking/tie-breaks are UNCHANGED (points desc, then game
+ * difference). No new game/set calculation is introduced.
+ */
 export function computeStandings(matches: TournamentMatch[], participantIds: number[]): TournamentStanding[] {
   const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; games_won: number; games_lost: number }>();
 
@@ -758,19 +781,40 @@ export function computeStandings(matches: TournamentMatch[], participantIds: num
   }
 
   for (const match of matches) {
-    if (match.status !== 'completed' || !match.winner_id) continue;
-    const loserId = match.player1_id === match.winner_id ? match.player2_id : match.player1_id;
+    if (match.status !== 'completed') continue;
+    const points = match.standingsPoints ?? { win: 3, draw: 0, loss: 0 };
+    const outcome = match.standingsOutcome;
+
+    if (outcome === 'draw') {
+      // Authoritative draw: both sides get draw points, draw counts increment
+      // (winner_id projection is null). No win/loss, no games.
+      const p1 = stats.get(Number(match.player1_id));
+      const p2 = stats.get(Number(match.player2_id));
+      if (p1) { p1.draws++; p1.points += points.draw; }
+      if (p2) { p2.draws++; p2.points += points.draw; }
+      continue;
+    }
+
+    if (outcome === 'no_result') {
+      // Point neutral by contract (G8-D): terminal for completion only.
+      continue;
+    }
+
+    // win/loss (authoritative winner or legacy winner-based fallback)
+    if (!match.winner_id) continue;
+    const loserId = Number(match.player1_id) === Number(match.winner_id) ? Number(match.player2_id) : Number(match.player1_id);
     if (!loserId) continue;
 
-    const winner = stats.get(match.winner_id);
+    const winner = stats.get(Number(match.winner_id));
     const loser = stats.get(loserId);
     if (!winner || !loser) continue;
 
     winner.wins++;
     winner.games_won++;
-    winner.points += 3;
+    winner.points += points.win;
     loser.losses++;
     loser.games_lost++;
+    loser.points += points.loss;
   }
 
   return Array.from(stats.entries())

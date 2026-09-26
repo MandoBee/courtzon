@@ -581,6 +581,38 @@ export class TournamentRepository {
   }
 
   /**
+   * G8-D — count REQUIRED tournament matches that are still UNRESOLVED.
+   *
+   * A match is REQUIRED when it is a REAL generated match (shared `match_id`
+   * present — byes/padding/placeholders are created without a shared Match and
+   * are NOT required). A required match is UNRESOLVED when it is still
+   * `scheduled` / `in_progress` in the slot, OR its authoritative shared result
+   * is `disputed`. Terminal states (approved result incl. draw/walkover/forfeit,
+   * no_result, cancelled) never count as unresolved.
+   *
+   * Cancelled slots are excluded (a cancelled projection must not block a valid
+   * tournament). Non-required projections (bye, placeholder, no shared match)
+   * are excluded by the `match_id IS NOT NULL` guard.
+   */
+  async countUnresolvedRequiredMatches(tournamentId: number): Promise<number> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT COUNT(*) AS c
+       FROM tournament_matches tm
+       LEFT JOIN match_result_records mrr ON mrr.match_id = tm.match_id
+       WHERE tm.tournament_id = ?
+         AND tm.match_id IS NOT NULL
+         AND tm.status <> 'cancelled'
+         AND tm.progression_state <> 'bye'
+         AND (
+           tm.status IN ('scheduled', 'in_progress')
+           OR mrr.submission_status = 'disputed'
+         )`,
+      [tournamentId],
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  /**
    * Group 5B / T-B — tournament bracket slots joined to their shared Match so the
    * admin/org result screen can render the authoritative shared lifecycle state
    * (shared_status, frozen format/rule snapshots) and drive start/result actions.
@@ -888,31 +920,81 @@ export class TournamentRepository {
   }
 
   /**
-   * Group 8-A — standings recalculation (ONE authoritative implementation).
+   * Group 8-A + G8-D — standings recalculation (ONE authoritative implementation).
    *
    * The approved shared-result projection (`tournament_matches.winner_id`) is
    * ALWAYS mirrored by the result listener, so completing Round-Robin AND
    * knockout matches land here the same way. Calculation itself delegates to the
-   * domain `computeStandings` (points 3/0; deterministic tie-break by points
-   * then game difference) — the repository never implements a second ranking.
+   * domain `computeStandings` — the repository never implements a second ranking.
+   *
+   * G8-D — contributing rows now also classify the authoritative OUTCOME
+   * (`win` / `draw` / `no_result`) and carry the FROZEN standings points from the
+   * versioned, immutable `sport_rule_sets.standings_rules` referenced by the
+   * result's rule_set_id (never today's active rules). Draws (winner_id null but
+   * approved `final_result.winner='draw'`) are included and scored with
+   * points.draw; no_result rows contribute nothing. Legacy rows without a result
+   * record keep the historical fallback (3/0, winner-based).
+   *
    * The delete+reinsert is atomic (transactional) so partial failures cannot
    * leave a half-written table.
    */
   async recalculateStandings(tournamentId: number, groupId?: number, conn?: PoolConnection): Promise<void> {
     const db = conn ?? getPool();
 
-    const matchWhere: string[] = ['m.tournament_id = ?', "m.status = 'completed'", 'm.winner_id IS NOT NULL'];
+    const matchWhere: string[] = ['tm.tournament_id = ?', "tm.status = 'completed'"];
     const matchParams: any[] = [tournamentId];
-    if (groupId !== undefined) { matchWhere.push('(m.group_id = ? OR m.player1_id IN (SELECT registration_id FROM tournament_group_members WHERE group_id = ?))'); matchParams.push(groupId, groupId); }
+    if (groupId !== undefined) { matchWhere.push('(tm.group_id = ? OR tm.player1_id IN (SELECT registration_id FROM tournament_group_members WHERE group_id = ?))'); matchParams.push(groupId, groupId); }
 
     const [rows] = await db.query<RowData>(
-      `SELECT m.player1_id, m.player2_id, m.winner_id FROM tournament_matches m WHERE ${matchWhere.join(' AND ')}`,
+      `SELECT tm.player1_id, tm.player2_id, tm.winner_id, tm.status, tm.match_id,
+              mrr.submission_status AS result_status,
+              mrr.final_result AS result_final,
+              srs.standings_rules AS standings_rules
+       FROM tournament_matches tm
+       LEFT JOIN match_result_records mrr ON mrr.match_id = tm.match_id
+       LEFT JOIN sport_rule_sets srs ON srs.id = mrr.rule_set_id
+       WHERE ${matchWhere.join(' AND ')}`,
       matchParams,
     );
 
-    const matches = (rows as unknown[]).map((r) => r as TournamentMatch);
+    const matches = (rows as unknown[]).map((r) => {
+      const row = r as any;
+      const match = {
+        player1_id: row.player1_id,
+        player2_id: row.player2_id,
+        winner_id: row.winner_id,
+        status: row.status,
+        match_id: row.match_id,
+      } as TournamentMatch;
+      // G8-D — classify the authoritative outcome from the result record.
+      const resultStatus: string | null = row.result_status ?? null;
+      let resultFinal: any = row.result_final;
+      if (typeof resultFinal === 'string') { try { resultFinal = JSON.parse(resultFinal); } catch { resultFinal = null; } }
+      let standingsRules: any = row.standings_rules;
+      if (typeof standingsRules === 'string') { try { standingsRules = JSON.parse(standingsRules); } catch { standingsRules = null; } }
+
+      const points = standingsRules?.points ?? null;
+      const hasWinner = match.winner_id != null;
+      const isDraw = !hasWinner && resultStatus === 'approved' && resultFinal?.winner === 'draw';
+
+      if (hasWinner) {
+        // Authoritative winner or legacy winner-based row.
+        match.standingsOutcome = 'win';
+      } else if (isDraw) {
+        // Approved draw — winner projection is null, but the result is a draw.
+        match.standingsOutcome = 'draw';
+      } else {
+        // completed + null winner: no_result / abandoned / legacy null-winner row.
+        // Point-neutral by contract (G8-D) — counts for completion eligibility only.
+        match.standingsOutcome = 'no_result';
+      }
+      match.standingsPoints = points ?? { win: 3, draw: 0, loss: 0 };
+      return match;
+    });
+
+    const contributing = matches.filter((m) => m.standingsOutcome === 'win' || m.standingsOutcome === 'draw');
     const participantIds = [...new Set(
-      matches.flatMap((m) => [Number(m.player1_id), Number(m.player2_id)]).filter((id) => Number.isSafeInteger(id) && id > 0),
+      contributing.flatMap((m) => [Number(m.player1_id), Number(m.player2_id)]).filter((id) => Number.isSafeInteger(id) && id > 0),
     )];
     const standings = computeStandings(matches, participantIds);
 
