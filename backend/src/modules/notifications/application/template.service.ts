@@ -1062,6 +1062,12 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'academy:enrollment-completed', locale: 'ar', categorySlug: 'system', type: 'success', priority: 'high',
       titleTemplate: 'اكتمل البرنامج', bodyTemplate: 'تهانينا — لقد أكملت {{programName}}.',
       actionKey: 'view_my_academy', routePattern: '/my/academy' },
+    { eventName: 'academy:enrollment-paid', locale: 'en', categorySlug: 'system', type: 'success', priority: 'high',
+      titleTemplate: 'Payment Confirmed', bodyTemplate: 'Your payment of {{currency}} {{amount}} has been confirmed.',
+      actionKey: 'view_my_academy', routePattern: '/my/academy' },
+    { eventName: 'academy:enrollment-paid', locale: 'ar', categorySlug: 'system', type: 'success', priority: 'high',
+      titleTemplate: 'تم تأكيد الدفع', bodyTemplate: 'تم تأكيد دفعتك بقيمة {{currency}} {{amount}}.',
+      actionKey: 'view_my_academy', routePattern: '/my/academy' },
 
     // ── Coaching Missing ──
     { eventName: 'coaching:session-scheduled', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',

@@ -19,7 +19,7 @@ process.env.DB_NAME = 'courtzon_v3';
 
 import { seedTemplates, getTemplate, resolveTemplate } from '../application/template.service.js';
 
-const EVENTS = ['academy:enrollment-cancelled', 'academy:enrollment-completed'];
+const EVENTS = ['academy:enrollment-cancelled', 'academy:enrollment-completed', 'academy:enrollment-paid'];
 
 const ENV = { cancelled: 'Tennis Club', completed: 'Squash Academy' };
 
@@ -77,5 +77,19 @@ describe('G3-A — academy cancelled/completed templates seeded + resolvable', (
     const resolvedP = resolveTemplate(completed!, { programName: ENV.completed });
     expect(resolvedP.title).toContain('Completed');
     expect(resolvedP.body).toContain(ENV.completed);
+  });
+
+  it('G4-B1 — enrollment-paid resolves amount/currency and navigates to /my/academy', async () => {
+    const en = await getTemplate('academy:enrollment-paid', 'en');
+    const resolved = resolveTemplate(en!, { amount: 200, currency: 'EGP' });
+    expect(resolved.title).toContain('Payment Confirmed');
+    expect(resolved.body).toContain('200');
+    expect(resolved.body).toContain('EGP');
+
+    const ar = await getTemplate('academy:enrollment-paid', 'ar');
+    expect(ar).not.toBeNull();
+    expect(ar!.locale).toBe('ar');
+    const resolvedAr = resolveTemplate(ar!, { amount: 200, currency: 'EGP' });
+    expect(resolvedAr.body).toContain('200');
   });
 });

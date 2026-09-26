@@ -406,16 +406,34 @@ const eventGroups: EventGroupConfig[] = [
   },
   {
     // G6 — player-facing Academy lifecycle notifications (program-based model).
-    events: ['academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged', 'academy:enrollment-cancelled', 'academy:enrollment-completed'],
+    // G4-B1 — `academy:enrollment-paid` is the canonical player payment
+    // confirmation (card AND cash both converge on it). `payment-acknowledged`
+    // no longer creates a player notification (acknowledgement != confirmation);
+    // its producer/internal consumers are untouched.
+    events: ['academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:enrollment-paid', 'academy:enrollment-cancelled', 'academy:enrollment-completed'],
     handler: async (eventName, data, categorySlug) => {
-      if (data.userId) {
-        await dispatchToUser({
-          userId: data.userId, eventName, categorySlug, data,
-          organisationId: data.organisationId,
-          relatedEntityType: 'enrollment', relatedEntityId: String(data.enrollmentId ?? data.programId),
-          action: a('/my/academy'), digestable: false,
-        });
+      const userId = data.userId ?? data.playerId;
+      if (!userId) return;
+      const entityId = String(data.enrollmentId ?? data.programId);
+
+      // G4-B1 — the payment listener can re-emit `academy:enrollment-paid` when
+      // `payment:succeeded` replays. ONE successful payment must yield ONE
+      // player notification: reuse the existing tournament dedup guard.
+      // The `notifications` table has no (user,event,entity) unique constraint,
+      // so this is check-before-create (identical semantics/race as Tournament).
+      if (eventName === 'academy:enrollment-paid') {
+        if (await notificationRepository.hasExisting(userId, eventName, 'enrollment', entityId)) {
+          log.debug({ userId, eventName, entityId }, 'Duplicate academy payment notification suppressed');
+          return;
+        }
       }
+
+      await dispatchToUser({
+        userId, eventName, categorySlug, data,
+        organisationId: data.organisationId,
+        relatedEntityType: 'enrollment', relatedEntityId: entityId,
+        action: a('/my/academy'), digestable: false,
+      });
     },
   },
   {
@@ -1061,7 +1079,7 @@ class NotificationEngine {
       'organisation:subscription-renewed',
       'club:created', 'club:member-joined', 'club:member-left',
       'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:graduated',
-      'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged',
+      'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:enrollment-paid',
       'academy:enrollment-cancelled', 'academy:enrollment-completed',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
