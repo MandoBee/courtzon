@@ -406,7 +406,7 @@ const eventGroups: EventGroupConfig[] = [
   },
   {
     // G6 — player-facing Academy lifecycle notifications (program-based model).
-    events: ['academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged'],
+    events: ['academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged', 'academy:enrollment-cancelled', 'academy:enrollment-completed'],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
         await dispatchToUser({
@@ -1062,6 +1062,7 @@ class NotificationEngine {
       'club:created', 'club:member-joined', 'club:member-left',
       'academy:enrolled', 'academy:session-reminder', 'academy:session-started', 'academy:graduated',
       'academy:enrollment-accepted', 'academy:enrollment-waitlisted', 'academy:promoted', 'academy:payment-acknowledged',
+      'academy:enrollment-cancelled', 'academy:enrollment-completed',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',

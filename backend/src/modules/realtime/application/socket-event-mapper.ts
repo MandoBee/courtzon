@@ -398,7 +398,29 @@ function mapAcademyEvent(eventName: string, p: Record<string, any>): MappedSocke
   if (p.academyId) rooms.push(`academy:${p.academyId}`);
   if (p.coachId) rooms.push(`coach:${p.coachId}`);
   const prefix = eventName.startsWith('coaching:') ? 'coaching' : 'academy';
-  return { type: `${prefix}.${eventName.split(':')[1] || 'updated'}`, payload: { academyId: p.academyId, userId, sessionId: p.sessionId }, rooms };
+  // Preserve the FULL event name after the domain prefix: `academy:session:hold-expired`
+  // must map to `academy.session.hold-expired`, never the truncated `academy.session`.
+  // For single-colon events this yields the exact historical type, so existing
+  // consumers are unchanged.
+  const sub = eventName.split(':').slice(1).join('.') || 'updated';
+  // Forward only fields already present in the authoritative event payload —
+  // never invent or derive values. The frontend cache layer keys on these.
+  return {
+    type: `${prefix}.${sub}`,
+    payload: {
+      academyId: p.academyId,
+      userId,
+      playerId: p.playerId,
+      sessionId: p.sessionId,
+      programId: p.programId,
+      enrollmentId: p.enrollmentId,
+      groupId: p.groupId,
+      organisationId: p.organisationId,
+      branchId: p.branchId,
+      coachId: p.coachId,
+    },
+    rooms,
+  };
 }
 
 function mapAttendanceEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {

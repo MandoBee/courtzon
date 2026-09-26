@@ -359,6 +359,18 @@ export function invalidateRegistrationLifecycle(
   }
 }
 
+/**
+ * G3-A — Academy enrollment lifecycle events that refresh the enrollment
+ * surfaces (admin enrollments/dashboard/capacity, my-enrollments, and the
+ * public program prefix). Shared by the realtime invalidation loop and the
+ * player nav-badge invalidation.
+ */
+export const academyEnrollmentEvents = [
+  'academy.enrollment-accepted', 'academy.enrollment-waitlisted',
+  'academy.promoted', 'academy.payment-acknowledged', 'academy.enrollment-paid',
+  'academy.enrollment-cancelled', 'academy.enrollment-completed',
+];
+
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
@@ -725,10 +737,7 @@ export function useRealtimeCacheUpdates(): void {
 
   // Enrollment lifecycle: admin workbench, the player's own enrollments, the
   // public program/detail capacity and the admin academy dashboard all refresh.
-  const academyEnrollmentEvents = [
-    'academy.enrollment-accepted', 'academy.enrollment-waitlisted',
-    'academy.promoted', 'academy.payment-acknowledged', 'academy.enrollment-paid',
-  ];
+  // G3-A — the G1-emitted cancelled/completed events join the same set.
   for (const eventName of academyEnrollmentEvents) {
     useSocketEvent(eventName, (p: any) => {
       qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });

@@ -790,5 +790,45 @@ describe('SocketEventMapper', () => {
       expect(result!.type).toBe('academy.enrollment-accepted');
       expect(result!.rooms).toContain('user:42');
     });
+
+    // G3-A — the G1 events reach the player room with full payload fidelity and
+    // multi-colon academy events keep their full namespace.
+    it('maps academy:enrollment-cancelled with preserved payload fields', () => {
+      const result = mapDomainEvent('academy:enrollment-cancelled', {
+        programId: 1, userId: 42, enrollmentId: 7, programName: 'P', organisationId: 9,
+      });
+      expect(result!.type).toBe('academy.enrollment-cancelled');
+      expect(result!.rooms).toContain('user:42');
+      expect(result!.payload).toMatchObject({ userId: 42, programId: 1, enrollmentId: 7, organisationId: 9 });
+    });
+
+    it('maps academy:enrollment-completed with preserved payload fields', () => {
+      const result = mapDomainEvent('academy:enrollment-completed', {
+        programId: 2, userId: 43, enrollmentId: 8, groupId: 4, playerId: 43,
+      });
+      expect(result!.type).toBe('academy.enrollment-completed');
+      expect(result!.rooms).toContain('user:43');
+      expect(result!.payload).toMatchObject({ userId: 43, playerId: 43, programId: 2, enrollmentId: 8, groupId: 4 });
+    });
+
+    it('regression: namespaced academy events keep full multi-segment types (hold-expired)', () => {
+      const result = mapDomainEvent('academy:session:hold-expired', {
+        sessionId: 9, groupId: 2, scheduleId: 3, date: '2026-01-01',
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('academy.session.hold-expired');
+      expect(result!.payload).toMatchObject({ sessionId: 9, groupId: 2 });
+    });
+
+    it('regression: single-colon academy/coaching types are unchanged', () => {
+      const paid = mapDomainEvent('academy:enrollment-paid', {
+        enrollmentId: 5, programId: 1, groupId: 2, playerId: 42, organisationId: 9,
+      });
+      expect(paid!.type).toBe('academy.enrollment-paid');
+      expect(paid!.rooms).toContain('user:42');
+      expect(paid!.payload.userId).toBe(42);
+      const coaching = mapDomainEvent('coaching:session-scheduled', { sessionId: 3, userId: 7 });
+      expect(coaching!.type).toBe('coaching.session-scheduled');
+    });
   });
 });

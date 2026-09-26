@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, academyEnrollmentEvents } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -420,5 +420,38 @@ describe('G8-D-MINIMAL — result-correction standings invalidation', () => {
     handler({ tournamentId: 8, standings: false });
     expect(invalidated.some((k) => k.join(':').endsWith(':standings'))).toBe(false);
     expect(last.tournamentId).toBe(8);
+  });
+});
+
+describe('G3-A — academy enrollment realtime invalidation set', () => {
+  it('includes the G1-emitted cancelled/completed events alongside the live lifecycle events', () => {
+    expect(academyEnrollmentEvents).toContain('academy.enrollment-cancelled');
+    expect(academyEnrollmentEvents).toContain('academy.enrollment-completed');
+    // The existing lifecycle events remain intact (no removal).
+    expect(academyEnrollmentEvents).toContain('academy.enrollment-accepted');
+    expect(academyEnrollmentEvents).toContain('academy.enrollment-waitlisted');
+    expect(academyEnrollmentEvents).toContain('academy.promoted');
+    expect(academyEnrollmentEvents).toContain('academy.payment-acknowledged');
+    expect(academyEnrollmentEvents).toContain('academy.enrollment-paid');
+  });
+
+  it('reuses the same invalidation roots as every other enrollment event (no new keys)', () => {
+    // G3-A reuses the shared handler — the set itself is the wiring contract.
+    // The two new events must not introduce session/schedule/group roots.
+    expect(academyEnrollmentEvents.length).toBe(7);
+    expect(academyEnrollmentEvents.some((e) => e.includes('session'))).toBe(false);
+    expect(academyEnrollmentEvents.some((e) => e.includes('schedule'))).toBe(false);
+    expect(academyEnrollmentEvents.some((e) => e.includes('group'))).toBe(false);
+    expect(academyEnrollmentEvents.some((e) => e.includes('attendance'))).toBe(false);
+  });
+
+  it('does not touch reconnect reconciliation roots', () => {
+    // No academy roots were added to the global reconnect reconcile set.
+    const reconcileKeys: string[] = [];
+    const fakeQc = {
+      invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => reconcileKeys.push(queryKey[0]),
+    };
+    invalidateRealtimeReconcile(fakeQc as any);
+    expect(reconcileKeys.some((k) => k.startsWith('admin:academy') || k.startsWith('my:academy'))).toBe(false);
   });
 });

@@ -1050,6 +1050,18 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'academy:graduated', locale: 'en', categorySlug: 'system', type: 'success', priority: 'normal',
       titleTemplate: 'Academy Graduation', bodyTemplate: '{{studentName}} has graduated from the academy.',
       actionKey: 'view_academy', routePattern: '/academy/{{academyId}}' },
+    { eventName: 'academy:enrollment-cancelled', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'Enrollment Cancelled', bodyTemplate: 'Your enrollment in {{programName}} has been cancelled.',
+      actionKey: 'view_my_academy', routePattern: '/my/academy' },
+    { eventName: 'academy:enrollment-cancelled', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',
+      titleTemplate: 'تم إلغاء التسجيل', bodyTemplate: 'تم إلغاء تسجيلك في {{programName}}.',
+      actionKey: 'view_my_academy', routePattern: '/my/academy' },
+    { eventName: 'academy:enrollment-completed', locale: 'en', categorySlug: 'system', type: 'success', priority: 'high',
+      titleTemplate: 'Program Completed', bodyTemplate: 'Congratulations — you have completed {{programName}}.',
+      actionKey: 'view_my_academy', routePattern: '/my/academy' },
+    { eventName: 'academy:enrollment-completed', locale: 'ar', categorySlug: 'system', type: 'success', priority: 'high',
+      titleTemplate: 'اكتمل البرنامج', bodyTemplate: 'تهانينا — لقد أكملت {{programName}}.',
+      actionKey: 'view_my_academy', routePattern: '/my/academy' },
 
     // ── Coaching Missing ──
     { eventName: 'coaching:session-scheduled', locale: 'ar', categorySlug: 'system', type: 'info', priority: 'normal',
