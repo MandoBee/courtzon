@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Input } from '../../../components/ui';
 import { useToast } from '../../../components/ui/Toast';
 import { useCan } from '../../../hooks/useCan';
+import { localToday } from '../../../utils/dateRange';
 
 // ── R3 — Recurring Booking management (responsible users only) ────────────
 // Builds a weekly recurring series ON BEHALF OF ONE PLAYER. The wizard:
@@ -26,6 +27,7 @@ export default function RecurringBookingsPage() {
   const [searchParams] = useSearchParams();
   const { showToast } = useToast();
   const { can } = useCan();
+  const qc = useQueryClient();
   const authorized = can('org.bookings.manage') || can('admin.bookings.update-status');
 
   const createdId = searchParams.get('created');
@@ -140,6 +142,7 @@ export default function RecurringBookingsPage() {
     },
     onSuccess: (data) => {
       showToast(`Recurring series created with ${data.occurrenceCount} booking(s) for ${player?.fullName ?? player?.userId}.`, 'success');
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', 'list'] });
       // Prevent browser Back from returning to the wizard / stale state.
       navigate(`/admin/recurring?created=${data.seriesId}`, { replace: true });
     },
@@ -344,6 +347,8 @@ export default function RecurringBookingsPage() {
           </div>
         </section>
       )}
+
+      {authorized && <SeriesDirectory />}
     </div>
   );
 }
@@ -389,4 +394,146 @@ function ResolutionPicker({ occ, value, onChange }: { occ: any; value?: Resoluti
       </label>
     </div>
   );
+}
+
+// ── R4 — Recurring series directory: status, occurrences, cancellation ─────
+function SeriesDirectory() {
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const today = localToday();
+
+  const listQuery = useQuery({
+    queryKey: ['admin', 'recurring', 'list'],
+    queryFn: () => api.get('/admin/recurring').then((r) => r.data.data || []),
+  });
+
+  const detailQuery = useQuery({
+    queryKey: ['admin', 'recurring', selectedId],
+    queryFn: () => api.get(`/admin/recurring/${selectedId}`).then((r) => r.data),
+    enabled: !!selectedId,
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (id: number) =>
+      api.post(`/admin/recurring/${id}/cancel`, { reason: 'recurring_series_cancelled' }).then((r) => r.data),
+    onSuccess: (data) => {
+      showToast(`Series #${data.seriesId} cancelled — ${data.cancelledCount} future booking(s) cancelled.`, 'success');
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', 'list'] });
+      setSelectedId(null);
+    },
+    onError: (err: any) => showToast(err?.response?.data?.message || 'Series cancellation failed', 'error'),
+  });
+
+  const confirmCancel = (id: number) => {
+    if (window.confirm('Cancel this recurring series? Only future, not-yet-completed occurrences will be cancelled. This cannot be undone.')) {
+      cancelMutation.mutate(id);
+    }
+  };
+
+  return (
+    <section className="space-y-4 bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5">
+      <h2 className="text-lg font-semibold text-[var(--color-text)]">Recurring Series</h2>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="text-left text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+              <th className="py-2 pr-3">#</th>
+              <th className="py-2 pr-3">Status</th>
+              <th className="py-2 pr-3">Weekdays</th>
+              <th className="py-2 pr-3">Range</th>
+              <th className="py-2 pr-3">Times</th>
+              <th className="py-2">Player</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(listQuery.data || []).length === 0 && (
+              <tr><td colSpan={6} className="py-3 text-xs text-[var(--color-text-muted)]">No recurring series yet.</td></tr>
+            )}
+            {(listQuery.data || []).map((s: any) => (
+              <tr key={s.seriesId} className="border-b border-[var(--color-border)]">
+                <td className="py-2 pr-3">
+                  <button type="button" onClick={() => setSelectedId(s.seriesId)} className="text-[var(--color-primary)] hover:underline">
+                    #{s.seriesId}
+                  </button>
+                </td>
+                <td className="py-2 pr-3">
+                  <StatusChip status={s.status} />
+                </td>
+                <td className="py-2 pr-3">{s.weekdays.map((w: number) => WEEKDAY_LABELS.find((x) => x.n === w)?.label).join(', ')}</td>
+                <td className="py-2 pr-3">{s.startDate} → {s.endDate}</td>
+                <td className="py-2 pr-3">{s.startTime}–{s.endTime}</td>
+                <td className="py-2">{s.createdBy === undefined ? '' : `#${s.createdBy}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {selectedId && (
+        <div className="space-y-3 border-t border-[var(--color-border)] pt-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-[var(--color-text)]">Series #{selectedId} — occurrences</h3>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setSelectedId(null)}>Close</Button>
+              {detailQuery.data?.status === 'active' && (
+                <Button variant="danger" size="sm" onClick={() => confirmCancel(selectedId)} disabled={cancelMutation.isPending}>
+                  {cancelMutation.isPending ? 'Cancelling…' : 'Cancel Series'}
+                </Button>
+              )}
+            </div>
+          </div>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-left text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                <th className="py-1.5 pr-3">Date</th>
+                <th className="py-1.5 pr-3">Time</th>
+                <th className="py-1.5 pr-3">Period</th>
+                <th className="py-1.5">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(detailQuery.data?.occurrences || []).map((o: any) => {
+                const isPast = o.date < today;
+                return (
+                  <tr key={o.bookingId} className="border-b border-[var(--color-border)]">
+                    <td className="py-1.5 pr-3">{o.date}</td>
+                    <td className="py-1.5 pr-3">{o.startTime}–{o.endTime}</td>
+                    <td className="py-1.5 pr-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${isPast ? 'bg-[var(--color-bg)] text-[var(--color-text-muted)]' : 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]'}`}>
+                        {isPast ? 'past' : 'future'}
+                      </span>
+                    </td>
+                    <td className="py-1.5">
+                      <StatusChip bookingStatus={o.status} />
+                      {o.status === 'cancelled' && <span className="text-xs text-[var(--color-text-muted)] ml-1">{isPast ? '(independent cancel preserved)' : '(cancelled)'}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {detailQuery.data?.occurrences?.length === 0 && (
+            <p className="text-xs text-[var(--color-text-muted)]">No occurrences recorded (skipped occurrences are not created as bookings).</p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StatusChip({ status, bookingStatus }: { status?: string; bookingStatus?: string }) {
+  const value = bookingStatus || status || 'unknown';
+  const map: Record<string, { label: string; cls: string }> = {
+    active: { label: 'active', cls: 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]' },
+    paused: { label: 'paused', cls: 'bg-[var(--color-warning)] text-white' },
+    completed: { label: 'completed', cls: 'bg-[var(--color-bg)] text-[var(--color-text-muted)]' },
+    cancelled: { label: 'cancelled', cls: 'bg-[var(--color-error-bg)] text-[var(--color-error)]' },
+    pending: { label: 'booked', cls: 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]' },
+    no_show: { label: 'no-show', cls: 'bg-[var(--color-error-bg)] text-[var(--color-error)]' },
+    expired: { label: 'expired', cls: 'bg-[var(--color-bg)] text-[var(--color-text-muted)]' },
+  };
+  const m = map[value] || { label: value, cls: 'bg-[var(--color-bg)] text-[var(--color-text)]' };
+  return <span className={`px-2 py-0.5 rounded-full text-xs ${m.cls}`}>{m.label}</span>;
 }

@@ -515,6 +515,14 @@ export function useRealtimeCacheUpdates(): void {
     invalidateSlots(p);
   });
 
+  // R4 — a recurring series changed lifecycle (admin/org/branch rooms only).
+  // Refresh the recurring management list + the affected series detail. The
+  // individual occurrence bookings are refreshed via booking.cancelled above.
+  useSocketEvent('recurring.series-cancelled', (p: any) => {
+    qc.invalidateQueries({ queryKey: ['admin', 'recurring', 'list'] });
+    if (p.seriesId) qc.invalidateQueries({ queryKey: ['admin', 'recurring', p.seriesId] });
+  });
+
   useSocketEvent('booking.expired', (p: any) => {
     qc.setQueryData(['booking', p.bookingId], (old: any) => old ? { ...old, booking_status: 'expired' } : old);
     qc.invalidateQueries({ queryKey: ['my-bookings'] });

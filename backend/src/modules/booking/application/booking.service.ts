@@ -965,7 +965,17 @@ export class BookingService {
     if (booking.booking_status === 'cancelled' || booking.booking_status === 'cancelled_with_fee') {
       throw new ConflictError('Booking already cancelled');
     }
-    if (booking.user_id !== userId) throw new ForbiddenError('You can only cancel your own bookings');
+    // R4 — canonical cancellation remains owner-first, with ONE narrow addition:
+    // a responsible user (the R3 recurring authority) may cancel an occurrence
+    // booking that belongs to a recurring series (series management). This is
+    // NOT a general staff override — a non-owner is only allowed for series
+    // occurrences. Players still cancel their own bookings exactly as before.
+    if (booking.user_id !== userId) {
+      const isResponsible = await this.canBypassPlayerBookingWindow(userId);
+      if (!isResponsible || !booking.series_id) {
+        throw new ForbiddenError('You can only cancel your own bookings');
+      }
+    }
 
     const canCancel = await this._canUserCancel(booking);
     if (!canCancel) {
@@ -2087,6 +2097,80 @@ export class BookingService {
         timezone: s.timezone,
         status: s.status,
       })),
+    };
+  }
+
+  /**
+   * R4 — Recurring series lifecycle cancellation.
+   *
+   * Cancels ONLY the FUTURE, not-yet-terminal occurrences of the series, each
+   * through the CANONICAL single-booking cancellation path (CancelBooking
+   * command → `booking:cancelled` → canonical player notification + realtime +
+   * admin invalidation). Past / completed / already-cancelled / skipped
+   * occurrences and unrelated bookings are NEVER rewritten. No rescheduling
+   * (no date/weekday/court changes), no replacement bookings, no payment or
+   * accounting. The series row itself transitions active → cancelled.
+   */
+  async cancelRecurringSeries(seriesId: number, actorId: number, reason = 'recurring_series_cancelled') {
+    // Authorization — the SAME responsible-user model as R3 recurring creation.
+    if (!(await this.canBypassPlayerBookingWindow(actorId))) {
+      throw new ForbiddenError('Only authorised responsible users can cancel recurring series');
+    }
+
+    const series = await bookingSeriesRepository.findById(seriesId);
+    if (!series) throw new NotFoundError('Recurring series');
+
+    const occurrences = await bookingRepository.findBySeries(seriesId);
+    const nowMs = new Date(TimeEngine.now()).getTime();
+    const TERMINAL = new Set(['cancelled', 'expired', 'no_show', 'completed']);
+
+    const cancelledIds: number[] = [];
+    const skipped: Array<{ bookingId: number; reason: string }> = [];
+
+    for (const occ of occurrences) {
+      const bookingId = Number(occ.id);
+      const rawStart = occ.start_at_utc;
+      const startMs = rawStart ? new Date(rawStart instanceof Date ? rawStart.toISOString() : String(rawStart).replace(' ', 'T') + 'Z').getTime() : null;
+      const isFuture = startMs != null && startMs > nowMs;
+      const isTerminal = TERMINAL.has(occ.booking_status);
+      if (!isFuture) { skipped.push({ bookingId, reason: 'past_or_not_yet_started' }); continue; }
+      if (isTerminal) { skipped.push({ bookingId, reason: `already_${occ.booking_status}` }); continue; }
+      try {
+        // Canonical cancellation (owner guard extended ONLY for series-owned
+        // occurrences to the responsible operator).
+        await this.cancelBooking(bookingId, actorId, reason);
+        cancelledIds.push(bookingId);
+      } catch (err: any) {
+        skipped.push({ bookingId, reason: (err as any)?.message || 'cancellation_failed' });
+      }
+    }
+
+    // Series lifecycle change only for an ACTIVE series with cancelled occurrences.
+    const becameCancelled = series.status === 'active' && cancelledIds.length > 0;
+    if (becameCancelled) {
+      await bookingSeriesRepository.updateStatus(seriesId, 'cancelled');
+      // ONE clearly-named series event (committed already — autocommit here) so
+      // admin surfaces refresh the series list. Route: admin/org/branch rooms
+      // only — never a player socket (per canonical realtime conventions).
+      eventBusV2.emit('recurring:series-cancelled', {
+        seriesId,
+        organisationId: series.organisationId,
+        branchId: series.branchId,
+        playerUserId: occurrences.length ? Number(occurrences[0].user_id) : null,
+        cancelledIds,
+        cancelledCount: cancelledIds.length,
+      });
+    }
+
+    log.info({ seriesId, operator: actorId, cancelled: cancelledIds.length, skipped: skipped.length }, 'recurring.series_cancelled');
+
+    return {
+      seriesId,
+      status: becameCancelled ? 'cancelled' : series.status,
+      cancelledIds,
+      cancelledCount: cancelledIds.length,
+      skipped,
+      playerUserId: occurrences.length ? Number(occurrences[0].user_id) : null,
     };
   }
 

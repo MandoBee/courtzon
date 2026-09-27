@@ -125,6 +125,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
       return null;
     }
     if (eventName.startsWith('tournament:')) return mapTournamentEvent(eventName, payload);
+    if (eventName.startsWith('recurring:')) return mapRecurringEvent(eventName, payload);
     if (MATCH_RESULT_EVENT_NAMES.has(eventName)) return mapMatchResultEvent(eventName, payload);
     if (MATCH_DOMAIN_EVENT_NAMES.has(eventName)) return mapMatchEvent(eventName, payload);
     if (eventName === 'system:announcement') {
@@ -650,6 +651,29 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       bracket: p.bracket,
     },
     rooms: roomsForScopedAudience(p, { includeBookingRoom: true }),
+  };
+}
+
+/**
+ * Recurring series lifecycle events (R4).
+ * Admin/org/branch rooms ONLY — never a player socket (per occurrence the
+ * canonical booking:cancelled/created events already reach the player).
+ */
+function mapRecurringEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'updated';
+  const rooms = new Set<string>([ADMIN_ROOM]);
+  addIdRoom(rooms, 'organisation', p.organisationId);
+  addIdRoom(rooms, 'branch', p.branchId);
+  return {
+    type: `recurring.${sub}`,
+    payload: {
+      seriesId: numericId(p.seriesId),
+      organisationId: p.organisationId,
+      branchId: p.branchId,
+      cancelledCount: p.cancelledCount,
+      playerUserId: p.playerUserId,
+    },
+    rooms: [...rooms],
   };
 }
 

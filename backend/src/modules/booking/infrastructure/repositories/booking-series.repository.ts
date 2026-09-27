@@ -130,6 +130,15 @@ export class BookingSeriesRepository {
     return rows.length ? mapRow(rows[0] as any) : null;
   }
 
+  /** R4 — series lifecycle transition (e.g. 'active' → 'cancelled'). */
+  async updateStatus(id: number, status: 'active' | 'paused' | 'completed' | 'cancelled', conn?: mysql.PoolConnection): Promise<void> {
+    const db = conn ?? this.pool;
+    await db.execute(
+      'UPDATE booking_series SET status = ?, updated_at = NOW() WHERE id = ?',
+      [status, id],
+    );
+  }
+
   /** R2 — series list. Null orgId (platform admin) returns ALL series. */
   async listByOrg(organisationId: number | null | undefined, branchId?: number): Promise<BookingSeriesRow[]> {
     let sql = 'SELECT * FROM booking_series';

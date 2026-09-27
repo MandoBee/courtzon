@@ -194,6 +194,33 @@ export async function getRecurringSeriesHandler(request: FastifyRequest, reply: 
   return reply.send(result);
 }
 
+/** R4 — Cancel a recurring series (future occurrences only, canonical path). */
+export async function cancelRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const userId = (request as any).userId;
+  const reason = ((request.body as any)?.reason as string | undefined) || 'recurring_series_cancelled';
+  const result = await bookingService.cancelRecurringSeries(Number(id), userId, reason);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.CANCEL',
+    entityType: 'booking_series',
+    entityId: result.seriesId,
+    afterState: {
+      operatorId: userId,                  // ACTUAL OPERATOR (admin)
+      playerId: result.playerUserId,       // booking owner (player)
+      affectedBookingIds: result.cancelledIds,
+      skipped: result.skipped,
+      action: 'cancel_series',
+      reason,
+    },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.send(result);
+}
+
 export async function checkInHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const userId = (request as any).userId;
