@@ -52,6 +52,20 @@ type CardRefundOp = {
   traceId: string;
 };
 
+/**
+ * R5-D2-B — options for an allocation-scoped PARTIAL refund of a recurring
+ * series payment. When `allocationId` is supplied, `refund()` routes to the
+ * multi-partial engine: amount <= allocation refundable balance, payment stays
+ * `paid` until fully refunded, idempotent per (payment + allocation + key).
+ * Normal single-booking refunds call `refund()` WITHOUT options and keep their
+ * exact existing behavior.
+ */
+export interface RefundOptions {
+  allocationId?: number;
+  seriesId?: number;
+  idempotencyKey?: string;
+}
+
 const PCI_SENSITIVE_FIELDS = new Set([
   'pan', 'card_number', 'cvv', 'cvv2', 'exp', 'expiry', 'expire',
   'source_data', 'card_holder', 'card_holder_name', 'billing_data',
@@ -911,8 +925,14 @@ export class PaymentService {
 
   /**
    * Refund a payment.
+   *
+   * options (R5-D2-B) — when supplied, routes to the allocation-scoped PARTIAL
+   * refund engine for a recurring series payment. `allocationId` + an
+   * idempotency key identify one refund operation on one refundable unit; the
+   * payment stays `paid` until the full amount is returned. Normal
+   * single-booking refunds keep their exact existing behavior (no options).
    */
-  async refund(paymentId: number, amount: number, reason?: string) {
+  async refund(paymentId: number, amount: number, reason?: string, options?: RefundOptions) {
     const transaction = await paymentRepository.findById(paymentId);
     if (!transaction) throw new NotFoundError('Payment transaction');
 
@@ -985,26 +1005,15 @@ export class PaymentService {
     // ── Card / gateway payment ──
     // Crash-window hardened refund (approved Option B design).
     //
-    // The multi-seller group card payment is captured ONCE on the primary
-    // order's payment_transactions row; every sibling order's refund resolves
-    // back to that same row (see marketplace _findPaymentForOrder). The FOR
-    // UPDATE lock guarantees the underlying card transaction can never be
-    // gateway-refunded twice by concurrent/duplicate/retry requests.
-    //
-    // Crash safety (the window this fixes): the gateway refund succeeds, then a
-    // crash before the local 'refunded' commit leaves the row 'paid' — a naive
-    // retry would re-call the gateway and double-refund. Default response:
-    //   T1  short COMMITTED transaction writes a durable refund intent into the
-    //       gateway_response JSON (survives any later crash) BEFORE the call;
-    //   T2  short COMMITTED transaction "arms" the intent (executedAt, attempts)
-    //       immediately before the external call — the arm is durable;
-    //   T3  the gateway call runs, then the row is re-locked and marked
-    //       'refunded' + accounting event in ONE transaction;
-    //   resolve  - executedAt committed & the executor finished → idempotent;
-    //       - crash after success: within the cool-off window we never re-call;
-    //         afterwards getRefundState() decides — refunded → finalize locally
-    //         WITHOUT a second call; not_refunded → execute once; ANY
-    //         uncertainty → FAIL CLOSED (no call, no finalize, retryable error).
+    // R5-D2-B — an allocation-scoped PARTIAL refund for a recurring series
+    // payment (options.allocationId) routes to the dedicated multi-partial
+    // engine below; normal single-booking refunds keep `_refundCard` unchanged.
+    if (options?.allocationId) {
+      if (paymentMethod !== 'card') {
+        throw new ConflictError('Allocation partial refunds are only supported for card payments');
+      }
+      return this._refundSeriesAllocation(transaction, amount, reason, traceId, options);
+    }
     return this._refundCard(transaction, amount, reason, traceId);
   }
 
@@ -1148,6 +1157,310 @@ export class PaymentService {
     }
 
     throw new ConflictError(`Refund for payment ${paymentId} could not be resolved in time; try again shortly`);
+  }
+
+  /**
+   * R5-D2-B — allocation-scoped PARTIAL refund for ONE recurring series
+   * payment. Mirrors the crash-window hardened T1/T2/T3 lifecycle of the
+   * normal card refund, but:
+   *   - the authoritative balance comes from `payment_allocations`
+   *     (balance = gross − refunded; payment remaining = amount − Σ refunded),
+   *   - multiple partial refunds may each have their own durable intent
+   *     keyed by (allocationId + idempotencyKey) in gateway_response,
+   *   - the payment stays `paid` until the FULL amount is refunded, then flips
+   *     to `refunded` exactly once (and emits the canonical payment:refunded,
+   *     which drives the existing R5-D1 full-series reversal only at that point),
+   *   - intermediate partials do NOT emit payment:refunded (D2-C owns partial
+   *     accounting).
+   * No gateway call is made directly here — everything goes through the
+   * canonical `paymentGateway` abstraction.
+   */
+  private async _refundSeriesAllocation(
+    payment: any,
+    amount: number,
+    reason: string | undefined,
+    traceId: string,
+    options: RefundOptions,
+  ): Promise<any> {
+    const paymentId = Number((payment as any).id);
+    const allocationId = Number(options.allocationId);
+    const idempotencyKey = options.idempotencyKey || `series-partial:${paymentId}:${allocationId}:${randomUUID()}`;
+    const gatewayRef = String((payment as any).gateway_reference || paymentId);
+    const currency = String((payment as any).currency || 'EGP');
+    const op = {
+      paymentId,
+      allocationId,
+      idempotencyKey,
+      gatewayRef,
+      currency,
+      amount,
+      amountCents: Math.round(amount * 100),
+      reason,
+      traceId,
+      seriesId: options.seriesId != null ? Number(options.seriesId) : null,
+      paymentAmount: Number((payment as any).amount || 0),
+    };
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
+    const { paymentAllocationRepository } = await import('../../booking/infrastructure/repositories/payment-allocation.repository.js');
+
+    // ── T1: durable intent + STRICT guards in ONE committed transaction ──
+    let intent = await withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockById(paymentId, conn);
+      if (!locked) throw new NotFoundError('Payment transaction');
+      if ((locked as any).payment_status === 'refunded') return null;
+      if ((locked as any).payment_status !== 'paid') {
+        throw new ConflictError(`Payment ${paymentId} is not refundable from status '${(locked as any).payment_status}'`);
+      }
+      if (String((locked as any).reference_type) !== 'booking_series') {
+        throw new ConflictError('Allocation partial refunds are only valid for recurring series card payments');
+      }
+      if ((locked as any).gateway_settlement_id != null && Number((locked as any).gateway_settlement_id) !== 0) {
+        throw new ConflictError('This payment is already gateway-settled — partial refunds are not supported');
+      }
+      if (op.amount <= 0) throw new ConflictError('Refund amount must be positive');
+
+      const allocation = await paymentAllocationRepository.findByIdForUpdate(allocationId, conn);
+      if (!allocation) throw new ConflictError(`Allocation ${allocationId} not found`);
+      if (allocation.paymentTransactionId !== paymentId) throw new ConflictError('Allocation does not belong to this payment');
+      const allocationBalance = r2(allocation.grossAmount - allocation.refundedAmount);
+      if (op.amountCents > Math.round(allocationBalance * 100)) {
+        throw new ConflictError('Refund amount exceeds the allocation refundable balance');
+      }
+      const totalRefunded = await paymentAllocationRepository.sumRefundedByPayment(paymentId, conn);
+      const remaining = r2(op.paymentAmount - totalRefunded);
+      if (op.amountCents > Math.round(remaining * 100)) {
+        throw new ConflictError('Refund amount exceeds the payment remaining refundable balance');
+      }
+
+      const existing = await paymentRepository.readAllocationRefundIntent((locked as any).gateway_response, idempotencyKey);
+      if (existing) return existing;
+
+      const fresh = paymentRepository.newAllocationRefundIntent({
+        idempotencyKey, amount, currency,
+        allocationId, seriesId: op.seriesId, paymentAmount: op.paymentAmount,
+      });
+      await paymentRepository.writeAllocationRefundIntent(paymentId, (locked as any).gateway_response, idempotencyKey, fresh, conn);
+      return fresh;
+    });
+
+    if (intent == null) {
+      log.info({ traceId, paymentId }, 'Series payment already refunded — idempotent, no second gateway refund');
+      return { success: true, idempotent: true, refundId: `existing_refund_${paymentId}`, paymentId };
+    }
+
+    // ── Resolution loop (same semantics as the normal card refund) ──
+    for (let iteration = 0; iteration <= REFUND_DEFER_MAX_ITERATIONS; iteration++) {
+      const row = await paymentRepository.findById(paymentId);
+      if (!row) throw new NotFoundError('Payment transaction');
+      const rowStatus = (row as any).payment_status;
+      if (rowStatus === 'refunded') {
+        return { success: true, idempotent: true, refundId: intent.gatewayRefundId ?? `existing_refund_${paymentId}`, paymentId };
+      }
+      if (rowStatus !== 'paid') {
+        throw new ConflictError(`Payment ${paymentId} is not refundable from status '${rowStatus}'`);
+      }
+      const latest = await paymentRepository.readAllocationRefundIntent((row as any).gateway_response, idempotencyKey);
+      if (latest) intent = latest;
+
+      if (intent.status === 'completed') {
+        return { success: true, idempotent: true, refundId: intent.gatewayRefundId ?? `existing_refund_${paymentId}`, paymentId };
+      }
+
+      if (intent.executedAt == null) {
+        const attempt = await this._executeAllocationRefund(op, intent);
+        if ('deferred' in attempt) {
+          await new Promise((res) => setTimeout(res, REFUND_DEFER_STEP_MS));
+          continue;
+        }
+        return attempt.result;
+      }
+
+      const ageMs = Date.now() - new Date(intent.executedAt).getTime();
+      if (ageMs < REFUND_RESOLUTION_WINDOW_MS) {
+        if (iteration >= REFUND_DEFER_MAX_ITERATIONS) {
+          throw new ConflictError(`Allocation refund for payment ${paymentId} is already being resolved; try again shortly`);
+        }
+        await new Promise((res) => setTimeout(res, REFUND_DEFER_STEP_MS));
+        continue;
+      }
+
+      let state: RefundState;
+      try {
+        state = await paymentGateway.getRefundState(gatewayRef);
+      } catch (err: unknown) {
+        log.error({ traceId, paymentId, err }, 'getRefundState threw — failing closed');
+        state = { outcome: 'unknown', reason: err instanceof Error ? err.message : String(err) };
+      }
+
+      if (state.outcome === 'refunded') {
+        if (state.refundedCents < op.amountCents) {
+          throw new ConflictError(
+            `Gateway shows ${state.refundedCents}¢ refunded for payment ${paymentId} but the operation needs ${op.amountCents}¢ — reconcile before retry`,
+          );
+        }
+        await this._finalizeAllocationRefund(op, intent, { gatewayRefundId: null });
+        return { success: true, idempotent: true, refundId: intent.gatewayRefundId ?? `existing_refund_${paymentId}`, paymentId };
+      }
+
+      if (state.outcome === 'not_refunded') {
+        const attempt = await this._executeAllocationRefund(op, intent);
+        if ('deferred' in attempt) {
+          await new Promise((res) => setTimeout(res, REFUND_DEFER_STEP_MS));
+          continue;
+        }
+        return attempt.result;
+      }
+
+      log.warn({ traceId, paymentId, reason: state.reason }, 'Allocation refund gateway state unknown — failing closed');
+      throw new ConflictError(
+        `Cannot verify refund state for payment ${paymentId} with the gateway (${state.reason}); no refund was issued — reconcile and retry`,
+      );
+    }
+
+    throw new ConflictError(`Allocation refund for payment ${paymentId} could not be resolved in time; try again shortly`);
+  }
+
+  /** T2 arm + external gateway call for one allocation partial refund. */
+  private async _executeAllocationRefund(
+    op: { paymentId: number; allocationId: number; idempotencyKey: string; gatewayRef: string; amount: number; amountCents: number; reason?: string; traceId: string; currency: string; seriesId: number | null; paymentAmount: number },
+    intent: RefundIntent,
+  ): Promise<{ deferred: true } | { result: any }> {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const { paymentAllocationRepository } = await import('../../booking/infrastructure/repositories/payment-allocation.repository.js');
+
+    // T2 — durable arm.
+    const arm = await withTransaction(async (conn) => {
+      const locked = await paymentRepository.lockById(op.paymentId, conn);
+      if (!locked) throw new NotFoundError('Payment transaction');
+      if ((locked as any).payment_status === 'refunded') return { kind: 'idempotent' as const };
+      if ((locked as any).payment_status !== 'paid') {
+        throw new ConflictError(`Payment ${op.paymentId} is not refundable from status '${(locked as any).payment_status}'`);
+      }
+      const cur = (await paymentRepository.readAllocationRefundIntent((locked as any).gateway_response, op.idempotencyKey)) ?? intent;
+      if (cur.executedAt != null && Date.now() - new Date(cur.executedAt).getTime() < REFUND_RESOLUTION_WINDOW_MS) {
+        return { kind: 'deferred' as const };
+      }
+      const alloc = await paymentAllocationRepository.findByIdForUpdate(op.allocationId, conn);
+      if (!alloc) throw new ConflictError(`Allocation ${op.allocationId} not found`);
+      const allocationBalance = r2(alloc.grossAmount - alloc.refundedAmount);
+      if (op.amountCents > Math.round(allocationBalance * 100)) {
+        throw new ConflictError('Refund amount exceeds the allocation refundable balance');
+      }
+      const totalRefunded = await paymentAllocationRepository.sumRefundedByPayment(op.paymentId, conn);
+      const remaining = r2(Number((locked as any).amount || 0) - totalRefunded);
+      if (op.amountCents > Math.round(remaining * 100)) {
+        throw new ConflictError('Refund amount exceeds the payment remaining refundable balance');
+      }
+      const armed: RefundIntent = {
+        ...cur,
+        status: 'confirmed',
+        attempts: cur.attempts + 1,
+        executedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await paymentRepository.writeAllocationRefundIntent(op.paymentId, (locked as any).gateway_response, op.idempotencyKey, armed, conn);
+      return { kind: 'armed' as const };
+    });
+
+    if (arm.kind === 'idempotent') {
+      return { result: { success: true, idempotent: true, refundId: `existing_refund_${op.paymentId}`, paymentId: op.paymentId } };
+    }
+    if (arm.kind === 'deferred') return { deferred: true };
+
+    // External gateway call (no transaction held; the arm is durable).
+    const result = await paymentGateway.refund({
+      transactionId: op.gatewayRef,
+      amount: op.amount,
+      reason: op.reason,
+    });
+
+    if (!result.success) {
+      // Explicit gateway refusal — clear the arm so a retry can re-execute.
+      await withTransaction(async (conn) => {
+        const locked = await paymentRepository.lockById(op.paymentId, conn);
+        if (!locked) return;
+        const cur = (await paymentRepository.readAllocationRefundIntent((locked as any).gateway_response, op.idempotencyKey)) ?? intent;
+        const cleared: RefundIntent = { ...cur, status: 'initiated', executedAt: null, updatedAt: new Date().toISOString() };
+        await paymentRepository.writeAllocationRefundIntent(op.paymentId, (locked as any).gateway_response, op.idempotencyKey, cleared, conn);
+      });
+      throw new ConflictError(`Gateway refund failed for payment ${op.paymentId}: ${result.errorMessage || 'unknown error'} — retry`);
+    }
+
+    // T3 — finalize atomically with money movement.
+    await this._finalizeAllocationRefund(op, intent, { gatewayRefundId: result.refundId || null });
+    return { result: { success: true, refundId: result.refundId || null, paymentId: op.paymentId } };
+  }
+
+  /**
+   * T3 finalize for an allocation partial refund: advance the allocation
+   * refunded_amount (bounded by gross), flip the payment to `refunded` ONLY
+   * when the full amount has been returned (emitting the canonical
+   * payment:refunded then), and mark the intent completed. Intermediate
+   * partials keep the payment `paid` and emit nothing (D2-C owns partial
+   * accounting).
+   */
+  private async _finalizeAllocationRefund(
+    op: { paymentId: number; allocationId: number; idempotencyKey: string; gatewayRef: string; amount: number; amountCents: number; reason?: string; traceId: string; currency: string; seriesId: number | null; paymentAmount: number },
+    intent: RefundIntent,
+    info: { gatewayRefundId: string | null },
+  ): Promise<void> {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const { paymentAllocationRepository } = await import('../../booking/infrastructure/repositories/payment-allocation.repository.js');
+
+    await withTransaction(async (conn) => {
+      const payment = await paymentRepository.lockById(op.paymentId, conn);
+      if (!payment) throw new NotFoundError('Payment transaction');
+
+      const allocation = await paymentAllocationRepository.findByIdForUpdate(op.allocationId, conn);
+      if (!allocation) throw new ConflictError(`Allocation ${op.allocationId} not found`);
+
+      const newRefunded = Math.min(allocation.grossAmount, r2(allocation.refundedAmount + op.amount));
+      await conn.execute(
+        `UPDATE payment_allocations
+         SET refunded_amount = ?, status = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [newRefunded, newRefunded >= allocation.grossAmount - 0.001 ? 'refunded' : newRefunded > 0 ? 'partially_refunded' : 'allocated', op.allocationId],
+      );
+
+      const totalRefunded = await paymentAllocationRepository.sumRefundedByPayment(op.paymentId, conn);
+      const paymentAmount = Number(payment.amount || 0);
+      const remaining = r2(paymentAmount - totalRefunded);
+
+      const cur = (await paymentRepository.readAllocationRefundIntent(payment.gateway_response, op.idempotencyKey)) ?? intent;
+      const completed: RefundIntent = {
+        ...cur,
+        status: 'completed',
+        gatewayRefundId: info.gatewayRefundId ?? cur.gatewayRefundId,
+        updatedAt: new Date().toISOString(),
+      };
+      await paymentRepository.writeAllocationRefundIntent(op.paymentId, payment.gateway_response, op.idempotencyKey, completed, conn);
+
+      if (remaining <= 0.01 || (payment.payment_status === 'paid' && remaining <= 0.01)) {
+        const [upd] = await conn.execute<mysql.ResultSetHeader>(
+          `UPDATE payment_transactions SET payment_status = 'refunded', updated_at = NOW(), cancelled_at = COALESCE(cancelled_at, NOW())
+           WHERE id = ? AND payment_status = 'paid'`,
+          [op.paymentId],
+        );
+        if (upd.affectedRows === 1) {
+          // Full payment now returned → canonical payment:refunded (the existing
+          // listener reverses the R5-C2 series recognition once — financially
+          // the whole series is returned, so the full reversal is correct).
+          await eventBusV2.emit('payment:refunded', {
+            paymentId: op.paymentId,
+            userId: payment.user_id,
+            amount: paymentAmount,
+            reason: op.reason,
+            traceId: op.traceId,
+            referenceType: String(payment.reference_type || 'booking_series'),
+            referenceId: Number(payment.reference_id ?? op.seriesId ?? 0) || null,
+            metadata: { paymentMethod: payment.payment_method, allocationId: op.allocationId },
+          }, undefined, conn);
+        }
+      }
+      // else — intermediate partial: payment stays 'paid', allocation advanced,
+      // NO payment:refunded (D2-C owns partial accounting).
+    });
   }
 
   /**

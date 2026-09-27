@@ -142,8 +142,19 @@ async function cleanupPerUser(exec: (sql: string, params?: any[]) => Promise<any
   await exec(`DELETE FROM general_ledger WHERE organisation_id IN (${ORG1}, ${ORG2})`);
   await exec(`DELETE FROM financial_journal_entries WHERE reference_type = 'booking' AND reference_id IN (SELECT id FROM bookings WHERE user_id IN (${users}))`);
   await exec(`DELETE FROM booking_slots WHERE booking_id IN (SELECT id FROM bookings WHERE user_id IN (${users}))`);
-  await exec(`DELETE FROM payment_allocations WHERE payment_transaction_id IN (SELECT id FROM payment_transactions WHERE user_id IN (${users}))`);
-  await exec(`DELETE FROM bookings WHERE user_id IN (${users})`);
+  // R5-D2-A — allocations map to bookings (FK fk_pa_booking ON DELETE RESTRICT).
+  // A running Docker backend can write allocations concurrently (outbox replay),
+  // so converge: delete allocations by booking, attempt the bookings delete, and
+  // on an FK hit delete any allocation a racing writer just created and retry.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await exec(`DELETE FROM payment_allocations WHERE booking_id IN (SELECT id FROM bookings WHERE user_id IN (${users}))`);
+    try {
+      await exec(`DELETE FROM bookings WHERE user_id IN (${users})`);
+      break;
+    } catch (err: any) {
+      if (attempt === 2) throw err;
+    }
+  }
   await exec(`DELETE FROM booking_series WHERE created_by IN (${users})`);
   await exec(`DELETE FROM payment_transactions WHERE user_id IN (${users})`);
   await exec(`DELETE FROM user_roles WHERE user_id IN (${users})`);
@@ -2389,6 +2400,192 @@ describe('R5-D2-A — payment allocation foundation', () => {
     const [rows] = await pool.execute<RowData>(
       `SELECT COUNT(*) AS c FROM payment_allocations WHERE payment_transaction_id = ?`, [pendingId]);
     expect(Number((rows as any[])[0].c)).toBe(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-D2-B — PAYMENT LIFECYCLE FOR MULTIPLE PARTIAL REFUNDS (internal harness).
+// Exercises paymentService.refund(paymentId, amount, reason, { allocationId,
+// idempotencyKey }) DIRECTLY — NO route/controller/frontend is exposed, so
+// production capability stays blocked (R5-D1 full-series refund only). The
+// payment stays `paid` while allocation refunded balance remains; it flips to
+// `refunded` exactly once when fully returned. No accounting/entitlement/
+// booking changes (D2-C/D2-E own those).
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-D2-B — multiple partial gateway refunds (allocations)', () => {
+  let series: any;
+  let paymentId: number;
+  let gatewayRef: string;
+  let allocA: number;
+  let allocB: number;
+
+  async function buildPaidCardSeries() {
+    series = await createSeries();
+    const res = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    paymentId = Number(res.paymentId);
+    await pool.execute(`UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW() WHERE id = ?`, [paymentId]);
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await waitFor(() => occurrenceRows(series.seriesId), (rows) => allOccurrencesIn(rows, ['confirmed']), 'occurrences confirmed');
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    const allocations = await waitFor(() => paymentAllocationService.findByPayment(paymentId), (rows) => rows.length === 2, 'two allocations');
+    const byGross = Object.fromEntries(allocations.map((a) => [a.grossAmount, a.id]));
+    allocA = byGross[1801.6];
+    allocB = byGross[1351.2];
+    expect(allocA).toBeTruthy();
+    expect(allocB).toBeTruthy();
+    const [pt] = await paymentRow(series.seriesId);
+    gatewayRef = String(pt.gateway_reference);
+  }
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    (paymentGateway as any).clearRefundLedger();
+    await buildPaidCardSeries();
+  });
+
+  async function paymentRowStatus(): Promise<string> {
+    const [rows] = await pool.execute<RowData>('SELECT payment_status FROM payment_transactions WHERE id = ?', [paymentId]);
+    return (rows as any[])[0].payment_status;
+  }
+
+  async function allocationState(id: number): Promise<{ refunded: number; status: string; gross: number }> {
+    const [rows] = await pool.execute<RowData>(
+      'SELECT refunded_amount AS r, status AS s, gross_amount AS g FROM payment_allocations WHERE id = ?', [id]);
+    return { refunded: Number((rows as any[])[0].r), status: (rows as any[])[0].s, gross: Number((rows as any[])[0].g) };
+  }
+
+  it('2-5 — multiple partial refunds keep the payment paid, final partial flips it to refunded once', async () => {
+    const refundSpy = vi.spyOn(paymentGateway, 'refund');
+
+    // P1 — partial on allocation A (562.50).
+    await paymentService.refund(paymentId, 562.5, 'partial-1', { allocationId: allocA, idempotencyKey: `k-${allocA}-p1` });
+    expect(await paymentRowStatus()).toBe('paid');
+    expect((await allocationState(allocA)).status).toBe('partially_refunded');
+    expect((await allocationState(allocA)).refunded).toBe(562.5);
+
+    // P2 — independent partial on allocation B (600).
+    await paymentService.refund(paymentId, 600, 'partial-2', { allocationId: allocB, idempotencyKey: `k-${allocB}-p2` });
+    expect(await paymentRowStatus()).toBe('paid');
+    expect((await allocationState(allocB)).refunded).toBe(600);
+
+    // P3 — fill allocation A to its gross (1801.60 − 562.50 = 1239.10). Payment still paid.
+    await paymentService.refund(paymentId, 1239.1, 'partial-3', { allocationId: allocA, idempotencyKey: `k-${allocA}-p3` });
+    expect(await paymentRowStatus()).toBe('paid');
+    expect((await allocationState(allocA)).status).toBe('refunded');
+
+    // P4 — final remaining: allocation B (1351.20 − 600 = 751.20) → payment refunded once.
+    await paymentService.refund(paymentId, 751.2, 'partial-4', { allocationId: allocB, idempotencyKey: `k-${allocB}-p4` });
+    expect(await paymentRowStatus()).toBe('refunded');
+    expect((await allocationState(allocB)).status).toBe('refunded');
+
+    // Exactly four gateway calls, each with the exact partial amount.
+    expect(refundSpy).toHaveBeenCalledTimes(4);
+    expect(refundSpy.mock.calls.map((c: any) => Number(c[0].amount))).toEqual([562.5, 600, 1239.1, 751.2]);
+    refundSpy.mockRestore();
+  });
+
+  it('6-8 — over-refund / zero / negative amounts are rejected before any gateway call', async () => {
+    const refundSpy = vi.spyOn(paymentGateway, 'refund');
+    await expect(paymentService.refund(paymentId, 2000, 'over', { allocationId: allocA, idempotencyKey: `k-${allocA}-over` }))
+      .rejects.toThrow(/allocation refundable balance/);
+    await expect(paymentService.refund(paymentId, 0, 'zero', { allocationId: allocA, idempotencyKey: `k-${allocA}-zero` }))
+      .rejects.toThrow(/positive/);
+    await expect(paymentService.refund(paymentId, -5, 'neg', { allocationId: allocA, idempotencyKey: `k-${allocA}-neg` }))
+      .rejects.toThrow(/positive/);
+    expect(refundSpy).not.toHaveBeenCalled();
+    expect(await paymentRowStatus()).toBe('paid');
+    refundSpy.mockRestore();
+  });
+
+  it('9 — same allocation + same idempotency key → ONE gateway call, retry idempotent', async () => {
+    const refundSpy = vi.spyOn(paymentGateway, 'refund');
+    const key = `k-${allocA}-same`;
+    await paymentService.refund(paymentId, 500, 'p', { allocationId: allocA, idempotencyKey: key });
+    expect(refundSpy).toHaveBeenCalledTimes(1);
+
+    const retry = await paymentService.refund(paymentId, 500, 'p-retry', { allocationId: allocA, idempotencyKey: key });
+    expect(retry.success).toBe(true);
+    expect(retry.idempotent).toBe(true);
+    expect(refundSpy).toHaveBeenCalledTimes(1); // no second gateway call
+    expect((await allocationState(allocA)).refunded).toBe(500);
+    expect(await paymentRowStatus()).toBe('paid');
+    refundSpy.mockRestore();
+  });
+
+  it('10 — same allocation, DIFFERENT idempotency key cannot exceed the allocation balance', async () => {
+    // Allocation A gross = 1801.60.
+    await paymentService.refund(paymentId, 1000, 'p1', { allocationId: allocA, idempotencyKey: `k-${allocA}-a` });
+    // The remaining allocation balance is 801.60 — a 2000 refund must be rejected.
+    await expect(paymentService.refund(paymentId, 2000, 'p2', { allocationId: allocA, idempotencyKey: `k-${allocA}-b` }))
+      .rejects.toThrow(/allocation refundable balance/);
+    expect((await allocationState(allocA)).refunded).toBe(1000);
+    expect(await paymentRowStatus()).toBe('paid');
+  });
+
+  it('11 — different allocations refund independently', async () => {
+    await paymentService.refund(paymentId, 562.5, 'a', { allocationId: allocA, idempotencyKey: `k-${allocA}-x` });
+    await paymentService.refund(paymentId, 1351.2, 'b', { allocationId: allocB, idempotencyKey: `k-${allocB}-y` });
+    expect(await paymentRowStatus()).toBe('paid'); // 562.5 + 1351.2 = 1913.7 < 3152.8
+    expect((await allocationState(allocA)).refunded).toBe(562.5);
+    expect((await allocationState(allocB)).refunded).toBe(1351.2);
+  });
+
+  it('12-13 — retry is idempotent after success; a stale armed intent recovers via gateway state without a second call', async () => {
+    const refundSpy = vi.spyOn(paymentGateway, 'refund');
+
+    // Successful partial P1 (key KA).
+    const keyA = `k-${allocA}-r1`;
+    await paymentService.refund(paymentId, 400, 'p1', { allocationId: allocA, idempotencyKey: keyA });
+    expect(refundSpy).toHaveBeenCalledTimes(1);
+
+    // Simulate a crash after the gateway call for a SECOND partial (key KB):
+    // the allocation was NOT advanced and the intent is STALE (armed in the
+    // past) while the mock gateway already holds the refunded cents.
+    const { paymentRepository } = await import('../../payment/infrastructure/repositories/payment.repository.js');
+    const keyB = `k-${allocA}-r2`;
+    const armedIntent = paymentRepository.newAllocationRefundIntent({
+      idempotencyKey: keyB, amount: 300, currency: 'EGP', allocationId: allocA, seriesId: series.seriesId, paymentAmount: 3152.8,
+    });
+    // Pretend the gateway call actually happened before the crash.
+    await paymentGateway.refund({ transactionId: gatewayRef, amount: 300, reason: 'simulated-crash' }); // spy count: +1
+    // Write a stale armed intent (executedAt in the past) directly.
+    const rawBefore = JSON.stringify({});
+    const stale = { ...armedIntent, status: 'confirmed' as const, attempts: armedIntent.attempts + 1, executedAt: new Date(Date.now() - 120_000).toISOString(), updatedAt: new Date().toISOString() };
+    await paymentRepository.writeAllocationRefundIntent(paymentId, rawBefore, keyB, stale);
+
+    // Recovery: the resolution loop sees the stale arm → getRefundState says
+    // refunded → finalizes WITHOUT a second gateway call (count must not grow).
+    const callsBeforeRecovery = refundSpy.mock.calls.length; // 2: P1 + simulated
+    const recovery = await paymentService.refund(paymentId, 300, 'p2-recover', { allocationId: allocA, idempotencyKey: keyB });
+    expect(recovery.success).toBe(true);
+    expect(recovery.idempotent).toBe(true);
+    expect(paymentGateway.getRefundedCents(gatewayRef)).toBe(70000); // 400 + 300 (cents)
+    expect(refundSpy.mock.calls.length).toBe(callsBeforeRecovery);
+    expect((await allocationState(allocA)).refunded).toBe(700);
+    expect(await paymentRowStatus()).toBe('paid');
+    refundSpy.mockRestore();
+  });
+
+  it('14 — a gateway-settled series payment rejects any partial refund', async () => {
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
+    await gatewaySettlementService.create({ paymentTransactionIds: [paymentId], settledBy: ADMIN });
+    await expect(paymentService.refund(paymentId, 500, 'p', { allocationId: allocA, idempotencyKey: `k-${allocA}-s` }))
+      .rejects.toThrow(/settled/);
+  });
+
+  it('15 — an already fully refunded payment is idempotent (no gateway call)', async () => {
+    const refundSpy = vi.spyOn(paymentGateway, 'refund');
+    await paymentService.refund(paymentId, 1801.6, 'a', { allocationId: allocA, idempotencyKey: `k-${allocA}-f1` });
+    await paymentService.refund(paymentId, 1351.2, 'b', { allocationId: allocB, idempotencyKey: `k-${allocB}-f2` });
+    expect(await paymentRowStatus()).toBe('refunded');
+    const before = refundSpy.mock.calls.length;
+    const again = await paymentService.refund(paymentId, 500, 'x', { allocationId: allocA, idempotencyKey: `k-${allocA}-f3` });
+    expect(again.success).toBe(true);
+    expect(refundSpy.mock.calls.length).toBe(before); // no third call
+    refundSpy.mockRestore();
   });
 });
 

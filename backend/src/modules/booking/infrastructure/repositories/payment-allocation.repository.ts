@@ -135,6 +135,22 @@ export const paymentAllocationRepository = {
     return (rows as any[]).map(mapRow);
   },
 
+  /** R5-D2-B — a single allocation row LOCKED FOR UPDATE (partial-refund guard). */
+  async findByIdForUpdate(id: number, conn: import('mysql2/promise').PoolConnection): Promise<PaymentAllocationRow | null> {
+    const [rows] = await conn.execute<RowData>(
+      `SELECT * FROM payment_allocations WHERE id = ? FOR UPDATE`, [id],
+    );
+    return rows.length ? mapRow(rows[0]) : null;
+  },
+
+  /** R5-D2-B — cumulative refunded amount across a payment's allocations (transaction-consistent). */
+  async sumRefundedByPayment(paymentTransactionId: number, conn: import('mysql2/promise').PoolConnection): Promise<number> {
+    const [rows] = await conn.execute<RowData>(
+      `SELECT COALESCE(SUM(refunded_amount), 0) AS total FROM payment_allocations WHERE payment_transaction_id = ?`, [paymentTransactionId],
+    );
+    return round2(Number((rows as any[])[0]?.total ?? 0));
+  },
+
   async findBySeries(seriesId: number): Promise<PaymentAllocationRow[]> {
     const [rows] = await getPool().execute<RowData>(
       `SELECT * FROM payment_allocations WHERE series_id = ? ORDER BY booking_id`, [seriesId],

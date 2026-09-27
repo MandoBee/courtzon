@@ -252,6 +252,68 @@ export const paymentRepository = {
     return JSON.stringify(parsed);
   },
 
+  /**
+   * R5-D2-B — allocation-scoped PARTIAL refund intents, stored under
+   * `gateway_response.allocRefunds[idempotencyKey]` so multiple independent
+   * partial refunds on ONE recurring series payment are each recoverable with
+   * their own amount/allocation. The legacy single `refundIntent` shape is
+   * untouched and stays authoritative for normal single-booking refunds.
+   */
+  readAllocationRefundIntent(raw: unknown, idempotencyKey: string): RefundIntent | null {
+    const parsed = this.parseGatewayResponse(raw);
+    const allocRefunds: Record<string, any> | undefined = parsed?.allocRefunds;
+    const intent = allocRefunds?.[idempotencyKey];
+    if (!intent || typeof intent !== 'object' || Array.isArray(intent)) return null;
+    if (typeof intent.opId !== 'string' || typeof intent.amount !== 'number') return null;
+    return intent as RefundIntent;
+  },
+
+  /** Fresh allocation partial-refund intent (per payment + allocation + idempotency key). */
+  newAllocationRefundIntent(input: { idempotencyKey: string; amount: number; currency: string; allocationId: number; seriesId: number | null; paymentAmount: number }): RefundIntent {
+    const now = new Date().toISOString();
+    return {
+      opId: input.idempotencyKey,
+      amount: input.amount,
+      currency: input.currency,
+      type: 'partial',
+      priorRefundedCents: 0,
+      status: 'initiated',
+      attempts: 0,
+      executedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      gatewayRefundId: null,
+    };
+  },
+
+  /** Persist/merge one allocation refund intent into gateway_response (conn-aware). */
+  async writeAllocationRefundIntent(paymentId: number, raw: unknown, idempotencyKey: string, intent: RefundIntent, conn?: mysql.PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    const parsed = this.parseGatewayResponse(raw) ?? {};
+    const allocRefunds: Record<string, RefundIntent> = parsed.allocRefunds && typeof parsed.allocRefunds === 'object' && !Array.isArray(parsed.allocRefunds)
+      ? parsed.allocRefunds
+      : {};
+    allocRefunds[idempotencyKey] = intent;
+    parsed.allocRefunds = allocRefunds;
+    await db.execute(
+      'UPDATE payment_transactions SET gateway_response = ?, updated_at = NOW() WHERE id = ?',
+      [JSON.stringify(parsed), paymentId],
+    );
+  },
+
+  /** Remove an allocation refund intent (only for an explicit gateway-refusal arm clear). */
+  async clearAllocationRefundIntent(paymentId: number, raw: unknown, idempotencyKey: string, conn?: mysql.PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    const parsed = this.parseGatewayResponse(raw) ?? {};
+    const allocRefunds = parsed.allocRefunds ? { ...(parsed.allocRefunds as Record<string, unknown>) } : {};
+    delete allocRefunds[idempotencyKey];
+    parsed.allocRefunds = allocRefunds;
+    await db.execute(
+      'UPDATE payment_transactions SET gateway_response = ?, updated_at = NOW() WHERE id = ?',
+      [JSON.stringify(parsed), paymentId],
+    );
+  },
+
   async getPlanPrice(planId: number): Promise<{ planName: string | null; priceMonthly: number; priceYearly: number; isUnlimited: boolean } | null> {
     const pool = getPool();
     const [rows] = await pool.execute<RowData>(

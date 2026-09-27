@@ -14,6 +14,7 @@ export class MockGateway implements PaymentGateway {
   readonly provider = 'mock';
   private config: GatewayConfig;
   private refundLedger = new Map<string, number>();
+  private captureLedger = new Map<string, number>();
   private injectedRefundState: RefundState | undefined;
 
   constructor(config: GatewayConfig) {
@@ -29,6 +30,11 @@ export class MockGateway implements PaymentGateway {
     return this.refundLedger.get(this.keyOf(transactionId)) || 0;
   }
 
+  /** R5-D2-B — captured amount cents for a transaction (over-refund guard). */
+  getCapturedCents(transactionId: string): number {
+    return this.captureLedger.get(this.keyOf(transactionId)) || 0;
+  }
+
   /** Force a specific refund state (test injection). */
   injectRefundState(state: RefundState | undefined): void {
     this.injectedRefundState = state;
@@ -42,6 +48,7 @@ export class MockGateway implements PaymentGateway {
 
   async charge(request: PaymentRequest): Promise<PaymentResult> {
     const transactionId = `mock_txn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.captureLedger.set(this.keyOf(transactionId), Math.round(request.amount * 100));
     return {
       success: true,
       transactionId,
@@ -56,10 +63,15 @@ export class MockGateway implements PaymentGateway {
   async refund(request: RefundRequest): Promise<RefundResult> {
     const cents = Math.round(request.amount * 100);
     const existing = this.refundLedger.get(this.keyOf(request.transactionId)) || 0;
+    const captured = this.captureLedger.get(this.keyOf(request.transactionId)) || 0;
+    // R5-D2-B — never refund more than the captured amount for a transaction.
+    if (captured > 0 && existing + cents > captured) {
+      return { success: false, refundId: '', status: 'failed', errorMessage: 'Mock gateway: refund exceeds captured amount' };
+    }
     this.refundLedger.set(this.keyOf(request.transactionId), existing + cents);
     return {
       success: true,
-      refundId: `mock_ref_${Date.now()}`,
+      refundId: `mock_ref_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       status: 'processed',
     };
   }
@@ -68,6 +80,9 @@ export class MockGateway implements PaymentGateway {
     if (this.injectedRefundState) return this.injectedRefundState;
     const cents = this.refundLedger.get(this.keyOf(transactionId)) || 0;
     if (cents > 0) {
+      // Legacy semantics: any amount on record ⇒ treated as refunded. (The
+      // over-refund cap above is a capture-aware guard only; recovery queries
+      // restore legacy behavior so pre-existing crash-window tests are stable.)
       return { outcome: 'refunded', refundedCents: cents, isFullyRefunded: true };
     }
     return { outcome: 'not_refunded', refundedCents: 0 };

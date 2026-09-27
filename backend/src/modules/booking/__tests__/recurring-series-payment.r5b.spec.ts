@@ -702,3 +702,55 @@ describe('R5-D2-A — payment allocation foundation contract (infra only, no ref
     expect(mig).toContain('COURTZON_MIGRATION_ENV: PRODUCTION_SAFE');
   });
 });
+
+describe('R5-D2-B — partial refund payment lifecycle contract (internal only)', () => {
+  const svc = be('src/modules/payment/application/payment.service.ts');
+  const repo = be('src/modules/payment/infrastructure/repositories/payment.repository.ts');
+  const mock = be('src/shared/services/gateway/mock-gateway.ts');
+  const paymob = be('src/shared/services/gateway/paymob-gateway.ts');
+  const alloc = be('src/modules/booking/infrastructure/repositories/payment-allocation.repository.ts');
+
+  it('refund() accepts allocation options and routes to the multi-partial engine', () => {
+    expect(svc).toContain('export interface RefundOptions');
+    expect(svc).toContain("if (options?.allocationId) {");
+    expect(svc).toContain('this._refundSeriesAllocation(transaction, amount, reason, traceId, options)');
+    // Normal path unchanged.
+    expect(svc).toContain('return this._refundCard(transaction, amount, reason, traceId);');
+  });
+
+  it('the partial engine guards allocation + payment balances, settlement, and method', () => {
+    expect(svc).toContain('Allocation does not belong to this payment');
+    expect(svc).toContain('Refund amount exceeds the allocation refundable balance');
+    expect(svc).toContain('Refund amount exceeds the payment remaining refundable balance');
+    expect(svc).toContain('already gateway-settled — partial refunds are not supported');
+    expect(svc).toContain('Allocation partial refunds are only supported for card payments');
+  });
+
+  it('payment stays paid until the FULL amount is returned; refunded exactly once', () => {
+    const fn = svc.slice(svc.indexOf('private async _finalizeAllocationRefund'), svc.indexOf('private async _finalizeAllocationRefund') + 3200);
+    expect(fn).toContain("UPDATE payment_allocations");
+    expect(fn).toContain("payment_status = 'refunded'");
+    expect(fn).toContain('eventBusV2.emit(\'payment:refunded\'');
+  });
+
+  it('partial intents are keyed per (payment + allocation + idempotency key), legacy single-intent untouched', () => {
+    expect(repo).toContain('readAllocationRefundIntent(raw: unknown, idempotencyKey: string)');
+    expect(repo).toContain('allocRefunds[idempotencyKey] = intent;');
+    expect(repo).toContain('newAllocationRefundIntent');
+    expect(repo).toContain('writeGatewayResponse(raw: unknown, intent: RefundIntent): string');
+  });
+
+  it('mock gateway tracks cumulative captured/refunded and rejects over-refund', () => {
+    expect(mock).toContain('captureLedger');
+    expect(mock).toContain('refund exceeds captured amount');
+  });
+
+  it('Paymob adapter already supports a per-refund amount (partial capable at adapter level)', () => {
+    expect(paymob).toContain('amount_cents: Math.round(request.amount * 100)');
+  });
+
+  it('allocation repo exposes per-allocation FOR UPDATE + cumulative sum (D2-B guards)', () => {
+    expect(alloc).toContain('async findByIdForUpdate(id: number, conn');
+    expect(alloc).toContain('async sumRefundedByPayment(paymentTransactionId: number, conn');
+  });
+});
