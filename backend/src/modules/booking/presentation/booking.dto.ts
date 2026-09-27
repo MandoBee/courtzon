@@ -173,6 +173,21 @@ export const RecurringSeriesQuerySchema = z.object({
 
 export type RecurringSeriesQueryInput = z.infer<typeof RecurringSeriesQuerySchema>;
 
+/**
+ * R5-B — card payment initiation for ONE recurring series.
+ *
+ * DELIBERATELY has no `amount`, `playerUserId`, `referenceId`, `currency` or
+ * `paymentMethod` field. The client may only supply an optional return URL; the
+ * total, payment owner, series reference, currency and gateway amount are all
+ * resolved server-side from persisted rows. `.strict()` makes an attempt to send
+ * a client-controlled amount fail loudly rather than being silently ignored.
+ */
+export const RecurringPaymentSchema = z.object({
+  returnUrl: z.string().url().max(2048).optional(),
+}).strict();
+
+export type RecurringPaymentInput = z.infer<typeof RecurringPaymentSchema>;
+
 export const RecurringPlayerSearchSchema = z.object({
   search: z.string().min(1).max(80).optional().default(''),
   limit: z.string().transform(Number).optional().default(20),

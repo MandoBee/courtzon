@@ -15,6 +15,15 @@ export interface BookingEconomics {
   orgAmount: number;
   paymentMethod: string;
   currency: string;
+  /**
+   * R5-B — the recurring series this occurrence belongs to, or null for a
+   * standalone booking. Additive (read from the same `bookings` row, no extra
+   * query) so the accounting listener can tell an individually-paid booking
+   * from a series occurrence settled by ONE series-level payment. Series
+   * occurrences are deliberately NOT recognized per-occurrence: doing so
+   * would double-count the single series payment N times.
+   */
+  seriesId: number | null;
 }
 
 /**
@@ -28,7 +37,7 @@ export interface BookingEconomics {
 export async function resolveBookingEconomics(bookingId: number): Promise<BookingEconomics | null> {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT id, organisation_id, total_amount, tax_amount, commission_amount,
+    `SELECT id, organisation_id, series_id, total_amount, tax_amount, commission_amount,
             club_amount, coach_amount, payment_method
      FROM bookings WHERE id = ? LIMIT 1`,
     [bookingId],
@@ -62,6 +71,9 @@ export async function resolveBookingEconomics(bookingId: number): Promise<Bookin
     orgAmount,
     paymentMethod: b.payment_method || 'card',
     currency: 'EGP',
+    // R5-B — additive; `series_id` is NULL for every standalone booking, so
+    // existing callers are unaffected.
+    seriesId: b.series_id != null ? Number(b.series_id) : null,
   };
 }
 

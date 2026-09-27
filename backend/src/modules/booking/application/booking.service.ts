@@ -65,6 +65,19 @@ async function executeBookingCommand(commandType: string, handler: any, payload:
 
 const log = createModuleLogger('booking');
 
+/**
+ * R5-B — lazy accessor for `recurring-payment.service`. `recurring-payment`
+ * pulls the DB pool (and therefore env) at module load; loading it through a
+ * dynamic import here keeps unit specs that mock the DB layer (and import this
+ * module) free of an env `process.exit`. Mirrors the existing lazy-import
+ * convention used for `booking.service` inside `recurring-payment.service`.
+ */
+let seriesPaymentModule: typeof import('./recurring-payment.service.js') | undefined;
+async function loadSeriesPaymentFor(seriesId: number) {
+  seriesPaymentModule ??= await import('./recurring-payment.service.js');
+  return seriesPaymentModule.loadSeriesPayment(seriesId);
+}
+
 /** R2 — Human-readable occurrence date for conflict messages (DD Mon YYYY). */
 function occurrenceLabel(date: string): string {
   const [y, m, d] = date.split('-').map(Number);
@@ -2197,6 +2210,10 @@ export class BookingService {
       playerUserId: bookings.length ? Number((bookings[0] as any).user_id) : null,
       occurrenceCount: bookings.length,
       seriesTotal,
+      // R5-B — read-only state of the ONE series payment (never creates one).
+      // The frontend renders pending/success/failure from this; the amount shown
+      // is always the authoritative seriesTotal above.
+      payment: await loadSeriesPaymentFor(series.id),
       occurrences: bookings.map((b: any) => ({
         bookingId: Number(b.id),
         date: BookingService.fmtDate(b.booking_date),

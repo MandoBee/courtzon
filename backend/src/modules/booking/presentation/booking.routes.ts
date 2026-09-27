@@ -38,4 +38,12 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/recurring/players', { preHandler: [recurringGuard] }, ctrl.searchRecurringPlayersHandler);
   app.get('/admin/recurring/:id', { preHandler: [recurringGuard] }, ctrl.getRecurringSeriesHandler);
   app.post('/admin/recurring/:id/cancel', { preHandler: [recurringGuard] }, ctrl.cancelRecurringSeriesHandler);
+
+  // ── R5-B — ONE card payment for ONE recurring series ─────────────────────
+  // Guarded by the SAME responsible-user authorities as every other recurring
+  // route, so a platform operator permission alone still cannot charge a
+  // customer without org access (tenant isolation is enforced in the service
+  // via `assertSeriesPaymentAuthority`). The body accepts no amount — the total
+  // is always the server-authoritative series total.
+  app.post('/admin/recurring/:id/pay', { preHandler: [recurringGuard] }, ctrl.collectRecurringSeriesPaymentHandler);
 }

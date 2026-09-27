@@ -1,18 +1,29 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Input } from '../../../components/ui';
 import { useToast } from '../../../components/ui/Toast';
 import { useCan } from '../../../hooks/useCan';
+import { Can } from '../../../permissions/Can';
 import { localToday } from '../../../utils/dateRange';
+import { formatPrice } from '../../../utils/currency';
 
 // ── R3 — Recurring Booking management (responsible users only) ────────────
 // Builds a weekly recurring series ON BEHALF OF ONE PLAYER. The wizard:
 //   definition → preview (full occurrence matrix + conflicts + alternatives)
 //   → admin resolution (alternative court → same-day alternative time → skip)
 //   → summary → confirm (server re-checks availability; TOCTOU-safe).
-// No payment in this group. Backend is authoritative for everything.
+//
+// ── R5-B — ONE card payment for the WHOLE series ──────────────────────────
+// After the series exists, the same screen collects a single card payment
+// against the backend's AUTHORITATIVE series total. The browser sends only the
+// series id (plus a return URL): it never sends an amount, a player, a
+// currency or a reference, and it never computes the price. On return from the
+// gateway the backend read is authoritative — the URL is not.
+//
+// The PLAYER owns the payment (`payment_transactions.user_id`); the operator is
+// only recorded on `booking_series.created_by` and the audit log.
 
 type PlayerOption = { userId: number; fullName: string; email: string; phone: string };
 type Resolution = { action: 'book' | 'skip'; courtId?: number; startTime?: string; endTime?: string };
@@ -31,6 +42,10 @@ export default function RecurringBookingsPage() {
   const authorized = can('org.bookings.manage') || can('admin.bookings.update-status');
 
   const createdId = searchParams.get('created');
+  // R5-B — the gateway appends nothing, we set `payment=return` in returnUrl so
+  // the browser coming back from checkout is distinguishable from a plain reload.
+  // It is a UI HINT only: the payment state is always read from the backend.
+  const paidReturn = searchParams.get('payment') === 'return';
   const [step, setStep] = useState<'definition' | 'preview' | 'summary'>('definition');
 
   // Definition
@@ -155,6 +170,13 @@ export default function RecurringBookingsPage() {
     },
   });
 
+  // R5-B — strip the `payment=return` marker from the URL once the authoritative
+  // read has been rendered, so a browser refresh / Back never re-fires the return
+  // toast. `{ replace: true }` keeps the payment return out of the history stack.
+  const handlePaymentReturnHandled = () => {
+    navigate(`/admin/recurring?created=${createdId}`, { replace: true });
+  };
+
   if (!authorized) {
     return (
       <div className="max-w-2xl">
@@ -173,7 +195,8 @@ export default function RecurringBookingsPage() {
 
       {createdId && (
         <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-primary-bg)] border border-[var(--color-border)] text-sm">
-          Series <strong>#{createdId}</strong> created. Recurring payment is not part of this group.
+          Series <strong>#{createdId}</strong> created. Collect the single card payment for the whole series below —
+          the backend confirms every eligible occurrence once the payment succeeds.
         </div>
       )}
 
@@ -348,7 +371,7 @@ export default function RecurringBookingsPage() {
         </section>
       )}
 
-      {authorized && <SeriesDirectory />}
+      {authorized && <SeriesDirectory createdId={createdId ? Number(createdId) : null} paidReturn={paidReturn} onPaymentReturnHandled={handlePaymentReturnHandled} />}
     </div>
   );
 }
@@ -397,10 +420,22 @@ function ResolutionPicker({ occ, value, onChange }: { occ: any; value?: Resoluti
 }
 
 // ── R4 — Recurring series directory: status, occurrences, cancellation ─────
-function SeriesDirectory() {
+// ── R5-B — + the single card-payment step for the whole series ──────────────
+function SeriesDirectory({
+  createdId,
+  paidReturn,
+  onPaymentReturnHandled,
+}: {
+  createdId: number | null;
+  paidReturn: boolean;
+  onPaymentReturnHandled: () => void;
+}) {
   const { showToast } = useToast();
   const qc = useQueryClient();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // R5-B — after creation (and after a gateway return) the operator lands
+  // directly on the series they are being asked to pay for.
+  const [selectedId, setSelectedId] = useState<number | null>(createdId);
+  useEffect(() => { if (createdId) setSelectedId(createdId); }, [createdId]);
   const today = localToday();
 
   const listQuery = useQuery({
@@ -412,6 +447,8 @@ function SeriesDirectory() {
     queryKey: ['admin', 'recurring', selectedId],
     queryFn: () => api.get(`/admin/recurring/${selectedId}`).then((r) => r.data),
     enabled: !!selectedId,
+    // A gateway return must never be judged from a cached read.
+    refetchOnWindowFocus: !!paidReturn,
   });
 
   const cancelMutation = useMutation({
@@ -484,6 +521,14 @@ function SeriesDirectory() {
               )}
             </div>
           </div>
+
+          {detailQuery.data && (
+            <SeriesPaymentPanel
+              series={detailQuery.data}
+              paidReturn={paidReturn && createdId === selectedId}
+              onPaymentReturnHandled={onPaymentReturnHandled}
+            />
+          )}
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="text-left text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
@@ -519,6 +564,217 @@ function SeriesDirectory() {
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+// ── R5-B — the CARD payment step: ONE payment for the WHOLE series ──────────
+// Everything rendered here comes from the backend's authoritative read. The
+// component never computes a price, never sends an amount, and never treats the
+// browser's return from the gateway as proof of payment — the gateway redirect
+// only tells us to re-read.
+type SeriesDetail = {
+  seriesId: number;
+  playerUserId: number | null;
+  occurrenceCount: number;
+  seriesTotal: number;
+  status: string;
+  occurrences: any[];
+  payment: {
+    paymentId: number | null;
+    status: string | null;
+    amount: number;
+    currency: string;
+    paymentMethod: string | null;
+    gatewayProvider: string | null;
+    gatewayReference: string | null;
+    paidAt: string | null;
+  };
+};
+
+/** `payment_transactions.payment_status` values that mean "not yet settled". */
+const SERIES_PAYMENT_IN_FLIGHT = new Set(['created', 'pending', 'processing']);
+const SERIES_PAYMENT_TERMINAL_FAILURE = new Set(['failed', 'cancelled', 'expired', 'refunded']);
+
+function SeriesPaymentPanel({
+  series,
+  paidReturn,
+  onPaymentReturnHandled,
+}: {
+  series: SeriesDetail;
+  paidReturn: boolean;
+  onPaymentReturnHandled: () => void;
+}) {
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const payment = series.payment;
+  const currency = payment?.currency || 'EGP';
+  const status = payment?.status ?? null;
+  const isInFlight = !!status && SERIES_PAYMENT_IN_FLIGHT.has(status);
+  const isFailed = !!status && SERIES_PAYMENT_TERMINAL_FAILURE.has(status);
+  const isPaid = status === 'paid';
+  // A cancelled / completed series can never take money again.
+  const seriesAcceptsPayment = series.status === 'active' || series.status === 'paused';
+
+  // ── Gateway return ───────────────────────────────────────────────────────
+  // Runs once per return. The outcome is read from the BACKEND, never from the
+  // URL, so a bookmarked or hand-edited return link cannot fake a success.
+  const returnHandled = useRef(false);
+  useEffect(() => {
+    if (!paidReturn || returnHandled.current) return;
+    returnHandled.current = true;
+    // Re-read the authoritative state before judging it.
+    qc.invalidateQueries({ queryKey: ['admin', 'recurring', series.seriesId] });
+    if (isPaid) {
+      showToast(`Payment received — series #${series.seriesId} occurrences confirmed.`, 'success');
+    } else if (isInFlight) {
+      showToast('Returned from the gateway. The payment is still processing — this screen will update automatically.', 'info');
+    } else {
+      showToast('Returned from the gateway. The payment did not complete — see the payment status below.', 'warning');
+    }
+    // Drop the marker so a refresh does not replay the toast.
+    onPaymentReturnHandled();
+  }, [paidReturn, isPaid, isInFlight, series.seriesId, qc, showToast, onPaymentReturnHandled]);
+
+  const collectMutation = useMutation({
+    mutationFn: () =>
+      api
+        .post(`/admin/recurring/${series.seriesId}/pay`, {
+          // ONLY the return URL. No amount, no player, no reference — the
+          // backend resolves all of it from persisted state and rejects the
+          // request outright if this screen ever tries to send more.
+          returnUrl: `${window.location.origin}/admin/recurring?created=${series.seriesId}&payment=return`,
+        })
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', series.seriesId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', 'list'] });
+      if (data?.paymentUrl) {
+        // Canonical hosted-checkout redirect — the same flow the marketplace
+        // cart and the single-booking payment use. No new payment screen.
+        window.location.href = data.paymentUrl;
+        return;
+      }
+      if (data?.alreadyCharged) {
+        // Idempotent replay: the row already exists, so NO second gateway
+        // transaction was created and there is no new URL to send anyone to.
+        showToast(
+          isPaid
+            ? 'This series is already paid — no second payment was created.'
+            : 'A payment already exists for this series and is still in flight — no second payment was created.',
+          isPaid ? 'info' : 'warning',
+        );
+        return;
+      }
+      showToast('Payment session created. Waiting for the gateway confirmation.', 'success');
+    },
+    onError: (err: any) => {
+      const message = err?.response?.data?.message || 'Could not start the series payment';
+      showToast(message, 'error');
+    },
+  });
+
+  return (
+    <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-[var(--color-text)]">Series payment — one card payment for all occurrences</h4>
+        <Can permission="bookings.recurring.payment-status">
+          <span
+            className={`px-2 py-0.5 rounded-full text-xs ${
+              isPaid
+                ? 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]'
+                : isFailed
+                  ? 'bg-[var(--color-error-bg)] text-[var(--color-error)]'
+                  : isInFlight
+                    ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]'
+                    : 'bg-[var(--color-bg)] text-[var(--color-text-muted)]'
+            }`}
+          >
+            {status ? status.toUpperCase() : 'NOT STARTED'}
+          </span>
+        </Can>
+      </div>
+
+      <dl className="grid gap-2 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-xs text-[var(--color-text-muted)]">Player (pays / owns the payment)</dt>
+          <dd className="font-medium text-[var(--color-text)]">
+            {series.playerUserId ? `#${series.playerUserId}` : '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-text-muted)]">Occurrences covered</dt>
+          <dd className="font-medium text-[var(--color-text)]">{series.occurrenceCount}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-text-muted)]">Series total (authoritative)</dt>
+          <dd className="font-medium text-[var(--color-text)]">
+            <Can permission="bookings.recurring.series-total">
+              {/* R5-A: the exact sum of the persisted per-occurrence totals. The
+                  browser only formats it — it never sums or edits it. */}
+              {formatPrice(series.seriesTotal, currency)}
+            </Can>
+          </dd>
+        </div>
+      </dl>
+
+      <div className="text-xs text-[var(--color-text-muted)]">
+        Payment method: <strong className="text-[var(--color-text)]">Card</strong> (single gateway transaction for the
+        whole series). You are recorded as the operator; the player is the payment owner.
+      </div>
+
+      {isPaid && (
+        <p className="text-xs text-[var(--color-success-text)]">
+          Payment #{payment?.paymentId} settled{payment?.paidAt ? ` at ${new Date(payment.paidAt).toLocaleString()}` : ''}
+          {payment?.gatewayReference ? ` · gateway ref ${payment.gatewayReference}` : ''}. Every eligible occurrence was
+          confirmed by the backend; already-confirmed, completed, cancelled and past occurrences were left untouched.
+        </p>
+      )}
+      {isInFlight && (
+        <p className="text-xs text-[var(--color-text-muted)]">
+          Payment #{payment?.paymentId} is awaiting gateway confirmation. Eligible occurrences are confirmed automatically
+          the moment it succeeds. A repeat click never creates a second payment.
+        </p>
+      )}
+      {isFailed && (
+        <p className="text-xs text-[var(--color-error)]">
+          Payment #{payment?.paymentId} is {status}. Eligible pending occurrences were cancelled by the backend; completed,
+          past, already-cancelled and already-paid occurrences were preserved. Exactly one payment is allowed per series, so
+          it cannot be re-charged here.
+        </p>
+      )}
+      {!seriesAcceptsPayment && (
+        <p className="text-xs text-[var(--color-text-muted)]">
+          This series is {series.status} and cannot take a payment.
+        </p>
+      )}
+
+      <Can permission="bookings.recurring.collect-payment">
+        {!isPaid && !isFailed && seriesAcceptsPayment && (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => collectMutation.mutate()}
+              disabled={collectMutation.isPending}
+            >
+              {collectMutation.isPending
+                ? 'Starting checkout…'
+                : isInFlight
+                  ? 'Re-check payment status'
+                  : 'Collect card payment'}
+            </Button>
+            {isInFlight && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => qc.invalidateQueries({ queryKey: ['admin', 'recurring', series.seriesId] })}
+              >
+                Refresh status
+              </Button>
+            )}
+          </div>
+        )}
+      </Can>
     </section>
   );
 }

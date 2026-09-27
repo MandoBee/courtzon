@@ -2,7 +2,11 @@ export interface PaymentRequest {
   amount: number;
   currency: string;
   referenceId: number;
-  referenceType: 'booking' | 'order' | 'subscription' | 'wallet_topup' | 'academy' | 'tournament';
+  // R5-B — 'booking_series' is a SINGLE gateway transaction for a whole recurring
+  // series. It deliberately carries no per-occurrence meaning at the gateway: the
+  // gateway sees exactly one amount (the authoritative series total), never one
+  // call per occurrence. `referenceId` is the booking_series.id (see Part 4).
+  referenceType: 'booking' | 'booking_series' | 'order' | 'subscription' | 'wallet_topup' | 'academy' | 'tournament';
   customerEmail?: string;
   customerPhone?: string;
   customerName?: string;

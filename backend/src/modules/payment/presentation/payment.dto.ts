@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 export const ChargeSchema = z.object({
-  referenceType: z.enum(['booking', 'order', 'subscription', 'wallet_topup', 'academy', 'tournament']),
+  // R5-B — 'booking_series' added to the canonical reference-type enum. One
+  // payment row + one gateway transaction for a whole recurring series.
+  // Existing reference types are unchanged.
+  referenceType: z.enum(['booking', 'booking_series', 'order', 'subscription', 'wallet_topup', 'academy', 'tournament']),
   referenceId: z.number().int().positive(),
   amount: z.number().positive(),
   currency: z.string().optional().default('EGP'),

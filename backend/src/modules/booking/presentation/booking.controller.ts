@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { bookingService } from '../application/booking.service.js';
-import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringPreviewSchema, RecurringCreateSchema, RecurringSeriesQuerySchema, RecurringPlayerSearchSchema } from './booking.dto.js';
+import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringPreviewSchema, RecurringCreateSchema, RecurringSeriesQuerySchema, RecurringPlayerSearchSchema, RecurringPaymentSchema } from './booking.dto.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
 import { recordAudit } from '../../audit-log/index.js';
 
@@ -217,6 +217,54 @@ export async function cancelRecurringSeriesHandler(request: FastifyRequest, repl
       skipped: result.skipped,
       action: 'cancel_series',
       reason,
+    },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.send(result);
+}
+
+/**
+ * R5-B — Collect the ONE card payment for a recurring series.
+ *
+ * The request body carries NO amount, owner, currency or reference: every one of
+ * those is resolved server-side from the persisted series + occurrence totals.
+ * Retries for the same intended payment converge on the same
+ * `payment_transactions` row (deterministic `series-card-<id>` key) and therefore
+ * the same gateway transaction.
+ */
+export async function collectRecurringSeriesPaymentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const userId = (request as any).userId;
+  const body = RecurringPaymentSchema.parse(request.body || {});
+  // Lazy dynamic import: recurring-payment.service pulls the DB pool + env at
+  // module load, which unit specs that mock the DB layer must never trigger.
+  // Mirrors the existing lazy-import convention in booking.service.ts.
+  const { initiateSeriesCardPayment } = await import('../application/recurring-payment.service.js');
+  const result = await initiateSeriesCardPayment(Number(id), userId, body.returnUrl);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.PAY',
+    entityType: 'booking_series',
+    entityId: result.seriesId,
+    afterState: {
+      operatorId: userId,           // ACTUAL OPERATOR (admin) — recorded, never charged
+      playerId: result.playerUserId, // PAYMENT OWNER = the player
+      paymentId: result.paymentId,
+      referenceType: result.referenceType,
+      referenceId: result.referenceId,
+      paymentMethod: result.paymentMethod,
+      currency: result.currency,
+      // Authoritative server-computed series total (sum of the per-occurrence
+      // canonical prices). Never a client-supplied value.
+      seriesTotal: result.seriesTotal,
+      occurrenceCount: result.occurrenceCount,
+      status: result.status,
+      alreadyCharged: result.alreadyCharged,
+      idempotencyKey: result.idempotencyKey,
+      action: 'collect_series_card_payment',
     },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],

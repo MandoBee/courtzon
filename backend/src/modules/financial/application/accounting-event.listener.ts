@@ -799,6 +799,26 @@ async function postBookingPaymentAccountingInner(bookingId: number, paymentMetho
     log.error({ bookingId }, 'Booking economics not found — skipping booking accounting');
     return;
   }
+
+  // R5-B — Recurring-series occurrence. The player's money arrived as ONE
+  // series-level payment (reference_type = booking_series, already skipped by
+  // the payment:succeeded guard above), not as N per-occurrence payments.
+  // Posting booking_card_payment per occurrence would therefore recognise the
+  // SAME series payment N times — one series payment must yield ZERO booking
+  // payment postings in R5-B. Series accounting is R5-C's job.
+  //
+  // This single guard covers every entry point into per-booking payment
+  // accounting: payment:succeeded (reference_type = booking), booking:paid, and
+  // the durable published_events replay. Standalone bookings have
+  // series_id = NULL and are completely unaffected.
+  if (econ.seriesId) {
+    log.info(
+      { bookingId, seriesId: econ.seriesId },
+      'Recurring series occurrence — no per-booking payment posting in R5-B (single series payment; series accounting is R5-C)',
+    );
+    return;
+  }
+
   const isCOD = paymentMethod === 'cod' || paymentMethod === 'cash';
   const eventType = paymentMethod === 'wallet' ? 'booking_wallet_payment'
     : isCOD ? 'booking_cod_payment'
@@ -1399,6 +1419,18 @@ export function registerAccountingEventListeners(): void {
       // a full-gross card_payment entry as CourtZon revenue — tournament fees
       // belong to the organising entity under a model a later group defines.
       if (referenceType === 'tournament') return;
+
+      // R5-B — Recurring series payments are ONE gateway transaction covering N
+      // occurrences. Booking-oriented accounting cannot represent that: the
+      // generic fallthrough below would post the FULL-GROSS series total as
+      // CourtZon platform revenue (organisation_id resolves to NULL for a
+      // series, and the org share is a payable, not revenue). Mirrors the
+      // tournament guard above. Series accounting (custody, revenue split,
+      // payment-clearing recognition) is owned by R5-C — R5-B is deliberately
+      // financially neutral for series. Without this guard a single series
+      // payment would also be recognised once here AND once per occurrence via
+      // booking:paid, i.e. N+1 recognitions of the same money.
+      if (referenceType === 'booking_series') return;
 
       if (referenceType === 'wallet_topup') {
         const orgId = null; // platform event

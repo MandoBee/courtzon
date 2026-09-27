@@ -228,6 +228,12 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'bookings.manage-applicants', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Manage Booking Applicants', componentPath: 'components/booking/ManageApplicantsPopup.tsx' },
   { permissionKey: 'bookings.check-in', moduleSlug: 'bookings', elementType: 'action', elementLabel: 'Check In Booking', componentPath: 'pages/admin/ReceptionDashboard.tsx' },
   { permissionKey: 'bookings.matchmaking', moduleSlug: 'bookings', elementType: 'action', elementLabel: 'Matchmaking Booking Actions', componentPath: 'modules/booking/presentation/booking.routes.ts' },
+  // R5-B — recurring series card payment. The action is a distinct business
+  // action (initiate ONE card payment for a whole recurring series) so it gets
+  // its own key rather than riding on the page/series permissions.
+  { permissionKey: 'bookings.recurring.collect-payment', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Collect Card Payment For Recurring Series', componentPath: 'pages/admin/recurring/RecurringBookingsPage.tsx' },
+  { permissionKey: 'bookings.recurring.payment-status', moduleSlug: 'bookings', elementType: 'field', elementLabel: 'Recurring Series Payment Status', componentPath: 'pages/admin/recurring/RecurringBookingsPage.tsx' },
+  { permissionKey: 'bookings.recurring.series-total', moduleSlug: 'bookings', elementType: 'field', elementLabel: 'Recurring Series Total Amount', componentPath: 'pages/admin/recurring/RecurringBookingsPage.tsx' },
 
   // ==========================================================================
   // MARKETPLACE MODULE
