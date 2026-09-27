@@ -111,7 +111,12 @@ export type ConfirmBookingInput = z.infer<typeof ConfirmBookingSchema>;
 // date range (inclusive), and branch-local start/end times. The branch timezone
 // is resolved server-side from branches.timezone — never client-supplied.
 
-export const RecurringSeriesSchema = z.object({
+// ── R2/R3 — Canonical recurring booking core ─────────────────────────────
+// Weekly recurrence: one or more weekdays (1=Mon .. 7=Sun), a branch-local
+// date range (inclusive), and branch-local start/end times. The branch timezone
+// is resolved server-side from branches.timezone — never client-supplied.
+
+const recurringBase = z.object({
   branchId: z.number().int().positive(),
   resourceId: z.number().int().positive(),
   weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
@@ -119,16 +124,47 @@ export const RecurringSeriesSchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm format'),
-  idempotencyKey: z.string().min(8).max(64).optional(),
-}).refine((d) => d.endDate >= d.startDate, {
-  message: 'endDate must be on or after startDate',
-  path: ['endDate'],
-}).refine((d) => d.endTime !== d.startTime, {
-  message: 'startTime and endTime must differ',
-  path: ['endTime'],
 });
 
+function withRecurringRefinements<T extends z.ZodTypeAny>(schema: T): T {
+  return schema
+    .refine((d: any) => d.endDate >= d.startDate, { message: 'endDate must be on or after startDate', path: ['endDate'] })
+    .refine((d: any) => d.endTime !== d.startTime, { message: 'startTime and endTime must differ', path: ['endTime'] }) as T;
+}
+
+export const RecurringSeriesSchema = withRecurringRefinements(
+  recurringBase.extend({ idempotencyKey: z.string().min(8).max(64).optional() }),
+);
 export type RecurringSeriesInput = z.infer<typeof RecurringSeriesSchema>;
+
+/** Side-effect-free preview definition (no idempotency key). */
+export const RecurringPreviewSchema = withRecurringRefinements(recurringBase);
+export type RecurringPreviewInput = z.infer<typeof RecurringPreviewSchema>;
+
+// ── R3 — conflict resolution plan ─────────────────────────────────────────
+// The admin's per-occurrence decision. An occurrence with no resolution keeps
+// its requested court/time. `skip` cancels one occurrence (no booking row is
+// created for it). `book` with courtId/time moves to the chosen alternative
+// (courts first; same-day alternative times only when no court is available).
+
+export const RecurringResolutionSchema = z.object({
+  occurrenceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
+  action: z.enum(['book', 'skip']),
+  courtId: z.number().int().positive().optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+});
+
+export const RecurringCreateSchema = withRecurringRefinements(
+  recurringBase.extend({
+    playerUserId: z.number().int().positive(),
+    idempotencyKey: z.string().min(8).max(64).optional(),
+    resolutions: z.array(RecurringResolutionSchema).max(370).optional().default([]),
+  }),
+);
+
+export type RecurringCreateInput = z.infer<typeof RecurringCreateSchema>;
+export type RecurrenceResolution = z.infer<typeof RecurringResolutionSchema>;
 
 export const RecurringSeriesQuerySchema = z.object({
   organisationId: z.string().transform(Number).optional(),
@@ -136,3 +172,8 @@ export const RecurringSeriesQuerySchema = z.object({
 });
 
 export type RecurringSeriesQueryInput = z.infer<typeof RecurringSeriesQuerySchema>;
+
+export const RecurringPlayerSearchSchema = z.object({
+  search: z.string().min(1).max(80).optional().default(''),
+  limit: z.string().transform(Number).optional().default(20),
+});

@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { bookingService } from '../application/booking.service.js';
-import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringSeriesSchema, RecurringSeriesQuerySchema } from './booking.dto.js';
+import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringPreviewSchema, RecurringCreateSchema, RecurringSeriesQuerySchema, RecurringPlayerSearchSchema } from './booking.dto.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
 import { recordAudit } from '../../audit-log/index.js';
 
@@ -140,13 +140,13 @@ export async function getResourceSlotsHandler(request: FastifyRequest, reply: Fa
 }
 
 export async function previewRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {
-  const body = RecurringSeriesSchema.parse(request.body);
+  const body = RecurringPreviewSchema.parse(request.body);
   const preview = await bookingService.previewRecurringSeries(body);
   return reply.send(preview);
 }
 
 export async function createRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {
-  const body = RecurringSeriesSchema.parse(request.body);
+  const body = RecurringCreateSchema.parse(request.body);
   const userId = (request as any).userId;
   const result = await bookingService.createRecurringSeries(body, userId);
 
@@ -156,6 +156,8 @@ export async function createRecurringSeriesHandler(request: FastifyRequest, repl
     entityType: 'booking_series',
     entityId: result.seriesId,
     afterState: {
+      operatorId: userId,          // ACTUAL OPERATOR (admin)
+      playerId: body.playerUserId, // BOOKING OWNER / BENEFICIARY
       weekdays: body.weekdays,
       startDate: body.startDate,
       endDate: body.endDate,
@@ -163,6 +165,7 @@ export async function createRecurringSeriesHandler(request: FastifyRequest, repl
       endTime: body.endTime,
       branchId: body.branchId,
       resourceId: body.resourceId,
+      resolutions: body.resolutions || [],
       occurrenceCount: result.occurrenceCount,
     },
     ipAddress: request.ip,
@@ -170,6 +173,12 @@ export async function createRecurringSeriesHandler(request: FastifyRequest, repl
   });
 
   return reply.status(201).send(result);
+}
+
+export async function searchRecurringPlayersHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = RecurringPlayerSearchSchema.parse(request.query || {});
+  const result = await bookingService.searchRecurringPlayers(query.search, query.limit);
+  return reply.send(result);
 }
 
 export async function listRecurringSeriesHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -17,7 +17,7 @@ import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repo
 import { bookingSeriesRepository, weekdayNumbersToSet, weekdaySetToNumbers } from '../infrastructure/repositories/booking-series.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { generateUUID } from '../../../shared/utils/token.js';
-import type { CreateBookingInput, PrepareBookingInput, RecurringSeriesInput } from '../presentation/booking.dto.js';
+import type { CreateBookingInput, PrepareBookingInput, RecurringSeriesInput, RecurringCreateInput, RecurrenceResolution } from '../presentation/booking.dto.js';
 import type mysql from 'mysql2/promise';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
@@ -70,6 +70,22 @@ function occurrenceLabel(date: string): string {
   const [y, m, d] = date.split('-').map(Number);
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d} ${months[m - 1] || m} ${y}`;
+}
+
+/** R3 — Bounded duration in minutes between two HH:mm local times (overnight-safe). */
+function minutesBetween(startTime: string, endTime: string): number {
+  const [sh, sm] = startTime.split(':').map(Number);
+  const [eh, em] = endTime.split(':').map(Number);
+  let s = sh * 60 + sm;
+  let e = eh * 60 + em;
+  if (e <= s) e += 1440;
+  return e - s;
+}
+
+/** R3 — Format an HH:mm from total minutes (mod 24h). */
+function timeFromMinutes(total: number): string {
+  const m = ((total % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
 // ── Split a time range into individual slots of the given duration ──
@@ -1505,6 +1521,27 @@ export class BookingService {
     return String(v).slice(0, 5);
   }
 
+  /** R3 — branch-local calendar date N days ahead (Date.UTC-safe arithmetic). */
+  static addCalendarDays(date: string, days: number): string {
+    const [y, m, d] = date.split('-').map(Number);
+    const target = new Date(Date.UTC(y, m - 1, d + days));
+    return [
+      String(target.getUTCFullYear()).padStart(4, '0'),
+      String(target.getUTCMonth() + 1).padStart(2, '0'),
+      String(target.getUTCDate()).padStart(2, '0'),
+    ].join('-');
+  }
+
+  /**
+   * R3 — Day-8 rule: recurring series may contain only dates >= branch-local
+   * today + 7 calendar days. Players book today..today+6 (R1); recurring
+   * reservations start on Day 8.
+   */
+  static async day8SeriesMinDate(branchTz: string): Promise<string> {
+    const todayLocal = TimeEngine.utcToLocalDate(TimeEngine.now(), branchTz);
+    return BookingService.addCalendarDays(todayLocal, 7);
+  }
+
   /**
    * R2 — Side-effect-free preview: generated deterministic occurrence list for
    * a weekly recurrence definition. No bookings, no reservations, no locks,
@@ -1520,6 +1557,9 @@ export class BookingService {
 
     const resource = await resourceRepository.findById(input.resourceId);
     if (!resource) throw new NotFoundError('Resource');
+    if (Number(resource.branch_id) !== Number(input.branchId)) {
+      throw new ForbiddenError('Resource does not belong to the selected branch');
+    }
 
     const occurrences = TimeEngine.generateWeeklyOccurrences({
       startDate: input.startDate,
@@ -1534,40 +1574,79 @@ export class BookingService {
       throw new ConflictError(`Recurring series exceeds the maximum of ${BookingService.MAX_SERIES_OCCURRENCES} occurrences`);
     }
 
+    // R3 — Day-8 rule + authoritative conflict matrix.
+    const minSeriesDate = await BookingService.day8SeriesMinDate(branchTz);
+    const violating = occurrences.filter((o) => o.date < minSeriesDate).map((o) => o.date);
+
+    const matrix: any[] = [];
+    for (const occ of occurrences) {
+      const available = await bookingRepository.checkSlotAvailability(
+        input.resourceId, occ.date,
+        [{ start: occ.startTime, end: occ.endTime, date: occ.date }],
+      );
+      if (available) {
+        matrix.push({ ...this.occurrenceBase(occ), status: 'available', conflictReason: null, alternativeCourts: [], alternativeTimes: [], hasAlternative: false });
+        continue;
+      }
+      // Conflict → alternatives (courts first; times only when no court works).
+      const altCourts = (await this.findAlternativeCourts(input.branchId, resource, occ.date, occ.startTime, occ.endTime))
+        .map((c) => ({ courtId: c.id, name: c.name, sportName: c.sport_name || null }));
+      const altTimes = altCourts.length ? [] : await this.findAlternativeTimes(resource, occ.date, occ.startTime, occ.endTime);
+      matrix.push({
+        ...this.occurrenceBase(occ),
+        status: 'conflict',
+        conflictReason: 'An existing booking overlaps this requested court and time.',
+        alternativeCourts: altCourts,
+        alternativeTimes: altTimes,
+        hasAlternative: altCourts.length > 0 || altTimes.length > 0,
+      });
+    }
+
     return {
       timezone: branchTz,
       count: occurrences.length,
-      occurrences: occurrences.map((o) => ({
-        date: o.date,
-        weekday: o.weekday,
-        startTime: o.startTime,
-        endTime: o.endTime,
-        startAtUtc: o.startAtUtc,
-        endAtUtc: o.endAtUtc,
-        occurrenceKey: o.occurrenceKey,
-      })),
+      allowedStartDate: minSeriesDate,
+      containsBeforeDay8: violating.length > 0,
+      violatingDates: violating,
+      occurrences: matrix,
       first: occurrences[0] ? { date: occurrences[0].date, startTime: occurrences[0].startTime, endTime: occurrences[0].endTime } : null,
       last: occurrences[occurrences.length - 1] ? { date: occurrences[occurrences.length - 1].date, startTime: occurrences[occurrences.length - 1].startTime, endTime: occurrences[occurrences.length - 1].endTime } : null,
     };
   }
 
+  private occurrenceBase(occ: any) {
+    return {
+      date: occ.date,
+      weekday: occ.weekday,
+      startTime: occ.startTime,
+      endTime: occ.endTime,
+      occurrenceKey: occ.date,
+      startAtUtc: occ.startAtUtc,
+      endAtUtc: occ.endAtUtc,
+    };
+  }
+
   /**
-   * R2 — Create a recurring series and its canonical occurrence bookings in ONE
-   * transaction.
+   * R3 — Create a recurring series for ONE PLAYER (owned by the player) on
+   * behalf of the responsible admin (operator), applying the admin's confirmed
+   * resolution plan with a final authoritative TOCTOU re-check.
    *
-   * Authorization (server-side only): the caller must already hold the player
-   * booking-window bypass authority (super_admin/super-admin role OR
-   * admin.bookings.update-status OR org.bookings.manage). Players cannot create
-   * recurring reservations. No new permission is introduced.
+   * Ownership model (audit result): `bookings.user_id` is the ONLY canonical
+   * owner/beneficiary field → it is set to the PLAYER. `booking_series.created_by`
+   * is the OPERATOR (admin). The Audit Log records operator + player + series
+   * + the resolution plan. No new ownership field is created.
    *
-   * Idempotency: an optional client `idempotencyKey` makes a full retry return
-   * the already-created series; the DB unique key uk_booking_series_occurrence
-   * (series_id, booking_date, start_time) plus an in-loop pre-check guarantee a
-   * retry can never insert a duplicate occurrence booking.
+   * Day-8 rule: every occurrence must be >= branch-local today + 7 calendar
+   * days; the series is rejected (never truncated/moved) otherwise.
+   *
+   * TOCTOU: between preview and confirm another booking may appear. The final
+   * confirm re-evaluates authoritative availability for EVERY planned
+   * occurrence (both before and inside the transaction). If an occurrence now
+   * conflicts, the whole series is rejected and the affected occurrence(s) are
+   * surfaced so the admin can re-resolve — nothing is silently created.
    */
-  async createRecurringSeries(input: RecurringSeriesInput & { idempotencyKey?: string }, userId: number) {
-    // 1. Authorization — existing R1 bypass authorities define the "responsible
-    //    user" set. Never trust the request body/frontend role.
+  async createRecurringSeries(input: RecurringSeriesInput & { playerUserId: number; idempotencyKey?: string; resolutions?: RecurrenceResolution[] }, userId: number) {
+    // 1. Authorization — existing responsible-user authorities only.
     if (!(await this.canBypassPlayerBookingWindow(userId))) {
       throw new ForbiddenError('Only authorised responsible users can create recurring reservations');
     }
@@ -1604,13 +1683,25 @@ export class BookingService {
       throw new ConflictError(`Recurring series exceeds the maximum of ${BookingService.MAX_SERIES_OCCURRENCES} occurrences`);
     }
 
-    // 5. Canonical pricing + economic snapshot (same inputs as createBookingV2).
-    const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, input.endTime);
-    const economics = await this.computeBookingEconomics(organisationId, input.branchId, pricing.totalPrice);
-    const bookingTotal = Math.round(pricing.totalPrice * 100) / 100;
+    // 5. Day-8 rule — hard rejection, never truncate/move.
+    const minSeriesDate = await BookingService.day8SeriesMinDate(branchTz);
+    const day8Violations = occurrences.filter((o) => o.date < minSeriesDate).map((o) => o.date);
+    if (day8Violations.length) {
+      throw new ConflictError(
+        `Recurring bookings can only start from Day 8 onward (branch-local ${minSeriesDate} or later). ` +
+        `The earliest allowed date is ${minSeriesDate}; violating occurrence(s): ${day8Violations.join(', ')}`,
+      );
+    }
 
-    // 6. Whole-series idempotency: a retry with the same key returns the
-    //    existing series without touching the database again.
+    // 6. Player (beneficiary) must exist. Operator = userId; beneficiary = player.
+    const [pRows] = await pool.execute<RowData>(
+      'SELECT id FROM users WHERE id = ? AND deleted_at IS NULL', [input.playerUserId],
+    );
+    if (pRows.length === 0) throw new NotFoundError('Player');
+
+    // 6b. Whole-series idempotency (BEFORE any availability re-check so a
+    //     retry of an already-created series returns it instead of seeing its
+    //     own occurrence bookings as conflicts).
     if (input.idempotencyKey) {
       const existing = await bookingSeriesRepository.findByIdempotencyKey(input.idempotencyKey);
       if (existing) {
@@ -1618,10 +1709,35 @@ export class BookingService {
       }
     }
 
-    // 7. Transactional creation — one commit for the series + ALL occurrences.
+    // 7. Admin resolution plan → the FINAL explicit plan.
+    const resMap = new Map<string, RecurrenceResolution>((input.resolutions || []).map((r) => [r.occurrenceDate, r]));
+    const planned = await this.buildPlannedOccurrences(occurrences, resMap, input, resource, organisationId, input.branchId, branchTz, userId);
+    if (planned.length === 0) {
+      throw new ConflictError('No occurrences selected for the recurring series — series not created');
+    }
+
+    // 8. Canonical pricing + economic snapshot (same inputs as createBookingV2).
+    const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, input.endTime);
+    const economics = await this.computeBookingEconomics(organisationId, input.branchId, pricing.totalPrice);
+    const bookingTotal = Math.round(pricing.totalPrice * 100) / 100;
+
+    // 9. TOCTOU re-check (pre-transaction): surface any now-conflicting
+    //    occurrence for re-resolution instead of silently creating.
+    const toctouConflicts: string[] = [];
+    for (const p of planned) {
+      const ok = await bookingRepository.checkSlotAvailability(
+        p.courtId, p.date, [{ start: p.startTime, end: p.endTime, date: p.date }],
+      );
+      if (!ok) toctouConflicts.push(`${p.date} (court ${p.courtId})`);
+    }
+    if (toctouConflicts.length) {
+      throw new ConflictError(`Availability changed since the preview — please resolve again: ${toctouConflicts.join(', ')}`);
+    }
+
+    // 10. Transactional creation — ONE commit for the series + ALL planned occurrences.
     const publicId = generateUUID();
     const conn = await pool.getConnection();
-    const slotDuration = (resource as any)?.slot_duration || (resource as any)?.default_slot_duration || 60;
+    const resourceById = await this.resourceMapForPlanned(planned, resource, input.branchId);
     try {
       const seriesId = await runProvidedTransaction(conn, async () => {
         const newSeriesId = await bookingSeriesRepository.create({
@@ -1629,7 +1745,7 @@ export class BookingService {
           organisationId,
           branchId: input.branchId,
           resourceId: input.resourceId,
-          createdBy: userId,
+          createdBy: userId, // OPERATOR (auditable)
           weekdays: weekdayNumbersToSet(input.weekdays),
           startDate: input.startDate,
           endDate: input.endDate,
@@ -1640,34 +1756,44 @@ export class BookingService {
           idempotencyKey: input.idempotencyKey || null,
         }, conn);
 
-        for (const occ of occurrences) {
+        for (const occ of planned) {
+          const court = resourceById.get(Number(occ.courtId));
+          if (!court) throw new ConflictError(`Alternative court ${occ.courtId} no longer available for ${occ.date}`);
+
           // Occurrence-level idempotency pre-check (hard guarantee: the unique
           // key uk_booking_series_occurrence below).
           const [dupRows] = await conn.execute<RowData>(
-            'SELECT id FROM bookings WHERE series_id = ? AND booking_date = ? LIMIT 1',
-            [newSeriesId, occ.date],
+            'SELECT id FROM bookings WHERE series_id = ? AND booking_date = ? AND start_time = ? LIMIT 1',
+            [newSeriesId, occ.date, occ.startTime],
           );
           if (dupRows.length) continue;
 
-          // Canonical occupancy check — existing individual bookings are never
-          // overwritten; an overlap rolls back the WHOLE series atomically.
+          // FINAL authoritative availability check inside the transaction
+          // (resource FOR UPDATE serialization) — existing bookings are never
+          // overwritten and a TOCTOU conflict rolls back the WHOLE series.
           const available = await bookingRepository.checkSlotAvailability(
-            input.resourceId, occ.date,
+            occ.courtId, occ.date,
             [{ start: occ.startTime, end: occ.endTime, date: occ.date }],
             conn,
           );
           if (!available) {
-            throw new ConflictError(`Occurrence on ${occurrenceLabel(occ.date)} conflicts with an existing booking on this court`);
+            throw new ConflictError(`Occurrence on ${occurrenceLabel(occ.date)} (court ${occ.courtId}) conflicted during final confirmation — please resolve again`);
           }
 
-          const openingTime = resource?.opening_time || '08:00';
-          const closingTime = resource?.closing_time || '22:00';
-          const businessDate = TimeEngine.getBusinessDate(occ.startAtUtc, openingTime, closingTime, branchTz);
+          const startAtUtc = TimeEngine.localToUtc(occ.date, occ.startTime, branchTz);
+          const endDate = occ.endTime <= occ.startTime
+            ? BookingService.addCalendarDays(occ.date, 1)
+            : occ.date;
+          const endAtUtc = TimeEngine.localToUtc(endDate, occ.endTime, branchTz);
+          const openingTime = court.opening_time || '08:00';
+          const closingTime = court.closing_time || '22:00';
+          const businessDate = TimeEngine.getBusinessDate(startAtUtc, openingTime, closingTime, branchTz);
+
           const bookingId = await bookingRepository.create({
-            userId,
+            userId: input.playerUserId, // OWNER / BENEFICIARY = the player
             branchId: input.branchId,
             organisationId,
-            resourceId: input.resourceId,
+            resourceId: occ.courtId,
             bookingType: 'private_match',
             bookingDate: occ.date,
             startTime: occ.startTime,
@@ -1681,37 +1807,37 @@ export class BookingService {
             taxAmount: economics.taxAmount,
             taxTreatment: economics.taxTreatment,
             priceType: 'net',
-            notes: JSON.stringify({ referenceType: 'booking_series', seriesId: newSeriesId }),
+            notes: JSON.stringify({ referenceType: 'booking_series', seriesId: newSeriesId, operatorId: userId, playerId: input.playerUserId }),
             bookingStatus: 'pending',
             paymentStatus: 'pending',
-            startAtUtc: occ.startAtUtc,
-            endAtUtc: occ.endAtUtc,
+            startAtUtc,
+            endAtUtc,
             businessDate,
             seriesId: newSeriesId,
           }, conn);
 
           // Canonical booking_slots footprint (is_available FALSE).
+          const slotDuration = (court as any)?.slot_duration || (court as any)?.default_slot_duration || 60;
           const segs = splitTimeRange(occ.startTime, occ.endTime, slotDuration);
           for (const seg of segs) {
             await conn.execute(
               `INSERT INTO booking_slots (booking_id, resource_id, booking_date, slot_start, slot_end, is_available)
                VALUES (?, ?, ?, ?, ?, FALSE)`,
-              [bookingId, input.resourceId, occ.date, seg.start, seg.end],
+              [bookingId, occ.courtId, occ.date, seg.start, seg.end],
             );
           }
 
-          // Canonical event — delivered only AFTER commit (Group 6 ALS txn
-          // context provided by runProvidedTransaction).
+          // Canonical event (player is the beneficiary → notify the player).
           await eventBusV2.emit('booking:created', {
             bookingId,
-            userId,
-            courtId: input.resourceId || 0,
-            resourceId: input.resourceId || 0,
+            userId: input.playerUserId,
+            courtId: occ.courtId || 0,
+            resourceId: occ.courtId || 0,
             bookingDate: occ.date,
-            startTime: new Date(occ.startAtUtc),
-            endTime: new Date(occ.endAtUtc),
-            startAtUtc: occ.startAtUtc,
-            endAtUtc: occ.endAtUtc,
+            startTime: new Date(startAtUtc),
+            endTime: new Date(endAtUtc),
+            startAtUtc,
+            endAtUtc,
             bookingType: 'private_match',
             organisationId,
             branchId: input.branchId,
@@ -1721,11 +1847,166 @@ export class BookingService {
         return newSeriesId;
       });
 
-      log.info({ seriesId, occurrences: occurrences.length, userId }, 'recurring.series_created');
+      log.info({ seriesId, occurrences: planned.length, operator: userId, player: input.playerUserId }, 'recurring.series_created');
       return this.describeRecurringSeries(seriesId);
     } finally {
       conn.release();
     }
+  }
+
+  /**
+   * Build the FINAL explicit occurrence plan from the admin's resolutions.
+   * Validated: resolutions must reference generated occurrence dates; alternate
+   * courts must be compatible and belong to the branch; alternate times stay on
+   * the SAME date/court with the SAME duration within branch hours.
+   */
+  private async buildPlannedOccurrences(
+    occurrences: any[],
+    resMap: Map<string, RecurrenceResolution>,
+    input: RecurringSeriesInput,
+    requestedResource: any,
+    organisationId: number,
+    branchId: number,
+    branchTz: string,
+    operatorUserId: number,
+  ) {
+    const planned: Array<{ date: string; weekday: number; courtId: number; startTime: string; endTime: string; requestedCourt: number }> = [];
+    const branchCourts = await resourceRepository.findByBranch(branchId);
+    const branchCourtById = new Map(branchCourts.map((c: any) => [Number(c.id), c]));
+    const duration = minutesBetween(input.startTime, input.endTime);
+    const opening = requestedResource?.opening_time || '08:00';
+    const closing = requestedResource?.closing_time || '22:00';
+
+    for (const occ of occurrences) {
+      const res = resMap.get(occ.date);
+      // No resolution, or "book" with no overrides → keep the requested slot.
+      let courtId = input.resourceId;
+      let startTime = occ.startTime;
+      let endTime = occ.endTime;
+      if (res) {
+        if (res.action === 'skip') continue;
+        if (res.courtId) {
+          const court = branchCourtById.get(Number(res.courtId));
+          if (!court) throw new ValidationError(`Unknown alternative court ${res.courtId} for ${occ.date}`);
+          if (Number(court.branch_id) !== Number(branchId)) throw new ForbiddenError(`Alternative court ${res.courtId} does not belong to the branch`);
+          courtId = Number(res.courtId);
+        }
+        if (res.startTime && res.endTime) {
+          // Same DAY + same COURT + same DURATION only — never another date/weekday.
+          const d = minutesBetween(res.startTime, res.endTime);
+          if (d !== duration) throw new ValidationError(`Alternative time for ${occ.date} must preserve the ${input.startTime}–${input.endTime} duration`);
+          if (res.startTime < opening || res.endTime > closing) throw new ValidationError(`Alternative time for ${occ.date} is outside branch operating hours (${opening}–${closing})`);
+          startTime = res.startTime;
+          endTime = res.endTime;
+        }
+      }
+      planned.push({ date: occ.date, weekday: occ.weekday, courtId, startTime, endTime, requestedCourt: input.resourceId });
+    }
+    return planned;
+  }
+
+  private async resourceMapForPlanned(planned: Array<{ courtId: number }>, defaultResource: any, branchId: number): Promise<Map<number, any>> {
+    const map = new Map<number, any>([[Number(defaultResource.id), defaultResource]]);
+    const ids = [...new Set(planned.map((p) => Number(p.courtId)).filter((id) => id !== Number(defaultResource.id)))];
+    if (ids.length) {
+      const courts = await resourceRepository.findByBranch(branchId);
+      for (const c of courts) map.set(Number(c.id), c);
+    }
+    return map;
+  }
+
+  /**
+   * R3 — Alternative court search for a conflicting occurrence.
+   * Reuses the canonical availability rules (checkSlotAvailability, resource
+   * status, branch, sport compatibility, operating hours). Same date/time only;
+   * never returns another date or weekday. Nothing is chosen automatically.
+   */
+  private async findAlternativeCourts(
+    branchId: number,
+    requested: any,
+    date: string,
+    startTime: string,
+    endTime: string,
+  ) {
+    const courts = await resourceRepository.findByBranch(branchId);
+    const compatible: any[] = [];
+    for (const c of courts) {
+      if (Number(c.id) === Number(requested.id)) continue;
+      if (Number(c.is_active) !== 1) continue;
+      if (c.deleted_at) continue;
+      // Same sport when the requested court has one; otherwise same resource type.
+      if (requested.sport_id) {
+        if (Number(c.sport_id) !== Number(requested.sport_id)) continue;
+      } else if (Number(c.resource_type_id) !== Number(requested.resource_type_id)) {
+        continue;
+      }
+      // Operating hours must accommodate the requested window.
+      const open = (c.opening_time || '08:00').slice(0, 5);
+      const close = (c.closing_time || '22:00').slice(0, 5);
+      // Overnight courts (close < open) cannot host an assumption-free same-day window.
+      if (close < open && close !== '00:00') continue;
+      if (startTime < open || endTime > (close === '00:00' ? '24:00' : close)) continue;
+      const ok = await bookingRepository.checkSlotAvailability(
+        Number(c.id), date,
+        [{ start: startTime, end: endTime, date }],
+      );
+      if (ok) compatible.push(c);
+    }
+    return compatible;
+  }
+
+  /**
+   * R3 — Same-day, same-court alternative times for a conflicting occurrence.
+   * Only offered when no alternative court exists. The requested DURATION is
+   * preserved, times stay within branch operating hours on the same date, and
+   * candidates respect the court's slot-duration grid. No other date/weekday.
+   */
+  private async findAlternativeTimes(
+    resource: any,
+    date: string,
+    startTime: string,
+    endTime: string,
+  ) {
+    const opening = (resource.opening_time || '08:00').slice(0, 5);
+    const closing = (resource.closing_time || '22:00').slice(0, 5);
+    const slot = Number(resource.slot_duration || resource.default_slot_duration || 60);
+    const duration = minutesBetween(startTime, endTime);
+    const requested = `${startTime}-${endTime}`;
+    const openMin = minutesBetween('00:00', opening);
+    const closeMin = closing === '00:00' ? 1440 : minutesBetween('00:00', closing);
+    const results: { startTime: string; endTime: string }[] = [];
+    for (let t = openMin; t + duration <= closeMin; t += slot) {
+      const candStart = timeFromMinutes(t);
+      const candEnd = timeFromMinutes(t + duration);
+      if (`${candStart}-${candEnd}` === requested) continue;
+      const ok = await bookingRepository.checkSlotAvailability(
+        Number(resource.id), date,
+        [{ start: candStart, end: candEnd, date }],
+      );
+      if (ok) results.push({ startTime: candStart, endTime: candEnd });
+    }
+    return results;
+  }
+
+  /**
+   * R3 — Player picker for the responsible-user recurring flow (existing RBAC
+   * authorities only; no new permission). Returns active player accounts
+   * matching name/email/phone.
+   */
+  async searchRecurringPlayers(search: string, limit = 20): Promise<any> {
+    const { listUsers } = rbacRepository;
+    const result = await listUsers(1, Math.min(Math.max(limit, 1), 50), {
+      search: search || undefined,
+      status: 'active',
+    });
+    return {
+      data: (result.data || []).map((u: any) => ({
+        userId: Number(u.id),
+        fullName: u.full_name || '',
+        email: u.email || '',
+        phone: u.full_phone || u.phone_number || '',
+      })),
+    };
   }
 
   /** R2 — Read a series + every generated occurrence booking. */
@@ -1748,6 +2029,9 @@ export class BookingService {
       endTime: series.endTime,
       timezone: series.timezone,
       status: series.status,
+      // Player BENEFICIARY is derived from the occurrence bookings (the only
+      // canonical owner field). Operator stays on booking_series.created_by.
+      playerUserId: bookings.length ? Number((bookings[0] as any).user_id) : null,
       occurrenceCount: bookings.length,
       occurrences: bookings.map((b: any) => ({
         bookingId: Number(b.id),

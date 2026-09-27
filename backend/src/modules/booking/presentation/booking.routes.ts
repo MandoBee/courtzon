@@ -35,5 +35,6 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/recurring/preview', { preHandler: [recurringGuard] }, ctrl.previewRecurringSeriesHandler);
   app.post('/admin/recurring', { preHandler: [recurringGuard] }, ctrl.createRecurringSeriesHandler);
   app.get('/admin/recurring', { preHandler: [recurringGuard] }, ctrl.listRecurringSeriesHandler);
+  app.get('/admin/recurring/players', { preHandler: [recurringGuard] }, ctrl.searchRecurringPlayersHandler);
   app.get('/admin/recurring/:id', { preHandler: [recurringGuard] }, ctrl.getRecurringSeriesHandler);
 }

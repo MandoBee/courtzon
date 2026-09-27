@@ -196,6 +196,7 @@ const OrganisationSecurityPage = lazy(() => import('./pages/admin/security/Organ
 const RoleAuditPage = lazy(() => import('./pages/admin/security/RoleAuditPage'));
 const AdminBranchAccessPage = lazy(() => import('./pages/admin/branch-access/BranchAccessPage'));
 const AdminBookingsPage = lazy(() => import('./pages/admin/bookings/BookingsPage'));
+const RecurringBookingsPage = lazy(() => import('./pages/admin/recurring/RecurringBookingsPage'));
 const AdminBroadcastPage = lazy(() => import('./pages/admin/notifications/AdminBroadcastPage'));
 const AdminAnalyticsPage = lazy(() => import('./pages/admin/notifications/AdminAnalyticsPage'));
 const AdminDeadLettersPage = lazy(() => import('./pages/admin/notifications/AdminDeadLettersPage'));
@@ -814,6 +815,7 @@ function AppContent() {
           <Route path="approvals" element={<AdminApprovalsPage />} />
           <Route path="branch-access" element={<AdminBranchAccessPage />} />
           <Route path="bookings" element={<AdminBookingsPage />} />
+          <Route path="recurring" element={<RecurringBookingsPage />} />
           <Route path="reception" element={<ReceptionDashboard />} />
           <Route path="support/tickets" element={<SupportTicketsPage />} />
           <Route path="queues" element={<QueueManagementPage />} />
