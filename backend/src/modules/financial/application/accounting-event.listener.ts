@@ -5,6 +5,8 @@ import { glProjectionService } from './gl-projection.service.js';
 import { bookingAccounting } from './booking-accounting.service.js';
 import type { RefundEconomics } from './booking-accounting.service.js';
 import { academyPaymentRepository } from '../../academy/infrastructure/repositories/academy-payment.repository.js';
+import { bookingSeriesRepository } from '../../booking/infrastructure/repositories/booking-series.repository.js';
+import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
@@ -793,6 +795,135 @@ async function postBookingPaymentAccounting(bookingId: number, paymentMethod: st
   return runEntityExclusive(key, () => postBookingPaymentAccountingInner(bookingId, paymentMethod, currency));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// R5-C2 — recurring SERIES card payment accounting (ONE recognition).
+//
+// A paid series is ONE `payment_transactions` row (reference_type =
+// 'booking_series', amount = seriesGross, booking_id = NULL) covering N
+// occurrences. The economics are aggregated EXCLUSIVELY from the persisted
+// per-occurrence snapshots (R5-A: total_amount / commission_amount /
+// club_amount / tax_amount) through the canonical round2 rule — never from a
+// client value and never through an aggregate re-calculation.
+//
+// CourtZon book (org NULL): Dr 1100 Payment Clearing = gross ·
+//   Cr 2202 Merchant Payable = Σ org net · Cr 4110 Platform Commission =
+//   Σ commission · Cr 2300 Tax Liability = Σ tax.
+// Organization book (org-scoped): Dr 1161 = Σ org net · Dr commission expense =
+//   Σ commission · Cr court rental revenue = Σ org net + Σ commission
+//   (== seriesSubtotal for exact-economics series).
+//
+// The per-booking occurrence guards (postBookingPaymentAccountingInner's
+// `econ.seriesId` early-return) remain untouched, so the SAME money can NEVER
+// be recognized both here and per occurrence.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SeriesAccountingEconomics {
+  seriesId: number;
+  organisationId: number | null;
+  branchId: number;
+  /** Charged to the gateway (R5-C1): round2(seriesSubtotal + seriesTax). */
+  gross: number;
+  /** Balanced debit amount: round2(orgNet + commission + tax). */
+  grossPayable: number;
+  subtotal: number;
+  tax: number;
+  commission: number;
+  orgNet: number;
+}
+
+async function resolveSeriesAccountingEconomics(seriesId: number): Promise<SeriesAccountingEconomics | null> {
+  const series = await bookingSeriesRepository.findById(seriesId);
+  if (!series) {
+    log.error({ seriesId }, 'Series not found — skipping series accounting');
+    return null;
+  }
+  const occurrences = await bookingRepository.findBySeries(seriesId);
+  if (!occurrences.length) {
+    log.error({ seriesId }, 'Recurring series has no occurrence bookings — skipping series accounting');
+    return null;
+  }
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const sum = (f: (b: any) => number) => r2(occurrences.reduce((s, b) => s + (f(b) || 0), 0));
+  const subtotal = sum((b) => Number(b.total_amount));
+  const tax = sum((b) => Number(b.tax_amount));
+  const commission = sum((b) => Number(b.commission_amount));
+  const orgNet = sum((b) => Number(b.club_amount));
+  const gross = r2(subtotal + tax); // == payment_transactions.amount (R5-C1)
+  // Balance the journal by construction (org + commission + tax), mirroring
+  // booking_card_payment's `grossPayable`. For exact-economics series this
+  // equals the charged gross — log loudly if commission rounding ever drifts a
+  // piastre so it is visible rather than silently mis-linked.
+  const grossPayable = r2(orgNet + commission + tax);
+  if (Math.abs(gross - grossPayable) >= 0.01) {
+    log.warn(
+      { seriesId, gross, grossPayable, subtotal, tax, commission, orgNet },
+      'Series ledger grossPayable (org+commission+tax) differs from charged seriesGross by ≥1pt — rounding drift; journal stays balanced by construction',
+    );
+  }
+  return {
+    seriesId,
+    organisationId: series.organisationId ?? null,
+    branchId: series.branchId,
+    gross,
+    grossPayable,
+    subtotal,
+    tax,
+    commission,
+    orgNet,
+  };
+}
+
+async function postSeriesPaymentAccounting(seriesId: number, currency: string): Promise<void> {
+  const econ = await resolveSeriesAccountingEconomics(seriesId);
+  const key = econ ? `booking-series-org:${econ.organisationId ?? 'global'}` : `booking-series:${seriesId}`;
+  return runEntityExclusive(key, () => postSeriesPaymentAccountingInner(seriesId, currency));
+}
+
+async function postSeriesPaymentAccountingInner(seriesId: number, currency: string): Promise<void> {
+  const econ = await resolveSeriesAccountingEconomics(seriesId);
+  if (!econ) return;
+
+  // ── CourtZon book (org NULL) — Dr 1100 gross / Cr 2202 org net /
+  //    Cr 4110 commission / Cr 2300 tax. One series → exactly one posting
+  //    (hasPosting('booking', seriesId, eventType) dedupes webhook/confirm/
+  //    recover/sync replays).
+  await postAccountingEvent(
+    'booking_series_card_payment', 'booking', seriesId, null,
+    {
+      payment_clearing: econ.grossPayable,
+      merchant_payable: econ.orgNet,
+      platform_commission: econ.commission,
+      tax_liability: econ.tax,
+    },
+    currency,
+    `Recurring series #${seriesId} card payment (custody: card/wallet)`,
+    undefined,
+    { payment_clearing: null, merchant_payable: null, platform_commission: null, tax_liability: null },
+  );
+
+  // ── Organization book (org-scoped) — Dr 1161 org net / Dr commission
+  //    expense / Cr court rental revenue = orgNet + commission. Mirrors
+  //    booking_org_receivable and is independently idempotent.
+  const orgId = econ.organisationId;
+  if (orgId != null) {
+    const courtRentalRevenue = Math.round((econ.orgNet + econ.commission) * 100) / 100;
+    await postAccountingEvent(
+      'booking_series_org_receivable', 'booking', seriesId, orgId,
+      {
+        marketplace_receivable: econ.orgNet,
+        commission_expense: econ.commission,
+        court_rental_revenue: courtRentalRevenue,
+      },
+      currency,
+      `Recurring series #${seriesId} organization book (court rental/commission)`,
+      undefined,
+      { marketplace_receivable: orgId, commission_expense: orgId, court_rental_revenue: orgId },
+    );
+  } else {
+    log.info({ seriesId }, 'Series has no organisationId — organization book skipped (CourtZon book posted)');
+  }
+}
+
 async function postBookingPaymentAccountingInner(bookingId: number, paymentMethod: string, currency: string): Promise<void> {
   const econ = await bookingAccounting.resolveBookingEconomics(bookingId);
   if (!econ) {
@@ -1421,16 +1552,16 @@ export function registerAccountingEventListeners(): void {
       if (referenceType === 'tournament') return;
 
       // R5-B — Recurring series payments are ONE gateway transaction covering N
-      // occurrences. Booking-oriented accounting cannot represent that: the
-      // generic fallthrough below would post the FULL-GROSS series total as
-      // CourtZon platform revenue (organisation_id resolves to NULL for a
-      // series, and the org share is a payable, not revenue). Mirrors the
-      // tournament guard above. Series accounting (custody, revenue split,
-      // payment-clearing recognition) is owned by R5-C — R5-B is deliberately
-      // financially neutral for series. Without this guard a single series
-      // payment would also be recognised once here AND once per occurrence via
-      // booking:paid, i.e. N+1 recognitions of the same money.
-      if (referenceType === 'booking_series') return;
+      // occurrences. R5-C2 — a successful series payment is recognized ONCE at
+      // the SERIES level (booking_series_card_payment / org book), never per
+      // occurrence and never through the generic platform-revenue fallthrough
+      // below (which would post the full series gross as CourtZon revenue).
+      // The per-occurrence `econ.seriesId` guard keeps booking:paid a no-op, so
+      // this branch is the series' ONLY financial recognition.
+      if (referenceType === 'booking_series') {
+        await postSeriesPaymentAccounting(referenceId, currency);
+        return;
+      }
 
       if (referenceType === 'wallet_topup') {
         const orgId = null; // platform event

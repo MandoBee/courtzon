@@ -420,6 +420,22 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['court_rental_revenue', 'courtzon_payable'],
     credit: ['org_cash_bank', 'commission_expense'],
   },
+  // ── RECURRING SERIES (R5-C2) — ONE recognition per paid series ────────────
+  // CourtZon book, org NULL: the single series card payment (the authoritative
+  // series GROSS) is held in custody exactly like a booking_card_payment — the
+  // org's aggregate net is a 2202 Merchant Payable (cleared on settlement),
+  // commission is 4110, tax is 2300. Never posted per occurrence.
+  booking_series_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+  },
+  // Organization book, org-scoped: the org books its aggregate net receivable
+  // (1161) + commission expense against aggregate court rental revenue — mirror
+  // booking_org_receivable (Dr 1161 + comm expense / Cr court rental revenue).
+  booking_series_org_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['court_rental_revenue'],
+  },
   booking_coach_payout: {
     debit: ['coach_expense'],
     credit: ['coach_payable'],

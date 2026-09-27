@@ -65,6 +65,13 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   booking_wallet_refund: { merchant_payable: '2202' },
   booking_cod_payment: { marketplace_receivable: '1161' },
   booking_cod_reversal: { marketplace_receivable: '1161' },
+  // R5-C2 — recurring series CARD payment: ONE recognition for the whole series
+  // gross. No DB mapping rows exist for this event_type, so the FULL concept set
+  // is resolved from code (same pattern as payment_gateway_settlement) to the
+  // SAME accounts a single booking_card_payment uses:
+  //   Dr 1100 Payment Clearing = gross · Cr 2202 Merchant Payable = org net ·
+  //   Cr 4110 Platform Commission = commission · Cr 2300 Tax Liability = tax.
+  booking_series_card_payment: { payment_clearing: '1100', merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300' },
   // Organization (merchant) settlement payout — CourtZon clears the MERCHANT
   // PAYABLE (2202) against Cash/Bank on settlement for ALL settlements. Code
   // default is a safety net so the payout never falls back to the old 2200
@@ -192,6 +199,10 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // OWN Cash/Bank (ORG-CASH) directly rather than a receivable from CourtZon.
   booking_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'court_rental_revenue', 'courtzon_payable'],
   booking_org_cash_receivable_rev: ['court_rental_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
+  // R5-C2 — recurring series org book: aggregate net receivable (1161) +
+  // commission expense against aggregate court rental revenue, provisioned
+  // idempotently exactly like booking_org_receivable (shared org accounts).
+  booking_series_org_receivable: ['marketplace_receivable', 'commission_expense', 'court_rental_revenue'],
   // ── ACADEMY org book (G8.3A) — mirrors the booking org book with the dedicated
   // Academy Tuition Revenue leg (ACAD-REV) so academy earnings are never mixed
   // with marketplace sales. The org's Gross Collections are classified between

@@ -247,10 +247,12 @@ describe('R5-B — accounting safety guards are present in source', () => {
     expect(econ).toMatch(/seriesId:\s*b\.series_id\s*!=\s*null/);
   });
 
-  it('payment:succeeded skips booking_series (no generic platform-revenue fallthrough)', () => {
-    // Mirrors the pre-existing `tournament` guard.
+  it('payment:succeeded routes booking_series into the series accounting path (no generic fallthrough)', () => {
+    // The pre-existing tournament guard is unchanged; the R5-B series guard was
+    // REPLACED by the R5-C2 series accounting recognition.
     expect(accounting).toContain("if (referenceType === 'tournament') return;");
-    expect(accounting).toContain("if (referenceType === 'booking_series') return;");
+    expect(accounting).toContain("if (referenceType === 'booking_series') {");
+    expect(accounting).toContain('await postSeriesPaymentAccounting(referenceId, currency);');
   });
 
   it('per-booking payment posting returns early for a series occurrence', () => {
@@ -449,5 +451,66 @@ describe('R5-C1 — the single payment charges the authoritative series GROSS (s
     expect(page).toContain('series.seriesTax');
     // React must never re-add the breakdown itself into a price shown to the user.
     expect(page).not.toContain('seriesSubtotal + seriesTax');
+  });
+});
+
+describe('R5-C2 — series accounting recognition contract (exactly once per paid series)', () => {
+  const concepts = be('src/modules/financial/application/accounting-concepts.ts');
+  const engine = be('src/modules/financial/application/accounting-engine.service.ts');
+  const accounting = be('src/modules/financial/application/accounting-event.listener.ts');
+
+  it('EVENT_CONCEPTS defines both series events with the booking custody legs', () => {
+    const block = concepts.slice(concepts.indexOf('booking_series_card_payment'), concepts.indexOf('booking_series_card_payment') + 700);
+    expect(block).toContain("debit: ['payment_clearing']");
+    expect(block).toContain("credit: ['merchant_payable', 'platform_commission', 'tax_liability']");
+    const org = concepts.slice(concepts.indexOf('booking_series_org_receivable'), concepts.indexOf('booking_series_org_receivable') + 400);
+    expect(org).toContain("debit: ['marketplace_receivable', 'commission_expense']");
+    expect(org).toContain("credit: ['court_rental_revenue']");
+  });
+
+  it('the CourtZon series event resolves FULLY from code defaults (no DB mapping rows, like payment_gateway_settlement)', () => {
+    expect(engine).toMatch(/booking_series_card_payment:\s*\{ payment_clearing: '1100', merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300' \}/);
+  });
+
+  it('the organization-book series event is in ORG_BOOK_EVENTS (idempotent per-org provisioning)', () => {
+    expect(engine).toContain("booking_series_org_receivable: ['marketplace_receivable', 'commission_expense', 'court_rental_revenue']");
+  });
+
+  it('the series postings use source_type booking + source_id seriesId and distinct event_types — NOT a new ENUM value', () => {
+    expect(accounting).toContain("'booking_series_card_payment', 'booking', seriesId, null,");
+    expect(accounting).toContain("'booking_series_org_receivable', 'booking', seriesId, orgId,");
+    // The ledger_entries.source_type ENUM must NOT be extended.
+    expect(accounting).not.toContain("source_type` ENUM");
+    expect(accounting).not.toMatch(/ALTER TABLE[\s\S]*ledger_entries/);
+  });
+
+  it('idempotency reuses the canonical hasPosting mechanism (no second system)', () => {
+    const post = accounting.slice(accounting.indexOf('async function postSeriesPaymentAccounting'));
+    expect(post).toContain('postAccountingEvent(');
+    // postAccountingEvent → ledgerRepository.hasPosting(sourceType, sourceId, eventType)
+    const repo = be('src/modules/financial/infrastructure/repositories/ledger.repository.ts');
+    expect(repo).toContain('async hasPosting(sourceType: string, sourceId: number, eventType: string)');
+  });
+
+  it('balances by construction and mirrors the booking_card_payment convention (grossPayable = org+commission+tax)', () => {
+    expect(accounting).toContain('const grossPayable = r2(orgNet + commission + tax);');
+    expect(accounting).toContain('const courtRentalRevenue = Math.round((econ.orgNet + econ.commission) * 100) / 100;');
+  });
+
+  it('the per-occurrence seriesId guard is preserved (no double-post of the same money)', () => {
+    expect(accounting).toMatch(/postBookingPaymentAccountingInner[\s\S]*?if \(econ\.seriesId\) \{[\s\S]*?return;/);
+  });
+
+  it('series economics aggregate ONLY persisted snapshots through the canonical round2 rule', () => {
+    expect(accounting).toContain('Number(b.total_amount)');
+    expect(accounting).toContain('Number(b.tax_amount)');
+    expect(accounting).toContain('Number(b.commission_amount)');
+    expect(accounting).toContain('Number(b.club_amount)');
+    expect(accounting).toContain('const r2 = (n: number) => Math.round(n * 100) / 100;');
+  });
+
+  it('failure safety: unresolved economics skip atomically (no partial journal)', () => {
+    expect(accounting).toContain("log.error({ seriesId }, 'Series not found — skipping series accounting');");
+    expect(accounting).toContain("log.error({ seriesId }, 'Recurring series has no occurrence bookings — skipping series accounting');");
   });
 });

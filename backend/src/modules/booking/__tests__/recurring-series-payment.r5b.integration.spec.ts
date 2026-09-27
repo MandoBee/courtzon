@@ -272,6 +272,31 @@ async function paymentRow(seriesId: number) {
   return rows as any[];
 }
 
+/** R5-C2 — number of series-level ledger legs for an event (source_id = seriesId). */
+async function seriesLedgerRowCount(seriesId: number, eventType: string): Promise<number> {
+  const [rows] = await pool.execute<RowData>(
+    `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type = 'booking' AND source_id = ? AND event_type = ?`,
+    [seriesId, eventType],
+  );
+  return Number((rows as any[])[0].c);
+}
+
+/**
+ * R5-C2 — series-level ledger legs with their resolved account codes (join the
+ * COA so assertions speak in account codes, not opaque account ids).
+ */
+async function seriesLedgerRows(seriesId: number, eventType: string): Promise<any[]> {
+  const [rows] = await pool.execute<RowData>(
+    `SELECT le.side, le.amount, le.organisation_id, c.code AS account_code
+     FROM ledger_entries le
+     JOIN chart_of_accounts c ON c.id = le.chart_account_id
+     WHERE le.source_type = 'booking' AND le.source_id = ? AND le.event_type = ?
+     ORDER BY le.id`,
+    [seriesId, eventType],
+  );
+  return rows as any[];
+}
+
 /**
  * Every financial row that could possibly have been caused by THIS series.
  *
@@ -867,15 +892,14 @@ describe('R5-B — accounting safety', () => {
     pay = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
   });
 
-  it('23-25: series payment + per-occurrence booking:paid recognise NOTHING (financially neutral)', async () => {
+  it('23-25: series payment recognized EXACTLY ONCE at series level — never per occurrence', async () => {
     const before = await financialFootprint(series.seriesId);
-    // Hermetic precondition: the footprint must start at exactly zero, otherwise
-    // the zero-below assertion would be meaningless.
+    // Hermetic precondition: no occurrence-scoped financial rows may exist yet.
     expect(before).toEqual({ bookingLedger: 0, bookingEventTypes: [], journal: 0, gl: 0, glEventTypes: [] });
 
-    // Precondition the whole accounting-safety claim rests on: the occurrences
-    // really do carry series_id, and the canonical economics resolver really does
-    // surface it. If either were false the zero below would be meaningless.
+    // Precondition: the occurrences really do carry series_id and the canonical
+    // economics resolver surfaces it — this is what keeps per-booking accounting
+    // a no-op and prevents N× recognition of the same series money.
     const { resolveBookingEconomics } = await import('../../financial/application/booking-accounting.service.js');
     for (const o of await occurrenceRows(series.seriesId)) {
       expect(Number(o.series_id)).toBe(series.seriesId);
@@ -888,34 +912,28 @@ describe('R5-B — accounting safety', () => {
       paymentId: pay.paymentId, referenceType: 'booking_series', referenceId: series.seriesId, amount: TWO_OCC_GROSS,
       metadata: { paymentMethod: 'card', currency: 'EGP' },
     } as any);
-    // Synchronise on the BOOKING side first, then give the accounting subscriber
-    // (which reacts to the booking:paid events the confirmation just emitted) a
-    // deliberate settle. Waiting on the confirmations alone would read the
-    // footprint before the accounting listener had been given a chance to run.
+    // Synchronise on the BOOKING side first, then wait for the R5-C2 series
+    // postings themselves (positive signal) before the negative assertions.
     await waitFor(() => occurrenceRows(series.seriesId), (rows) => allOccurrencesIn(rows, ['confirmed']),
       'both occurrences confirmed');
-    await settleNegativeOnly();
 
-    // The occurrences WERE confirmed and booking:paid WAS emitted — so this is a
-    // real guard, not a listener that simply never ran.
     const occ = await occurrenceRows(series.seriesId);
     expect(occ.every((o) => o.booking_status === 'confirmed')).toBe(true);
     expect(emitSpy.mock.calls.filter((c: any) => c[0] === 'booking:paid')).toHaveLength(2);
 
-    // (23) the series payment never entered the per-booking payment branch and
-    //      never hit the generic card_payment fallthrough.
-    // (24) no duplicate recognition: zero ledger / journal rows.
+    // (24) the series is recognized EXACTLY ONCE via the R5-C2 series posting:
+    //      4 CourtZon legs + 3 organization-book legs targeting source_id=seriesId.
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_card_payment'), (c) => c === 4,
+      'CourtZon booking_series_card_payment posting (4 legs)');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable'), (c) => c === 3,
+      'organization booking_series_org_receivable posting (3 legs)');
+
+    // (23) the series payment NEVER entered per-booking accounting and never hit
+    //      the generic card_payment fallthrough — the occurrence-scoped
+    //      footprint must remain zero (no N× recognition of the same money).
     // (25) booking:paid occurrence events did not double-recognise the series money.
     const after = await financialFootprint(series.seriesId);
-    // The full-footprint comparison comes FIRST so that a failure prints the
-    // exact event types and source bookings that leaked into the ledger — that
-    // diff is the diagnostic that matters for a financial assertion, and a bare
-    // `toBe(0)` on a count throws that information away.
     expect(after).toEqual(before);
-    // (23) the series payment never entered the per-booking payment branch and
-    //      never hit the generic card_payment fallthrough.
-    // (24) no duplicate recognition: zero ledger / journal / GL rows.
-    // (25) booking:paid occurrence events did not double-recognise the series money.
     expect(after.bookingLedger).toBe(0);
     expect(after.journal).toBe(0);
     expect(after.gl).toBe(0);
@@ -1128,5 +1146,184 @@ describe('R5-C1 — authoritative series gross amount', () => {
     expect(after.journal).toBe(0);
     expect(after.gl).toBe(0);
     expect(after.glEventTypes).toEqual([]);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-C2 — series accounting recognition (ONE posting per paid series).
+// On payment:succeeded(reference_type=booking_series) the R5-B "financially
+// neutral" guard is replaced by the single series-level recognition:
+//   CourtZon  : Dr 1100 3152.80 / Cr 2202 2520.00 / Cr 4110 280.00 / Cr 2300 352.80
+//   Organization: Dr 1161 2520.00 / Dr comm expense 280.00 / Cr court rental 2800.00
+// Idempotent via hasPosting(('booking', seriesId, eventType)); per-occurrence
+// booking:paid stays a no-op (seriesId guard) so the SAME money posts exactly once.
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-C2 — series accounting recognition', () => {
+  let series: any;
+  let pay: any;
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    series = await createSeries();
+    pay = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+  });
+
+  async function succeedOnce() {
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId: pay.paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_card_payment'), (c) => c === 4,
+      'CourtZon series posting (4 legs)');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable'), (c) => c === 3,
+      'organization series posting (3 legs)');
+  }
+
+  it('A/L — the fixture economics and charged amount are the R5-C1 numbers (2800 / 352.80 / 3152.80)', async () => {
+    const ctx = await recurringPayment.loadSeriesPaymentContext(series.seriesId);
+    expect(ctx.seriesSubtotal).toBe(2800);
+    expect(ctx.seriesTax).toBe(352.8);
+    expect(ctx.seriesGross).toBe(3152.8);
+    const occ = await occurrenceRows(series.seriesId);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    expect(r2(occ.reduce((s: number, o: any) => s + Number(o.commission_amount), 0))).toBe(280);
+    expect(r2(occ.reduce((s: number, o: any) => s + Number(o.club_amount), 0))).toBe(2520);
+    const [pt] = await paymentRow(series.seriesId);
+    expect(Number(pt.amount)).toBe(3152.8); // R5-C1 amount unchanged
+  });
+
+  it('B — CourtZon journal: Dr 1100 3152.80 / Cr 2202 2520 / Cr 4110 280 / Cr 2300 352.80', async () => {
+    await succeedOnce();
+    const rows = await seriesLedgerRows(series.seriesId, 'booking_series_card_payment');
+    expect(rows).toHaveLength(4);
+    const find = (side: string, code: string) => Number(rows.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(rows.every((r: any) => r.organisation_id === null)).toBe(true); // CourtZon book
+    expect(find('debit', '1100')).toBe(3152.8);
+    expect(find('credit', '2202')).toBe(2520);
+    expect(find('credit', '4110')).toBe(280);
+    expect(find('credit', '2300')).toBe(352.8);
+  });
+
+  it('C — Organization journal: Dr 1161 2520 / Dr comm expense 280 / Cr court rental 2800', async () => {
+    await succeedOnce();
+    const rows = await seriesLedgerRows(series.seriesId, 'booking_series_org_receivable');
+    expect(rows).toHaveLength(3);
+    const by = (side: string, code: string) => rows.find((r: any) => r.side === side && r.account_code === code);
+    expect(rows.every((r: any) => Number(r.organisation_id) === ORG1)).toBe(true);
+    expect(Number(by('debit', '1161')?.amount)).toBe(2520);
+    expect(Number(by('debit', 'MKT-COMM-EXP')?.amount)).toBe(280);
+    expect(Number(by('credit', 'MKT-COURT-REN')?.amount)).toBe(2800);
+  });
+
+  it('D — both journals are internally balanced (Σ debit == Σ credit)', async () => {
+    await succeedOnce();
+    for (const eventType of ['booking_series_card_payment', 'booking_series_org_receivable']) {
+      const rows = await seriesLedgerRows(series.seriesId, eventType);
+      const dr = Number(rows.filter((r) => r.side === 'debit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+      const cr = Number(rows.filter((r) => r.side === 'credit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+      expect(dr, `${eventType} debit`).toBe(cr);
+    }
+  });
+
+  it('E — the same payment:succeeded processed TWICE posts exactly ONE CourtZon + ONE org journal', async () => {
+    await succeedOnce();
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId: pay.paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await settleNegativeOnly();
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_card_payment')).toBe(4);
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable')).toBe(3);
+  });
+
+  it('F — webhook / confirm / recover replay paths all converge to the same single posting', async () => {
+    await succeedOnce();
+    const [rows] = await pool.execute<RowData>('SELECT gateway_reference FROM payment_transactions WHERE id = ?', [pay.paymentId]);
+    const gwRef = (rows as any[])[0].gateway_reference;
+    // confirm re-entrancy + exact-duplicate webhook + a gateway retry envelope.
+    const c1 = await paymentService.confirmPayment(pay.paymentId);
+    const c2 = await paymentService.confirmPayment(pay.paymentId);
+    expect(c1.confirmed).toBe(true);
+    expect(c2.idempotent).toBe(true);
+    await paymentService.handleWebhook({ obj: { id: gwRef, success: true, pending: false } }, 'sig');
+    await paymentService.handleWebhook({ obj: { id: gwRef, order: { id: gwRef }, success: true, pending: false }, other_id: `retry-${Date.now()}` }, 'sig');
+    await settleNegativeOnly();
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_card_payment')).toBe(4);
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable')).toBe(3);
+  });
+
+  it('G — the series payment NEVER posts per occurrence (occurrence-scoped footprint stays zero)', async () => {
+    await succeedOnce();
+    const before = await financialFootprint(series.seriesId);
+    expect(before.bookingLedger).toBe(0);
+    const occIds = (await occurrenceRows(series.seriesId)).map((o: any) => o.id).join(',');
+    const [le] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id IN (${occIds})`, []);
+    expect(Number((le as any[])[0].c)).toBe(0);
+  });
+
+  it('I — zero-tax series: gross == subtotal and no tax leg (zero-value lines omitted)', async () => {
+    await pool.execute(`UPDATE tax_rates SET rate = 0 WHERE organisation_id = ${ORG1}`);
+    try {
+      await resetSeriesState();
+      const s0 = await createSeries();
+      const occ0 = await occurrenceRows(s0.seriesId);
+      expect(occ0.every((o: any) => Number(o.tax_amount) === 0)).toBe(true);
+
+      await recurringPayment.initiateSeriesCardPayment(s0.seriesId, ADMIN);
+      const p0 = (await paymentRow(s0.seriesId))[0];
+      expect(Number(p0.amount)).toBe(2800); // gross == subtotal (zero tax)
+
+      await eventBusV2.emit('payment:succeeded', {
+        paymentId: Number(p0.id), referenceType: 'booking_series', referenceId: s0.seriesId,
+        amount: 2800, metadata: { paymentMethod: 'card', currency: 'EGP' },
+      } as any);
+      await waitFor(() => seriesLedgerRowCount(s0.seriesId, 'booking_series_card_payment'), (c) => c === 3,
+        'zero-tax CourtZon posting has exactly 3 legs (no tax line)');
+      await waitFor(() => seriesLedgerRowCount(s0.seriesId, 'booking_series_org_receivable'), (c) => c === 3,
+        'zero-tax org posting (3 legs)');
+      const court = await seriesLedgerRows(s0.seriesId, 'booking_series_card_payment');
+      expect(court.find((r: any) => r.account_code === '2300')).toBeUndefined(); // no tax leg
+      expect(Number(court.find((r: any) => r.side === 'debit')?.amount)).toBe(2800);
+    } finally {
+      await pool.execute(`UPDATE tax_rates SET rate = 14 WHERE organisation_id = ${ORG1}`);
+    }
+  });
+
+  it('J — multiple occurrences with different prices/taxes aggregate persisted snapshots exactly', async () => {
+    await resetSeriesState();
+    const s = await createSeries({ weekdays: [1, 3, 4], startDate: DAY8, endDate: '2026-09-21' });
+    const p = await recurringPayment.initiateSeriesCardPayment(s.seriesId, ADMIN);
+    const occ = await occurrenceRows(s.seriesId);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const expected = {
+      subtotal: r2(occ.reduce((a: number, o: any) => a + Number(o.total_amount), 0)),
+      tax: r2(occ.reduce((a: number, o: any) => a + Number(o.tax_amount), 0)),
+      commission: r2(occ.reduce((a: number, o: any) => a + Number(o.commission_amount), 0)),
+      orgNet: r2(occ.reduce((a: number, o: any) => a + Number(o.club_amount), 0)),
+    };
+    expect(p.seriesGross).toBe(r2(expected.subtotal + expected.tax));
+
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId: p.paymentId, referenceType: 'booking_series', referenceId: s.seriesId,
+      amount: p.seriesGross, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await waitFor(() => seriesLedgerRowCount(s.seriesId, 'booking_series_card_payment'), (c) => c === 4,
+      'multi-occurrence CourtZon posting (4 legs)');
+    const court = await seriesLedgerRows(s.seriesId, 'booking_series_card_payment');
+    expect(Number(court.find((r: any) => r.side === 'credit' && r.account_code === '2202')?.amount)).toBe(expected.orgNet);
+    expect(Number(court.find((r: any) => r.side === 'credit' && r.account_code === '4110')?.amount)).toBe(expected.commission);
+    expect(Number(court.find((r: any) => r.side === 'credit' && r.account_code === '2300')?.amount)).toBe(expected.tax);
+    expect(Number(court.find((r: any) => r.side === 'debit' && r.account_code === '1100')?.amount)).toBe(r2(expected.orgNet + expected.commission + expected.tax));
+  });
+
+  it('K — no per-occurrence booking:paid re-posts the series money (occurrence footprint zero after full cycle)', async () => {
+    await succeedOnce();
+    const occ = await occurrenceRows(series.seriesId);
+    expect(occ.every((o: any) => o.booking_status === 'confirmed')).toBe(true);
+    const fp = await financialFootprint(series.seriesId);
+    expect(fp.bookingLedger).toBe(0);
+    expect(fp.gl).toBe(0);
+    expect(fp.journal).toBe(0);
   });
 });
