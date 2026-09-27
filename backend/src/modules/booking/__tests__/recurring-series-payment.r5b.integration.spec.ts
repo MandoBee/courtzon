@@ -53,8 +53,16 @@ const DAY8 = '2026-09-14';                      // first allowed date (today+7)
 
 // Canonical RES_MAIN 18:00-20:00 prices (R5-A): Mon 400*2*2.00 = 1600, Thu 400*2*1.50 = 1200
 const PRICE = { mon: 1600, thu: 1200 };
-// A two-occurrence series (Mon 2026-09-14 + Thu 2026-09-17) costs exactly 2800.
+// R5-A authoritative pre-tax series subtotal (Mon + Thu court totals).
 const TWO_OCC_TOTAL = PRICE.mon + PRICE.thu;
+// R5-C1 — canonical tax = 14% × org net (plan commission 10%): 
+//   Mon: net 1440, tax 201.60 · Thu: net 1080, tax 151.20
+const TAX_RATE = 0.14;
+const TAX = { mon: 201.6, thu: 151.2 };
+// Canonical 2dp aggregation rule — never compare raw float sums.
+const TWO_OCC_TAX = Math.round((TAX.mon + TAX.thu) * 100) / 100; // 352.80
+// R5-C1 — authoritative gross = subtotal + tax (THE amount the gateway charges).
+const TWO_OCC_GROSS = Math.round((TWO_OCC_TOTAL + TWO_OCC_TAX) * 100) / 100; // 3152.80
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -392,7 +400,11 @@ describe('R5-B — one card payment row per recurring series', () => {
   it('1-8: payment row shape, ownership, amount, currency and deterministic idempotency key', async () => {
     const described = await bookingService.describeRecurringSeries(series.seriesId);
     expect(described.occurrenceCount).toBe(2);
-    // Authoritative total = exact sum of the two canonical occurrence prices.
+    // Authoritative series economics (R5-C1): subtotal + tax = gross.
+    expect(described.seriesSubtotal).toBe(TWO_OCC_TOTAL);
+    expect(described.seriesTax).toBe(TWO_OCC_TAX);
+    expect(described.seriesGross).toBe(TWO_OCC_GROSS);
+    // Backward compatibility: seriesTotal is the pre-tax SUBTOTAL, never the charge.
     expect(described.seriesTotal).toBe(TWO_OCC_TOTAL);
 
     const result = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
@@ -411,9 +423,10 @@ describe('R5-B — one card payment row per recurring series', () => {
     // (5) user_id == the PLAYER, never the operator
     expect(Number(pay.user_id)).toBe(PLAYER);
     expect(Number(pay.user_id)).not.toBe(ADMIN);
-    // (6) amount == authoritative seriesTotal (2dp, no float drift)
-    expect(Number(pay.amount)).toBe(TWO_OCC_TOTAL);
-    expect(Number(pay.amount)).toBe(2800);
+    // (6) amount == authoritative series GROSS (subtotal + tax, 2dp) — the
+    //     exact money the gateway is asked to collect (R5-C1 correction).
+    expect(Number(pay.amount)).toBe(TWO_OCC_GROSS);
+    expect(Number(pay.amount)).toBe(3152.8);
     // (7) canonical currency + method
     expect(pay.currency).toBe('EGP');
     expect(pay.payment_method).toBe('card');
@@ -422,20 +435,24 @@ describe('R5-B — one card payment row per recurring series', () => {
     expect(recurringPayment.seriesPaymentIdempotencyKey(series.seriesId)).toBe(pay.idempotency_key);
     expect(pay.idempotency_key.length).toBeLessThanOrEqual(64);
     expect(result.idempotencyKey).toBe(pay.idempotency_key);
-    expect(result.seriesTotal).toBe(TWO_OCC_TOTAL);
+    expect(result.seriesTotal).toBe(TWO_OCC_TOTAL);          // subtotal (backward compat)
+    expect(result.seriesSubtotal).toBe(TWO_OCC_TOTAL);
+    expect(result.seriesTax).toBe(TWO_OCC_TAX);
+    expect(result.seriesGross).toBe(TWO_OCC_GROSS);
     expect(result.playerUserId).toBe(PLAYER);
     expect(result.alreadyCharged).toBe(false);
     // booking_id NULL even though the repository maps booking references to it.
     expect(pay.order_id).toBeNull();
   });
 
-  it('9-11: exactly ONE gateway transaction for the series total, never one per occurrence', async () => {
+  it('9-11: exactly ONE gateway transaction for the series GROSS, never one per occurrence', async () => {
     await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
 
     expect(chargeSpy).toHaveBeenCalledTimes(1);
     const req: any = chargeSpy.mock.calls[0][0];
-    // (10) gateway amount == authoritative seriesTotal
-    expect(req.amount).toBe(TWO_OCC_TOTAL);
+    // (10) gateway amount == authoritative series GROSS (incl. tax)
+    expect(req.amount).toBe(TWO_OCC_GROSS);
+    expect(req.amount).toBe(3152.8);
     expect(req.currency).toBe('EGP');
     // (11) the gateway reference is the SERIES, not any occurrence booking
     expect(req.referenceType).toBe('booking_series');
@@ -496,7 +513,10 @@ describe('R5-B — one card payment row per recurring series', () => {
     expect(Number(a.actor_id)).toBe(ADMIN);
     const state = typeof a.after_state === 'string' ? JSON.parse(a.after_state) : a.after_state;
     expect(Number(state.playerId)).toBe(PLAYER);
-    expect(state.seriesTotal).toBe(TWO_OCC_TOTAL);
+    expect(state.seriesTotal).toBe(TWO_OCC_TOTAL);       // subtotal (backward compat)
+    expect(state.seriesSubtotal).toBe(TWO_OCC_TOTAL);
+    expect(state.seriesTax).toBe(TWO_OCC_TAX);
+    expect(state.seriesGross).toBe(TWO_OCC_GROSS);
     expect(state.referenceType).toBe('booking_series');
     expect(Number(state.paymentId)).toBe(sent[0].paymentId);
   });
@@ -576,7 +596,7 @@ describe('R5-B — series payment success confirms eligible occurrences', () => 
   });
 
   function seriesPaidEvent() {
-    return { paymentId: pay.paymentId, referenceType: 'booking_series', referenceId: series.seriesId, amount: TWO_OCC_TOTAL, metadata: { paymentMethod: 'card', currency: 'EGP' } };
+    return { paymentId: pay.paymentId, referenceType: 'booking_series', referenceId: series.seriesId, amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' } };
   }
 
   it('12-14: payment:succeeded confirms EVERY eligible occurrence through ConfirmBooking and emits canonical events', async () => {
@@ -865,7 +885,7 @@ describe('R5-B — accounting safety', () => {
 
     const emitSpy = vi.spyOn(eventBusV2, 'emit');
     await eventBusV2.emit('payment:succeeded', {
-      paymentId: pay.paymentId, referenceType: 'booking_series', referenceId: series.seriesId, amount: TWO_OCC_TOTAL,
+      paymentId: pay.paymentId, referenceType: 'booking_series', referenceId: series.seriesId, amount: TWO_OCC_GROSS,
       metadata: { paymentMethod: 'card', currency: 'EGP' },
     } as any);
     // Synchronise on the BOOKING side first, then give the accounting subscriber
@@ -954,5 +974,159 @@ describe('R5-B — refund safety', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].booking_id).toBeNull();
     expect(Number(rows[0].id)).toBe(pay.paymentId);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-C1 — authoritative series gross amount (subtotal + tax).
+// The single card payment must charge `seriesGross`, never the pre-tax subtotal.
+// Contract values (fixture): Mon 1600 / tax 201.60 → 1801.60 ·
+// Thu 1200 / tax 151.20 → 1351.20 · series 2800 / 352.80 → 3152.80.
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-C1 — authoritative series gross amount', () => {
+  let series: any;
+  let chargeSpy: any;
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    series = await createSeries();
+    chargeSpy = vi.spyOn(paymentGateway, 'charge');
+  });
+
+  afterEach(() => { chargeSpy.mockRestore(); });
+
+  it('describe exposes seriesSubtotal / seriesTax / seriesGross (subtotal+tax)', async () => {
+    const described = await bookingService.describeRecurringSeries(series.seriesId);
+    expect(described.seriesSubtotal).toBe(TWO_OCC_TOTAL);   // 2800
+    expect(described.seriesTax).toBe(TWO_OCC_TAX);          // 352.80
+    expect(described.seriesGross).toBe(TWO_OCC_GROSS);      // 3152.80
+  });
+
+  it('the payment row stores the GROSS amount (payment_transactions.amount = seriesGross)', async () => {
+    const result = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    expect(result.seriesGross).toBe(3152.8);
+    const rows = await paymentRow(series.seriesId);
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].amount)).toBe(TWO_OCC_GROSS);
+    expect(Number(rows[0].amount)).toBe(3152.8);
+  });
+
+  it('the gateway is charged exactly seriesGross (one transaction, never per occurrence)', async () => {
+    await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    expect(chargeSpy).toHaveBeenCalledTimes(1);
+    const req: any = chargeSpy.mock.calls[0][0];
+    expect(req.amount).toBe(TWO_OCC_GROSS);
+    expect(req.referenceType).toBe('booking_series');
+  });
+
+  it('client cannot override subtotal/tax/gross/amount — the schema is strict and carries no money', async () => {
+    const { RecurringPaymentSchema } = await import('../presentation/booking.dto.js');
+    for (const f of ['amount', 'subtotal', 'seriesTotal', 'seriesSubtotal', 'seriesTax', 'seriesGross', 'taxAmount', 'currency']) {
+      expect(() => RecurringPaymentSchema.parse({ [f]: 1 }), `${f} must be rejected`).toThrow();
+      expect(() => RecurringPaymentSchema.parse({ [f]: 'EGP' }), `${f} must be rejected`).toThrow();
+    }
+  });
+
+  it('two weekdays with DIFFERENT prices produce different per-occurrence tax amounts', async () => {
+    const occ = await occurrenceRows(series.seriesId);
+    expect(occ).toHaveLength(2);
+    const vals = occ.map((o: any) => ({ total: Number(o.total_amount), tax: Number(o.tax_amount) }));
+    // Monday 1600 / 201.60 · Thursday 1200 / 151.20
+    expect(vals.map(v => v.total).sort((a, b) => a - b)).toEqual([1200, 1600]);
+    expect(vals.map(v => v.tax).sort((a, b) => a - b)).toEqual([151.2, 201.6]);
+  });
+
+  it('exact 2dp aggregation: seriesGross === round2(subtotal+tax) === Σ per-occurrence gross', async () => {
+    const desc = await bookingService.describeRecurringSeries(series.seriesId);
+    const occ = await occurrenceRows(series.seriesId);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const subtotal = r2(occ.reduce((s: number, o: any) => s + Number(o.total_amount), 0));
+    const tax = r2(occ.reduce((s: number, o: any) => s + Number(o.tax_amount), 0));
+    const grossSum = r2(occ.reduce((s: number, o: any) => s + r2(Number(o.total_amount) + Number(o.tax_amount)), 0));
+    expect(desc.seriesSubtotal).toBe(subtotal);
+    expect(desc.seriesTax).toBe(tax);
+    expect(desc.seriesGross).toBe(r2(subtotal + tax));
+    // parity with paying each occurrence individually
+    expect(desc.seriesGross).toBe(grossSum);
+    expect(desc.seriesGross).toBe(3152.8);
+  });
+
+  it('zero-tax series: gross === subtotal (no tax leg, no aggregate re-calc)', async () => {
+    await pool.execute(`UPDATE tax_rates SET rate = 0 WHERE organisation_id = ${ORG1}`);
+    try {
+      await resetSeriesState();
+      const s0 = await createSeries();
+      const occ0 = await occurrenceRows(s0.seriesId);
+      expect(occ0.every((o: any) => Number(o.tax_amount) === 0)).toBe(true);
+
+      const desc0 = await bookingService.describeRecurringSeries(s0.seriesId);
+      expect(desc0.seriesTax).toBe(0);
+      expect(desc0.seriesGross).toBe(desc0.seriesSubtotal);
+
+      const pay0 = await recurringPayment.initiateSeriesCardPayment(s0.seriesId, ADMIN);
+      expect(pay0.seriesTax).toBe(0);
+      expect(pay0.seriesGross).toBe(pay0.seriesSubtotal);
+      const rows0 = await paymentRow(s0.seriesId);
+      expect(Number(rows0[0].amount)).toBe(pay0.seriesSubtotal);
+    } finally {
+      await pool.execute(`UPDATE tax_rates SET rate = 14 WHERE organisation_id = ${ORG1}`);
+    }
+  });
+
+  it('multi-occurrence series (Mon/Wed/Thu) aggregates every persisted occurrence snapshot', async () => {
+    await resetSeriesState();
+    const s = await createSeries({ weekdays: [1, 3, 4], startDate: DAY8, endDate: '2026-09-21' });
+    const occ = await occurrenceRows(s.seriesId);
+    // Mon 14, Wed 16, Thu 17 + the second Monday 21 (the weekly repeat is
+    // inclusive of endDate) → 4 occurrences across two different pricing days.
+    expect(occ).toHaveLength(4);
+
+    const desc = await bookingService.describeRecurringSeries(s.seriesId);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const subtotal = r2(occ.reduce((a: number, o: any) => a + Number(o.total_amount), 0));
+    const tax = r2(occ.reduce((a: number, o: any) => a + Number(o.tax_amount), 0));
+    const grossSum = r2(occ.reduce((a: number, o: any) => a + r2(Number(o.total_amount) + Number(o.tax_amount)), 0));
+    expect(desc.seriesSubtotal).toBe(subtotal);
+    expect(desc.seriesTax).toBe(tax);
+    expect(desc.seriesGross).toBe(r2(subtotal + tax));
+    expect(desc.seriesGross).toBe(grossSum);
+
+    const pay = await recurringPayment.initiateSeriesCardPayment(s.seriesId, ADMIN);
+    expect(pay.seriesGross).toBe(desc.seriesGross);
+  });
+
+  it('no payment duplication: repeated initiate converges on the same GROSS payment row', async () => {
+    const first = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    const second = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    expect(second.paymentId).toBe(first.paymentId);
+    expect(second.alreadyCharged).toBe(true);
+    expect(second.seriesGross).toBe(TWO_OCC_GROSS);
+    expect(await paymentRow(series.seriesId)).toHaveLength(1);
+    expect(chargeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('timezone/pricing semantics are unchanged — aggregates reconcile with persisted occurrence economics', async () => {
+    // The default series is priced per occurrence on its OWN Africa/Cairo local
+    // date; R5-C1 only aggregates the persisted snapshots (no re-pricing).
+    const desc = await bookingService.describeRecurringSeries(series.seriesId);
+    const occ = await occurrenceRows(series.seriesId);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const expectedSubtotal = r2(occ.reduce((a: number, o: any) => a + Number(o.total_amount), 0));
+    const expectedTax = r2(occ.reduce((a: number, o: any) => a + Number(o.tax_amount), 0));
+    expect(desc.seriesSubtotal).toBe(expectedSubtotal);
+    expect(desc.seriesTax).toBe(expectedTax);
+    expect(desc.seriesGross).toBe(r2(expectedSubtotal + expectedTax));
+  });
+
+  it('NO accounting side effects: financial footprint stays zero after payment initiation', async () => {
+    const before = await financialFootprint(series.seriesId);
+    await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    // Initiating a payment emits NO payment-success event → nothing is recognized.
+    const after = await financialFootprint(series.seriesId);
+    expect(after).toEqual(before);
+    expect(after.bookingLedger).toBe(0);
+    expect(after.journal).toBe(0);
+    expect(after.gl).toBe(0);
+    expect(after.glEventTypes).toEqual([]);
   });
 });

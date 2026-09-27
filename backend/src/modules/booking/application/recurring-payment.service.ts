@@ -11,7 +11,8 @@
  *   reference_type = 'booking_series'
  *   reference_id   = booking_series.id
  *   booking_id     = NULL
- *   amount         = AUTHORITATIVE series total (sum of persisted occurrence totals)
+ *   amount         = AUTHORITATIVE series GROSS (subtotal + tax —
+ *                    Σ persisted occurrence total_amount + tax_amount)
  *   idempotency_key= deterministic, series-scoped
  *          ↓
  *   ONE gateway transaction     (never one per occurrence)
@@ -135,17 +136,33 @@ export interface SeriesPaymentContext {
   /** The PLAYER (booking owner / beneficiary). Never the operator. */
   playerUserId: number;
   occurrenceCount: number;
-  /** AUTHORITATIVE — exact sum of persisted per-occurrence canonical totals. */
+  /**
+   * AUTHORITATIVE pre-tax series subtotal = Σ persisted `bookings.total_amount`.
+   * Kept for backward compatibility (R5-A/R5-B consumers); semantically the
+   * PRE-TAX subtotal — never the amount charged.
+   */
   seriesTotal: number;
+  /** R5-C1 — authoritative pre-tax subtotal = seriesTotal (aliased for clarity). */
+  seriesSubtotal: number;
+  /**
+   * R5-C1 — authoritative series tax = Σ of the ALREADY-rounded persisted
+   * occurrence `tax_amount` snapshots. Deliberately NOT recomputed from the
+   * aggregate net (preserves the exact economics of paying each occurrence).
+   */
+  seriesTax: number;
+  /** R5-C1 — authoritative gross = round2(seriesSubtotal + seriesTax). THE amount charged. */
+  seriesGross: number;
   currency: string;
   occurrences: any[];
 }
 
 /**
  * Load the persisted series + its occurrences and compute the authoritative
- * total. The total is derived ONLY from `bookings.total_amount` snapshots
- * written by R5-A, aggregated through the canonical `PricingEngine.sumOccurrenceTotals`
- * (one 2dp round, no float accumulation) — never from a client value.
+ * totals. Everything derives ONLY from persisted `bookings.total_amount` and
+ * `bookings.tax_amount` snapshots written by R5-A, aggregated through the
+ * canonical `PricingEngine.sumOccurrenceTotals` (one 2dp round, no float
+ * accumulation) — never from a client value, and never recomputed from an
+ * aggregate (no recurring tax engine).
  */
 export async function loadSeriesPaymentContext(seriesId: number): Promise<SeriesPaymentContext> {
   const series = await bookingSeriesRepository.findById(seriesId);
@@ -166,11 +183,24 @@ export async function loadSeriesPaymentContext(seriesId: number): Promise<Series
     throw new ConflictError('Recurring series occurrences have inconsistent players — cannot charge a single payment');
   }
 
-  const seriesTotal = PricingEngine.sumOccurrenceTotals(
+  // R5-C1 — authoritative series economics from the persisted snapshots.
+  //   subtotal_i = bookings.total_amount (pre-tax court price)
+  //   tax_i      = bookings.tax_amount    (already 2dp, per occurrence)
+  //   gross_i    = round2(subtotal_i + tax_i)
+  // Series (the money the player actually pays):
+  //   seriesSubtotal = Σ subtotal_i
+  //   seriesTax      = Σ tax_i                 — SUM of the persisted values,
+  //                                              never round(aggregateNet × rate)
+  //   seriesGross    = round2(subtotal + tax)  — THE amount charged.
+  const seriesSubtotal = PricingEngine.sumOccurrenceTotals(
     occurrences.map((o: any) => Number(o.total_amount || 0)),
   );
-  if (!(seriesTotal > 0)) {
-    throw new ConflictError('Recurring series total is zero — nothing to charge');
+  const seriesTax = PricingEngine.sumOccurrenceTotals(
+    occurrences.map((o: any) => Number(o.tax_amount || 0)),
+  );
+  const seriesGross = Math.round((seriesSubtotal + seriesTax) * 100) / 100;
+  if (!(seriesGross > 0)) {
+    throw new ConflictError('Recurring series gross amount is zero — nothing to charge');
   }
 
   return {
@@ -180,7 +210,11 @@ export async function loadSeriesPaymentContext(seriesId: number): Promise<Series
     seriesStatus: series.status,
     playerUserId,
     occurrenceCount: occurrences.length,
-    seriesTotal,
+    // Backward-compat view of the subtotal — never the amount charged.
+    seriesTotal: seriesSubtotal,
+    seriesSubtotal,
+    seriesTax,
+    seriesGross,
     currency: SERIES_PAYMENT_CURRENCY,
     occurrences,
   };
@@ -224,8 +258,17 @@ export interface InitiateSeriesPaymentResult {
   playerUserId: number;
   operatorId: number;
   occurrenceCount: number;
-  /** AUTHORITATIVE server-computed amount. The client cannot influence it. */
+  /**
+   * AUTHORITATIVE pre-tax series subtotal. Retained for backward compatibility
+   * with R5-B consumers — it is the subtotal, never the amount charged.
+   */
   seriesTotal: number;
+  /** R5-C1 — authoritative pre-tax subtotal (alias of seriesTotal). */
+  seriesSubtotal: number;
+  /** R5-C1 — authoritative tax (Σ persisted occurrence tax_amount). */
+  seriesTax: number;
+  /** R5-C1 — authoritative gross. THE amount submitted to the gateway. */
+  seriesGross: number;
   currency: string;
   paymentMethod: typeof SERIES_PAYMENT_METHOD;
   referenceType: typeof SERIES_PAYMENT_REFERENCE_TYPE;
@@ -273,7 +316,10 @@ export async function initiateSeriesCardPayment(
     playerUserId: ctx.playerUserId,
     operatorId,
     occurrenceCount: ctx.occurrenceCount,
-    seriesTotal: ctx.seriesTotal,
+    seriesTotal: ctx.seriesTotal,       // == seriesSubtotal (pre-tax)
+    seriesSubtotal: ctx.seriesSubtotal,
+    seriesTax: ctx.seriesTax,
+    seriesGross: ctx.seriesGross,
     currency: ctx.currency,
     paymentMethod: SERIES_PAYMENT_METHOD,
     referenceType: SERIES_PAYMENT_REFERENCE_TYPE,
@@ -317,14 +363,17 @@ export async function initiateSeriesCardPayment(
   );
   const user: any = (userRows as any[])[0] || {};
 
-  // ── ONE gateway transaction for the whole series total ──
+  // ── ONE gateway transaction for the whole series GROSS amount ──
+  // R5-C1 — the customer pays `seriesGross` (subtotal + tax), exactly what they
+  // would have paid if each occurrence had been charged individually. The
+  // gateway NEVER sees per-occurrence subtotals or a client-supplied amount.
   const { paymentService } = await import('../../payment/application/payment.service.js');
   const result = await paymentService.charge(ctx.playerUserId, {
     referenceType: SERIES_PAYMENT_REFERENCE_TYPE,
     referenceId: ctx.seriesId,
-    amount: ctx.seriesTotal,               // authoritative
-    currency: ctx.currency,                // canonical
-    paymentMethod: SERIES_PAYMENT_METHOD,  // card
+    amount: ctx.seriesGross,              // authoritative GROSS (incl. tax)
+    currency: ctx.currency,               // canonical
+    paymentMethod: SERIES_PAYMENT_METHOD, // card
     returnUrl,
     customerName: user?.full_name,
     customerPhone: user?.full_phone,
@@ -341,8 +390,8 @@ export async function initiateSeriesCardPayment(
   }
 
   log.info(
-    { seriesId, paymentId: result.paymentId, playerId: ctx.playerUserId, operatorId, amount: ctx.seriesTotal, occurrences: ctx.occurrenceCount },
-    'Series card payment initiated — ONE payment row, ONE gateway transaction',
+    { seriesId, paymentId: result.paymentId, playerId: ctx.playerUserId, operatorId, amount: ctx.seriesGross, subtotal: ctx.seriesSubtotal, tax: ctx.seriesTax, occurrences: ctx.occurrenceCount },
+    'Series card payment initiated — ONE payment row, ONE gateway transaction (gross incl. tax)',
   );
 
   return buildResult(

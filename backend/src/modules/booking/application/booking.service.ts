@@ -2184,12 +2184,21 @@ export class BookingService {
     const series = await bookingSeriesRepository.findById(seriesId);
     if (!series) throw new NotFoundError('Recurring series');
     const bookings = await bookingRepository.findBySeries(series.id);
-    // R5-A — authoritative series total: the exact sum of the PERSISTED
+    // R5-A — authoritative series SUBTOTAL: the exact sum of the PERSISTED
     // per-occurrence canonical totals (never a client-supplied value). The
-    // single payment in R5-B must consume this server-side number.
-    const seriesTotal = PricingEngine.sumOccurrenceTotals(
+    // single payment actually charges the series GROSS (see below).
+    const seriesSubtotal = PricingEngine.sumOccurrenceTotals(
       bookings.map((b: any) => Number(b.total_amount || 0)),
     );
+    // R5-C1 — series tax = Σ of the ALREADY-rounded persisted occurrence
+    // `tax_amount` snapshots. Deliberately NOT recomputed from an aggregate net
+    // (preserves the exact economics of paying each occurrence individually).
+    // `seriesGross = subtotal + tax` is the authoritative amount on the single
+    // card payment — the same total the customer would pay per occurrence.
+    const seriesTax = PricingEngine.sumOccurrenceTotals(
+      bookings.map((b: any) => Number(b.tax_amount || 0)),
+    );
+    const seriesGross = Math.round((seriesSubtotal + seriesTax) * 100) / 100;
     return {
       seriesId: series.id,
       publicId: series.publicId,
@@ -2209,10 +2218,17 @@ export class BookingService {
       // canonical owner field). Operator stays on booking_series.created_by.
       playerUserId: bookings.length ? Number((bookings[0] as any).user_id) : null,
       occurrenceCount: bookings.length,
-      seriesTotal,
+      // Pre-tax subtotal — retained for backward compatibility with R5-A/R5-B
+      // consumers. It is the SUBTOTAL; the amount actually charged is
+      // `seriesGross` (subtotal + tax).
+      seriesTotal: seriesSubtotal,
+      // R5-C1 — authoritative series economics (read-only, never client data).
+      seriesSubtotal,
+      seriesTax,
+      seriesGross,
       // R5-B — read-only state of the ONE series payment (never creates one).
-      // The frontend renders pending/success/failure from this; the amount shown
-      // is always the authoritative seriesTotal above.
+      // The frontend renders pending/success/failure from this; `payment.amount`
+      // is the AUTHORITATIVE charged gross (subtotal + tax — see seriesGross).
       payment: await loadSeriesPaymentFor(series.id),
       occurrences: bookings.map((b: any) => ({
         bookingId: Number(b.id),

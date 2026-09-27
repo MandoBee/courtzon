@@ -62,7 +62,11 @@ function seriesDetail(overrides: Record<string, any> = {}) {
     seriesId: 7,
     playerUserId: 4242,
     occurrenceCount: 2,
-    seriesTotal: 2800,
+    // R5-C1 — authoritative series economics (subtotal/tax/gross from backend).
+    seriesTotal: 2800,     // == seriesSubtotal: pre-tax, retained for backward compat
+    seriesSubtotal: 2800,
+    seriesTax: 352.8,
+    seriesGross: 3152.8,
     status: 'active',
     timezone: 'Africa/Cairo',
     startDate: '2026-09-14',
@@ -123,7 +127,7 @@ afterEach(() => {
 });
 
 describe('R5-B — 36: the CARD payment step shows the authoritative facts and sends no money', () => {
-  it('renders player, occurrence count, authoritative total, Card and the collect action', async () => {
+  it('renders player, occurrence count, authoritative Subtotal/Tax/Total, Card and the collect action', async () => {
     wireApi(seriesDetail());
     renderPage();
 
@@ -131,7 +135,13 @@ describe('R5-B — 36: the CARD payment step shows the authoritative facts and s
     expect(screen.getByText('#4242')).toBeTruthy();                 // the player, not the operator
     // `selector: 'dd'` keeps this off the weekday/status columns of the tables.
     expect(screen.getByText('2', { selector: 'dd' })).toBeTruthy();  // occurrence count
-    expect(screen.getByText(/2,800/)).toBeTruthy();                  // the backend's seriesTotal
+    // R5-C1 — all three monetary lines come from the backend verbatim.
+    expect(screen.getByText(/Subtotal \(authoritative\)/)).toBeTruthy();
+    expect(screen.getByText(/Tax \(authoritative\)/)).toBeTruthy();
+    expect(screen.getByText(/Total to pay \(authoritative\)/)).toBeTruthy();
+    expect(screen.getByText(/2,800/)).toBeTruthy();                  // subtotal (LE 2,800.00)
+    expect(screen.getByText(/352.80/)).toBeTruthy();                 // tax
+    expect(screen.getByText(/3,152.80/)).toBeTruthy();               // total to pay == the charged gross
     expect(screen.getByText('Card', { selector: 'strong' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Collect card payment/i })).toBeTruthy();
   });
@@ -155,14 +165,17 @@ describe('R5-B — 36: the CARD payment step shows the authoritative facts and s
     }
   });
 
-  it('never lets the browser compute the total — it renders the backend value verbatim', async () => {
-    // Occurrence amounts deliberately do NOT add up to seriesTotal; the panel must
-    // still show the backend figure rather than summing anything itself.
-    const detail = seriesDetail({ seriesTotal: 9999 });
+  it('never lets the browser compute totals — subtotal/tax/total render the backend values verbatim', async () => {
+    // The backend gross is deliberately INCONSISTENT with subtotal+tax; the panel
+    // must still show each backend figure verbatim rather than summing anything.
+    const detail = seriesDetail({ seriesTotal: 9999, seriesSubtotal: 9999, seriesTax: 1, seriesGross: 4444 });
     wireApi(detail);
     renderPage();
-    await waitFor(() => expect(screen.getByText(/9,999/)).toBeTruthy());
-    expect(screen.queryByText(/2,800/)).toBeNull();
+    await waitFor(() => expect(screen.getByText(/9,999/)).toBeTruthy());   // subtotal from backend
+    expect(screen.getByText(/1\.00/)).toBeTruthy();                        // tax from backend
+    expect(screen.getByText(/4,444/)).toBeTruthy();                        // total from backend
+    expect(screen.queryByText(/3,152\.80/)).toBeNull();                    // never a client-side sum
+    expect(screen.queryByText(/10,000/)).toBeNull();                       // subtotal+tax never added by React
   });
 });
 
@@ -293,12 +306,16 @@ describe('R5-B — 39: the payment step is permission-gated element by element',
     expect(screen.queryByText('NOT STARTED')).toBeNull();
   });
 
-  it('hides the total without bookings.recurring.series-total', async () => {
+  it('hides ALL money values (subtotal/tax/total) without bookings.recurring.series-total', async () => {
     grantedPermissions = ALL_SERIES_PERMS.filter((p) => p !== 'bookings.recurring.series-total');
     wireApi(seriesDetail());
     renderPage();
     await waitFor(() => expect(screen.getByText(/Series payment — one card payment/i)).toBeTruthy());
+    // The whole money block is permission-gated (its labels come only with the value).
+    expect(screen.queryByText(/Subtotal \(authoritative\)/)).toBeNull();
     expect(screen.queryByText(/2,800/)).toBeNull();
+    expect(screen.queryByText(/352\.80/)).toBeNull();
+    expect(screen.queryByText(/3,152\.80/)).toBeNull();
   });
 
   it('an unauthorised operator sees the whole page blocked, not a half-open payment step', async () => {

@@ -257,9 +257,13 @@ export async function collectRecurringSeriesPaymentHandler(request: FastifyReque
       referenceId: result.referenceId,
       paymentMethod: result.paymentMethod,
       currency: result.currency,
-      // Authoritative server-computed series total (sum of the per-occurrence
-      // canonical prices). Never a client-supplied value.
-      seriesTotal: result.seriesTotal,
+      // Authoritative server-computed series economics — only ever the sum of
+      // the per-occurrence canonical totals/tax snapshots. Never a
+      // client-supplied value. The gateway is charged `seriesGross`.
+      seriesTotal: result.seriesTotal,   // == seriesSubtotal (pre-tax, R5-A legacy)
+      seriesSubtotal: result.seriesSubtotal,
+      seriesTax: result.seriesTax,
+      seriesGross: result.seriesGross,
       occurrenceCount: result.occurrenceCount,
       status: result.status,
       alreadyCharged: result.alreadyCharged,

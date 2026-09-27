@@ -403,6 +403,51 @@ describe('R5-B — series payment state is exposed on the authoritative read', (
     // The call goes through the lazy accessor (keeps the DB pool/env OUT of the
     // unit-test module graph — see the accessor's comment) but still surfaces the
     // authoritative read-only payment view on every describe.
-    expect(fn.slice(0, 2500)).toContain('payment: await loadSeriesPaymentFor(');
+    expect(fn.slice(0, 4000)).toContain('payment: await loadSeriesPaymentFor(');
+  });
+});
+
+describe('R5-C1 — the single payment charges the authoritative series GROSS (subtotal + tax)', () => {
+  const svc = be('src/modules/booking/application/recurring-payment.service.ts');
+  const describeSrc = be('src/modules/booking/application/booking.service.ts');
+  const page = fe('src/pages/admin/recurring/RecurringBookingsPage.tsx');
+
+  it('charges the gateway seriesGross, never the pre-tax subtotal', () => {
+    expect(svc).toContain('amount: ctx.seriesGross');
+    // The charge amount must not reference the old subtotal field.
+    expect(svc).not.toMatch(/amount:\s*ctx\.seriesTotal[^;]*;/);
+  });
+
+  it('derives seriesTax from the persisted per-occurrence tax_amount snapshots (no aggregate re-calculation)', () => {
+    expect(svc).toMatch(/const seriesTax = PricingEngine\.sumOccurrenceTotals\(/);
+    expect(svc).toMatch(/Number\(o\.tax_amount \|\| 0\)/);
+  });
+
+  it('context + result expose seriesSubtotal / seriesTax / seriesGross while `seriesTotal` stays the subtotal', () => {
+    expect(svc).toContain('seriesSubtotal: number;');
+    expect(svc).toContain('seriesTax: number;');
+    expect(svc).toContain('seriesGross: number;');
+    expect(svc).toContain('seriesTotal: seriesSubtotal,');
+    expect(svc).toContain('seriesSubtotal: ctx.seriesSubtotal,');
+    expect(svc).toContain('seriesTax: ctx.seriesTax,');
+    expect(svc).toContain('seriesGross: ctx.seriesGross,');
+  });
+
+  it('describeRecurringSeries exposes the three authoritative values and aliases seriesTotal to the subtotal', () => {
+    expect(describeSrc).toContain('seriesSubtotal,');
+    expect(describeSrc).toContain('seriesTax,');
+    expect(describeSrc).toContain('seriesGross,');
+    expect(describeSrc).toContain('seriesTotal: seriesSubtotal,');
+  });
+
+  it('the CARD panel shows backend-provided Subtotal / Tax / Total to pay without client math', () => {
+    expect(page).toContain('Subtotal (authoritative)');
+    expect(page).toContain('Tax (authoritative)');
+    expect(page).toContain('Total to pay (authoritative)');
+    expect(page).toContain('series.seriesGross');
+    expect(page).toContain('series.seriesSubtotal');
+    expect(page).toContain('series.seriesTax');
+    // React must never re-add the breakdown itself into a price shown to the user.
+    expect(page).not.toContain('seriesSubtotal + seriesTax');
   });
 });

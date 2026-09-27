@@ -577,7 +577,12 @@ type SeriesDetail = {
   seriesId: number;
   playerUserId: number | null;
   occurrenceCount: number;
+  /** Pre-tax subtotal — retained for backward compatibility (R5-A/R5-B). */
   seriesTotal: number;
+  /** R5-C1 — authoritative series economics from the backend read. */
+  seriesSubtotal: number;
+  seriesTax: number;
+  seriesGross: number;
   status: string;
   occurrences: any[];
   payment: {
@@ -695,7 +700,7 @@ function SeriesPaymentPanel({
         </Can>
       </div>
 
-      <dl className="grid gap-2 text-sm sm:grid-cols-3">
+      <dl className="grid gap-2 text-sm sm:grid-cols-2 md:grid-cols-4">
         <div>
           <dt className="text-xs text-[var(--color-text-muted)]">Player (pays / owns the payment)</dt>
           <dd className="font-medium text-[var(--color-text)]">
@@ -706,13 +711,25 @@ function SeriesPaymentPanel({
           <dt className="text-xs text-[var(--color-text-muted)]">Occurrences covered</dt>
           <dd className="font-medium text-[var(--color-text)]">{series.occurrenceCount}</dd>
         </div>
+        <Can permission="bookings.recurring.series-total">
+          {/* R5-C1 — the money values are ALL rendered verbatim from the backend's
+              authoritative read. The browser never computes tax or totals, never
+              multiplies occurrences, and never sends an amount. `seriesGross` is
+              the exact amount the gateway will charge (subtotal + tax). */}
+          <div>
+            <dt className="text-xs text-[var(--color-text-muted)]">Subtotal (authoritative)</dt>
+            <dd className="font-medium text-[var(--color-text)]">{formatPrice(series.seriesSubtotal, currency)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--color-text-muted)]">Tax (authoritative)</dt>
+            <dd className="font-medium text-[var(--color-text)]">{formatPrice(series.seriesTax, currency)}</dd>
+          </div>
+        </Can>
         <div>
-          <dt className="text-xs text-[var(--color-text-muted)]">Series total (authoritative)</dt>
+          <dt className="text-xs text-[var(--color-text-muted)]">Total to pay (authoritative)</dt>
           <dd className="font-medium text-[var(--color-text)]">
             <Can permission="bookings.recurring.series-total">
-              {/* R5-A: the exact sum of the persisted per-occurrence totals. The
-                  browser only formats it — it never sums or edits it. */}
-              {formatPrice(series.seriesTotal, currency)}
+              {formatPrice(series.seriesGross, currency)}
             </Can>
           </dd>
         </div>
