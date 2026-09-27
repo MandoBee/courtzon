@@ -256,7 +256,7 @@ function createSeries(d: Record<string, any> = {}, operator = ADMIN, player = PL
 async function occurrenceRows(seriesId: number) {
   const [rows] = await pool.execute<RowData>(
     `SELECT id, DATE_FORMAT(booking_date, '%Y-%m-%d') AS booking_date, start_at_utc, series_id,
-            booking_status, payment_status, total_amount, tax_amount, commission_amount, club_amount,
+            booking_status, payment_status, payment_method, total_amount, tax_amount, commission_amount, club_amount,
             user_id, organisation_id, branch_id, resource_id
        FROM bookings WHERE series_id = ? ORDER BY booking_date, start_time`,
     [seriesId],
@@ -1781,6 +1781,216 @@ describe('R5-C3-B — settlement execution proof (gateway + organisation)', () =
   });
 
   afterEach(async () => { await cleanSettlementResidue(); });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-C4 — RECURRING SERIES CASH CONFIRMATION.
+// One responsible operator confirms the full authoritative seriesGross; every
+// eligible occurrence is confirmed through the canonical ConfirmBooking command
+// (payment_status 'paid', payment_method 'cash'), per-occurrence booking:
+// confirmed/booking:paid fire (entitlements + realtime), and ONE series-level
+// Cash accounting posting is created. NO payment_transactions row exists —
+// Cash lives outside the Payment Service (normal Cash contract).
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-C4 — series CASH confirmation (operator-confirmed, no payment_transactions)', () => {
+  let series: any;
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    series = await createSeries();
+  });
+
+  it('A/B/C — operator confirms cash: eligible occurrences confirmed+paid, NO payment_transactions row', async () => {
+    const before = await countOf('SELECT COUNT(*) AS c FROM payment_transactions');
+    const res = await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    expect(res.seriesSubtotal).toBe(2800);
+    expect(res.seriesTax).toBe(352.8);
+    expect(res.seriesGross).toBe(3152.8);
+    expect(res.currency).toBe('EGP');
+    expect(res.occurrenceCount).toBe(2);
+    expect(res.status).toBe('paid');
+    expect(res.alreadyConfirmed).toBe(false);
+    expect(res.confirmedOccurrenceIds).toHaveLength(2);
+
+    const occ = await occurrenceRows(series.seriesId);
+    for (const o of occ) {
+      expect(o.booking_status).toBe('confirmed');
+      expect(o.payment_status).toBe('paid');
+      expect(o.payment_method).toBe('cash');
+    }
+    // B — no payment_transactions row is created (normal Cash contract).
+    expect(await paymentRow(series.seriesId)).toHaveLength(0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM payment_transactions')).toBe(before);
+  });
+
+  it('F — Cash CourtZon journal exactly once: Dr 1161 632.80 / Cr 4110 280 / Cr 2300 352.80', async () => {
+    await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_cod_payment'), (c) => c === 3,
+      'cash CourtZon posting (3 legs)');
+    const rows = await seriesLedgerRows(series.seriesId, 'booking_series_cod_payment');
+    const find = (side: string, code: string) => Number(rows.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(rows.every((r: any) => r.organisation_id === null)).toBe(true); // CourtZon book
+    expect(find('debit', '1161')).toBe(632.8);      // commission + tax
+    expect(find('credit', '4110')).toBe(280);
+    expect(find('credit', '2300')).toBe(352.8);
+  });
+
+  it('G/H — organisation cash journal balanced: Dr ORG-CASH 2800 / Dr comm 280 / Cr court 2800 / Cr payable 280', async () => {
+    await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_org_cash_receivable'), (c) => c === 4,
+      'org cash posting (4 legs)');
+    const rows = await seriesLedgerRows(series.seriesId, 'booking_series_org_cash_receivable');
+    const find = (side: string, code: string) => Number(rows.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(rows.every((r: any) => Number(r.organisation_id) === ORG1)).toBe(true); // org book
+    expect(find('debit', 'ORG-CASH')).toBe(2800);      // subtotal, TAX-EXCLUSIVE (existing cash contract)
+    expect(find('debit', 'MKT-COMM-EXP')).toBe(280);
+    expect(find('credit', 'MKT-COURT-REN')).toBe(2800);
+    expect(find('credit', 'MKT-CZ-PAY')).toBe(280);
+    const dr = Number(rows.filter((r: any) => r.side === 'debit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    const cr = Number(rows.filter((r: any) => r.side === 'credit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    expect(dr).toBe(cr); // balanced
+  });
+
+  it('I/E/J — repeat confirm idempotent; per-occurrence booking:paid posts ZERO occurrence-level accounting', async () => {
+    await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_cod_payment'), (c) => c === 3,
+      'cash CourtZon posting (3 legs)');
+    const beforeFP = await financialFootprint(series.seriesId);
+
+    const res2 = await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    expect(res2.alreadyConfirmed).toBe(true);
+    expect(res2.confirmedOccurrenceIds).toHaveLength(0); // E — idempotent skip
+
+    // I — no duplicate journals.
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_cod_payment')).toBe(3);
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_org_cash_receivable')).toBe(4);
+
+    // J — the econ.seriesId guard keeps per-occurrence booking:paid a no-op.
+    const afterFP = await financialFootprint(series.seriesId);
+    expect(afterFP).toEqual(beforeFP);
+    expect(afterFP.bookingLedger).toBe(0);
+  });
+
+  it('D — a cancelled occurrence is NEVER rewritten; eligible occurrences (incl. past-pending) confirm', async () => {
+    const occ = await occurrenceRows(series.seriesId);
+    await pool.execute(`UPDATE bookings SET booking_status = 'cancelled' WHERE id = ?`, [occ[0].id]);
+
+    const res = await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    // Cancelled → skipped untouched; the pending sibling confirms.
+    expect(res.confirmedOccurrenceIds).toHaveLength(1);
+    expect(res.skippedOccurrenceIds.some((s: any) => s.bookingId === Number(occ[0].id) && s.reason === 'terminal_cancelled')).toBe(true);
+
+    const after = await occurrenceRows(series.seriesId);
+    expect(after[0].booking_status).toBe('cancelled');
+    expect(after[0].payment_status).not.toBe('paid');
+    expect(after[1].booking_status).toBe('confirmed');
+    expect(after[1].payment_status).toBe('paid');
+  });
+
+  it('K — per-occurrence cash entitlements are created with collector=org (correct amounts)', async () => {
+    await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+    const occ = await occurrenceRows(series.seriesId);
+    for (const o of occ) {
+      const rows = await waitFor(
+        () => financialEntitlementService.getEntitlementsBySource('booking', Number(o.id)),
+        (r: any[]) => r.length === 2,
+        `two entitlements for occurrence ${o.id}`,
+      );
+      const orgEarning = rows.find((r: any) => r.entitlement_type === 'ORGANIZATION_EARNING');
+      const comm = rows.find((r: any) => r.entitlement_type === 'COURTZON_COMMISSION');
+      expect(orgEarning).toBeTruthy();
+      expect(comm).toBeTruthy();
+      expect(orgEarning.collector).toBe('org'); // cash: the org collected the money
+      expect(comm.collector).toBe('org');
+      expect(Number(orgEarning.amount)).toBe(Number(o.club_amount));
+      expect(Number(comm.amount)).toBe(Number(o.commission_amount));
+    }
+  });
+
+  it('L — series Cash is NOT gateway settlement eligible (no payment row, method not card/online)', async () => {
+    await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    expect(await paymentRow(series.seriesId)).toHaveLength(0);
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
+    const eligible = await gatewaySettlementService.listEligible();
+    // No booking_series payment exists to be eligible; cash never enters the rail.
+    expect(eligible.find((e: any) => Number(e.referenceId) === series.seriesId && e.referenceType === 'booking_series')).toBeUndefined();
+  });
+
+  it('M — reconciliation after cash confirmation produces NO false series issue', async () => {
+    await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const run = await reconciliationService.run();
+    const occ = await occurrenceRows(series.seriesId);
+    for (const o of occ) {
+      expect(run.issues.filter((i: any) => i.type === 'booking_confirmed_no_payment' && Number(i.entityId) === Number(o.id)))
+        .toHaveLength(0);
+    }
+  });
+
+  it('N — exactly ONE BOOKING.SERIES_CASH audit entry with the operator and authoritative gross', async () => {
+    const { collectRecurringSeriesCashHandler } = await import('../presentation/booking.controller.js');
+    const sent: any[] = [];
+    const reply: any = { status: (c: number) => reply, send: (b: any) => { sent.push(b); return reply; } };
+    await collectRecurringSeriesCashHandler(
+      { params: { id: series.seriesId }, body: {}, userId: ADMIN, ip: '127.0.0.1', headers: {} } as any,
+      reply,
+    );
+    const a = await waitFor(
+      async () => (await pool.execute<RowData>(
+        `SELECT actor_id, after_state FROM audit_logs WHERE entity_type = 'booking_series' AND entity_id = ? AND action = 'BOOKING.SERIES_CASH' ORDER BY id DESC LIMIT 1`,
+        [series.seriesId],
+      ))[0][0] as any,
+      (row) => !!row,
+      'the BOOKING.SERIES_CASH audit row',
+    );
+    expect(Number(a.actor_id)).toBe(ADMIN);
+    const st = typeof a.after_state === 'string' ? JSON.parse(a.after_state) : a.after_state;
+    expect(st.seriesGross).toBe(3152.8);
+    expect(st.seriesSubtotal).toBe(2800);
+    expect(st.seriesTax).toBe(352.8);
+    expect(st.confirmedOccurrenceIds).toHaveLength(2);
+  });
+
+  it('O/P — unauthorised, cross-tenant and sibling-branch operators are rejected', async () => {
+    await expect(recurringPayment.confirmSeriesCash(series.seriesId, NO_AUTH)).rejects.toBeTruthy();
+    await expect(recurringPayment.confirmSeriesCash(series.seriesId, ADMIN2)).rejects.toBeTruthy();   // other tenant
+    await expect(recurringPayment.confirmSeriesCash(series.seriesId, ADMIN_NY)).rejects.toBeTruthy(); // sibling branch
+  });
+
+  it('Q — zero-tax series: gross == subtotal and no 2300 tax leg', async () => {
+    await pool.execute(`UPDATE tax_rates SET rate = 0 WHERE organisation_id = ${ORG1}`);
+    try {
+      await resetSeriesState();
+      const s0 = await createSeries();
+      const res = await recurringPayment.confirmSeriesCash(s0.seriesId, ADMIN);
+      expect(res.seriesTax).toBe(0);
+      expect(res.seriesGross).toBe(res.seriesSubtotal);
+      await waitFor(() => seriesLedgerRowCount(s0.seriesId, 'booking_series_cod_payment'), (c) => c === 2,
+        'zero-tax CourtZon posting has exactly 2 legs (1161 + 4110)');
+      const rows = await seriesLedgerRows(s0.seriesId, 'booking_series_cod_payment');
+      expect(rows.find((r: any) => r.account_code === '2300')).toBeUndefined(); // no tax leg
+      expect(Number(rows.find((r: any) => r.side === 'debit' && r.account_code === '1161')?.amount)).toBe(280);
+    } finally {
+      await pool.execute(`UPDATE tax_rates SET rate = 14 WHERE organisation_id = ${ORG1}`);
+    }
+  });
+
+  it('R — multi-occurrence cash aggregation from persisted snapshots', async () => {
+    await resetSeriesState();
+    const s = await createSeries({ weekdays: [1, 3, 4], startDate: DAY8, endDate: '2026-09-21' });
+    const res = await recurringPayment.confirmSeriesCash(s.seriesId, ADMIN);
+    const occ = await occurrenceRows(s.seriesId);
+    expect(res.confirmedOccurrenceIds).toHaveLength(4);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const tax = r2(occ.reduce((a: number, o: any) => a + Number(o.tax_amount), 0));
+    const comm = r2(occ.reduce((a: number, o: any) => a + Number(o.commission_amount), 0));
+    await waitFor(() => seriesLedgerRowCount(s.seriesId, 'booking_series_cod_payment'), (c) => c === 3,
+      'multi-occurrence cash CourtZon posting (3 legs)');
+    const rows = await seriesLedgerRows(s.seriesId, 'booking_series_cod_payment');
+    expect(Number(rows.find((r: any) => r.side === 'credit' && r.account_code === '4110')?.amount)).toBe(comm);
+    expect(Number(rows.find((r: any) => r.side === 'credit' && r.account_code === '2300')?.amount)).toBe(tax);
+  });
 });
 
 async function countOf(sql: string): Promise<number> {

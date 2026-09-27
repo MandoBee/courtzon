@@ -46,4 +46,11 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   // via `assertSeriesPaymentAuthority`). The body accepts no amount — the total
   // is always the server-authoritative series total.
   app.post('/admin/recurring/:id/pay', { preHandler: [recurringGuard] }, ctrl.collectRecurringSeriesPaymentHandler);
+
+  // ── R5-C4 — ONE responsible-operator confirmation of the FULL series cash ──
+  // Guarded by the SAME responsible-user authorities as every other recurring
+  // route, AND the dedicated cash-collect permission. The body is a strict
+  // empty object: no amount can be sent; the server derives the authoritative
+  // seriesGross. No payment_transactions row is created (Cash contract).
+  app.post('/admin/recurring/:id/cash-confirm', { preHandler: [recurringGuard, requirePermission(['bookings.recurring.collect-cash'])] }, ctrl.collectRecurringSeriesCashHandler);
 }

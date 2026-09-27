@@ -232,6 +232,7 @@ export const uiRegistry: UIElement[] = [
   // action (initiate ONE card payment for a whole recurring series) so it gets
   // its own key rather than riding on the page/series permissions.
   { permissionKey: 'bookings.recurring.collect-payment', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Collect Card Payment For Recurring Series', componentPath: 'pages/admin/recurring/RecurringBookingsPage.tsx' },
+  { permissionKey: 'bookings.recurring.collect-cash', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Confirm Cash Received For Recurring Series', componentPath: 'pages/admin/recurring/RecurringBookingsPage.tsx' },
   { permissionKey: 'bookings.recurring.payment-status', moduleSlug: 'bookings', elementType: 'field', elementLabel: 'Recurring Series Payment Status', componentPath: 'pages/admin/recurring/RecurringBookingsPage.tsx' },
   { permissionKey: 'bookings.recurring.series-total', moduleSlug: 'bookings', elementType: 'field', elementLabel: 'Recurring Series Total Amount', componentPath: 'pages/admin/recurring/RecurringBookingsPage.tsx' },
 

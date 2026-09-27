@@ -523,11 +523,16 @@ function SeriesDirectory({
           </div>
 
           {detailQuery.data && (
-            <SeriesPaymentPanel
-              series={detailQuery.data}
-              paidReturn={paidReturn && createdId === selectedId}
-              onPaymentReturnHandled={onPaymentReturnHandled}
-            />
+            <>
+              <SeriesPaymentPanel
+                series={detailQuery.data}
+                paidReturn={paidReturn && createdId === selectedId}
+                onPaymentReturnHandled={onPaymentReturnHandled}
+              />
+              <Can permission="bookings.recurring.collect-cash">
+                <SeriesCashPanel series={detailQuery.data} />
+              </Can>
+            </>
           )}
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -792,6 +797,108 @@ function SeriesPaymentPanel({
           </div>
         )}
       </Can>
+    </section>
+  );
+}
+
+// ── R5-C4 — series CASH confirmation step (operator confirms the whole series) ──
+// Cash, unlike Card, creates NO payment_transactions row: the operator confirms
+// receipt of the full authoritative seriesGross and the backend confirms every
+// eligible occurrence + posts ONE series-level cash accounting entry. The
+// browser sends NO amount — only the series id. All money values are rendered
+// from the backend read.
+function SeriesCashPanel({ series }: { series: SeriesDetail }) {
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const currency = series.payment?.currency || 'EGP';
+  const seriesAcceptsPayment = series.status === 'active' || series.status === 'paused';
+  // Cash completion is derived from the occurrences: after the operator's
+  // confirmation every eligible occurrence is confirmed+paid by the backend.
+  const allConfirmed = series.occurrences.length > 0 && series.occurrences.every((o: any) => o.status === 'confirmed');
+
+  const confirmCashMutation = useMutation({
+    mutationFn: () =>
+      api
+        .post(`/admin/recurring/${series.seriesId}/cash-confirm`, {})
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', series.seriesId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', 'list'] });
+      const confirmed = data?.confirmedOccurrenceIds?.length ?? 0;
+      showToast(
+        data?.alreadyConfirmed
+          ? 'Series cash already confirmed — occurrences remain paid.'
+          : `Cash received — ${confirmed} occurrence(s) confirmed for the series.`,
+        data?.alreadyConfirmed ? 'info' : 'success',
+      );
+    },
+    onError: (err: any) => {
+      showToast(err?.response?.data?.message || 'Could not confirm the series cash payment', 'error');
+    },
+  });
+
+  return (
+    <section className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-4 mt-4">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-[var(--color-text)]">Series cash — one operator confirmation for the whole series</h4>
+        {allConfirmed && (
+          <span className="px-2 py-0.5 rounded-full text-xs bg-[var(--color-success-bg)] text-[var(--color-success-text)]">
+            CASH CONFIRMED
+          </span>
+        )}
+      </div>
+
+      <dl className="grid gap-2 text-sm sm:grid-cols-2 md:grid-cols-4">
+        <div>
+          <dt className="text-xs text-[var(--color-text-muted)]">Subtotal (authoritative)</dt>
+          <dd className="font-medium text-[var(--color-text)]">
+            <Can permission="bookings.recurring.series-total">
+              {formatPrice(series.seriesSubtotal, currency)}
+            </Can>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-text-muted)]">Tax (authoritative)</dt>
+          <dd className="font-medium text-[var(--color-text)]">
+            <Can permission="bookings.recurring.series-total">
+              {formatPrice(series.seriesTax, currency)}
+            </Can>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-text-muted)]">Total cash received (authoritative)</dt>
+          <dd className="font-medium text-[var(--color-text)]">
+            <Can permission="bookings.recurring.series-total">
+              {formatPrice(series.seriesGross, currency)}
+            </Can>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-text-muted)]">Occurrences covered</dt>
+          <dd className="font-medium text-[var(--color-text)]">{series.occurrenceCount}</dd>
+        </div>
+      </dl>
+
+      <p className="text-xs text-[var(--color-text-muted)]">
+        Confirming cash received marks every eligible occurrence paid+confirmed through the canonical booking
+        confirmation and posts ONE series-level cash accounting entry. Cancelled, completed, past and already-paid
+        occurrences are left untouched.
+      </p>
+
+      <Can permission="bookings.recurring.collect-cash">
+        {!allConfirmed && seriesAcceptsPayment && (
+          <Button
+            size="sm"
+            onClick={() => confirmCashMutation.mutate()}
+            disabled={confirmCashMutation.isPending}
+          >
+            {confirmCashMutation.isPending ? 'Confirming…' : `Confirm cash received — ${formatPrice(series.seriesGross, currency)}`}
+          </Button>
+        )}
+      </Can>
+      {!seriesAcceptsPayment && (
+        <p className="text-xs text-[var(--color-text-muted)]">This series is {series.status} and cannot take a cash payment.</p>
+      )}
     </section>
   );
 }

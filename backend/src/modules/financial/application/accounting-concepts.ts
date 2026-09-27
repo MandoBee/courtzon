@@ -436,6 +436,24 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['marketplace_receivable', 'commission_expense'],
     credit: ['court_rental_revenue'],
   },
+  // ── RECURRING SERIES CASH (R5-C4) — ONE recognition per operator-confirmed
+  //    cash series. Mirrors the NORMAL Cash/COD contract:
+  //      CourtZon book (org NULL): Dr 1161 Marketplace Receivable =
+  //        commission + tax · Cr 4110 Platform Commission = commission ·
+  //        Cr 2300 Tax Liability = tax (CourtZon is owed its commission + tax
+  //        from the org, which physically collected the cash).
+  //      Organization book (org-scoped): Dr org ORG-CASH = seriesSubtotal
+  //        (org-collected cash, TAX-EXCLUSIVE like every booking_org_cash_
+  //        receivable) · Dr commission expense · Cr court rental revenue =
+  //        seriesSubtotal · Cr CourtZon payable = commission.
+  booking_series_cod_payment: {
+    debit: ['marketplace_receivable'],
+    credit: ['platform_commission', 'tax_liability'],
+  },
+  booking_series_org_cash_receivable: {
+    debit: ['org_cash_bank', 'commission_expense'],
+    credit: ['court_rental_revenue', 'courtzon_payable'],
+  },
   booking_coach_payout: {
     debit: ['coach_expense'],
     credit: ['coach_payable'],

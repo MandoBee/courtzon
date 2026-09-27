@@ -65,6 +65,12 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   booking_wallet_refund: { merchant_payable: '2202' },
   booking_cod_payment: { marketplace_receivable: '1161' },
   booking_cod_reversal: { marketplace_receivable: '1161' },
+  // R5-C4 — recurring series CASH payment, ONE operator-confirmed recognition.
+  // No DB mapping rows: the full concept set resolves from code to the SAME
+  // accounts booking_cod_payment uses (Dr 1161 commission+tax / Cr 4110
+  // commission / Cr 2300 tax). Source_type stays 'booking' + source_id =
+  // seriesId, distinct event_type.
+  booking_series_cod_payment: { marketplace_receivable: '1161', platform_commission: '4110', tax_liability: '2300' },
   // R5-C2 — recurring series CARD payment: ONE recognition for the whole series
   // gross. No DB mapping rows exist for this event_type, so the FULL concept set
   // is resolved from code (same pattern as payment_gateway_settlement) to the
@@ -203,6 +209,11 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // commission expense against aggregate court rental revenue, provisioned
   // idempotently exactly like booking_org_receivable (shared org accounts).
   booking_series_org_receivable: ['marketplace_receivable', 'commission_expense', 'court_rental_revenue'],
+  // R5-C4 — recurring series CASH org book: the org physically collected the
+  // series cash, so it books its OWN cash/bank immediately (aggregate subtotal,
+  // TAX-EXCLUSIVE) + commission expense against rental revenue + the commission
+  // payable to CourtZon — provisioned idempotently like booking_org_cash_receivable.
+  booking_series_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'court_rental_revenue', 'courtzon_payable'],
   // ── ACADEMY org book (G8.3A) — mirrors the booking org book with the dedicated
   // Academy Tuition Revenue leg (ACAD-REV) so academy earnings are never mixed
   // with marketplace sales. The org's Gross Collections are classified between

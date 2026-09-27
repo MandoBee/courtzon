@@ -38,6 +38,10 @@ import { PricingEngine } from '../domain/pricing-engine.js';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { TimeEngine } from '../../time/index.js';
+import type { Command } from '../../../shared/command/command-base.js';
+import { commandPipeline } from '../../../shared/command/command-pipeline.js';
+import { confirmBookingHandler } from '../commands/confirm-booking.command.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 // NOTE: `booking.service.js` is imported DYNAMICALLY inside
 // `assertSeriesPaymentAuthority` (below) rather than statically. `booking.service`
 // needs `loadSeriesPayment` from this module for the authoritative series read,
@@ -449,6 +453,150 @@ export function isOccurrenceCancellable(occ: any, nowMs: number): { eligible: bo
   if (startMs <= nowMs) return { eligible: false, reason: 'past_or_not_yet_started' };
   if (String(occ?.payment_status || '') === 'paid') return { eligible: false, reason: 'already_paid' };
   return { eligible: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R5-C4 — ONE operator-confirmed series CASH payment.
+//
+// Normal Cash has NO payment_transactions row: the canonical source of truth is
+// bookings.payment_status + booking:paid. A recurring series paid in Cash
+// follows the SAME contract: one responsible operator confirms receipt of the
+// full authoritative seriesGross; every eligible occurrence is transitioned
+// through the canonical ConfirmBooking command (paymentStatus 'paid'),
+// per-occurrence booking:confirmed/booking:paid fire (entitlements + realtime +
+// notifications), and ONE series-level Cash accounting posting is created.
+//
+// Exactly like R5-B's card success, the occurrence-level econ.seriesId guard
+// keeps per-occurrence booking:paid a financial no-op; series Cash accounting
+// posts once via hasPosting('booking', seriesId, event_type).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ConfirmSeriesCashResult {
+  seriesId: number;
+  /** The PLAYER (booking owner / beneficiary) — the money is theirs. */
+  playerId: number;
+  seriesSubtotal: number;
+  seriesTax: number;
+  seriesGross: number;
+  currency: string;
+  occurrenceCount: number;
+  confirmedOccurrenceIds: number[];
+  skippedOccurrenceIds: Array<{ bookingId: number; reason: string }>;
+  status: string;
+  alreadyConfirmed: boolean;
+}
+
+function newCommandId(type: string): string {
+  return `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function confirmSeriesCash(seriesId: number, operatorId: number): Promise<ConfirmSeriesCashResult> {
+  const ctx = await loadSeriesPaymentContext(seriesId);
+  await assertSeriesPaymentAuthority(operatorId, ctx);
+
+  if (SERIES_PAYMENT_BLOCKED_STATUSES.has(ctx.seriesStatus)) {
+    throw new ConflictError(`Recurring series is ${ctx.seriesStatus} — cash payment is not available`);
+  }
+
+  const confirmed: number[] = [];
+  const skipped: Array<{ bookingId: number; reason: string }> = [];
+
+  // 1. Stamp the cash method on the ELIGIBLE occurrences BEFORE any canonical
+  //    confirmation runs, so the ConfirmBooking command and every booking:
+  //    confirmed consumer (entitlement listener reads bookings.payment_method
+  //    → collector 'org' for cash) observe the correct method. No
+  //    payment_transactions row is created.
+  const eligibleIds = ctx.occurrences
+    .filter((o: any) => isOccurrenceConfirmable(o).eligible)
+    .map((o: any) => Number(o.id));
+  if (eligibleIds.length) {
+    await getPool().execute(`UPDATE bookings SET payment_method = 'cash' WHERE id IN (${eligibleIds.join(',')})`, []);
+  }
+
+  // 2. Confirm every ELIGIBLE occurrence through the canonical ConfirmBooking
+  //    command (already-confirmed/paid/terminal occurrences are skipped — R4
+  //    eligible-only; cancelled occurrences are NEVER rewritten).
+  for (const occ of ctx.occurrences) {
+    const bookingId = Number(occ.id);
+    const eligibility = isOccurrenceConfirmable(occ);
+    if (!eligibility.eligible) {
+      skipped.push({ bookingId, reason: eligibility.reason ?? 'ineligible' });
+      continue;
+    }
+    try {
+      const confirmCommand: Command = {
+        commandId: newCommandId('ConfirmBooking'),
+        commandType: 'ConfirmBooking',
+        aggregateType: 'booking',
+        aggregateId: String(bookingId),
+        // 'paid' is applied atomically with the transition.
+        payload: { bookingId, paymentStatus: 'paid' },
+        correlationId: `corr_${Date.now()}`,
+      };
+      const confirmResult = await commandPipeline.execute(confirmCommand, {
+        validate: async () => confirmBookingHandler.validate(confirmCommand),
+        execute: async (cmd, conn) => confirmBookingHandler.execute(cmd, conn),
+        events: (cmd, res) => confirmBookingHandler.events!(cmd, res),
+      });
+      if (confirmResult.status === 'error') {
+        throw new Error(`ConfirmBooking failed: ${confirmResult.message}`);
+      }
+      confirmed.push(bookingId);
+    } catch (err: any) {
+      log.error({ err, seriesId, bookingId, operatorId }, 'Recurring series: cash confirm occurrence failed');
+      skipped.push({ bookingId, reason: 'confirm_failed' });
+    }
+  }
+
+  // 3. Canonical per-occurrence realtime/notification events (financial no-op
+  //    via the seriesId guard). Reuses the exact R5-B producer shape.
+  for (const bookingId of confirmed) {
+    const occ = ctx.occurrences.find((o: any) => Number(o.id) === bookingId);
+    if (!occ) continue;
+    eventBusV2.emit('booking:paid', {
+      bookingId,
+      userId: occ.user_id,
+      organisationId: occ.organisation_id || undefined,
+      branchId: occ.branch_id || undefined,
+      resourceId: occ.resource_id || undefined,
+      courtId: occ.resource_id || undefined,
+      paymentMethod: 'cash',
+      grossAmount: Number(occ.total_amount || 0),
+      taxAmount: Number(occ.tax_amount || 0),
+      coachAmount: Number(occ.coach_amount || 0),
+      organisationAmount: Number(occ.club_amount || 0),
+      commissionAmount: Number(occ.commission_amount || 0),
+      currency: 'EGP',
+      sourceId: bookingId,
+      seriesId,
+      seriesCashConfirmed: true,
+    } as any);
+  }
+
+  // 4. ONE series-level Cash accounting recognition. If it fails we surface the
+  //    error loudly rather than leaving the series financially unposted; the
+  //    accounting itself is hasPosting-idempotent so a retry converges.
+  const { postSeriesCashAccounting } = await import('../../financial/application/accounting-event.listener.js');
+  await postSeriesCashAccounting(seriesId, SERIES_PAYMENT_CURRENCY);
+
+  log.info(
+    { seriesId, operatorId, amount: ctx.seriesGross, subtotal: ctx.seriesSubtotal, tax: ctx.seriesTax, confirmed: confirmed.length, skipped: skipped.length },
+    'Recurring series cash confirmed — ONE operator action, ONE series-level recognition',
+  );
+
+  return {
+    seriesId,
+    playerId: ctx.playerUserId,
+    seriesSubtotal: ctx.seriesSubtotal,
+    seriesTax: ctx.seriesTax,
+    seriesGross: ctx.seriesGross,
+    currency: ctx.currency,
+    occurrenceCount: ctx.occurrenceCount,
+    confirmedOccurrenceIds: confirmed,
+    skippedOccurrenceIds: skipped,
+    status: 'paid',
+    alreadyConfirmed: confirmed.length === 0,
+  };
 }
 
 /** Canonical "now" so tests can freeze time. */

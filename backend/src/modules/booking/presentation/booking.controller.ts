@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { bookingService } from '../application/booking.service.js';
-import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringPreviewSchema, RecurringCreateSchema, RecurringSeriesQuerySchema, RecurringPlayerSearchSchema, RecurringPaymentSchema } from './booking.dto.js';
+import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringPreviewSchema, RecurringCreateSchema, RecurringSeriesQuerySchema, RecurringPlayerSearchSchema, RecurringPaymentSchema, RecurringCashConfirmSchema } from './booking.dto.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
 import { recordAudit } from '../../audit-log/index.js';
 
@@ -269,6 +269,47 @@ export async function collectRecurringSeriesPaymentHandler(request: FastifyReque
       alreadyCharged: result.alreadyCharged,
       idempotencyKey: result.idempotencyKey,
       action: 'collect_series_card_payment',
+    },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.send(result);
+}
+
+/**
+ * R5-C4 — ONE responsible-operator confirmation that the FULL series cash was
+ * received. The body is a strict empty object (no amount/player/method); every
+ * financial value is resolved server-side from the persisted occurrence
+ * snapshots. No payment_transactions row is created — Cash lives outside the
+ * Payment Service lifecycle, exactly like normal Cash.
+ */
+export async function collectRecurringSeriesCashHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const userId = (request as any).userId;
+  RecurringCashConfirmSchema.parse(request.body || {});
+  // Lazy dynamic import (keeps the DB pool/env OUT of unit-spec module graphs).
+  const { confirmSeriesCash } = await import('../application/recurring-payment.service.js');
+  const result = await confirmSeriesCash(Number(id), userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.SERIES_CASH',
+    entityType: 'booking_series',
+    entityId: result.seriesId,
+    afterState: {
+      operatorId: userId,
+      playerId: result.playerId,
+      seriesId: result.seriesId,
+      seriesSubtotal: result.seriesSubtotal,
+      seriesTax: result.seriesTax,
+      seriesGross: result.seriesGross,
+      currency: result.currency,
+      occurrenceCount: result.occurrenceCount,
+      confirmedOccurrenceIds: result.confirmedOccurrenceIds,
+      skippedOccurrenceIds: result.skippedOccurrenceIds,
+      status: result.status,
+      alreadyConfirmed: result.alreadyConfirmed,
     },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],

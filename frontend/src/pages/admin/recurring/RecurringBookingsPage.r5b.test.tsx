@@ -326,3 +326,37 @@ describe('R5-B — 39: the payment step is permission-gated element by element',
     expect(screen.queryByText(/Series payment — one card payment/i)).toBeNull();
   });
 });
+
+describe('R5-C4 — 40: the series CASH confirmation step', () => {
+  const CASH_PERMS = ['org.bookings.manage', 'bookings.recurring.collect-payment', 'bookings.recurring.collect-cash', 'bookings.recurring.series-total'];
+
+  it('renders the authoritative cash values and confirms with an EMPTY body (no amount)', async () => {
+    grantedPermissions = [...CASH_PERMS];
+    wireApi(seriesDetail());
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Series cash — one operator confirmation/i)).toBeTruthy());
+    expect(screen.getByText(/Total cash received \(authoritative\)/)).toBeTruthy();
+    // Money values are backend-provided; they may also appear in the card step,
+    // so assert presence (>=1) rather than uniqueness.
+    expect(screen.getAllByText(/3,152\.80/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/2,800/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/352\.80/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole('button', { name: /Confirm cash received/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Confirm cash received/i }));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    const call = mockPost.mock.calls.find((c: any) => String(c[0]).includes('/cash-confirm')) || [];
+    expect(call[0]).toBe('/admin/recurring/7/cash-confirm');
+    // The body is strictly empty — the client can never send a money amount.
+    expect(call[1]).toEqual({});
+  });
+
+  it('hides the cash step without bookings.recurring.collect-cash', async () => {
+    grantedPermissions = ['org.bookings.manage'];
+    wireApi(seriesDetail());
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Series payment — one card payment/i)).toBeTruthy());
+    expect(screen.queryByText(/Series cash — one operator confirmation/i)).toBeNull();
+  });
+});

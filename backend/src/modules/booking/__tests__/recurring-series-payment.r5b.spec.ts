@@ -501,6 +501,12 @@ describe('R5-C2 — series accounting recognition contract (exactly once per pai
     expect(accounting).toMatch(/postBookingPaymentAccountingInner[\s\S]*?if \(econ\.seriesId\) \{[\s\S]*?return;/);
   });
 
+  it('series cash accounting exists and posts once (booking_series_cod_payment / org cash)', () => {
+    expect(accounting).toContain('postSeriesCashAccounting');
+    expect(accounting).toContain("'booking_series_cod_payment', 'booking', seriesId, null,");
+    expect(accounting).toContain("'booking_series_org_cash_receivable', 'booking', seriesId, orgId,");
+  });
+
   it('series economics aggregate ONLY persisted snapshots through the canonical round2 rule', () => {
     expect(accounting).toContain('Number(b.total_amount)');
     expect(accounting).toContain('Number(b.tax_amount)');
@@ -512,5 +518,73 @@ describe('R5-C2 — series accounting recognition contract (exactly once per pai
   it('failure safety: unresolved economics skip atomically (no partial journal)', () => {
     expect(accounting).toContain("log.error({ seriesId }, 'Series not found — skipping series accounting');");
     expect(accounting).toContain("log.error({ seriesId }, 'Recurring series has no occurrence bookings — skipping series accounting');");
+  });
+});
+
+describe('R5-C4 — series CASH confirmation contract (no payment_transactions, one recognition)', () => {
+  const svc = be('src/modules/booking/application/recurring-payment.service.ts');
+  const concepts = be('src/modules/financial/application/accounting-concepts.ts');
+  const engine = be('src/modules/financial/application/accounting-engine.service.ts');
+  const routes = be('src/modules/booking/presentation/booking.routes.ts');
+  const controller = be('src/modules/booking/presentation/booking.controller.ts');
+  const recon = be('src/modules/payment/application/reconciliation.service.ts');
+  const registry = fe('src/permissions/registry.ts');
+
+  it('confirmation never touches the Payment Service (no charge, no payment_transactions)', () => {
+    const fn = svc.slice(svc.indexOf('export async function confirmSeriesCash'));
+    expect(fn).not.toContain('paymentService.charge');
+    expect(fn).not.toContain('chargeByGateway');
+    expect(fn).not.toContain('INSERT INTO payment_transactions');
+  });
+
+  it('confirms each eligible occurrence through the canonical ConfirmBooking command', () => {
+    expect(svc).toContain("commandType: 'ConfirmBooking'");
+    expect(svc).toContain('confirmBookingHandler.execute');
+  });
+
+  it('posts ONE series-level cash accounting via the canonical series accounting function', () => {
+    const fn = svc.slice(svc.indexOf('export async function confirmSeriesCash'));
+    expect(fn).toContain("import('../../financial/application/accounting-event.listener.js')");
+    expect(fn).toContain('postSeriesCashAccounting(seriesId, SERIES_PAYMENT_CURRENCY)');
+  });
+
+  it('EVENT_CONCEPTS defines both cash events with the NORMAL cash debit/credit contract', () => {
+    const court = concepts.slice(concepts.indexOf('booking_series_cod_payment'), concepts.indexOf('booking_series_cod_payment') + 260);
+    expect(court).toContain("debit: ['marketplace_receivable']");
+    expect(court).toContain("credit: ['platform_commission', 'tax_liability']");
+    const org = concepts.slice(concepts.indexOf('booking_series_org_cash_receivable'), concepts.indexOf('booking_series_org_cash_receivable') + 260);
+    expect(org).toContain("debit: ['org_cash_bank', 'commission_expense']");
+    expect(org).toContain("credit: ['court_rental_revenue', 'courtzon_payable']");
+  });
+
+  it('code defaults + org-book provisioning resolve the cash events with NO DB mapping rows', () => {
+    expect(engine).toMatch(/booking_series_cod_payment:\s*\{ marketplace_receivable: '1161', platform_commission: '4110', tax_liability: '2300' \}/);
+    expect(engine).toContain("booking_series_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'court_rental_revenue', 'courtzon_payable']");
+  });
+
+  it('the cash route is protected by the recurring guard AND the collect-cash permission', () => {
+    expect(routes).toMatch(/app\.post\('\/admin\/recurring\/:id\/cash-confirm',\s*\{\s*preHandler:\s*\[recurringGuard,\s*requirePermission\(\['bookings\.recurring\.collect-cash'\]\)\]\s*\},/);
+  });
+
+  it('the controller audits BOOKING.SERIES_CASH with the operator and authoritative gross', () => {
+    expect(controller).toContain('export async function collectRecurringSeriesCashHandler');
+    expect(controller).toContain("action: 'BOOKING.SERIES_CASH'");
+    expect(controller).toContain('seriesGross: result.seriesGross');
+    expect(controller).toContain('operatorId: userId');
+  });
+
+  it('the strict empty-body schema exists (client sends no money)', () => {
+    const dto = be('src/modules/booking/presentation/booking.dto.ts');
+    expect(dto).toContain('RecurringCashConfirmSchema = z.object({}).strict()');
+  });
+
+  it('the reconciliation series gate also treats a cash-paid series (paid occurrences, no payment row) as paid', () => {
+    expect(recon).toContain("b2.booking_status = 'confirmed'");
+    expect(recon).toContain("b2.payment_status = 'paid'");
+  });
+
+  it('the collect-cash permission is registered', () => {
+    expect(registry).toContain("permissionKey: 'bookings.recurring.collect-cash'");
+    expect(registry).toMatch(/permissionKey: 'bookings\.recurring\.collect-cash'[^}]*elementType: 'button'/);
   });
 });

@@ -924,6 +924,75 @@ async function postSeriesPaymentAccountingInner(seriesId: number, currency: stri
   }
 }
 
+// R5-C4 — recurring series CASH confirmation accounting. R5-C4 does NOT create
+// a payment_transactions row (Cash has none, exactly like normal cash). The
+// canonical source of truth is the operator's confirmation state + these
+// postings. Mirrors the NORMAL Cash/COD contract (booking_cod_payment +
+// booking_org_cash_receivable) aggregated at the SERIES level:
+//
+//   CourtZon book (org NULL) — booking_series_cod_payment:
+//     Dr 1161 Marketplace Receivable = commission + tax
+//     Cr 4110 Platform Commission     = commission
+//     Cr 2300 Tax Liability           = tax
+//   Organization book (org-scoped) — booking_series_org_cash_receivable:
+//     Dr org ORG-CASH       = series subtotal (TAX-EXCLUSIVE, like every
+//                             booking_org_cash_receivable; tax stays in the
+//                             CourtZon book via 2300)
+//     Dr org commission exp = commission
+//     Cr org court revenue  = series subtotal
+//     Cr org CourtZon payable = commission
+// Idempotent per (source_type='booking', source_id=seriesId, event_type) via
+// hasPosting, so repeated operator confirmation never double-posts.
+// (Exported via the module's `export { ... }` list below — must NOT carry the
+// `export` keyword on the declaration itself, matching every other post fn.)
+async function postSeriesCashAccounting(seriesId: number, currency: string): Promise<void> {
+  const econ = await resolveSeriesAccountingEconomics(seriesId);
+  const key = econ ? `booking-series-cash-org:${econ.organisationId ?? 'global'}` : `booking-series-cash:${seriesId}`;
+  return runEntityExclusive(key, () => postSeriesCashAccountingInner(seriesId, currency));
+}
+
+async function postSeriesCashAccountingInner(seriesId: number, currency: string): Promise<void> {
+  const econ = await resolveSeriesAccountingEconomics(seriesId);
+  if (!econ) return;
+
+  // CourtZon book — Dr 1161 (commission + tax) / Cr 4110 / Cr 2300.
+  await postAccountingEvent(
+    'booking_series_cod_payment', 'booking', seriesId, null,
+    {
+      marketplace_receivable: Math.round((econ.commission + econ.tax) * 100) / 100,
+      platform_commission: econ.commission,
+      tax_liability: econ.tax,
+    },
+    currency,
+    `Recurring series #${seriesId} cash payment (commission/tax receivable)`,
+    undefined,
+    { marketplace_receivable: null, platform_commission: null, tax_liability: null },
+  );
+
+  // Organization book — the org physically collected the series cash. Cash is
+  // TAX-EXCLUSIVE (the subtotal), exactly matching booking_org_cash_receivable;
+  // the tax remains CourtZon's (Cr 2300 above).
+  const orgId = econ.organisationId;
+  if (orgId != null) {
+    const cashBase = Math.round((econ.orgNet + econ.commission) * 100) / 100; // == seriesSubtotal for exact series
+    await postAccountingEvent(
+      'booking_series_org_cash_receivable', 'booking', seriesId, orgId,
+      {
+        org_cash_bank: cashBase,
+        commission_expense: econ.commission,
+        court_rental_revenue: cashBase,
+        courtzon_payable: econ.commission,
+      },
+      currency,
+      `Recurring series #${seriesId} organization book (cash collected)`,
+      undefined,
+      { org_cash_bank: orgId, commission_expense: orgId, court_rental_revenue: orgId, courtzon_payable: orgId },
+    );
+  } else {
+    log.info({ seriesId }, 'Series has no organisationId — organization cash book skipped (CourtZon book posted)');
+  }
+}
+
 async function postBookingPaymentAccountingInner(bookingId: number, paymentMethod: string, currency: string): Promise<void> {
   const econ = await bookingAccounting.resolveBookingEconomics(bookingId);
   if (!econ) {
@@ -2115,4 +2184,4 @@ export async function createAccountingReplayWorkers(): Promise<any[]> {
   return [worker];
 }
 
-export { postAccountingEvent, postGatewaySettlementAccounting, postGatewaySettlementReversalAccounting, postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postMarketplaceCashCommissionAccounting, postMarketplaceCashReversalAccounting };
+export { postAccountingEvent, postGatewaySettlementAccounting, postGatewaySettlementReversalAccounting, postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postMarketplaceCashCommissionAccounting, postMarketplaceCashReversalAccounting, postSeriesCashAccounting };

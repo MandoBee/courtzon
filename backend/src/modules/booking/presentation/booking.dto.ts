@@ -188,6 +188,15 @@ export const RecurringPaymentSchema = z.object({
 
 export type RecurringPaymentInput = z.infer<typeof RecurringPaymentSchema>;
 
+/**
+ * R5-C4 — series CASH confirmation body. Strictly EMPTY: no amount, no player,
+ * no method — the operator only confirms receipt; every financial value is
+ * resolved server-side from the persisted occurrence snapshots.
+ */
+export const RecurringCashConfirmSchema = z.object({}).strict();
+
+export type RecurringCashConfirmInput = z.infer<typeof RecurringCashConfirmSchema>;
+
 export const RecurringPlayerSearchSchema = z.object({
   search: z.string().min(1).max(80).optional().default(''),
   limit: z.string().transform(Number).optional().default(20),
