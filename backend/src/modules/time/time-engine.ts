@@ -255,9 +255,23 @@ export class TimeEngine {
 
   static getLocalDayOfWeek(instant: UtcInstant, tz: IANATimezone): number {
     const { date } = UtcConv.utcToLocal(instant, tz)
-    const [y, m, d] = date.split('-').map(Number)
-    const dayOfWeek = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-    return dayOfWeek === 0 ? 7 : dayOfWeek  // Monday=1 .. Sunday=7
+    return TimeEngine.getLocalDayOfWeekFromDate(date)
+  }
+
+  /**
+   * Weekday (1=Mon .. 7=Sun) of a branch-LOCAL calendar date (YYYY-MM-DD).
+   *
+   * This is the ONLY correct way to price a calendar-dated occurrence: the
+   * weekday must come from the occurrence's own local date, never from a UTC
+   * instant (a local 00:30 Thursday is still Wednesday 22:30Z) and never from
+   * the server's current date. Pure calendar arithmetic via Date.UTC accessors,
+   * so it is immune to the host timezone and to DST offsets.
+   */
+  static getLocalDayOfWeekFromDate(localDate: LocalDate): number {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
+      throw new Error('localDate must use YYYY-MM-DD')
+    }
+    return localDayOfWeek(localDate)
   }
 
   static getLocalTime(instant: UtcInstant, tz: IANATimezone): LocalTime {

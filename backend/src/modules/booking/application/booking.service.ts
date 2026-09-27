@@ -1,5 +1,5 @@
 import { bookingRepository } from '../infrastructure/repositories/booking.repository.js';
-import { pricingEngine } from '../domain/pricing-engine.js';
+import { pricingEngine, PricingEngine } from '../domain/pricing-engine.js';
 import { commissionService } from '../../financial/application/commission.service.js';
 import { transactionService } from '../../financial/application/transaction.service.js';
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
@@ -1560,9 +1560,10 @@ export class BookingService {
   async previewRecurringSeries(input: RecurringSeriesInput) {
     const pool = getPool();
     const [branchRows] = await pool.execute<RowData>(
-      'SELECT timezone FROM branches WHERE id = ?', [input.branchId],
+      'SELECT id, organisation_id, timezone FROM branches WHERE id = ?', [input.branchId],
     );
     if (branchRows.length === 0) throw new NotFoundError('Branch');
+    const organisationId = Number((branchRows[0] as any).organisation_id);
     const branchTz = (branchRows[0] as any).timezone || 'Africa/Cairo';
 
     const resource = await resourceRepository.findById(input.resourceId);
@@ -1588,14 +1589,40 @@ export class BookingService {
     const minSeriesDate = await BookingService.day8SeriesMinDate(branchTz);
     const violating = occurrences.filter((o) => o.date < minSeriesDate).map((o) => o.date);
 
+    // R5-A — Canonical per-occurrence pricing. Every occurrence is priced on
+    // its OWN branch-local date, so a Monday+Thursday series prices each
+    // occurrence with its own weekday pricing. Side-effect free (reads only).
+    const priced = await this.priceRecurringOccurrences(
+      organisationId,
+      input.branchId,
+      branchTz,
+      occurrences.map((o: any) => ({
+        date: o.date,
+        startTime: o.startTime,
+        endTime: o.endTime,
+        courtId: input.resourceId,
+      })),
+    );
+    const seriesTotal = PricingEngine.sumOccurrenceTotals(priced.map((p) => p.totalAmount));
+
     const matrix: any[] = [];
-    for (const occ of occurrences) {
+    for (let i = 0; i < occurrences.length; i++) {
+      const occ = occurrences[i];
+      const pricing = priced[i];
       const available = await bookingRepository.checkSlotAvailability(
         input.resourceId, occ.date,
         [{ start: occ.startTime, end: occ.endTime, date: occ.date }],
       );
       if (available) {
-        matrix.push({ ...this.occurrenceBase(occ), status: 'available', conflictReason: null, alternativeCourts: [], alternativeTimes: [], hasAlternative: false });
+        matrix.push({
+          ...this.occurrenceBase(occ),
+          status: 'available',
+          conflictReason: null,
+          alternativeCourts: [],
+          alternativeTimes: [],
+          hasAlternative: false,
+          pricing: this.occurrencePricing(pricing),
+        });
         continue;
       }
       // Conflict → alternatives (courts first; times only when no court works).
@@ -1609,6 +1636,7 @@ export class BookingService {
         alternativeCourts: altCourts,
         alternativeTimes: altTimes,
         hasAlternative: altCourts.length > 0 || altTimes.length > 0,
+        pricing: this.occurrencePricing(pricing),
       });
     }
 
@@ -1619,8 +1647,104 @@ export class BookingService {
       containsBeforeDay8: violating.length > 0,
       violatingDates: violating,
       occurrences: matrix,
+      // R5-A — authoritative series total (sum of the per-occurrence canonical
+      // prices above). Recomputed on final creation; never client-supplied.
+      seriesTotal,
       first: occurrences[0] ? { date: occurrences[0].date, startTime: occurrences[0].startTime, endTime: occurrences[0].endTime } : null,
       last: occurrences[occurrences.length - 1] ? { date: occurrences[occurrences.length - 1].date, startTime: occurrences[occurrences.length - 1].startTime, endTime: occurrences[occurrences.length - 1].endTime } : null,
+    };
+  }
+
+  /**
+   * R5-A — canonical price + economic snapshot for every occurrence.
+   *
+   * Each occurrence goes through the SAME canonical pricing engine and the
+   * SAME `computeBookingEconomics()` helper the single-booking path uses, with
+   * the occurrence's OWN local date as the pricing date. Nothing is priced
+   * "for the series" — the series total is only ever the sum of these.
+   *
+   * Read-only (no bookings, locks, payments or accounting).
+   */
+  private async priceRecurringOccurrences(
+    organisationId: number,
+    branchId: number,
+    branchTz: string,
+    slots: Array<{ date: string; startTime: string; endTime: string; courtId: number }>,
+  ) {
+    // Canonical pricing is a pure function of (court, weekday, window), so a
+    // weekly series repeats the same price per weekday. Memoising keeps the
+    // per-occurrence cost constant without changing any result.
+    const priceCache = new Map<string, { totalPrice: number; standardAmount: number; peakAmount: number; peakMultiplier: number; dayOfWeek: number }>();
+    const econCache = new Map<number, any>();
+    const results: any[] = [];
+
+    for (const slot of slots) {
+      const dayOfWeek = TimeEngine.getLocalDayOfWeekFromDate(slot.date);
+      const key = `${slot.courtId}|${dayOfWeek}|${slot.startTime}|${slot.endTime}`;
+      let priced = priceCache.get(key);
+      if (!priced) {
+        const p = await pricingEngine.calculatePrice(slot.courtId, slot.startTime, slot.endTime, {
+          date: slot.date,
+          timezone: branchTz,
+        });
+        priced = {
+          totalPrice: p.totalPrice,
+          standardAmount: p.standardAmount,
+          peakAmount: p.peakAmount,
+          peakMultiplier: p.peakMultiplier,
+          dayOfWeek: p.dayOfWeek,
+        };
+        priceCache.set(key, priced);
+      }
+
+      // Canonical occurrence amount — the SAME 2dp rule the single-booking path
+      // applies to `totalAmount` (Math.round(n * 100) / 100).
+      const totalAmount = Math.round(priced.totalPrice * 100) / 100;
+      let economics = econCache.get(totalAmount);
+      if (!economics) {
+        economics = await this.computeBookingEconomics(organisationId, branchId, totalAmount);
+        econCache.set(totalAmount, economics);
+      }
+
+      results.push({
+        date: slot.date,
+        pricingDate: slot.date,
+        weekday: dayOfWeek,
+        dayOfWeek: priced.dayOfWeek,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        courtId: slot.courtId,
+        totalPrice: priced.totalPrice,
+        standardAmount: priced.standardAmount,
+        peakAmount: priced.peakAmount,
+        peakMultiplier: priced.peakMultiplier,
+        totalAmount,
+        ...economics,
+      });
+    }
+
+    return results;
+  }
+
+  /** R5-A — the per-occurrence pricing payload exposed on the preview matrix. */
+  private occurrencePricing(p: any) {
+    return {
+      date: p.date,
+      weekday: p.weekday,
+      dayOfWeek: p.dayOfWeek,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      totalPrice: p.totalPrice,
+      standardAmount: p.standardAmount,
+      peakAmount: p.peakAmount,
+      peakMultiplier: p.peakMultiplier,
+      totalAmount: p.totalAmount,
+      commissionAmount: p.commissionAmount,
+      clubAmount: p.clubAmount,
+      taxRate: p.taxRate,
+      taxRateId: p.taxRateId,
+      taxAmount: p.taxAmount,
+      taxTreatment: p.taxTreatment,
     };
   }
 
@@ -1726,10 +1850,26 @@ export class BookingService {
       throw new ConflictError('No occurrences selected for the recurring series — series not created');
     }
 
-    // 8. Canonical pricing + economic snapshot (same inputs as createBookingV2).
-    const pricing = await pricingEngine.calculatePrice(input.resourceId, input.startTime, input.endTime);
-    const economics = await this.computeBookingEconomics(organisationId, input.branchId, pricing.totalPrice);
-    const bookingTotal = Math.round(pricing.totalPrice * 100) / 100;
+    // 8. R5-A — canonical per-occurrence pricing + economic snapshot.
+    //    Every PLANNED occurrence is priced on its OWN branch-local date and
+    //    its actual (possibly alternative) court/time, through the SAME
+    //    canonical pricing engine + computeBookingEconomics() used by
+    //    createBookingV2. The series total is ONLY ever the sum of these —
+    //    nothing is priced "for the series" and no client total is trusted
+    //    (the recurring schema carries no client price field at all).
+    const pricedByDate = new Map<string, any>(
+      (await this.priceRecurringOccurrences(
+        organisationId,
+        input.branchId,
+        branchTz,
+        planned.map((p) => ({
+          date: p.date,
+          startTime: p.startTime,
+          endTime: p.endTime,
+          courtId: p.courtId,
+        })),
+      )).map((p) => [p.date, p]),
+    );
 
     // 9. TOCTOU re-check (pre-transaction): surface any now-conflicting
     //    occurrence for re-resolution instead of silently creating.
@@ -1770,6 +1910,11 @@ export class BookingService {
           const court = resourceById.get(Number(occ.courtId));
           if (!court) throw new ConflictError(`Alternative court ${occ.courtId} no longer available for ${occ.date}`);
 
+          // R5-A — authoritative per-occurrence price/economics computed in
+          // step 8 from this occurrence's own local date + actual court/time.
+          const occPricing = pricedByDate.get(occ.date);
+          if (!occPricing) throw new ConflictError(`Pricing could not be resolved for occurrence ${occ.date}`);
+
           // Occurrence-level idempotency pre-check (hard guarantee: the unique
           // key uk_booking_series_occurrence below).
           const [dupRows] = await conn.execute<RowData>(
@@ -1808,14 +1953,16 @@ export class BookingService {
             bookingDate: occ.date,
             startTime: occ.startTime,
             endTime: occ.endTime,
-            totalAmount: bookingTotal,
-            commissionAmount: economics.commissionAmount,
-            clubAmount: economics.clubAmount,
+            // R5-A — this occurrence's OWN canonical price/economics snapshot
+            // (priced on occ.date's weekday), never a series-wide constant.
+            totalAmount: occPricing.totalAmount,
+            commissionAmount: occPricing.commissionAmount,
+            clubAmount: occPricing.clubAmount,
             coachAmount: 0,
-            taxRate: economics.taxRate,
-            taxRateId: economics.taxRateId,
-            taxAmount: economics.taxAmount,
-            taxTreatment: economics.taxTreatment,
+            taxRate: occPricing.taxRate,
+            taxRateId: occPricing.taxRateId,
+            taxAmount: occPricing.taxAmount,
+            taxTreatment: occPricing.taxTreatment,
             priceType: 'net',
             notes: JSON.stringify({ referenceType: 'booking_series', seriesId: newSeriesId, operatorId: userId, playerId: input.playerUserId }),
             bookingStatus: 'pending',
@@ -2024,6 +2171,12 @@ export class BookingService {
     const series = await bookingSeriesRepository.findById(seriesId);
     if (!series) throw new NotFoundError('Recurring series');
     const bookings = await bookingRepository.findBySeries(series.id);
+    // R5-A — authoritative series total: the exact sum of the PERSISTED
+    // per-occurrence canonical totals (never a client-supplied value). The
+    // single payment in R5-B must consume this server-side number.
+    const seriesTotal = PricingEngine.sumOccurrenceTotals(
+      bookings.map((b: any) => Number(b.total_amount || 0)),
+    );
     return {
       seriesId: series.id,
       publicId: series.publicId,
@@ -2043,12 +2196,21 @@ export class BookingService {
       // canonical owner field). Operator stays on booking_series.created_by.
       playerUserId: bookings.length ? Number((bookings[0] as any).user_id) : null,
       occurrenceCount: bookings.length,
+      seriesTotal,
       occurrences: bookings.map((b: any) => ({
         bookingId: Number(b.id),
         date: BookingService.fmtDate(b.booking_date),
+        weekday: TimeEngine.getLocalDayOfWeekFromDate(BookingService.fmtDate(b.booking_date)),
         startTime: BookingService.fmtTime(b.start_time),
         endTime: BookingService.fmtTime(b.end_time),
         status: b.booking_status,
+        // R5-A — the occurrence's own canonical price + economics snapshot.
+        totalAmount: Number(b.total_amount || 0),
+        commissionAmount: Number(b.commission_amount || 0),
+        clubAmount: Number(b.club_amount || 0),
+        taxAmount: Number(b.tax_amount || 0),
+        taxRate: Number(b.tax_rate || 0),
+        taxTreatment: b.tax_treatment ?? null,
       })),
     };
   }

@@ -167,6 +167,10 @@ export async function createRecurringSeriesHandler(request: FastifyRequest, repl
       resourceId: body.resourceId,
       resolutions: body.resolutions || [],
       occurrenceCount: result.occurrenceCount,
+      // R5-A — server-authoritative series total (sum of the per-occurrence
+      // canonical prices). Recorded for auditability; the R5-B single payment
+      // must consume this server-side value, never a client-supplied total.
+      seriesTotal: result.seriesTotal,
     },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
