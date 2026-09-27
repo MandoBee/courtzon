@@ -142,6 +142,7 @@ async function cleanupPerUser(exec: (sql: string, params?: any[]) => Promise<any
   await exec(`DELETE FROM general_ledger WHERE organisation_id IN (${ORG1}, ${ORG2})`);
   await exec(`DELETE FROM financial_journal_entries WHERE reference_type = 'booking' AND reference_id IN (SELECT id FROM bookings WHERE user_id IN (${users}))`);
   await exec(`DELETE FROM booking_slots WHERE booking_id IN (SELECT id FROM bookings WHERE user_id IN (${users}))`);
+  await exec(`DELETE FROM payment_allocations WHERE payment_transaction_id IN (SELECT id FROM payment_transactions WHERE user_id IN (${users}))`);
   await exec(`DELETE FROM bookings WHERE user_id IN (${users})`);
   await exec(`DELETE FROM booking_series WHERE created_by IN (${users})`);
   await exec(`DELETE FROM payment_transactions WHERE user_id IN (${users})`);
@@ -2223,6 +2224,171 @@ describe('R5-D1 — full recurring series card refund', () => {
     const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
     const eligible = await gatewaySettlementService.listEligible();
     expect(eligible.find((e: any) => e.paymentTransactionId === paymentId)).toBeUndefined();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-D2-A — PAYMENT ALLOCATION FOUNDATION.
+// One paid recurring series CARD payment → exactly one allocation per booking
+// occurrence; every allocation mirrors the PERSISTED occurrence snapshot;
+// allocation gross sums to the payment amount; booking_slots is never a
+// financial unit. D2-B+ refund behavior is NOT implemented.
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-D2-A — payment allocation foundation', () => {
+  let series: any;
+  let paymentId: number;
+
+  async function buildPaidCardSeries() {
+    series = await createSeries();
+    const res = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    paymentId = Number(res.paymentId);
+    await pool.execute(`UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW() WHERE id = ?`, [paymentId]);
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await waitFor(() => occurrenceRows(series.seriesId), (rows) => allOccurrencesIn(rows, ['confirmed']),
+      'occurrences confirmed');
+  }
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    await buildPaidCardSeries();
+  });
+
+  async function allocationRows() {
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    return paymentAllocationService.findByPayment(paymentId);
+  }
+
+  it('A/D/E/F/G — one allocation per occurrence, snapshots copied verbatim from the booking rows', async () => {
+    const occ = await occurrenceRows(series.seriesId);
+    expect(occ).toHaveLength(2);
+    const allocations = await waitFor(() => allocationRows(), (rows) => rows.length === occ.length,
+      `one allocation per occurrence (${occ.length})`);
+    expect(allocations).toHaveLength(occ.length);
+
+    const allocByBooking = new Map(allocations.map((a) => [a.bookingId, a]));
+    for (const o of occ) {
+      const a = allocByBooking.get(Number(o.id));
+      expect(a).toBeTruthy();
+      expect(a.seriesId).toBe(series.seriesId);
+      expect(a.paymentTransactionId).toBe(paymentId);
+      // D — gross from the persisted total+tax.
+      expect(a.grossAmount).toBe(Math.round((Number(o.total_amount) + Number(o.tax_amount)) * 100) / 100);
+      // E — org net from the persisted club snapshot.
+      expect(a.orgNetAmount).toBe(Number(o.club_amount));
+      // F — commission from the persisted snapshot.
+      expect(a.commissionAmount).toBe(Number(o.commission_amount));
+      // G — tax from the persisted snapshot.
+      expect(a.taxAmount).toBe(Number(o.tax_amount));
+      expect(a.subtotal).toBe(Number(o.total_amount));
+      expect(a.currency).toBe('EGP');
+      expect(a.status).toBe('allocated');
+      expect(a.refundedAmount).toBe(0);
+    }
+  });
+
+  it('C — SUM(allocations.gross) === payment.amount (R5-C1 series gross)', async () => {
+    const allocations = await waitFor(() => allocationRows(), (rows) => rows.length === 2, 'allocations created');
+    const sum = Math.round(allocations.reduce((s, a) => s + a.grossAmount, 0) * 100) / 100;
+    expect(sum).toBe(3152.8);
+    const [pt] = await paymentRow(series.seriesId);
+    expect(Number(pt.amount)).toBe(sum);
+
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    await expect(paymentAllocationService.assertSeriesAllocationInvariant(paymentId)).resolves.toBeUndefined();
+  });
+
+  it('B — no duplicate allocation for the same payment+booking (idempotent replay + unique key)', async () => {
+    await waitFor(() => allocationRows(), (rows) => rows.length === 2, 'allocations created');
+    // Replay the canonical success event — the handler must be idempotent.
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await settleNegativeOnly();
+    const allocations = await allocationRows();
+    expect(allocations).toHaveLength(2);
+    const keys = allocations.map((a) => `${a.paymentTransactionId}:${a.bookingId}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('H — booking_slots is never a financial unit (allocations reference bookings only)', async () => {
+    await waitFor(() => allocationRows(), (rows) => rows.length === 2, 'allocations created');
+    const allocations = await allocationRows();
+    for (const a of allocations) {
+      expect(Number.isInteger(a.bookingId)).toBe(true);
+    }
+    const [slots] = await pool.execute<RowData>('SELECT COUNT(*) AS c FROM booking_slots WHERE booking_id IN (SELECT id FROM bookings WHERE series_id = ?)', [series.seriesId]);
+    expect(Number((slots as any[])[0].c)).toBeGreaterThan(0); // slots exist...
+    // ...but no allocation row references any slot as its unit.
+    const [mis] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM payment_allocations pa WHERE EXISTS (SELECT 1 FROM booking_slots bs WHERE bs.id = pa.booking_id)`);
+    expect(Number((mis as any[])[0].c)).toBe(0);
+  });
+
+  it('BACKFILL — an existing paid series payment is backfilled one-per-occurrence from persisted snapshots', async () => {
+    // Simulate an OLD paid series payment (no success handler ran → no live allocations).
+    await resetSeriesState();
+    const old = await createSeries({ weekdays: [1, 3, 4], startDate: DAY8, endDate: '2026-09-21' });
+    const occ = await occurrenceRows(old.seriesId);
+    const occIds = occ.map((o: any) => Number(o.id));
+    const gross = Math.round(occ.reduce((s: number, o: any) => s + (Number(o.total_amount) + Number(o.tax_amount)), 0) * 100) / 100;
+    const [ins] = await pool.execute<RowData>(
+      `INSERT INTO payment_transactions (user_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, paid_at)
+       VALUES (?, 'booking_series', ?, 'card', 'mock', ?, ?, 'EGP', 'paid', NOW())`,
+      [PLAYER, old.seriesId, `bf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, gross],
+    );
+    const oldPaymentId = (ins as any).insertId;
+
+    // Execute the SAME backfill INSERT...SELECT shipped inside migration 178.
+    await pool.execute(
+      `INSERT INTO payment_allocations
+         (payment_transaction_id, series_id, booking_id, subtotal, tax_amount, commission_amount, org_net_amount, gross_amount, currency, refunded_amount, status, payment_method, created_at, updated_at)
+       SELECT pt.id, b.series_id, b.id, b.total_amount, b.tax_amount, b.commission_amount, b.club_amount,
+              (b.total_amount + b.tax_amount), pt.currency, 0, 'allocated', pt.payment_method, NOW(), NOW()
+       FROM payment_transactions pt
+       JOIN booking_series s ON s.id = pt.reference_id AND pt.reference_type = 'booking_series'
+       JOIN bookings b ON b.series_id = s.id
+       WHERE pt.payment_status = 'paid' AND pt.id = ?`,
+      [oldPaymentId],
+    );
+
+    const [rows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c, COALESCE(SUM(gross_amount),0) AS g FROM payment_allocations WHERE payment_transaction_id = ?`, [oldPaymentId]);
+    expect(Number((rows as any[])[0].c)).toBe(occIds.length);      // one allocation per occurrence
+    expect(Math.round(Number((rows as any[])[0].g) * 100) / 100).toBe(gross); // sums to the payment amount
+    expect(Number(gross)).toBe(Number((rows as any[])[0].g));
+
+    // Re-run is a no-op (NOT EXISTS + unique key).
+    await pool.execute(
+      `INSERT INTO payment_allocations (payment_transaction_id, series_id, booking_id, subtotal, tax_amount, commission_amount, org_net_amount, gross_amount, currency, refunded_amount, status, payment_method, created_at, updated_at)
+       SELECT pt.id, b.series_id, b.id, b.total_amount, b.tax_amount, b.commission_amount, b.club_amount,
+              (b.total_amount + b.tax_amount), pt.currency, 0, 'allocated', pt.payment_method, NOW(), NOW()
+       FROM payment_transactions pt
+       JOIN booking_series s ON s.id = pt.reference_id AND pt.reference_type = 'booking_series'
+       JOIN bookings b ON b.series_id = s.id
+       WHERE pt.payment_status = 'paid' AND pt.id = ? AND NOT EXISTS (SELECT 1 FROM payment_allocations pa WHERE pa.payment_transaction_id = pt.id AND pa.booking_id = b.id)`,
+      [oldPaymentId],
+    );
+    const [again] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM payment_allocations WHERE payment_transaction_id = ?`, [oldPaymentId]);
+    expect(Number((again as any[])[0].c)).toBe(occIds.length);
+  });
+
+  it('backfill excludes NON-paid series payments (nothing fabricated)', async () => {
+    await resetSeriesState();
+    const s = await createSeries();
+    const [ins] = await pool.execute<RowData>(
+      `INSERT INTO payment_transactions (user_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status)
+       VALUES (?, 'booking_series', ?, 'card', 'mock', ?, 2800, 'EGP', 'pending')`,
+      [PLAYER, s.seriesId, `nono-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`],
+    );
+    const pendingId = (ins as any).insertId;
+    const [rows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM payment_allocations WHERE payment_transaction_id = ?`, [pendingId]);
+    expect(Number((rows as any[])[0].c)).toBe(0);
   });
 });
 

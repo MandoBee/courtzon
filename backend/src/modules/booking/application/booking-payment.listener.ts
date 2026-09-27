@@ -131,6 +131,17 @@ async function handleSeriesPaymentSucceeded(data: { paymentId: number; reference
     { seriesId, paymentId: data.paymentId, confirmed: summary.applied.length, skipped: summary.skipped.length },
     'Recurring series: payment success handled',
   );
+
+  // R5-D2-A — record the authoritative payment allocation foundation: ONE
+  // allocation per paid occurrence (never per booking_slot). Additive and
+  // idempotent (UNIQUE per payment+booking); historical prices are copied from
+  // the persisted occurrence snapshots, never recomputed. No refund behavior.
+  try {
+    const { paymentAllocationService } = await import('./payment-allocation.service.js');
+    await paymentAllocationService.createAllocationForSeriesPayment(seriesId, Number(data.paymentId));
+  } catch (err: any) {
+    log.error({ err, seriesId, paymentId: data.paymentId }, 'Recurring series: allocation foundation write failed');
+  }
 }
 
 /**

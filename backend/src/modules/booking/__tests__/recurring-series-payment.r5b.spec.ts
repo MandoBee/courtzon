@@ -653,3 +653,52 @@ describe('R5-D1 — FULL series card refund contract (reuses PaymentService, no 
     expect(svc).not.toContain('refundSeriesCash');
   });
 });
+
+describe('R5-D2-A — payment allocation foundation contract (infra only, no refund)', () => {
+  const service = be('src/modules/booking/application/payment-allocation.service.ts');
+  const repo = be('src/modules/booking/infrastructure/repositories/payment-allocation.repository.ts');
+  const listener = be('src/modules/booking/application/booking-payment.listener.ts');
+
+  it('the canonical unit is the BOOKING occurrence, never booking_slots', () => {
+    expect(service).toContain('bookings.id');
+    expect(service).toContain('ALLOCATION_EXCLUDED_STATUSES');
+    // No financial use of the availability-only slots table anywhere.
+    expect(repo).not.toMatch(/booking_slots\b/);
+    expect(service).not.toMatch(/FROM booking_slots/);
+  });
+
+  it('amounts come ONLY from the persisted occurrence snapshots (no re-pricing)', () => {
+    expect(service).toContain('Number(occ.total_amount || 0)');
+    expect(service).toContain('Number(occ.tax_amount || 0)');
+    expect(service).toContain('Number(occ.commission_amount || 0)');
+    expect(service).toContain('Number(occ.club_amount || 0)');
+    expect(service).not.toContain('pricingEngine');
+    expect(service).not.toContain('calculatePrice');
+  });
+
+  it('idempotency reuses the unique payment+booking key and the canonical round2 rule', () => {
+    expect(repo).toContain('uk_pa_payment_booking');
+    expect(repo).toContain("err?.code === 'ER_DUP_ENTRY'");
+    expect(repo).toContain('const round2 = (n: number) => Math.round(n * 100) / 100;');
+  });
+
+  it('the service exposes the foundation API but NO refund behavior', () => {
+    expect(service).toContain('createAllocationForSeriesPayment');
+    expect(service).toContain('assertSeriesAllocationInvariant');
+    expect(service).toContain('getRefundableBalance');
+    expect(service).not.toContain('paymentService.refund');
+    expect(service).not.toContain("'booking_series_refund'");
+  });
+
+  it('the success handler writes the allocation foundation (additive, never removes money)', () => {
+    expect(listener).toContain('createAllocationForSeriesPayment(seriesId, Number(data.paymentId))');
+  });
+
+  it('the migration backfills ONLY paid booking_series payments from persisted snapshots', () => {
+    const mig = readFileSync(resolve(ROOT, 'database/migrations/178_payment_allocations.sql'), 'utf8');
+    expect(mig).toContain("pt.payment_status = 'paid'");
+    expect(mig).toContain("(b.total_amount + b.tax_amount)");
+    expect(mig).toContain("UNIQUE KEY uk_pa_payment_booking");
+    expect(mig).toContain('COURTZON_MIGRATION_ENV: PRODUCTION_SAFE');
+  });
+});
