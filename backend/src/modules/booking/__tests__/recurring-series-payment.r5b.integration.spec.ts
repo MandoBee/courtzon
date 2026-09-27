@@ -1327,3 +1327,130 @@ describe('R5-C2 — series accounting recognition', () => {
     expect(fp.journal).toBe(0);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-C3-A — reconciliation Check 5 is series-aware.
+// A confirmed occurrence of a PAID recurring series (payment_transactions:
+// reference_type='booking_series', reference_id=seriesId, booking_id=NULL,
+// payment_status='paid') must NOT be flagged `booking_confirmed_no_payment`.
+// Standalone bookings keep the exact existing behavior.
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-C3-A — reconciliation: booking_confirmed_no_payment is series-aware', () => {
+  let paidSeries: any;
+  let unpaidSeries: any;
+  let standalonePaid: number;
+  let standaloneUnpaid: number;
+  let seriesPaidPaymentId: number;
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    // ── Series A (paid): payment is PAID, occurrences are confirmed. ──
+    paidSeries = await createSeries();
+    await recurringPayment.initiateSeriesCardPayment(paidSeries.seriesId, ADMIN);
+    const paidPay = (await paymentRow(paidSeries.seriesId))[0];
+    seriesPaidPaymentId = Number(paidPay.id);
+    await pool.execute(
+      `UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW() WHERE id = ?`, [paidPay.id]);
+    await pool.execute(`UPDATE bookings SET booking_status = 'confirmed' WHERE series_id = ?`, [paidSeries.seriesId]);
+
+    // ── Series B (unpaid): payment stays PENDING, occurrences are confirmed.
+    //    Non-overlapping slot (20:00–22:00 vs Series A's 18:00–20:00) so the two
+    //    series never conflict on the same court fixture. gateway_reference is
+    //    pinned to a UNIQUE value (the column has uq_gateway_reference) so the
+    //    pending row is stable across runs.
+    unpaidSeries = await createSeries({ startTime: '20:00', endTime: '22:00' });
+    await recurringPayment.initiateSeriesCardPayment(unpaidSeries.seriesId, ADMIN);
+    const unpaidPay = (await paymentRow(unpaidSeries.seriesId))[0];
+    await pool.execute(
+      `UPDATE payment_transactions SET gateway_reference = 'recon-series-unpaid' WHERE id = ?`, [unpaidPay.id]);
+    await pool.execute(`UPDATE bookings SET booking_status = 'confirmed' WHERE series_id = ?`, [unpaidSeries.seriesId]);
+
+    // ── Standalone confirmed booking WITH a paid 'booking' payment → NOT flagged. ──
+    const [ins1] = await pool.execute<RowData>(
+      `INSERT INTO bookings (user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time,
+         total_amount, commission_amount, club_amount, coach_amount, booking_status, payment_status, payment_method, business_date, aggregate_version)
+       VALUES (?, ?, ?, ?, 'private_match', '2026-09-14', '18:00', '20:00', 1600, 160, 1440, 0, 'confirmed', 'pending', 'card', '2026-09-14', 1)`,
+      [PLAYER, ORG1, BRANCH_CAIRO, RES_MAIN]);
+    standalonePaid = (ins1 as any).insertId;
+    await pool.execute(
+      `INSERT INTO payment_transactions (user_id, booking_id, reference_type, reference_id, payment_method, gateway_provider, amount, currency, payment_status, paid_at)
+       VALUES (?, ?, 'booking', ?, 'card', 'mock', 1801.60, 'EGP', 'paid', NOW())`,
+      [PLAYER, standalonePaid, standalonePaid]);
+
+    // ── Standalone confirmed booking WITHOUT a payment → still flagged. ──
+    const [ins2] = await pool.execute<RowData>(
+      `INSERT INTO bookings (user_id, organisation_id, branch_id, resource_id, booking_type, booking_date, start_time, end_time,
+         total_amount, commission_amount, club_amount, coach_amount, booking_status, payment_status, payment_method, business_date, aggregate_version)
+       VALUES (?, ?, ?, ?, 'private_match', '2026-09-14', '18:00', '20:00', 1600, 160, 1440, 0, 'confirmed', 'pending', 'card', '2026-09-14', 1)`,
+      [PLAYER, ORG1, BRANCH_CAIRO, RES_MAIN]);
+    standaloneUnpaid = (ins2 as any).insertId;
+  });
+
+  it('1+2 — standalone behavior unchanged: paid booking NOT reported, unpaid booking reported', async () => {
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const run = await reconciliationService.run();
+    const flagged = run.issues.filter((i: any) => i.type === 'booking_confirmed_no_payment').map((i: any) => Number(i.entityId));
+    expect(flagged).not.toContain(standalonePaid);
+    expect(flagged).toContain(standaloneUnpaid);
+  });
+
+  it('3 — a confirmed occurrence of a PAID series is NOT reported (no false positives per occurrence)', async () => {
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const occ = await occurrenceRows(paidSeries.seriesId);
+    const run = await reconciliationService.run();
+    const flagged = run.issues.filter((i: any) => i.type === 'booking_confirmed_no_payment').map((i: any) => Number(i.entityId));
+    const occIds = occ.map((o: any) => Number(o.id));
+    for (const id of occIds) {
+      expect(flagged, `occurrence ${id} of a paid series must not be flagged`).not.toContain(id);
+    }
+    // 6 — multiple occurrences of the same paid series generate ZERO issues.
+    expect(flagged.filter((id) => occIds.includes(id))).toHaveLength(0);
+  });
+
+  it('4 — a confirmed occurrence whose series payment is NOT paid is still reported once per occurrence', async () => {
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const occ = await occurrenceRows(unpaidSeries.seriesId);
+    const run = await reconciliationService.run();
+    const flagged = run.issues.filter((i: any) => i.type === 'booking_confirmed_no_payment').map((i: any) => Number(i.entityId));
+    const occIds = occ.map((o: any) => Number(o.id));
+    for (const id of occIds) {
+      expect(flagged, `occurrence ${id} of an UNPAID series must still be flagged`).toContain(id);
+    }
+  });
+
+  it('5 — the paid booking_series payment (booking_id NULL) is recognized and never orphaned', async () => {
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const [pt] = await pool.execute<RowData>(
+      `SELECT reference_type, reference_id, booking_id, payment_status FROM payment_transactions WHERE id = ?`, [seriesPaidPaymentId]);
+    const row = (pt as any[])[0];
+    expect(row.reference_type).toBe('booking_series');
+    expect(Number(row.reference_id)).toBe(paidSeries.seriesId);
+    expect(row.booking_id).toBeNull();
+    expect(row.payment_status).toBe('paid');
+
+    const run = await reconciliationService.run();
+    expect(run.issues.filter((i: any) => i.type === 'orphan_payment' && Number(i.entityId) === seriesPaidPaymentId)).toHaveLength(0);
+    expect(run.issues.filter((i: any) => i.type === 'paid_booking_not_confirmed' && Number(i.entityId) === paidSeries.seriesId)).toHaveLength(0);
+  });
+
+  it('7 — the reconciliation run creates or modifies NO payment_transactions row', async () => {
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const before = await countOf('SELECT COUNT(*) AS c FROM payment_transactions');
+    await reconciliationService.run();
+    const after = await countOf('SELECT COUNT(*) AS c FROM payment_transactions');
+    expect(after).toBe(before);
+  });
+
+  it('8 — the reconciliation run creates or modifies NO ledger_entries row', async () => {
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const before = await countOf('SELECT COUNT(*) AS c FROM ledger_entries');
+    await reconciliationService.run();
+    const after = await countOf('SELECT COUNT(*) AS c FROM ledger_entries');
+    expect(after).toBe(before);
+  });
+});
+
+async function countOf(sql: string): Promise<number> {
+  const [rows] = await pool.execute<RowData>(sql, []);
+  return Number((rows as any[])[0].c);
+}

@@ -121,7 +121,7 @@ export class ReconciliationService {
       `SELECT wt.*, pt.payment_status
        FROM wallet_transactions wt
        LEFT JOIN payment_transactions pt ON pt.id = wt.reference_id
-       WHERE wt.type = 'payment'
+       WHERE wt.transaction_type = 'payment'
        AND (pt.payment_status IS NULL OR pt.payment_status NOT IN ('paid', 'refunded'))
        AND wt.created_at > NOW() - INTERVAL 7 DAY
        ${dateFilter} ${dateFilter2}
@@ -169,6 +169,15 @@ export class ReconciliationService {
     }
 
     // ── 5. Check 5: Booking confirmed → no paid payment ───────────────
+    // R5-C3-A — recurring-series awareness. A series occurrence is paid by the
+    // parent's ONE `booking_series` payment (reference_type='booking_series',
+    // reference_id=series.id, booking_id=NULL). The per-booking join below can
+    // never see that payment, so a confirmed occurrence of a PAID series was
+    // falsely reported as having no payment. Standalone bookings (series_id
+    // IS NULL) keep the EXACT existing behavior. A series occurrence is only
+    // excluded when its parent series actually has a PAID booking_series
+    // payment; otherwise it is still reported (a confirmed occurrence whose
+    // series money never arrived is a genuine gap).
     const [bookingNoPayment] = await pool.execute<any[]>(
       `SELECT b.*, pt.payment_status
        FROM bookings b
@@ -176,6 +185,15 @@ export class ReconciliationService {
        WHERE b.booking_status = 'confirmed'
        AND (pt.payment_status IS NULL OR pt.payment_status NOT IN ('paid', 'refunded'))
        AND b.created_at > NOW() - INTERVAL 7 DAY
+       AND (
+         b.series_id IS NULL
+         OR NOT EXISTS (
+           SELECT 1 FROM payment_transactions pt_series
+           WHERE pt_series.reference_type = 'booking_series'
+             AND pt_series.reference_id = b.series_id
+             AND pt_series.payment_status = 'paid'
+         )
+       )
        ${dateFilter} ${dateFilter2}
        ${limit}`
     );
