@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { bookingService } from '../application/booking.service.js';
-import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringPreviewSchema, RecurringCreateSchema, RecurringSeriesQuerySchema, RecurringPlayerSearchSchema, RecurringPaymentSchema, RecurringCashConfirmSchema } from './booking.dto.js';
+import { CreateBookingSchema, ConfirmBookingSchema, PrepareBookingSchema, CancelBookingSchema, BookingsQuerySchema, StartMatchmakingSchema, RecurringPreviewSchema, RecurringCreateSchema, RecurringSeriesQuerySchema, RecurringPlayerSearchSchema, RecurringPaymentSchema, RecurringCashConfirmSchema, RecurringSeriesRefundSchema } from './booking.dto.js';
 import { ForbiddenError } from '../../../shared/errors/app-error.js';
 import { recordAudit } from '../../audit-log/index.js';
 
@@ -310,6 +310,50 @@ export async function collectRecurringSeriesCashHandler(request: FastifyRequest,
       skippedOccurrenceIds: result.skippedOccurrenceIds,
       status: result.status,
       alreadyConfirmed: result.alreadyConfirmed,
+    },
+    ipAddress: request.ip,
+    userAgent: request.headers['user-agent'],
+  });
+
+  return reply.send(result);
+}
+
+/**
+ * R5-D1 — FULL recurring-series CARD refund requested by a responsible
+ * operator. The body is a strict empty object (no refund amount); the
+ * authoritative seriesGross is resolved server-side and the existing
+ * PaymentService.refund() owns the gateway/money lifecycle. The accounting
+ * listener reverses the R5-C2 recognition via payment:refunded. One
+ * BOOKING.SERIES_REFUND audit entry records the operator + authoritative
+ * amount + before/after payment state.
+ */
+export async function refundRecurringSeriesCardHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const userId = (request as any).userId;
+  RecurringSeriesRefundSchema.parse(request.body || {});
+  const { refundSeriesCard } = await import('../application/recurring-payment.service.js');
+  const result = await refundSeriesCard(Number(id), userId);
+
+  recordAudit({
+    actorId: userId ?? null,
+    action: 'BOOKING.SERIES_REFUND',
+    entityType: 'booking_series',
+    entityId: result.seriesId,
+    afterState: {
+      operatorId: userId,
+      playerId: result.playerId,
+      seriesId: result.seriesId,
+      paymentId: result.paymentId,
+      seriesSubtotal: result.seriesSubtotal,
+      seriesTax: result.seriesTax,
+      seriesGross: result.seriesGross,
+      currency: result.currency,
+      occurrenceCount: result.occurrenceCount,
+      affectedOccurrenceIds: result.affectedOccurrenceIds,
+      refundStatus: result.refundStatus,
+      alreadyRefunded: result.alreadyRefunded,
+      beforePaymentState: 'paid',
+      afterPaymentState: result.refundStatus,
     },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],

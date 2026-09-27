@@ -197,6 +197,15 @@ export const RecurringCashConfirmSchema = z.object({}).strict();
 
 export type RecurringCashConfirmInput = z.infer<typeof RecurringCashConfirmSchema>;
 
+/**
+ * R5-D1 — full series CARD refund body. Strictly EMPTY: no refund amount — the
+ * authoritative seriesGross is resolved server-side from per-occurrence
+ * snapshots; PaymentService.refund owns the money lifecycle.
+ */
+export const RecurringSeriesRefundSchema = z.object({}).strict();
+
+export type RecurringSeriesRefundInput = z.infer<typeof RecurringSeriesRefundSchema>;
+
 export const RecurringPlayerSearchSchema = z.object({
   search: z.string().min(1).max(80).optional().default(''),
   limit: z.string().transform(Number).optional().default(20),

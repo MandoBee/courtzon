@@ -41,6 +41,7 @@ import { TimeEngine } from '../../time/index.js';
 import type { Command } from '../../../shared/command/command-base.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { confirmBookingHandler } from '../commands/confirm-booking.command.js';
+import { cancelBookingHandler } from '../commands/cancel-booking.command.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 // NOTE: `booking.service.js` is imported DYNAMICALLY inside
 // `assertSeriesPaymentAuthority` (below) rather than statically. `booking.service`
@@ -105,6 +106,8 @@ export interface SeriesPaymentSummary {
   paymentMethod: string | null;
   gatewayProvider: string | null;
   gatewayReference: string | null;
+  /** R5-D1 — null until the gateway settlement rail settles this payment. */
+  gatewaySettlementId: number | null;
   paidAt: string | null;
   createdAt: string | null;
 }
@@ -116,7 +119,7 @@ export async function loadSeriesPayment(seriesId: number): Promise<SeriesPayment
     return {
       paymentId: null, status: null, amount: 0, currency: SERIES_PAYMENT_CURRENCY,
       paymentMethod: null, gatewayProvider: null, gatewayReference: null,
-      paidAt: null, createdAt: null,
+      gatewaySettlementId: null, paidAt: null, createdAt: null,
     };
   }
   return {
@@ -127,6 +130,7 @@ export async function loadSeriesPayment(seriesId: number): Promise<SeriesPayment
     paymentMethod: row.payment_method,
     gatewayProvider: row.gateway_provider,
     gatewayReference: row.gateway_reference,
+    gatewaySettlementId: row.gateway_settlement_id != null ? Number(row.gateway_settlement_id) : null,
     paidAt: row.paid_at,
     createdAt: row.created_at,
   };
@@ -602,6 +606,167 @@ export async function confirmSeriesCash(seriesId: number, operatorId: number): P
 /** Canonical "now" so tests can freeze time. */
 export function seriesNowMs(): number {
   return new Date(TimeEngine.now()).getTime();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R5-D1 — FULL recurring series CARD refund.
+//
+// Reuses the canonical PaymentService.refund() lifecycle (gateway refund +
+// status transition + T1/T2/T3 idempotency). Once the canonical
+// `payment:refunded` event fires, the accounting listener reverses the R5-C2
+// series recognition exactly once, every occurrence entitlement is cancelled
+// through the canonical entitlement service, and the eligible occurrences are
+// cancelled via the canonical CancelBooking command.
+//
+// STRICT ELIGIBILITY (R5-D1):
+//   - tenant/org/branch authority (same as every responsible recurring action)
+//   - series not cancelled/completed
+//   - a booking_series Card payment exists, payment_status='paid',
+//     amount === seriesGross, booking_id NULL
+//   - NOT already gateway-settled (post-settlement refund is BLOCKED)
+//   - no prior series refund
+//   - series accounting recognition exists (booking_series_card_payment posted)
+//   - NO completed occurrence and NO prior occurrence cancellation — a full
+//     series refund may not overlap ambiguous partial state (occurrence-level
+//     refund is blocked by the absent allocation model). Any such series is
+//     REJECTED with a clear domain error; nothing is partially refunded.
+//
+// NO payment amount is accepted from the client: seriesGross is authoritative.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RefundSeriesCardResult {
+  seriesId: number;
+  playerId: number;
+  paymentId: number;
+  seriesSubtotal: number;
+  seriesTax: number;
+  seriesGross: number;
+  currency: string;
+  occurrenceCount: number;
+  affectedOccurrenceIds: number[];
+  refundStatus: string;
+  alreadyRefunded: boolean;
+}
+
+export async function refundSeriesCard(seriesId: number, operatorId: number): Promise<RefundSeriesCardResult> {
+  const ctx = await loadSeriesPaymentContext(seriesId);
+  await assertSeriesPaymentAuthority(operatorId, ctx);
+
+  if (SERIES_PAYMENT_BLOCKED_STATUSES.has(ctx.seriesStatus)) {
+    throw new ConflictError(`Recurring series is ${ctx.seriesStatus} — full-series card refund is not available`);
+  }
+
+  // Authoritative series payment state.
+  const payment = await paymentRepository.findByReference(SERIES_PAYMENT_REFERENCE_TYPE, seriesId);
+  if (!payment) {
+    throw new ConflictError('Recurring series has no card payment to refund');
+  }
+  const paymentId = Number(payment.id);
+  const paymentStatus = String(payment.payment_status);
+
+  // Already refunded → idempotent, no gateway call.
+  if (paymentStatus === 'refunded') {
+    log.info({ seriesId, paymentId }, 'Series card payment already refunded — idempotent result');
+    return {
+      seriesId, playerId: ctx.playerUserId, paymentId,
+      seriesSubtotal: ctx.seriesSubtotal, seriesTax: ctx.seriesTax, seriesGross: ctx.seriesGross,
+      currency: ctx.currency, occurrenceCount: ctx.occurrenceCount,
+      affectedOccurrenceIds: ctx.occurrences.map((o: any) => Number(o.id)),
+      refundStatus: 'refunded', alreadyRefunded: true,
+    };
+  }
+  if (paymentStatus !== 'paid') {
+    throw new ConflictError(`Series card payment is ${paymentStatus} — only 'paid' payments can be refunded`);
+  }
+
+  // R5-D1 strict guards.
+  if (payment.gateway_settlement_id != null && Number(payment.gateway_settlement_id) !== 0) {
+    throw new ConflictError('This series payment has already been gateway-settled — post-settlement refunds are not supported (R5-D1).');
+  }
+  const charged = Number(payment.amount || 0);
+  if (Math.abs(charged - ctx.seriesGross) >= 0.01) {
+    throw new ConflictError(`Series payment amount ${charged} does not match the authoritative seriesGross ${ctx.seriesGross} — refund blocked`);
+  }
+
+  // Series accounting recognition must exist (R5-C2 posted the card recognition).
+  const { ledgerRepository } = await import('../../financial/infrastructure/repositories/ledger.repository.js');
+  if (!(await ledgerRepository.hasPosting('booking', seriesId, 'booking_series_card_payment'))) {
+    throw new ConflictError('Series card accounting recognition is missing — cannot refund a financially inconsistent series');
+  }
+
+  // Conservative full-series guard: NO completed occurrence and NO prior
+  // occurrence cancellation (occurrence/partial refund is blocked by the
+  // absent allocation model; a full refund overlapping such state is rejected).
+  const SERIES_TERMINAL = new Set(['cancelled', 'completed', 'no_show', 'expired']);
+  for (const occ of ctx.occurrences) {
+    if (SERIES_TERMINAL.has(String(occ.booking_status))) {
+      throw new ConflictError(
+        `Full-series card refund blocked: occurrence #${occ.id} is '${occ.booking_status}'. Occurrence-level refunds require an allocation model (not supported in R5-D1).`,
+      );
+    }
+  }
+
+  // 1. Refund through the CANONICAL Payment Service (owns the status change,
+  //    the gateway call and the refund idempotency). No direct gateway call.
+  const { paymentService } = await import('../../payment/application/payment.service.js');
+  const result = await paymentService.refund(paymentId, ctx.seriesGross, 'Full recurring series card refund');
+  if (!result?.success) {
+    throw new Error(`Series card refund failed: ${(result as any)?.errorMessage || 'unknown error'}`);
+  }
+
+  log.info({ seriesId, paymentId, operatorId, amount: ctx.seriesGross }, 'Series card refund executed via canonical Payment Service');
+
+  // 2. Cancel EVERY occurrence entitlement through the canonical service. The
+  //    payment:refunded event (async) triggers the series accounting reversal
+  //    in the listener; occurrence entitlements are cancelled here explicitly
+  //    (per-occurrence booking:refunded is NO-OP for series occurrences).
+  const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+  const affectedIds: number[] = [];
+  for (const occ of ctx.occurrences) {
+    const bookingId = Number(occ.id);
+    affectedIds.push(bookingId);
+    await financialEntitlementService.cancelBySource('booking', bookingId, `Recurring series #${seriesId} full refund`);
+  }
+
+  // 3. Cancel every occurrence through the canonical CancelBooking command
+  //    (future, non-terminal only — eligibility already rejected any
+  //    terminal/partial state, so every occurrence here can be cancelled).
+  const cancelResults: number[] = [];
+  for (const occ of ctx.occurrences) {
+    const bookingId = Number(occ.id);
+    try {
+      const cancelCommand: Command = {
+        commandId: newCommandId('CancelBooking'),
+        commandType: 'CancelBooking',
+        aggregateType: 'booking',
+        aggregateId: String(bookingId),
+        payload: { bookingId, reason: 'series_full_refund', actorId: operatorId },
+        correlationId: `corr_${Date.now()}`,
+      };
+      const res = await commandPipeline.execute(cancelCommand, {
+        validate: async () => cancelBookingHandler.validate(cancelCommand),
+        execute: async (cmd, conn) => cancelBookingHandler.execute(cmd, conn),
+        events: (cmd, res) => cancelBookingHandler.events!(cmd, res),
+      });
+      if (res.status !== 'error') cancelResults.push(bookingId);
+    } catch (err: any) {
+      log.warn({ err, seriesId, bookingId }, 'Series refund: occurrence cancellation skipped');
+    }
+  }
+
+  return {
+    seriesId,
+    playerId: ctx.playerUserId,
+    paymentId,
+    seriesSubtotal: ctx.seriesSubtotal,
+    seriesTax: ctx.seriesTax,
+    seriesGross: ctx.seriesGross,
+    currency: ctx.currency,
+    occurrenceCount: ctx.occurrenceCount,
+    affectedOccurrenceIds: affectedIds,
+    refundStatus: 'refunded',
+    alreadyRefunded: false,
+  };
 }
 
 /** Audit-friendly shape of the outcome list. */

@@ -588,3 +588,68 @@ describe('R5-C4 — series CASH confirmation contract (no payment_transactions, 
     expect(registry).toMatch(/permissionKey: 'bookings\.recurring\.collect-cash'[^}]*elementType: 'button'/);
   });
 });
+
+describe('R5-D1 — FULL series card refund contract (reuses PaymentService, no allocation)', () => {
+  const accounting = be('src/modules/financial/application/accounting-event.listener.ts');
+  const concepts = be('src/modules/financial/application/accounting-concepts.ts');
+  const engine = be('src/modules/financial/application/accounting-engine.service.ts');
+  const svc = be('src/modules/booking/application/recurring-payment.service.ts');
+  const routes = be('src/modules/booking/presentation/booking.routes.ts');
+  const controller = be('src/modules/booking/presentation/booking.controller.ts');
+  const dto = be('src/modules/booking/presentation/booking.dto.ts');
+
+  it('the refund lifecycle reuses PaymentService.refund and never calls the gateway directly', () => {
+    const fn = svc.slice(svc.indexOf('export async function refundSeriesCard'));
+    expect(fn).toContain("import('../../payment/application/payment.service.js')");
+    expect(fn).toContain('paymentService.refund(paymentId, ctx.seriesGross,');
+    expect(fn).not.toContain('paymentGateway');
+  });
+
+  it('occurrence/partial refund stays BLOCKED (terminal guard, no allocation)', () => {
+    expect(svc).toContain("SERIES_TERMINAL = new Set(['cancelled', 'completed', 'no_show', 'expired'])");
+    expect(svc).toContain('Occurrence-level refunds require an allocation model (not supported in R5-D1)');
+  });
+
+  it('post-gateway-settlement refund is REJECTED', () => {
+    expect(svc).toContain('gateway_settlement_id');
+    expect(svc).toContain('post-settlement refunds are not supported (R5-D1).');
+  });
+
+  it('the payment:refunded listener routes booking_series into series reversal (never generic card_refund)', () => {
+    expect(accounting).toContain("if (referenceType === 'booking_series') {");
+    expect(accounting).toContain('await postSeriesRefundAccounting(Number(referenceId), currency);');
+    expect(accounting).toContain("'booking_series_refund', 'booking', seriesId, null,");
+    expect(accounting).toContain("'booking_series_org_receivable_reversal', 'booking', seriesId, orgId,");
+  });
+
+  it('EVENT_CONCEPTS defines the symmetric reversal, code defaults resolve with no DB rows', () => {
+    const c = concepts.slice(concepts.indexOf('booking_series_refund'), concepts.indexOf('booking_series_refund') + 220);
+    expect(c).toContain("debit: ['merchant_payable', 'platform_commission', 'tax_liability']");
+    expect(c).toContain("credit: ['payment_clearing']");
+    const o = concepts.slice(concepts.indexOf('booking_series_org_receivable_reversal'), concepts.indexOf('booking_series_org_receivable_reversal') + 260);
+    expect(o).toContain("debit: ['court_rental_revenue']");
+    expect(o).toContain("credit: ['marketplace_receivable', 'commission_expense']");
+    expect(engine).toContain('booking_series_org_receivable_reversal:');
+    expect(engine).toMatch(/booking_series_refund:\s*\{ merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300', payment_clearing: '1100' \}/);
+  });
+
+  it('the refund route is protected by the recurring guard AND the existing financial refund permission', () => {
+    expect(routes).toMatch(/app\.post\('\/admin\/recurring\/:id\/refund',\s*\{\s*preHandler:\s*\[recurringGuard,\s*requirePermission\(\['financial\.reconcile'\]\)\]\s*\},/);
+  });
+
+  it('the controller audits BOOKING.SERIES_REFUND once with before/after payment state', () => {
+    expect(controller).toContain('export async function refundRecurringSeriesCardHandler');
+    expect(controller).toContain("action: 'BOOKING.SERIES_REFUND'");
+    expect(controller).toContain("beforePaymentState: 'paid'");
+    expect(controller).toContain('afterPaymentState: result.refundStatus');
+  });
+
+  it('the strict empty-body schema exists (no client refund amount)', () => {
+    expect(dto).toContain('RecurringSeriesRefundSchema = z.object({}).strict()');
+  });
+
+  it('no cash series refund exists in R5-D1', () => {
+    expect(routes).not.toContain('/cash-refund');
+    expect(svc).not.toContain('refundSeriesCash');
+  });
+});

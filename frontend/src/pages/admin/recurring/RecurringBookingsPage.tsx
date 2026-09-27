@@ -598,6 +598,7 @@ type SeriesDetail = {
     paymentMethod: string | null;
     gatewayProvider: string | null;
     gatewayReference: string | null;
+    gatewaySettlementId: number | null;
     paidAt: string | null;
   };
 };
@@ -681,6 +682,26 @@ function SeriesPaymentPanel({
     onError: (err: any) => {
       const message = err?.response?.data?.message || 'Could not start the series payment';
       showToast(message, 'error');
+    },
+  });
+
+  // R5-D1 — FULL series Card refund. The client sends NO refund amount; the
+  // backend derives the authoritative seriesGross and PaymentService owns the
+  // money lifecycle.
+  const refundMutation = useMutation({
+    mutationFn: () => api.post(`/admin/recurring/${series.seriesId}/refund`, {}).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', series.seriesId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'recurring', 'list'] });
+      showToast(
+        data?.alreadyRefunded
+          ? 'This series was already refunded — nothing additional was returned.'
+          : `Full series refunded — ${formatPrice(data?.seriesGross ?? series.seriesGross, currency)} returned to the player's card.`,
+        data?.alreadyRefunded ? 'info' : 'success',
+      );
+    },
+    onError: (err: any) => {
+      showToast(err?.response?.data?.message || 'Could not refund the series payment', 'error');
     },
   });
 
@@ -797,6 +818,28 @@ function SeriesPaymentPanel({
           </div>
         )}
       </Can>
+
+      {/* R5-D1 — FULL series Card refund (responsible operator, backend-authoritative
+          seriesGross, only when eligible). Occurrence/partial refund is blocked;
+          post-gateway-settlement refund is blocked. */}
+      {isPaid && !series.payment?.gatewaySettlementId && (
+        <div className="flex items-center gap-2">
+          <Can permission="financial.reconcile">
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                if (window.confirm('Refund the FULL recurring series card payment? This returns the whole series gross and cancels every occurrence. Occurrence-level refunds are not available.')) {
+                  refundMutation.mutate();
+                }
+              }}
+              disabled={refundMutation.isPending}
+            >
+              {refundMutation.isPending ? 'Refunding…' : `Full series card refund — ${formatPrice(series.seriesGross, currency)}`}
+            </Button>
+          </Can>
+        </div>
+      )}
     </section>
   );
 }

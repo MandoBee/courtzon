@@ -993,6 +993,65 @@ async function postSeriesCashAccountingInner(seriesId: number, currency: string)
   }
 }
 
+// R5-D1 — FULL recurring series CARD refund reversal. Exact symmetric reversal
+// of the R5-C2 recognition (booking_series_card_payment + booking_series_org_
+// receivable). Only reachable via payment:refunded for reference_type=
+// 'booking_series' (i.e. the canonical gateway refund lifecycle in
+// R5-D1's refundSeriesCard). Idempotent via
+// hasPosting('booking', seriesId, event_type).
+async function postSeriesRefundAccounting(seriesId: number, currency: string): Promise<void> {
+  const econ = await resolveSeriesAccountingEconomics(seriesId);
+  const key = econ ? `booking-series-refund-org:${econ.organisationId ?? 'global'}` : `booking-series-refund:${seriesId}`;
+  return runEntityExclusive(key, () => postSeriesRefundAccountingInner(seriesId, currency));
+}
+
+async function postSeriesRefundAccountingInner(seriesId: number, currency: string): Promise<void> {
+  const econ = await resolveSeriesAccountingEconomics(seriesId);
+  if (!econ) return;
+
+  // CourtZon book — Dr 2202 orgNet / Dr 4110 commission / Dr 2300 tax /
+  // Cr 1100 gross. Balanced by construction (orgNet + commission + tax = gross).
+  const gross = Math.round((econ.orgNet + econ.commission + econ.tax) * 100) / 100;
+  await postAccountingEvent(
+    'booking_series_refund', 'booking', seriesId, null,
+    {
+      merchant_payable: econ.orgNet,
+      platform_commission: econ.commission,
+      tax_liability: econ.tax,
+      payment_clearing: gross,
+    },
+    currency,
+    `Recurring series #${seriesId} refund (CourtZon book)`,
+    undefined,
+    { merchant_payable: null, platform_commission: null, tax_liability: null, payment_clearing: null },
+  );
+
+  // Organization book — symmetric reversal of booking_series_org_receivable
+  // (Dr 1161 orgNet + Dr commission expense / Cr court rental revenue):
+  //   Dr org court rental revenue (subtotal)
+  //   Cr org 1161 org net
+  //   Cr org commission expense
+  // Balanced. (The CARD org model never credited the org's CourtZon payable.)
+  const orgId = econ.organisationId;
+  if (orgId != null) {
+    const subtotal = Math.round((econ.orgNet + econ.commission) * 100) / 100;
+    await postAccountingEvent(
+      'booking_series_org_receivable_reversal', 'booking', seriesId, orgId,
+      {
+        court_rental_revenue: subtotal,
+        marketplace_receivable: econ.orgNet,
+        commission_expense: econ.commission,
+      },
+      currency,
+      `Recurring series #${seriesId} organization book refund reversal`,
+      undefined,
+      { court_rental_revenue: orgId, marketplace_receivable: orgId, commission_expense: orgId },
+    );
+  } else {
+    log.info({ seriesId }, 'Series has no organisationId — organization book reversal skipped (CourtZon book reversed)');
+  }
+}
+
 async function postBookingPaymentAccountingInner(bookingId: number, paymentMethod: string, currency: string): Promise<void> {
   const econ = await bookingAccounting.resolveBookingEconomics(bookingId);
   if (!econ) {
@@ -1732,6 +1791,16 @@ export function registerAccountingEventListeners(): void {
       // A booking refund must NOT post a generic revenue_contra entry.
       if (referenceType === 'booking') {
         await postBookingRefundAccounting(Number(referenceId), amount, currency);
+        return;
+      }
+
+      // ── R5-D1 — recurring series CARD refund → series-level symmetric
+      //    reversal of the R5-C2 recognition. NEVER falls through to the
+      //    generic card_refund path (refTypeToSourceType('booking_series')
+      //    is not a valid ledger_entries.source_type). Idempotent per
+      //    (source_type='booking', source_id=seriesId, event_type).
+      if (referenceType === 'booking_series') {
+        await postSeriesRefundAccounting(Number(referenceId), currency);
         return;
       }
 

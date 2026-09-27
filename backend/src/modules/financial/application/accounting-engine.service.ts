@@ -78,6 +78,10 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   //   Dr 1100 Payment Clearing = gross · Cr 2202 Merchant Payable = org net ·
   //   Cr 4110 Platform Commission = commission · Cr 2300 Tax Liability = tax.
   booking_series_card_payment: { payment_clearing: '1100', merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300' },
+  // R5-D1 — FULL series CARD refund reversal — same accounts, opposite sides.
+  // No DB mapping rows: full concept set from code, source_type='booking',
+  // source_id=seriesId, distinct event types.
+  booking_series_refund: { merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300', payment_clearing: '1100' },
   // Organization (merchant) settlement payout — CourtZon clears the MERCHANT
   // PAYABLE (2202) against Cash/Bank on settlement for ALL settlements. Code
   // default is a safety net so the payout never falls back to the old 2200
@@ -209,6 +213,9 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // commission expense against aggregate court rental revenue, provisioned
   // idempotently exactly like booking_org_receivable (shared org accounts).
   booking_series_org_receivable: ['marketplace_receivable', 'commission_expense', 'court_rental_revenue'],
+  // R5-D1 — full series CARD refund: organization-book reversal of the R5-C2
+  // org recognition (symmetric of booking_org_receivable_reversal).
+  booking_series_org_receivable_reversal: ['court_rental_revenue', 'marketplace_receivable', 'commission_expense'],
   // R5-C4 — recurring series CASH org book: the org physically collected the
   // series cash, so it books its OWN cash/bank immediately (aggregate subtotal,
   // TAX-EXCLUSIVE) + commission expense against rental revenue + the commission

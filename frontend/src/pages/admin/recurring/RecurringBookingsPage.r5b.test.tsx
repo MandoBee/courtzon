@@ -360,3 +360,31 @@ describe('R5-C4 — 40: the series CASH confirmation step', () => {
     expect(screen.queryByText(/Series cash — one operator confirmation/i)).toBeNull();
   });
 });
+
+describe('R5-D1 — 41: the FULL series CARD refund action', () => {
+  it('shows the refund action for a paid, not-settled series and posts an EMPTY body', async () => {
+    grantedPermissions = ['org.bookings.manage', 'bookings.recurring.collect-payment', 'financial.reconcile', 'bookings.recurring.series-total'];
+    const base = seriesDetail();
+    wireApi({
+      ...base,
+      payment: { ...base.payment, paymentId: 55, status: 'paid', amount: 3152.8, gatewaySettlementId: null },
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Full series card refund/i })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Full series card refund/i }));
+    // jsdom confirm() returns true from the beforeEach stub.
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    const call = mockPost.mock.calls.find((c: any) => String(c[0]).includes('/refund')) || [];
+    expect(call[0]).toBe('/admin/recurring/7/refund');
+    expect(call[1]).toEqual({}); // no refund amount from the client
+  });
+
+  it('hides the refund action when the payment is not paid', async () => {
+    grantedPermissions = ['org.bookings.manage', 'bookings.recurring.collect-payment', 'financial.reconcile'];
+    wireApi(seriesDetail());
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Series payment — one card payment/i)).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /Full series card refund/i })).toBeNull();
+  });
+});

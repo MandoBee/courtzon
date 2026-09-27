@@ -450,6 +450,24 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['marketplace_receivable'],
     credit: ['platform_commission', 'tax_liability'],
   },
+  // R5-D1 — FULL series CARD refund reversal of booking_series_card_payment:
+  //   CourtZon book (org NULL): Dr 2202 org net + Dr 4110 commission +
+  //   Dr 2300 tax / Cr 1100 gross. Exact symmetric reversal of the R5-C2
+  //   recognition (hasPosting('booking', seriesId, eventType) dedupes).
+  booking_series_refund: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['payment_clearing'],
+  },
+  // Organization-book reversal of the R5-C2 org recognition — the symmetric
+  // inverse of booking_series_org_receivable (Dr 1161 + comm exp / Cr revenue),
+  // matching the single-booking booking_org_receivable_reversal shape:
+  //   Dr org revenue (subtotal) / Cr org 1161 org net + Cr org commission exp.
+  // (The CARD org model never credits the org's CourtZon payable — that leg
+  // belongs only to the CASH org model — so no payable leg appears here.)
+  booking_series_org_receivable_reversal: {
+    debit: ['court_rental_revenue'],
+    credit: ['marketplace_receivable', 'commission_expense'],
+  },
   booking_series_org_cash_receivable: {
     debit: ['org_cash_bank', 'commission_expense'],
     credit: ['court_rental_revenue', 'courtzon_payable'],

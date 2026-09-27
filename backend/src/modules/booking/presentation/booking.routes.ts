@@ -53,4 +53,11 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
   // empty object: no amount can be sent; the server derives the authoritative
   // seriesGross. No payment_transactions row is created (Cash contract).
   app.post('/admin/recurring/:id/cash-confirm', { preHandler: [recurringGuard, requirePermission(['bookings.recurring.collect-cash'])] }, ctrl.collectRecurringSeriesCashHandler);
+
+  // ── R5-D1 — FULL series CARD refund (responsible operator, no amount) ────
+  // Guarded by the recurring responsible-user authorities AND the existing
+  // financial refund permission (reused — no new refund RBAC). Strict empty
+  // body: refundSeriesCard uses the authoritative seriesGross via the existing
+  // PaymentService.refund lifecycle. Occurrence/partial refund is blocked.
+  app.post('/admin/recurring/:id/refund', { preHandler: [recurringGuard, requirePermission(['financial.reconcile'])] }, ctrl.refundRecurringSeriesCardHandler);
 }

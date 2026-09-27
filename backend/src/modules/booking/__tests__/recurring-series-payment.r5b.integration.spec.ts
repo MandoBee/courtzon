@@ -1517,11 +1517,9 @@ describe('R5-C3-B — settlement execution proof (gateway + organisation)', () =
 
     // Mirror the entitlement-booking listener output for each occurrence. A
     // running Docker backend also consumes this fixture's `booking:confirmed`
-    // events and may have already created these rows (uk_fe_source_type), so
-    // delete the occurrence-scoped rows just before inserting to make the
-    // test's authoritative snapshot win deterministically (the backend's own
-    // handler skips once rows exist).
-    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+    // events and may create these rows (uk_fe_source_type), so delete the
+    // occurrence-scoped rows first and then insert through an idempotent helper
+    // (skips any row a racing worker inserts in the meantime).
     const occ = await occurrenceRows(series.seriesId);
     const occIds = occ.map((o: any) => Number(o.id));
     const idsList = occIds.join(',');
@@ -1533,7 +1531,7 @@ describe('R5-C3-B — settlement execution proof (gateway + organisation)', () =
       if (orgNet > 0) inputs.push({ organisationId: ORG1, branchId: BRANCH_CAIRO, entitlementType: 'ORGANIZATION_EARNING', sourceType: 'booking', sourceId: Number(o.id), collector: 'courtzon', amount: orgNet, currency: 'EGP', availableAt: null, description: `Booking #${o.id} — org earning` });
       if (commission > 0) inputs.push({ organisationId: ORG1, branchId: BRANCH_CAIRO, entitlementType: 'COURTZON_COMMISSION', sourceType: 'booking', sourceId: Number(o.id), collector: 'courtzon', amount: commission, currency: 'EGP', availableAt: null, description: `Booking #${o.id} — CourtZon commission` });
     }
-    const entitlementIds = await financialEntitlementService.createEntitlements(inputs);
+    const entitlementIds = await ensureOccurrenceEntitlements(inputs);
     await pool.execute(`UPDATE financial_entitlements SET status = 'AVAILABLE' WHERE source_type = 'booking' AND source_id IN (${idsList})`);
     return { occ, entitlementIds };
   }
@@ -1993,7 +1991,273 @@ describe('R5-C4 — series CASH confirmation (operator-confirmed, no payment_tra
   });
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-D1 — FULL recurring series CARD refund.
+// reuses the canonical PaymentService.refund() lifecycle; payment:refunded →
+// series-level symmetric reversal of the R5-C2 recognition; every occurrence
+// entitlement cancelled; occurrences cancelled via the canonical command.
+// Occurrence/partial refund and post-gateway-settlement refund are blocked.
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-D1 — full recurring series card refund', () => {
+  let series: any;
+  let paymentId: number;
+
+  /** Fully paid series via the canonical card path (C2 recognition in place). */
+  async function buildPaidCardSeries() {
+    series = await createSeries();
+    const res = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    paymentId = Number(res.paymentId);
+    await pool.execute(`UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW() WHERE id = ?`, [paymentId]);
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await waitFor(() => occurrenceRows(series.seriesId), (rows) => allOccurrencesIn(rows, ['confirmed']),
+      'occurrences confirmed');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_card_payment'), (c) => c === 4,
+      'R5-C2 CourtZon series posting (4 legs)');
+  }
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    await buildPaidCardSeries();
+  });
+
+  it('A/B/C/D/E — refunds via PaymentService with seriesGross; row becomes refunded; no new payment rows', async () => {
+    const before = await countOf('SELECT COUNT(*) AS c FROM payment_transactions');
+    const refundSpy = vi.spyOn(paymentService, 'refund');
+
+    const result = await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+    expect(result.seriesSubtotal).toBe(2800);
+    expect(result.seriesTax).toBe(352.8);
+    expect(result.seriesGross).toBe(3152.8);
+    expect(result.affectedOccurrenceIds).toHaveLength(2);
+    expect(result.refundStatus).toBe('refunded');
+    expect(result.alreadyRefunded).toBe(false);
+
+    // C+D — the canonical Payment Service was called with the authoritative gross.
+    expect(refundSpy).toHaveBeenCalledTimes(1);
+    const call = refundSpy.mock.calls[0];
+    expect(call[0]).toBe(paymentId);
+    expect(call[1]).toBe(3152.8);
+
+    // E + B — the row is refunded, booking_id stays NULL.
+    const [rows] = await pool.execute<RowData>(
+      `SELECT reference_type, reference_id, booking_id, amount, payment_status FROM payment_transactions WHERE id = ?`, [paymentId]);
+    expect((rows as any[])[0].reference_type).toBe('booking_series');
+    expect(Number((rows as any[])[0].reference_id)).toBe(series.seriesId);
+    expect((rows as any[])[0].booking_id).toBeNull();
+    expect(Number((rows as any[])[0].amount)).toBe(3152.8);
+    expect((rows as any[])[0].payment_status).toBe('refunded');
+
+    // V — no additional payment_transactions row.
+    expect(await countOf('SELECT COUNT(*) AS c FROM payment_transactions')).toBe(before);
+    refundSpy.mockRestore();
+  });
+
+  it('F/G/H — exact symmetric reversal journals, balanced, EXACTLY once', async () => {
+    await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_refund'), (c) => c === 4,
+      'series refund CourtZon journal (4 legs)');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable_reversal'), (c) => c === 3,
+      'series refund org journal (3 legs)');
+
+    const court = await seriesLedgerRows(series.seriesId, 'booking_series_refund');
+    const findC = (side: string, code: string) => Number(court.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(court.every((r: any) => r.organisation_id === null)).toBe(true);
+    expect(court).toHaveLength(4);
+    expect(findC('debit', '2202')).toBe(2520);
+    expect(findC('debit', '4110')).toBe(280);
+    expect(findC('debit', '2300')).toBe(352.8);
+    expect(findC('credit', '1100')).toBe(3152.8);
+
+    // Exact symmetric inverse of the C2 card org posting (Dr 1161 + comm exp /
+    // Cr revenue): Dr revenue 2800 / Cr 1161 2520 / Cr comm exp 280. The CARD
+    // org model never credits CourtZon payable, so no payable leg exists here.
+    const org = await seriesLedgerRows(series.seriesId, 'booking_series_org_receivable_reversal');
+    const findO = (side: string, code: string) => Number(org.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(org.every((r: any) => Number(r.organisation_id) === ORG1)).toBe(true);
+    expect(org).toHaveLength(3);
+    expect(findO('debit', 'MKT-COURT-REN')).toBe(2800);
+    expect(findO('credit', '1161')).toBe(2520);
+    expect(findO('credit', 'MKT-COMM-EXP')).toBe(280);
+
+    const dr = (rows: any[]) => Number(rows.filter((r) => r.side === 'debit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    const cr = (rows: any[]) => Number(rows.filter((r) => r.side === 'credit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    expect(dr(court)).toBe(cr(court));
+    expect(dr(org)).toBe(cr(org));
+  });
+
+  it('I/J — repeated refund is idempotent: no second gateway call, no duplicate reversal', async () => {
+    const refundSpy = vi.spyOn(paymentService, 'refund');
+    await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_refund'), (c) => c === 4, 'first refund reversal');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable_reversal'), (c) => c === 3,
+      'first refund org reversal');
+    expect(refundSpy).toHaveBeenCalledTimes(1);
+
+    const again = await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+    expect(again.alreadyRefunded).toBe(true);
+    expect(refundSpy).toHaveBeenCalledTimes(1); // no second gateway call
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_refund')).toBe(4);
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable_reversal')).toBe(3);
+    refundSpy.mockRestore();
+  });
+
+  it('K — a replayed payment:refunded cannot double reverse (hasPosting)', async () => {
+    await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_refund'), (c) => c === 4, 'refund reversal');
+    await eventBusV2.emit('payment:refunded', {
+      paymentId, referenceType: 'booking_series', referenceId: series.seriesId, amount: TWO_OCC_GROSS,
+      metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await settleNegativeOnly();
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_refund')).toBe(4);
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable_reversal')).toBe(3);
+  });
+
+  it('L — per-occurrence refund accounting footprint stays ZERO (seriesId guard)', async () => {
+    await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_refund'), (c) => c === 4, 'refund reversal');
+    const fp = await financialFootprint(series.seriesId);
+    expect(fp.bookingLedger).toBe(0);
+    expect(fp.journal).toBe(0);
+    expect(fp.gl).toBe(0);
+  });
+
+  it('M/N — entitlements cancelled and occurrences cancelled via canonical paths', async () => {
+    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+    // Deterministic entitlements mirroring the listener output (collector courtzon for card),
+    // so cancellation state is assertable regardless of async worker timing.
+    const occ = await occurrenceRows(series.seriesId);
+    const inputs: any[] = [];
+    for (const o of occ) {
+      inputs.push({ organisationId: ORG1, branchId: BRANCH_CAIRO, entitlementType: 'ORGANIZATION_EARNING', sourceType: 'booking', sourceId: Number(o.id), collector: 'courtzon', amount: Number(o.club_amount), currency: 'EGP', availableAt: null, description: `Booking #${o.id}` });
+      inputs.push({ organisationId: ORG1, branchId: BRANCH_CAIRO, entitlementType: 'COURTZON_COMMISSION', sourceType: 'booking', sourceId: Number(o.id), collector: 'courtzon', amount: Number(o.commission_amount), currency: 'EGP', availableAt: null, description: `Booking #${o.id}` });
+    }
+    const ids = occ.map((o: any) => Number(o.id)).join(',');
+    await pool.execute(`DELETE FROM financial_entitlements WHERE source_type='booking' AND source_id IN (${ids})`);
+    await ensureOccurrenceEntitlements(inputs);
+    await pool.execute(`UPDATE financial_entitlements SET status='AVAILABLE' WHERE source_type='booking' AND source_id IN (${ids})`);
+
+    await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+
+    for (const o of occ) {
+      const ents = await financialEntitlementService.getEntitlementsBySource('booking', Number(o.id));
+      expect(ents.length).toBeGreaterThan(0);
+      expect(ents.every((e: any) => e.status === 'CANCELLED')).toBe(true);
+    }
+    const after = await occurrenceRows(series.seriesId);
+    for (const o of after) {
+      expect(o.booking_status).toBe('cancelled');
+    }
+  });
+
+  it('O — exactly ONE BOOKING.SERIES_REFUND audit entry with the operator and authoritative gross', async () => {
+    const { refundRecurringSeriesCardHandler } = await import('../presentation/booking.controller.js');
+    const sent: any[] = [];
+    const reply: any = { status: (c: number) => reply, send: (b: any) => { sent.push(b); return reply; } };
+    await refundRecurringSeriesCardHandler(
+      { params: { id: series.seriesId }, body: {}, userId: ADMIN, ip: '127.0.0.1', headers: {} } as any,
+      reply,
+    );
+    const a = await waitFor(
+      async () => (await pool.execute<RowData>(
+        `SELECT actor_id, after_state FROM audit_logs WHERE entity_type='booking_series' AND entity_id=? AND action='BOOKING.SERIES_REFUND' ORDER BY id DESC LIMIT 1`,
+        [series.seriesId],
+      ))[0][0] as any,
+      (row) => !!row,
+      'the BOOKING.SERIES_REFUND audit row',
+    );
+    expect(Number(a.actor_id)).toBe(ADMIN);
+    const st = typeof a.after_state === 'string' ? JSON.parse(a.after_state) : a.after_state;
+    expect(st.seriesGross).toBe(3152.8);
+    expect(Number(st.paymentId)).toBe(paymentId);
+    expect(st.affectedOccurrenceIds).toHaveLength(2);
+    const [cnt] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM audit_logs WHERE entity_type='booking_series' AND entity_id=? AND action='BOOKING.SERIES_REFUND'`, [series.seriesId]);
+    expect(Number((cnt as any[])[0].c)).toBe(1);
+  });
+
+  it('P — unauthorised / cross-tenant / sibling-branch operators are rejected', async () => {
+    await expect(recurringPayment.refundSeriesCard(series.seriesId, NO_AUTH)).rejects.toBeTruthy();
+    await expect(recurringPayment.refundSeriesCard(series.seriesId, ADMIN2)).rejects.toBeTruthy();
+    await expect(recurringPayment.refundSeriesCard(series.seriesId, ADMIN_NY)).rejects.toBeTruthy();
+  });
+
+  it('Q — refund AFTER gateway settlement is REJECTED (post-settlement refund blocked)', async () => {
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
+    await gatewaySettlementService.create({ paymentTransactionIds: [paymentId], settledBy: ADMIN });
+    await expect(recurringPayment.refundSeriesCard(series.seriesId, ADMIN))
+      .rejects.toThrow(/settled|post-settlement/i);
+  });
+
+  it('R — full refund is rejected when a series has a prior occurrence cancellation (occurrence refund blocked)', async () => {
+    const occ = await occurrenceRows(series.seriesId);
+    await pool.execute(`UPDATE bookings SET booking_status='cancelled' WHERE id=?`, [occ[0].id]);
+    await expect(recurringPayment.refundSeriesCard(series.seriesId, ADMIN))
+      .rejects.toThrow(/terminal|'cancelled'|occurrence-level/);
+  });
+
+  it('S — no cash series refund endpoint exists in R5-D1', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const routes = fs.readFileSync(path.resolve('src/modules/booking/presentation/booking.routes.ts'), 'utf8');
+    expect(routes).not.toContain('/cash-refund');
+  });
+
+  it('T/U — reconciliation clean after refund; gateway settlement eligibility false', async () => {
+    await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_refund'), (c) => c === 4, 'refund reversal');
+
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const run = await reconciliationService.run();
+    expect(run.issues.filter((i: any) => i.type === 'orphan_payment' && Number(i.entityId) === paymentId)).toHaveLength(0);
+    expect(run.issues.filter((i: any) => i.type === 'paid_booking_not_confirmed')).toHaveLength(0);
+    const occ = await occurrenceRows(series.seriesId);
+    for (const o of occ) {
+      expect(run.issues.filter((i: any) => i.type === 'booking_confirmed_no_payment' && Number(i.entityId) === Number(o.id))).toHaveLength(0);
+    }
+
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
+    const eligible = await gatewaySettlementService.listEligible();
+    expect(eligible.find((e: any) => e.paymentTransactionId === paymentId)).toBeUndefined();
+  });
+});
+
 async function countOf(sql: string): Promise<number> {
   const [rows] = await pool.execute<RowData>(sql, []);
   return Number((rows as any[])[0].c);
+}
+
+/**
+ * Idempotently create per-occurrence entitlement rows (the rows the running
+ * Docker backend's entitlement-booking worker also creates). Deletes are done
+ * by the caller first; this helper skips any row already present (a racing
+ * worker may win between the delete and this call — uk_fe_source_type dedup).
+ * Returns the effective entitlement ids.
+ */
+async function ensureOccurrenceEntitlements(inputs: any[]): Promise<number[]> {
+  const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+  const ids: number[] = [];
+  for (const inp of inputs) {
+    const existing = await financialEntitlementService.getEntitlementsBySource(inp.sourceType, inp.sourceId);
+    const match = existing.find((e: any) => e.entitlement_type === inp.entitlementType);
+    if (match) { ids.push(Number(match.id)); continue; }
+    try {
+      const [id] = await financialEntitlementService.createEntitlements([inp]);
+      ids.push(Number(id));
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') {
+        const again = await financialEntitlementService.getEntitlementsBySource(inp.sourceType, inp.sourceId);
+        const m = again.find((e: any) => e.entitlement_type === inp.entitlementType);
+        if (m) ids.push(Number(m.id));
+        else throw err;
+      } else {
+        throw err;
+      }
+    }
+  }
+  return ids;
 }
