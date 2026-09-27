@@ -297,6 +297,28 @@ async function seriesLedgerRows(seriesId: number, eventType: string): Promise<an
   return rows as any[];
 }
 
+/** R5-C3-B — ledger row count for an arbitrary (source_type, source_id, event_type). */
+async function settlementLedgerRowCount(sourceType: string, sourceId: number, eventType: string): Promise<number> {
+  const [rows] = await pool.execute<RowData>(
+    `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type = ? AND source_id = ? AND event_type = ?`,
+    [sourceType, sourceId, eventType],
+  );
+  return Number((rows as any[])[0].c);
+}
+
+/** R5-C3-B — ledger legs (with account codes) for an arbitrary (source_type, source_id, event_type). */
+async function settlementLedgerRows(sourceType: string, sourceId: number, eventType: string): Promise<any[]> {
+  const [rows] = await pool.execute<RowData>(
+    `SELECT le.side, le.amount, le.organisation_id, c.code AS account_code
+     FROM ledger_entries le
+     JOIN chart_of_accounts c ON c.id = le.chart_account_id
+     WHERE le.source_type = ? AND le.source_id = ? AND le.event_type = ?
+     ORDER BY le.id`,
+    [sourceType, sourceId, eventType],
+  );
+  return rows as any[];
+}
+
 /**
  * Every financial row that could possibly have been caused by THIS series.
  *
@@ -1448,6 +1470,317 @@ describe('R5-C3-A — reconciliation: booking_confirmed_no_payment is series-awa
     const after = await countOf('SELECT COUNT(*) AS c FROM ledger_entries');
     expect(after).toBe(before);
   });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-C3-B — SETTLEMENT EXECUTION PROOF (end-to-end, existing rails only).
+// Proves one successful recurring-series CARD payment settles completely:
+//   gateway settlement  (payment_gateway_settlement: Dr 1120 net / Dr 5210 fee
+//                        / Cr 1100 gross — fee on pt.amount, no booking_id)
+//   organisation settlement (settlement_paid: Dr 2202 2520 / Cr 1120 2520 and
+//                        settlement_org_receipt: Dr org cash / Cr org 1161)
+// Final invariants: 1100 = 0 · 2202 = 0 · org 1161 = 0 · bank net +552.98.
+// Uses ONLY the existing gateway-settlement + unified-settlement flows and the
+// existing fixture/entitlement mechanisms. No production settlement changes.
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-C3-B — settlement execution proof (gateway + organisation)', () => {
+  let series: any;
+  let paymentId: number;
+  let gatewaySettlementId: number;
+  let unifiedSettlementId: number;
+
+  /** Clean the org-1 settlement/entitlement residue created by this suite. */
+  async function cleanSettlementResidue() {
+    await pool.execute(`DELETE FROM financial_entitlements WHERE organisation_id = ${ORG1}`);
+    await pool.execute(`DELETE FROM settlement_entitlements WHERE settlement_id IN (SELECT id FROM settlements WHERE organisation_id = ${ORG1})`);
+    await pool.execute(`DELETE FROM settlements WHERE organisation_id = ${ORG1}`);
+    await pool.execute(`DELETE FROM gateway_settlement_transactions WHERE gateway_settlement_id IN (SELECT id FROM gateway_settlements WHERE settled_by = ${ADMIN})`);
+    await pool.execute(`DELETE FROM gateway_settlements WHERE settled_by = ${ADMIN}`);
+  }
+
+  /** Build the canonical paid series; returns the occurrences + the created entitlement ids. */
+  async function buildPaidSeries(): Promise<{ occ: any[]; entitlementIds: number[] }> {
+    series = await createSeries();
+    const res = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    paymentId = Number(res.paymentId);
+    await pool.execute(`UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW() WHERE id = ?`, [paymentId]);
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await waitFor(() => occurrenceRows(series.seriesId), (rows) => allOccurrencesIn(rows, ['confirmed']),
+      'series occurrences confirmed by the canonical confirm path');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_card_payment'), (c) => c === 4,
+      'R5-C2 CourtZon series posting (4 legs)');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable'), (c) => c === 3,
+      'R5-C2 org series posting (3 legs)');
+
+    // Mirror the entitlement-booking listener output for each occurrence. A
+    // running Docker backend also consumes this fixture's `booking:confirmed`
+    // events and may have already created these rows (uk_fe_source_type), so
+    // delete the occurrence-scoped rows just before inserting to make the
+    // test's authoritative snapshot win deterministically (the backend's own
+    // handler skips once rows exist).
+    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+    const occ = await occurrenceRows(series.seriesId);
+    const occIds = occ.map((o: any) => Number(o.id));
+    const idsList = occIds.join(',');
+    await pool.execute(`DELETE FROM financial_entitlements WHERE source_type = 'booking' AND source_id IN (${idsList})`);
+    const inputs: any[] = [];
+    for (const o of occ) {
+      const orgNet = Number(o.club_amount || 0);
+      const commission = Number(o.commission_amount || 0);
+      if (orgNet > 0) inputs.push({ organisationId: ORG1, branchId: BRANCH_CAIRO, entitlementType: 'ORGANIZATION_EARNING', sourceType: 'booking', sourceId: Number(o.id), collector: 'courtzon', amount: orgNet, currency: 'EGP', availableAt: null, description: `Booking #${o.id} — org earning` });
+      if (commission > 0) inputs.push({ organisationId: ORG1, branchId: BRANCH_CAIRO, entitlementType: 'COURTZON_COMMISSION', sourceType: 'booking', sourceId: Number(o.id), collector: 'courtzon', amount: commission, currency: 'EGP', availableAt: null, description: `Booking #${o.id} — CourtZon commission` });
+    }
+    const entitlementIds = await financialEntitlementService.createEntitlements(inputs);
+    await pool.execute(`UPDATE financial_entitlements SET status = 'AVAILABLE' WHERE source_type = 'booking' AND source_id IN (${idsList})`);
+    return { occ, entitlementIds };
+  }
+
+  async function settleGateway() {
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
+    const result = await gatewaySettlementService.create({ paymentTransactionIds: [paymentId], settledBy: ADMIN });
+    gatewaySettlementId = Number(result.settlement.id);
+    await waitFor(() => settlementLedgerRowCount('settlement', gatewaySettlementId, 'payment_gateway_settlement'), (c) => c === 3,
+      'payment_gateway_settlement journal (3 legs)');
+    return result;
+  }
+
+  async function settleOrganisation(entitlementIds: number[]) {
+    const { unifiedSettlementService } = await import('../../settlement/application/unified-settlement.service.js');
+    // `selectedEntitlementIds` scopes the settlement to EXACTLY this fixture's
+    // entitlements, so any stray AVAILABLE rows a Docker backend worker creates
+    // for other test events can never inflate the aggregate (the proof is about
+    // the series' own economics).
+    const created = await unifiedSettlementService.create({
+      orgId: ORG1, selectedEntitlementIds: entitlementIds, requestedBy: ADMIN, requestedByRole: 'super_admin',
+    });
+    unifiedSettlementId = Number(created.settlement.id);
+    await unifiedSettlementService.recordPayment(unifiedSettlementId, { paidBy: ADMIN });
+    await waitFor(() => settlementLedgerRowCount('settlement', unifiedSettlementId, 'settlement_paid'), (c) => c === 2,
+      'settlement_paid journal (2 legs)');
+    await waitFor(() => settlementLedgerRowCount('settlement', unifiedSettlementId, 'settlement_org_receipt'), (c) => c === 2,
+      'settlement_org_receipt journal (2 legs)');
+    return created;
+  }
+
+  /** Every ledger leg attributable to THIS fixture (series postings + the two settlements). */
+  async function fixtureLedgerRows(): Promise<any[]> {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT le.side, le.amount, le.organisation_id, c.code AS account_code
+       FROM ledger_entries le
+       JOIN chart_of_accounts c ON c.id = le.chart_account_id
+       WHERE (le.source_type = 'booking' AND le.source_id = ?)
+          OR (le.source_type = 'settlement' AND le.source_id IN (?, ?))
+       ORDER BY le.id`,
+      [series.seriesId, gatewaySettlementId, unifiedSettlementId],
+    );
+    return rows as any[];
+  }
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    await cleanSettlementResidue();
+  });
+
+  it('1-4-9-11-12 — gateway settlement: eligible, fee/net on pt.amount, booking_id stays NULL, no extra payments', async () => {
+    const { entitlementIds } = await buildPaidSeries();
+    void entitlementIds;
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
+
+    // 1+2 — the paid booking_series payment (booking_id NULL) is settlement eligible.
+    const eligible = await gatewaySettlementService.listEligible();
+    const row = eligible.find((e: any) => e.paymentTransactionId === paymentId);
+    expect(row).toBeTruthy();
+    expect(row.referenceType).toBe('booking_series');
+    expect(row.bookingId).toBeNull();
+    expect(row.grossAmount).toBe(3152.8);
+
+    // 3+4 — execute the existing gateway settlement create flow.
+    const created = await settleGateway();
+    expect(Number(created.settlement.gross_amount)).toBe(3152.8);
+    expect(Number(created.settlement.gateway_fee_amount)).toBe(79.82);
+    expect(Number(created.settlement.net_amount)).toBe(3072.98);
+    // 11 — fee uses the payment amount, not a booking id.
+    expect(created.settlement.gateway_fee_amount).toBe(Math.round((3152.8 * 2.5 / 100 + 1.0) * 100) / 100);
+
+    // 12 — booking_id remains NULL after settlement.
+    const [rows] = await pool.execute<RowData>('SELECT booking_id, gateway_settlement_id FROM payment_transactions WHERE id = ?', [paymentId]);
+    expect((rows as any[])[0].booking_id).toBeNull();
+    expect(Number((rows as any[])[0].gateway_settlement_id)).toBe(gatewaySettlementId);
+  });
+
+  it('5 — exact gateway settlement journal: Dr 1120 3072.98 / Dr 5210 79.82 / Cr 1100 3152.80', async () => {
+    await buildPaidSeries();
+    await settleGateway();
+    const rows = await settlementLedgerRows('settlement', gatewaySettlementId, 'payment_gateway_settlement');
+    expect(rows).toHaveLength(3);
+    const find = (side: string, code: string) => Number(rows.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(rows.every((r: any) => r.organisation_id === null)).toBe(true); // CourtZon book
+    expect(find('debit', '1120')).toBe(3072.98);
+    expect(find('debit', '5210')).toBe(79.82);
+    expect(find('credit', '1100')).toBe(3152.8);
+  });
+
+  it('6 — organisation settlement clears 2202 (2520) and org 1161 (2520) via the existing unified flow', async () => {
+    const { entitlementIds } = await buildPaidSeries();
+    await settleGateway();
+    const { unifiedSettlementService } = await import('../../settlement/application/unified-settlement.service.js');
+    const created = await unifiedSettlementService.create({ orgId: ORG1, selectedEntitlementIds: entitlementIds, requestedBy: ADMIN, requestedByRole: 'super_admin' });
+    unifiedSettlementId = Number(created.settlement.id);
+    // 3 — the organisation entitlement total is exactly 2520.
+    expect(Number(created.settlement.organization_net)).toBe(2520);
+    expect(Number(created.settlement.online_net_total)).toBe(2520);
+    expect(Number(created.settlement.cod_fee_total)).toBe(0);
+    expect(Number(created.settlement.final_amount)).toBe(2520);
+    await unifiedSettlementService.recordPayment(unifiedSettlementId, { paidBy: ADMIN });
+
+    await waitFor(() => settlementLedgerRowCount('settlement', unifiedSettlementId, 'settlement_paid'), (c) => c === 2,
+      'settlement_paid journal');
+    await waitFor(() => settlementLedgerRowCount('settlement', unifiedSettlementId, 'settlement_org_receipt'), (c) => c === 2,
+      'settlement_org_receipt journal');
+
+    const paid = await settlementLedgerRows('settlement', unifiedSettlementId, 'settlement_paid');
+    const findPaid = (side: string, code: string) => Number(paid.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(paid).toHaveLength(2);
+    expect(paid.every((r: any) => r.organisation_id === null)).toBe(true); // CourtZon book payout
+    expect(findPaid('debit', '2202')).toBe(2520);
+    expect(findPaid('credit', '1120')).toBe(2520);
+
+    const receipt = await settlementLedgerRows('settlement', unifiedSettlementId, 'settlement_org_receipt');
+    const findReceipt = (side: string, code: string) => Number(receipt.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(receipt).toHaveLength(2);
+    expect(receipt.every((r: any) => Number(r.organisation_id) === ORG1)).toBe(true); // org book
+    expect(findReceipt('debit', 'ORG-CASH')).toBe(2520);
+    expect(findReceipt('credit', '1161')).toBe(2520);
+  });
+
+  it('7-8-10 — final clearing invariants: 1100=0 · 2202=0 · org 1161=0 · bank +552.98 · journals balanced', async () => {
+    const { entitlementIds } = await buildPaidSeries();
+    await settleGateway();
+    await settleOrganisation(entitlementIds);
+
+    const rows = await fixtureLedgerRows();
+    // 8 — total accounting is balanced (Σ debit == Σ credit).
+    const dr = Number(rows.filter((r: any) => r.side === 'debit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    const cr = Number(rows.filter((r: any) => r.side === 'credit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    expect(dr).toBe(cr);
+
+    // 7 — per-account clearing balances for every account this fixture touched.
+    const balances = new Map<string, number>();
+    const orgBalances = new Map<string, number>();
+    for (const r of rows) {
+      const map = Number(r.organisation_id) === ORG1 ? orgBalances : balances;
+      const key = `${r.side === 'debit' ? 'D' : 'C'}:${r.account_code}:${r.organisation_id ?? 'NULL'}`;
+      const delta = r.side === 'debit' ? Number(r.amount) : -Number(r.amount);
+      map.set(r.account_code, (map.get(r.account_code) ?? 0) + delta);
+    }
+    const net = (m: Map<string, number>, code: string) => Math.round((m.get(code) ?? 0) * 100) / 100;
+    // CourtZon book — debit positive, credit negative in `net`.
+    expect(net(balances, '1100')).toBe(0);
+    expect(net(balances, '2202')).toBe(0);
+    expect(net(balances, '1120')).toBe(552.98); // Dr 3072.98 − Cr 2520.00
+    expect(net(balances, '4110')).toBe(-280);   // commission revenue (credit)
+    expect(net(balances, '2300')).toBe(-352.8); // tax liability (credit)
+    expect(net(balances, '5210')).toBe(79.82);  // gateway fee expense (debit)
+    // Organisation book: 1161 cleared to zero; revenue/expense stay open.
+    expect(net(orgBalances, '1161')).toBe(0);
+    expect(net(orgBalances, 'ORG-CASH')).toBe(2520);
+    expect(net(orgBalances, 'MKT-COURT-REN')).toBe(-2800);
+    expect(net(orgBalances, 'MKT-COMM-EXP')).toBe(280);
+  });
+
+  it('13-15 — no extra payment_transactions, no per-occurrence gateway settlement, duplicate gateway settle idempotent', async () => {
+    const { entitlementIds } = await buildPaidSeries();
+    void entitlementIds;
+    const before = await countOf('SELECT COUNT(*) AS c FROM payment_transactions');
+    await settleGateway();
+
+    // 13 — no additional payment transaction created.
+    expect(await countOf('SELECT COUNT(*) AS c FROM payment_transactions')).toBe(before);
+
+    // 14 — no per-occurrence gateway settlement exists.
+    const occ = await occurrenceRows(series.seriesId);
+    const [gst] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM gateway_settlement_transactions WHERE payment_transaction_id IN (${occ.map((o: any) => Number(o.id)).join(',')})`, []);
+    expect(Number((gst as any[])[0].c)).toBe(0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM gateway_settlement_transactions')).toBe(1);
+
+    // 15 — a duplicate gateway settlement attempt is rejected (idempotent guard).
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
+    await expect(gatewaySettlementService.create({ paymentTransactionIds: [paymentId], settledBy: ADMIN }))
+      .rejects.toThrow(/already included in a gateway settlement|already settled|not foundation/i);
+    // ...the payment is no longer eligible, and exactly ONE journal exists.
+    const eligible = await gatewaySettlementService.listEligible();
+    expect(eligible.find((e: any) => e.paymentTransactionId === paymentId)).toBeUndefined();
+    expect(await settlementLedgerRowCount('settlement', gatewaySettlementId, 'payment_gateway_settlement')).toBe(3);
+  });
+
+  it('16 — duplicate organisation settlement attempts are idempotent (recordPayment) or rejected (create)', async () => {
+    const { entitlementIds } = await buildPaidSeries();
+    await settleGateway();
+    const { unifiedSettlementService } = await import('../../settlement/application/unified-settlement.service.js');
+    const created = await unifiedSettlementService.create({ orgId: ORG1, selectedEntitlementIds: entitlementIds, requestedBy: ADMIN, requestedByRole: 'super_admin' });
+    unifiedSettlementId = Number(created.settlement.id);
+    await unifiedSettlementService.recordPayment(unifiedSettlementId, { paidBy: ADMIN });
+    await waitFor(() => settlementLedgerRowCount('settlement', unifiedSettlementId, 'settlement_paid'), (c) => c === 2,
+      'settlement_paid journal');
+
+    // duplicate recordPayment → idempotent, same settlement, no second journal.
+    const again = await unifiedSettlementService.recordPayment(unifiedSettlementId, { paidBy: ADMIN });
+    expect(Number(again.settlement.id)).toBe(unifiedSettlementId);
+    expect(await settlementLedgerRowCount('settlement', unifiedSettlementId, 'settlement_paid')).toBe(2);
+    expect(await settlementLedgerRowCount('settlement', unifiedSettlementId, 'settlement_org_receipt')).toBe(2);
+
+    // a second create has no AVAILABLE entitlements left → rejected.
+    await expect(unifiedSettlementService.create({ orgId: ORG1, requestedBy: ADMIN, requestedByRole: 'super_admin' }))
+      .rejects.toThrow(/No eligible AVAILABLE entitlements/);
+  });
+
+  it('17-20 — the series needs NO booking-specific payment settlement; source IDs stay canonical', async () => {
+    const { entitlementIds } = await buildPaidSeries();
+    await settleGateway();
+    await settleOrganisation(entitlementIds);
+
+    // 17+12 — the whole flow ran with booking_id NULL throughout.
+    const [pt] = await pool.execute<RowData>('SELECT booking_id FROM payment_transactions WHERE id = ?', [paymentId]);
+    expect((pt as any[])[0].booking_id).toBeNull();
+
+    // 20 — every journal retains its canonical (source_type, source_id, event_type).
+    const [rows] = await pool.execute<RowData>(
+      `SELECT source_type, source_id, event_type, COUNT(*) AS c FROM ledger_entries
+       WHERE (source_type = 'booking' AND source_id = ?)
+          OR (source_type = 'settlement' AND source_id IN (?, ?))
+       GROUP BY source_type, source_id, event_type`,
+      [series.seriesId, gatewaySettlementId, unifiedSettlementId],
+    );
+    const summary = (rows as any[]).map((r) => ({ st: r.source_type, sid: Number(r.source_id), ev: r.event_type, c: Number(r.c) }));
+    expect(summary).toContainEqual({ st: 'booking', sid: series.seriesId, ev: 'booking_series_card_payment', c: 4 });
+    expect(summary).toContainEqual({ st: 'booking', sid: series.seriesId, ev: 'booking_series_org_receivable', c: 3 });
+    expect(summary).toContainEqual({ st: 'settlement', sid: gatewaySettlementId, ev: 'payment_gateway_settlement', c: 3 });
+    expect(summary).toContainEqual({ st: 'settlement', sid: unifiedSettlementId, ev: 'settlement_paid', c: 2 });
+    expect(summary).toContainEqual({ st: 'settlement', sid: unifiedSettlementId, ev: 'settlement_org_receipt', c: 2 });
+  });
+
+  it('19 — reconciliation after settlement reports NO false series issue and never orphans the series payment', async () => {
+    const { entitlementIds } = await buildPaidSeries();
+    await settleGateway();
+    await settleOrganisation(entitlementIds);
+
+    const { reconciliationService } = await import('../../payment/application/reconciliation.service.js');
+    const run = await reconciliationService.run();
+    const occ = await occurrenceRows(series.seriesId);
+    const occIds = occ.map((o: any) => Number(o.id));
+    const issues = run.issues as any[];
+    for (const id of occIds) {
+      expect(issues.filter((i) => i.type === 'booking_confirmed_no_payment' && Number(i.entityId) === id)).toHaveLength(0);
+    }
+    expect(issues.filter((i) => i.type === 'orphan_payment' && Number(i.entityId) === paymentId)).toHaveLength(0);
+    expect(issues.filter((i) => i.type === 'paid_booking_not_confirmed' && Number(i.entityId) === series.seriesId)).toHaveLength(0);
+  });
+
+  afterEach(async () => { await cleanSettlementResidue(); });
 });
 
 async function countOf(sql: string): Promise<number> {
