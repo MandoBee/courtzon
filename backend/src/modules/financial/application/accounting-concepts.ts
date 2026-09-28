@@ -597,6 +597,41 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['academy_revenue', 'court_rental_revenue', 'courtzon_payable'],
     credit: ['org_cash_bank', 'commission_expense'],
   },
+  // ── TOURNAMENT (G11.1) — card registration fee recognition ────────────────
+  // One tournament CARD payment == one registration (payment_transactions
+  // reference_type='tournament', reference_id = tournament_registration.id,
+  // amount = round2(entry_fee)). The authoritative charged amount is the
+  // payment amount; commission uses tournament.commission_rate (immutable
+  // snapshot) and tax is 0 by the G11.1 decision (no 2300 leg).
+  //
+  // Organisation-owned tournament (organisation_id NOT NULL) — CourtZon is
+  // merchant of record, so the org's net is a PAYABLE (2202) like booking/
+  // marketplace custody, never revenue. Only the commission (4192) is CourtZon
+  // revenue. COURTZON BOOK only (organisation_id = NULL):
+  //   Dr 1100 Payment Clearing = gross · Cr 2202 Merchant Payable = orgNet ·
+  //   Cr 4192 Tournament Commission Revenue = commission.
+  tournament_registration_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['merchant_payable', 'tournament_commission'],
+  },
+  // Platform / community tournament (organisation_id NULL, commission_rate 0):
+  // CourtZon owns the ENTIRE fee — no merchant payable and no commission split:
+  //   Dr 1100 Payment Clearing = gross · Cr 4140 Tournament / Event Revenue =
+  //   gross. COURTZON BOOK only (org NULL); no organization journal.
+  tournament_platform_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['tournament_revenue'],
+  },
+  // Organization book for an org-owned tournament (org-scoped), mirroring the
+  // org-book shape used by booking/marketplace (Dr 1161 + commission expense /
+  // Cr revenue) with the DEDICATED org 4140 Tournament / Event Revenue leg so
+  // tournament fees never mix with marketplace/court/academy revenue:
+  //   Dr org 1161 Marketplace Receivable = orgNet · Dr org MKT-COMM-EXP =
+  //   commission · Cr org 4140 Tournament / Event Revenue = gross.
+  tournament_org_registration_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['tournament_revenue'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

@@ -117,6 +117,15 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   academy_card_refund: { merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300', payment_clearing: '1100' },
   academy_wallet_refund: { merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300', wallet_liability_spend: '2100' },
   academy_cash_refund: { platform_commission: '4191', tax_liability: '2300', marketplace_receivable: '1161' },
+  // G11.1 — Tournament card registration recognition. No DB mapping rows: the
+  // FULL concept set resolves from code to the EXISTING global accounts:
+  //   organisation-owned tournament (CourtZon book, org NULL):
+  //     Dr 1100 Payment Clearing = gross · Cr 2202 Merchant Payable = orgNet ·
+  //     Cr 4192 Tournament Commission Revenue = commission.
+  //   platform tournament (org NULL, commission_rate 0):
+  //     Dr 1100 Payment Clearing = gross · Cr 4140 Tournament / Event Revenue.
+  tournament_registration_card_payment: { payment_clearing: '1100', merchant_payable: '2202', tournament_commission: '4192' },
+  tournament_platform_card_payment: { payment_clearing: '1100', tournament_revenue: '4140' },
 };
 
 /**
@@ -148,6 +157,14 @@ export const ORG_MARKETPLACE_ACCOUNT_CODES: Record<string, { code: string; name:
     normalSide: 'credit',
     parentCode: 'REVENUE-COURT',
     description: 'Organization academy program tuition revenue',
+  },
+  tournament_revenue: {
+    code: '4140',
+    name: 'Tournament / Event Revenue',
+    type: 'revenue',
+    normalSide: 'credit',
+    parentCode: 'REVENUE-COURT',
+    description: 'Organization tournament/event registration revenue',
   },
   commission_expense: {
     code: 'MKT-COMM-EXP',
@@ -234,6 +251,11 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   academy_org_receivable_reversal: ['academy_revenue', 'court_rental_revenue', 'marketplace_receivable', 'commission_expense'],
   academy_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'academy_revenue', 'court_rental_revenue', 'courtzon_payable'],
   academy_org_cash_receivable_rev: ['academy_revenue', 'court_rental_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
+  // G11.1 — Tournament org book (org-scoped). Mirrors the booking org book
+  // (Dr 1161 + commission expense / Cr revenue) with the DEDICATED org 4140
+  // Tournament / Event Revenue leg provisioned per org (idempotently) so
+  // tournament fees are never mixed with marketplace/court/academy revenue.
+  tournament_org_registration_receivable: ['marketplace_receivable', 'commission_expense', 'tournament_revenue'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.

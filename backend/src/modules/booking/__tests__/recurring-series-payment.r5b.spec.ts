@@ -248,9 +248,10 @@ describe('R5-B — accounting safety guards are present in source', () => {
   });
 
   it('payment:succeeded routes booking_series into the series accounting path (no generic fallthrough)', () => {
-    // The pre-existing tournament guard is unchanged; the R5-B series guard was
-    // REPLACED by the R5-C2 series accounting recognition.
-    expect(accounting).toContain("if (referenceType === 'tournament') return;");
+    // G11.1 — the pre-existing tournament guard now routes Tournament CARD
+    // payments into the dedicated tournament accounting branch (NOT the generic
+    // card_payment fallthrough); the R5-B series guard remains as is.
+    expect(accounting).toContain("if (referenceType === 'tournament') {");
     expect(accounting).toContain("if (referenceType === 'booking_series') {");
     expect(accounting).toContain('await postSeriesPaymentAccounting(referenceId, currency);');
   });

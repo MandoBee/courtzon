@@ -1,27 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * Group 3A — Payment → Accounting Isolation regression.
+ * Group 3A + G11.1 — Payment → Accounting Isolation regression.
  *
  * Group 3 routed Tournament registration payments through the SHARED Payment
- * capability and added an early-return guard in the accounting listener:
- *
- *   if (referenceType === 'tournament') return;
- *
- * Tournament accounting/settlement is intentionally NOT designed yet, so a
- * Tournament payment:succeeded must never reach the generic accounting
- * fallthrough (which would post a full-gross `card_payment` entry with
- * source_type='tournament' as CourtZon revenue — wrong custody model).
+ * capability and initially added an early-return guard in the accounting
+ * listener (no tournament accounting). G11.1 now posts CARD registration fee
+ * recognition through an EXPLICIT tournament accounting branch (source_type =
+ * 'tournament', source_id = paymentId, dedicated tournament event types).
+ * CASH tournament payments and zero-FEE registrations remain un-posted and the
+ * generic card_payment fallthrough must NEVER be reached by any tournament
+ * payment.
  *
  * This spec proves at the REAL accounting boundary (the ledger repository that
  * writes `ledger_entries`) that:
  *
- *   1. Tournament → NO posting is attempted (no hasPosting check, no ledger
- *      entries created, no `accounting:entry-recorded`).
- *   2. Booking / Marketplace-order / Academy / Subscription → the accounting
+ *   1. Tournament CARD → the DEDICATED tournament branch is reached
+ *      (hasPosting invoked; only tournament event types; entries created).
+ *   2. Tournament CASH / zero-fee → NO posting is attempted (no hasPosting
+ *      check, no ledger entries, no `accounting:entry-recorded`).
+ *   3. Booking / Marketplace-order / Academy / Subscription → the accounting
  *      boundary IS still reached exactly as before (hasPosting invoked), i.e.
- *      the guard is scoped strictly to 'tournament' and does not affect any
- *      existing consumer.
+ *      the tournament handling is scoped strictly to 'tournament' and does not
+ *      affect any existing consumer.
  *
  * The observable boundary used is the existing implementation's own:
  * `postAccountingEvent` → `ledgerRepository.hasPosting` / `createEntries`
@@ -147,12 +148,24 @@ vi.mock('../../academy/infrastructure/repositories/academy-payment.repository.js
   },
 }));
 
+// G11.1 — the accounting listener now consumes tournament payments through the
+// SHARED `tournamentRepository` to resolve registration → tournament economics.
+vi.mock('../../tournaments/infrastructure/repositories/tournament.repository.js', () => ({
+  tournamentRepository: {
+    getRegistrationById: vi.fn(async () => ({ id: 99, tournament_id: 400, player_id: 42, payment_status: 'paid' })),
+    findById: vi.fn(async () => ({
+      id: 400, organisation_id: 6, commission_rate: 10, entry_fee: 250, currency_code: 'AED',
+    })),
+  },
+}));
+
 import {
   registerAccountingEventListeners,
   resetAccountingEventListenersForTest,
 } from '../application/accounting-event.listener.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
+import { tournamentRepository } from '../../tournaments/infrastructure/repositories/tournament.repository.js';
 
 function capturePaymentSucceededHandler() {
   const handlers: Record<string, (data: any) => Promise<void> | void> = {};
@@ -175,26 +188,60 @@ beforeEach(() => {
   vi.clearAllMocks();
   emitted.length = 0;
   poolRowsBySql.length = 0;
+  // Default mocked tournament: organisation-owned, 10% commission, entry 250.
+  (tournamentRepository.getRegistrationById as any).mockImplementation(async () => ({ id: 99, tournament_id: 400, player_id: 42, payment_status: 'paid' }));
+  (tournamentRepository.findById as any).mockImplementation(async () => ({
+    id: 400, organisation_id: 6, commission_rate: 10, entry_fee: 250, currency_code: 'AED',
+  }));
   resetAccountingEventListenersForTest();
   registerAccountingEventListeners();
 });
 
-describe('Group 3A — Tournament payment:succeeded → accounting isolation', () => {
-  it('a Tournament payment:succeeded creates NO accounting posting (no ledger entry, no journal, no event)', async () => {
+describe('Group 3A + G11.1 — Tournament payment:succeeded → accounting isolation', () => {
+  it('G11.1 — a Tournament CARD payment reaches the DEDICATED tournament branch (source_type="tournament", never the generic card_payment fallthrough)', async () => {
     const handler = capturePaymentSucceededHandler();
     expect(handler).toBeDefined();
 
     await handler(PAID());
 
-    // The accounting boundary is the ledger repository (writes ledger_entries).
-    // For tournament the handler must return before ANY posting is attempted.
+    // The G11.1 branch IS reached — the hasPosting idempotency boundary runs.
+    const postingCalls = (ledgerRepository.hasPosting as any).mock.calls as Array<[string, number, string]>;
+    expect(postingCalls.length).toBeGreaterThan(0);
+    for (const [sourceType, , eventType] of postingCalls) {
+      expect(sourceType, eventType).toBe('tournament');           // source segregation
+      expect(['tournament_registration_card_payment', 'tournament_org_registration_receivable'], eventType).toContain(eventType);
+    }
+    expect(postingCalls.some((c) => c[2] === 'card_payment')).toBe(false); // never the generic fallthrough
+    expect(ledgerRepository.createEntries).toHaveBeenCalled();
+    // Post-commit finance realtime signal fires for tournament postings now.
+    expect(emitted.some((e) => e.name === 'accounting:entry-recorded')).toBe(true);
+  });
+
+  it('G11.1 — a PLATFORM Tournament CARD payment posts only the platform entry (no org journal)', async () => {
+    (tournamentRepository.findById as any).mockImplementation(async () => ({
+      id: 401, organisation_id: null, commission_rate: 0, entry_fee: 250, currency_code: 'AED',
+    }));
+    const handler = capturePaymentSucceededHandler();
+    await handler(PAID({ registrationId: 99, referenceId: 99 }));
+
+    const postingCalls = (ledgerRepository.hasPosting as any).mock.calls as Array<[string, number, string]>;
+    expect(postingCalls.map((c) => c[2])).toEqual(['tournament_platform_card_payment']);
+    expect(ledgerRepository.createEntries).toHaveBeenCalled();
+  });
+
+  it('G11.1 — a zero-fee (FREE) Tournament payment creates NO accounting posting', async () => {
+    (tournamentRepository.findById as any).mockImplementation(async () => ({
+      id: 402, organisation_id: 6, commission_rate: 10, entry_fee: 250, currency_code: 'AED',
+    }));
+    const handler = capturePaymentSucceededHandler();
+    await handler(PAID({ amount: 0 }));
+
     expect(ledgerRepository.hasPosting).not.toHaveBeenCalled();
     expect(ledgerRepository.createEntries).not.toHaveBeenCalled();
-    // No post-COMMIT finance realtime signal either.
     expect(emitted.some((e) => e.name === 'accounting:entry-recorded')).toBe(false);
   });
 
-  it('a Tournament cash payment:succeeded is equally isolated (no posting)', async () => {
+  it('a Tournament CASH payment:succeeded is equally isolated (G11.1 is card-only — no posting)', async () => {
     const handler = capturePaymentSucceededHandler();
     await handler(PAID({ referenceId: 100, metadata: { paymentMethod: 'cash', currency: 'AED', userId: 42 } }));
 

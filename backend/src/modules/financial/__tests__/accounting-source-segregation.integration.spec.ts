@@ -128,4 +128,23 @@ describe('Accounting source segregation — mapping resolves by economic source'
     expect(set.size).toBe(3); // 4110, 4160, 4170 all distinct
     expect(set.has('4100')).toBe(false); // none land in the generic parent
   });
+
+  it('G11.1 — tournament commission/revenue resolve to DEDICATED 4192/4140 accounts (never booking/marketplace revenue accounts)', async () => {
+    const engine = await import('../application/accounting-engine.service.js');
+    // Org-owned tournament custody: Dr 1100 clearing / Cr 2202 payable / Cr 4192 commission.
+    const court = await engine.accountingEngineService.resolveMapping('tournament_registration_card_payment', null);
+    const codeOf = async (line: any) => {
+      const [coa] = await pool.execute<RowData>(`SELECT code FROM chart_of_accounts WHERE id = ?`, [line.accountId]);
+      return (coa as any[])[0]?.code ?? '';
+    };
+    expect(await codeOf(court.find((m: any) => m.concept === 'payment_clearing'))).toBe('1100');
+    expect(await codeOf(court.find((m: any) => m.concept === 'merchant_payable'))).toBe('2202');
+    // Tournament commission is its OWN account: 4192 — never booking 4110 or marketplace 4160.
+    expect(await codeOf(court.find((m: any) => m.concept === 'tournament_commission'))).toBe('4192');
+    // Platform tournament: revenue lands on the DEDICATED 4140, never 4100 / 4170.
+    const plat = await engine.accountingEngineService.resolveMapping('tournament_platform_card_payment', null);
+    const [revenueCoa] = await pool.execute<RowData>(
+      `SELECT code FROM chart_of_accounts WHERE id = ?`, [(plat.find((m: any) => m.concept === 'tournament_revenue') as any).accountId]);
+    expect((revenueCoa as any[])[0].code).toBe('4140');
+  });
 });

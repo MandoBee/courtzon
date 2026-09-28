@@ -9,6 +9,7 @@ import { bookingSeriesRepository } from '../../booking/infrastructure/repositori
 import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
 import { paymentAllocationRepository } from '../../booking/infrastructure/repositories/payment-allocation.repository.js';
 import { paymentAllocationService } from '../../booking/application/payment-allocation.service.js';
+import { tournamentRepository } from '../../tournaments/infrastructure/repositories/tournament.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
@@ -1651,6 +1652,113 @@ async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, 
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// G11.1 — TOURNAMENT CARD registration recognition (per paid registration).
+//
+// One tournament card payment == one registration (payment_transactions
+// reference_type='tournament', reference_id = tournament_registration.id,
+// amount = round2(entry_fee)). The PAYMENT amount is authoritative — it is
+// never re-priced; the persisted entry_fee is only verified defensively.
+//
+// Organisation-owned tournament (organisation_id NOT NULL):
+//   CourtZon book (org NULL): Dr 1100 Payment Clearing = gross · Cr 2202
+//     Merchant Payable = orgNet · Cr 4192 Tournament Commission = commission.
+//   Organization book (org-scoped): Dr org 1161 = orgNet · Dr org MKT-COMM-EXP
+//     = commission · Cr org 4140 Tournament / Event Revenue = gross.
+// Platform tournament (organisation_id NULL, commission_rate 0): CourtZon owns
+//   the ENTIRE fee: Dr 1100 = gross · Cr 4140 = gross. No org journal.
+//
+// commission = round2(gross × tournament.commission_rate / 100) from the
+// IMMUTABLE tournament snapshot — the live subscription rate is never re-read
+// at payment time (G11.1 rule). Tax = 0 by decision (no 2300 leg). Zero-fee
+// (FREE) registrations post nothing. CASH tournament payments are OUT of G11.1
+// scope and remain un-posted (existing behavior preserved).
+//
+// source_type = 'tournament' (existing ledger ENUM value) · source_id =
+// paymentId · dedicated tournament event types. The CourtZon and org postings
+// are independently idempotent via hasPosting('tournament', paymentId,
+// eventType) + uk_dedup, so a replayed payment:succeeded (outbox/BullMQ replay
+// re-dispatches to THIS same guarded handler) can never double-post.
+// ─────────────────────────────────────────────────────────────────────────────
+async function postTournamentCardPaymentAccounting(
+  paymentMethod: string,
+  amount: number,
+  currency: string,
+  data: any,
+): Promise<void> {
+  // G11.1 is CARD registration recognition only. CASH tournament payments are
+  // out of scope and must remain un-posted (no accidental cash accounting).
+  if (paymentMethod && paymentMethod !== 'card') return;
+
+  const registrationId = Number(data.referenceId);
+  const paymentId = Number(data.paymentId);
+  const registration = registrationId ? await tournamentRepository.getRegistrationById(registrationId) : null;
+  if (!registration) {
+    log.info({ paymentId, registrationId }, 'Tournament registration not found — no accounting posted');
+    return;
+  }
+
+  const tournament = await tournamentRepository.findById(Number(registration.tournament_id));
+  if (!tournament) {
+    log.warn({ paymentId, registrationId }, 'Tournament not found for registration — no accounting posted');
+    return;
+  }
+
+  // The PAYMENT amount is authoritative (what was actually charged/collected).
+  const gross = Math.round(Number(amount) * 100) / 100;
+  if (gross <= 0) {
+    // FREE / zero-fee registration → no economic event to recognize.
+    log.info({ paymentId, registrationId }, 'Tournament zero-fee registration — no accounting posted');
+    return;
+  }
+
+  // Defensive verification against the authoritative entry_fee (cent-rounded).
+  // The payment amount is NEVER silently altered or re-priced.
+  const entryFee = Math.round(Number(tournament.entry_fee ?? 0) * 100) / 100;
+  if (entryFee >= 0 && gross !== entryFee) {
+    log.warn({ paymentId, registrationId, gross, entryFee }, 'Tournament payment amount differs from entry_fee — using payment amount (authoritative)');
+  }
+
+  // Commission from the IMMUTABLE tournament.commission_rate snapshot — never
+  // the live subscription rate at payment time (G11.1 rule).
+  // commission = round2(gross × commission_rate / 100).
+  const commissionRate = Number(tournament.commission_rate ?? 0);
+  const commission = Math.round(((gross * commissionRate) / 100) * 100) / 100;
+  const orgNet = Math.round((gross - commission) * 100) / 100;
+
+  const currencyCode = String(tournament.currency_code || currency || 'EGP');
+  const orgId = tournament.organisation_id != null ? Number(tournament.organisation_id) : null;
+  const description = `Tournament #${tournament.id} registration #${registration.id} card payment (payment #${paymentId})`;
+
+  if (orgId != null) {
+    // CourtZon book (org NULL) — merchant-of-record custody over the org's net.
+    await postAccountingEvent(
+      'tournament_registration_card_payment', 'tournament', paymentId, null,
+      { payment_clearing: gross, merchant_payable: orgNet, tournament_commission: commission },
+      currencyCode,
+      description,
+    );
+    // Organization book — the org records its OWN economics (org-scoped 1161 /
+    // MKT-COMM-EXP / 4140, auto-provisioned per org by the accounting engine).
+    await postAccountingEvent(
+      'tournament_org_registration_receivable', 'tournament', paymentId, orgId,
+      { marketplace_receivable: orgNet, commission_expense: commission, tournament_revenue: gross },
+      currencyCode,
+      `${description} (organization book)`,
+      undefined,
+      { marketplace_receivable: orgId, commission_expense: orgId, tournament_revenue: orgId },
+    );
+  } else {
+    // Platform tournament — CourtZon owns the entire fee; no org journal.
+    await postAccountingEvent(
+      'tournament_platform_card_payment', 'tournament', paymentId, null,
+      { payment_clearing: gross, tournament_revenue: gross },
+      currencyCode,
+      description,
+    );
+  }
+}
+
 export function registerAccountingEventListeners(): void {
   // Idempotent: registering twice would duplicate every in-memory handler and
   // fire each domain event multiple times (the event bus does not await
@@ -1674,12 +1782,17 @@ export function registerAccountingEventListeners(): void {
       if (!referenceType || !referenceId || !amount) return;
 
       // Group 3 — Tournament registration payments are routed through the SHARED
-      // Payment capability, but Tournament accounting/settlement is explicitly
-      // NOT implemented yet (a later tournament group defines the custody model
-      // and posting rules). Prevent the generic fallthrough below from posting
-      // a full-gross card_payment entry as CourtZon revenue — tournament fees
-      // belong to the organising entity under a model a later group defines.
-      if (referenceType === 'tournament') return;
+      // Payment capability. G11.1 — CARD registration fee recognition is now
+      // posted through the explicit tournament accounting branch below; the
+      // tournament events are source-segregated (source_type='tournament',
+      // source_id=paymentId, dedicated tournament event types) and can NEVER
+      // reach the generic card_payment fallthrough (which would post the full
+      // gross as generic CourtZon revenue — wrong custody model). CASH
+      // tournament payments stay OUT of G11.1 scope (un-posted, unchanged).
+      if (referenceType === 'tournament') {
+        await postTournamentCardPaymentAccounting(paymentMethod, amount, currency, data);
+        return;
+      }
 
       // R5-B — Recurring series payments are ONE gateway transaction covering N
       // occurrences. R5-C2 — a successful series payment is recognized ONCE at
