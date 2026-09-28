@@ -123,19 +123,27 @@ describe('G11.1 — tournament card registration accounting contract', () => {
 
   it('the authoritative charged amount is the PAYMENT amount; entry_fee is only verified defensively', () => {
     const listener = be('src/modules/financial/application/accounting-event.listener.ts');
-    const helper = listener.slice(listener.indexOf('async function postTournamentCardPaymentAccounting'));
+    const start = listener.indexOf('async function postTournamentCardPaymentAccounting');
+    // Bound the slice to the CARD function only (stops at the G11.2 cash section).
+    const g112 = listener.indexOf('// G11.2 — TOURNAMENT CASH registration recognition');
+    const helper = listener.slice(start, g112 > -1 ? g112 : start + 4000);
     expect(helper).toContain('const gross = Math.round(Number(amount) * 100) / 100;');
     expect(helper).toContain('payment amount differs from entry_fee');
     // registration_fee is NEVER consulted.
     expect(helper).not.toContain('registration_fee');
   });
 
-  it('FREE / zero-fee and CASH tournament payments post nothing (G11.1 scope guards)', () => {
+  it('the CARD helper keeps its non-card guard, and CASH is routed to the dedicated G11.2 cash function (org cash posts; platform cash fail-closed)', () => {
     const listener = be('src/modules/financial/application/accounting-event.listener.ts');
-    const helper = listener.slice(listener.indexOf('async function postTournamentCardPaymentAccounting'));
-    // Cash is out of G11.1 scope — the shared payment listener keeps marking
-    // the registration paid; the ACCOUNTING branch must ignore cash.
-    expect(helper).toContain("if (paymentMethod && paymentMethod !== 'card') return;");
-    expect(helper).toContain('gross <= 0');
+    const card = listener.slice(listener.indexOf('async function postTournamentCardPaymentAccounting'));
+    // The card helper itself still post nothing for anything but card.
+    expect(card).toContain("if (paymentMethod && paymentMethod !== 'card') return;");
+    expect(card).toContain('gross <= 0');
+    // The tournament branch routes CASH to the dedicated G11.2 cash function.
+    expect(listener).toContain("if (paymentMethod === 'cash') {");
+    expect(listener).toContain('await postTournamentCashAccounting(amount, currency, data);');
+    expect(listener).toContain('async function postTournamentCashAccounting(');
+    // Platform/community CASH is fail-closed: no custody model → no posting.
+    expect(listener).toContain('Platform/community tournament CASH — no custody model; no accounting posted');
   });
 });

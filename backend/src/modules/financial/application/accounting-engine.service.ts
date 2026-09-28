@@ -126,6 +126,11 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   //     Dr 1100 Payment Clearing = gross · Cr 4140 Tournament / Event Revenue.
   tournament_registration_card_payment: { payment_clearing: '1100', merchant_payable: '2202', tournament_commission: '4192' },
   tournament_platform_card_payment: { payment_clearing: '1100', tournament_revenue: '4140' },
+  // G11.2 — Tournament CASH registration recognition (org collected). The
+  // CourtZon book resolves fully from code (no DB mapping rows) to the EXISTING
+  // accounts: Dr 2202 Merchant Payable = commission · Cr 4192 Tournament
+  // Commission Revenue = commission.
+  tournament_cash_commission_receivable: { merchant_payable: '2202', tournament_commission: '4192' },
 };
 
 /**
@@ -256,6 +261,11 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // Tournament / Event Revenue leg provisioned per org (idempotently) so
   // tournament fees are never mixed with marketplace/court/academy revenue.
   tournament_org_registration_receivable: ['marketplace_receivable', 'commission_expense', 'tournament_revenue'],
+  // G11.2 — Tournament CASH org book (org-scoped). Mirrors the booking/academy/
+  // marketplace org-cash shape (Dr ORG-CASH + commission expense / Cr revenue +
+  // CourtZon payable) with the DEDICATED org 4140 Tournament / Event Revenue
+  // leg — provisioned per org (idempotently) by the accounting engine.
+  tournament_org_cash_payment: ['org_cash_bank', 'commission_expense', 'tournament_revenue', 'courtzon_payable'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.

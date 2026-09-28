@@ -1,25 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * Group 3A + G11.1 — Payment → Accounting Isolation regression.
+ * Group 3A + G11.1/G11.2 — Payment → Accounting Isolation regression.
  *
  * Group 3 routed Tournament registration payments through the SHARED Payment
  * capability and initially added an early-return guard in the accounting
  * listener (no tournament accounting). G11.1 now posts CARD registration fee
- * recognition through an EXPLICIT tournament accounting branch (source_type =
- * 'tournament', source_id = paymentId, dedicated tournament event types).
- * CASH tournament payments and zero-FEE registrations remain un-posted and the
- * generic card_payment fallthrough must NEVER be reached by any tournament
- * payment.
+ * recognition and G11.2 posts CASH registration fee recognition (org
+ * collected) — both through an EXPLICIT tournament accounting branch
+ * (source_type = 'tournament', source_id = paymentId, dedicated tournament
+ * event types). Platform/community CASH payments and zero-FEE registrations
+ * remain un-posted (fail-closed / no economic event) and the generic
+ * card_payment fallthrough must NEVER be reached by any tournament payment.
  *
  * This spec proves at the REAL accounting boundary (the ledger repository that
  * writes `ledger_entries`) that:
  *
  *   1. Tournament CARD → the DEDICATED tournament branch is reached
  *      (hasPosting invoked; only tournament event types; entries created).
- *   2. Tournament CASH / zero-fee → NO posting is attempted (no hasPosting
- *      check, no ledger entries, no `accounting:entry-recorded`).
- *   3. Booking / Marketplace-order / Academy / Subscription → the accounting
+ *   2. Tournament CASH (org-owned) → the DEDICATED tournament cash branch is
+ *      reached (hasPosting invoked; only tournament cash event types).
+ *   3. Platform/community Tournament CASH / zero-fee → NO posting is attempted
+ *      (no hasPosting check, no ledger entries, no `accounting:entry-recorded`).
+ *   4. Booking / Marketplace-order / Academy / Subscription → the accounting
  *      boundary IS still reached exactly as before (hasPosting invoked), i.e.
  *      the tournament handling is scoped strictly to 'tournament' and does not
  *      affect any existing consumer.
@@ -197,7 +200,7 @@ beforeEach(() => {
   registerAccountingEventListeners();
 });
 
-describe('Group 3A + G11.1 — Tournament payment:succeeded → accounting isolation', () => {
+describe('Group 3A + G11.1/G11.2 — Tournament payment:succeeded → accounting isolation', () => {
   it('G11.1 — a Tournament CARD payment reaches the DEDICATED tournament branch (source_type="tournament", never the generic card_payment fallthrough)', async () => {
     const handler = capturePaymentSucceededHandler();
     expect(handler).toBeDefined();
@@ -241,9 +244,27 @@ describe('Group 3A + G11.1 — Tournament payment:succeeded → accounting isola
     expect(emitted.some((e) => e.name === 'accounting:entry-recorded')).toBe(false);
   });
 
-  it('a Tournament CASH payment:succeeded is equally isolated (G11.1 is card-only — no posting)', async () => {
+  it('G11.2 — an org-owned Tournament CASH payment reaches the dedicated tournament cash branch (both cash postings)', async () => {
     const handler = capturePaymentSucceededHandler();
     await handler(PAID({ referenceId: 100, metadata: { paymentMethod: 'cash', currency: 'AED', userId: 42 } }));
+
+    const postingCalls = (ledgerRepository.hasPosting as any).mock.calls as Array<[string, number, string]>;
+    expect(postingCalls.length).toBeGreaterThan(0);
+    const eventTypes = postingCalls.map((c) => c[2]);
+    // CourtZon cash event + org cash event, both tournament-scoped.
+    expect(eventTypes).toContain('tournament_cash_commission_receivable');
+    expect(eventTypes).toContain('tournament_org_cash_payment');
+    for (const [sourceType] of postingCalls) expect(sourceType).toBe('tournament');
+    expect(ledgerRepository.createEntries).toHaveBeenCalled();
+    expect(emitted.some((e) => e.name === 'accounting:entry-recorded')).toBe(true);
+  });
+
+  it('G11.2 — a PLATFORM/community Tournament CASH payment creates NO accounting posting (fail-closed, no custody model)', async () => {
+    (tournamentRepository.findById as any).mockImplementation(async () => ({
+      id: 403, organisation_id: null, commission_rate: 0, entry_fee: 250, currency_code: 'AED',
+    }));
+    const handler = capturePaymentSucceededHandler();
+    await handler(PAID({ referenceId: 101, metadata: { paymentMethod: 'cash', currency: 'AED', userId: 42 } }));
 
     expect(ledgerRepository.hasPosting).not.toHaveBeenCalled();
     expect(ledgerRepository.createEntries).not.toHaveBeenCalled();

@@ -632,6 +632,33 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['marketplace_receivable', 'commission_expense'],
     credit: ['tournament_revenue'],
   },
+  // ── TOURNAMENT (G11.2) — CASH registration recognition (org collected) ────
+  // payment:succeeded with paymentMethod='cash' represents physical cash
+  // collected by the ORGANISATION (never CourtZon). The org owns the whole
+  // gross; CourtZon is owed ONLY its commission. Tax = 0 (same G11.1 decision).
+  //
+  // Organisation-owned tournament (organisation_id NOT NULL) — COURTZON BOOK
+  // (org NULL), per the G11.2 approved model:
+  //   Dr 2202 Merchant Payable = commission · Cr 4192 Tournament Commission =
+  //   commission. (The org holds the cash; the org's book carries the
+  //   symmetric Cr CourtZon Payable — the 2202 control is cleared when the org
+  //   pays CourtZon.)
+  tournament_cash_commission_receivable: {
+    debit: ['merchant_payable'],
+    credit: ['tournament_commission'],
+  },
+  // Organization book for an org-owned tournament CASH (org-scoped), mirroring
+  // the booking/academy/marketplace org-cash shape — the org collected the cash
+  // IMMEDIATELY, so it books its OWN Cash/Bank (ORG-CASH) directly + the
+  // commission expense against tournament revenue + the commission owed to
+  // CourtZon:
+  //   Dr org ORG-CASH = gross · Dr org MKT-COMM-EXP = commission ·
+  //   Cr org 4140 Tournament / Event Revenue = gross · Cr org MKT-CZ-PAY =
+  //   commission. Balanced: Dr (gross + commission) = Cr (gross + commission).
+  tournament_org_cash_payment: {
+    debit: ['org_cash_bank', 'commission_expense'],
+    credit: ['tournament_revenue', 'courtzon_payable'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

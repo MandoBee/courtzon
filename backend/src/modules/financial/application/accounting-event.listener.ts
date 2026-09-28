@@ -1670,9 +1670,9 @@ async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, 
 //
 // commission = round2(gross × tournament.commission_rate / 100) from the
 // IMMUTABLE tournament snapshot — the live subscription rate is never re-read
-// at payment time (G11.1 rule). Tax = 0 by decision (no 2300 leg). Zero-fee
-// (FREE) registrations post nothing. CASH tournament payments are OUT of G11.1
-// scope and remain un-posted (existing behavior preserved).
+// at payment time. Tax = 0 by decision (no 2300 leg). Zero-fee (FREE)
+// registrations post nothing. This function handles CARD only — CASH is routed
+// to postTournamentCashAccounting (G11.2) by the branch above.
 //
 // source_type = 'tournament' (existing ledger ENUM value) · source_id =
 // paymentId · dedicated tournament event types. The CourtZon and org postings
@@ -1759,6 +1759,108 @@ async function postTournamentCardPaymentAccounting(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// G11.2 — TOURNAMENT CASH registration recognition (org collected the cash).
+//
+// payment:succeeded with paymentMethod='cash' represents physical cash
+// collected by the ORGANISATION (the shared tournament.service cash-register
+// path records a paid payment_transactions row with reference_type='tournament'
+// and emits payment:succeeded with metadata.paymentMethod='cash'). CourtZon
+// never holds this cash — account 1100 Payment Clearing is NEVER used.
+//
+// Organisation-owned tournament (organisation_id NOT NULL), per the approved
+// model:
+//   CourtZon book (org NULL) — tournament_cash_commission_receivable:
+//     Dr 2202 Merchant Payable = commission · Cr 4192 Tournament Commission =
+//     commission.
+//   Organization book (org-scoped) — tournament_org_cash_payment:
+//     Dr org ORG-CASH = gross · Dr org MKT-COMM-EXP = commission ·
+//     Cr org 4140 Tournament / Event Revenue = gross · Cr org MKT-CZ-PAY
+//     (CourtZon Payable) = commission. Balanced by construction.
+//
+// Platform / community tournament (organisation_id NULL): there is NO custody
+// model for org-less cash — FAIL-CLOSED, no accounting is posted (explicit
+// guard below). FREE (payment amount <= 0) posts nothing. commission uses the
+// IMMUTABLE tournament.commission_rate snapshot; the payment amount is
+// authoritative (registration_fee never used); tax = 0 (no 2300 leg).
+//
+// source_type = 'tournament' · source_id = paymentId · dedicated event types,
+// each independently idempotent via hasPosting('tournament', paymentId,
+// eventType) + uk_dedup — a replayed payment:succeeded can never double-post.
+// ─────────────────────────────────────────────────────────────────────────────
+async function postTournamentCashAccounting(
+  amount: number,
+  currency: string,
+  data: any,
+): Promise<void> {
+  const registrationId = Number(data.referenceId);
+  const paymentId = Number(data.paymentId);
+  const registration = registrationId ? await tournamentRepository.getRegistrationById(registrationId) : null;
+  if (!registration) {
+    log.info({ paymentId, registrationId }, 'Tournament registration not found — no cash accounting posted');
+    return;
+  }
+
+  const tournament = await tournamentRepository.findById(Number(registration.tournament_id));
+  if (!tournament) {
+    log.warn({ paymentId, registrationId }, 'Tournament not found for registration — no cash accounting posted');
+    return;
+  }
+
+  // The PAYMENT amount is authoritative (what was actually collected).
+  const gross = Math.round(Number(amount) * 100) / 100;
+  if (gross <= 0) {
+    // FREE / zero-fee registration → no economic event to recognize.
+    log.info({ paymentId, registrationId }, 'Tournament zero-fee registration — no cash accounting posted');
+    return;
+  }
+
+  // Defensive verification against the authoritative entry_fee (cent-rounded) —
+  // the collected amount is NEVER silently altered or re-priced.
+  const entryFee = Math.round(Number(tournament.entry_fee ?? 0) * 100) / 100;
+  if (entryFee >= 0 && gross !== entryFee) {
+    log.warn({ paymentId, registrationId, gross, entryFee }, 'Tournament cash amount differs from entry_fee — using payment amount (authoritative)');
+  }
+
+  // Commission from the IMMUTABLE tournament.commission_rate snapshot — never
+  // the live subscription rate at payment time.
+  // commission = round2(gross × commission_rate / 100).
+  const commissionRate = Number(tournament.commission_rate ?? 0);
+  const commission = Math.round(((gross * commissionRate) / 100) * 100) / 100;
+
+  // G11.2 fail-closed guard: org-less (platform/community) tournament CASH has
+  // NO custodial organization to book against — no accounting is posted.
+  const orgId = tournament.organisation_id != null ? Number(tournament.organisation_id) : null;
+  if (orgId == null) {
+    log.info({ paymentId, registrationId, tournamentId: tournament.id }, 'Platform/community tournament CASH — no custody model; no accounting posted (fail-closed)');
+    return;
+  }
+
+  const currencyCode = String(tournament.currency_code || currency || 'EGP');
+  const description = `Tournament #${tournament.id} registration #${registration.id} cash payment (payment #${paymentId})`;
+
+  // CourtZon book (org NULL) — the org collected the cash; CourtZon books its
+  // commission (Dr 2202 Merchant Payable / Cr 4192 per the approved model).
+  await postAccountingEvent(
+    'tournament_cash_commission_receivable', 'tournament', paymentId, null,
+    { merchant_payable: commission, tournament_commission: commission },
+    currencyCode,
+    description,
+  );
+
+  // Organization book (org-scoped) — the org owns the whole gross and owes
+  // CourtZon the commission (Dr ORG-CASH + commission expense / Cr 4140 +
+  // CourtZon payable).
+  await postAccountingEvent(
+    'tournament_org_cash_payment', 'tournament', paymentId, orgId,
+    { org_cash_bank: gross, commission_expense: commission, tournament_revenue: gross, courtzon_payable: commission },
+    currencyCode,
+    `${description} (organization book)`,
+    undefined,
+    { org_cash_bank: orgId, commission_expense: orgId, tournament_revenue: orgId, courtzon_payable: orgId },
+  );
+}
+
 export function registerAccountingEventListeners(): void {
   // Idempotent: registering twice would duplicate every in-memory handler and
   // fire each domain event multiple times (the event bus does not await
@@ -1782,15 +1884,20 @@ export function registerAccountingEventListeners(): void {
       if (!referenceType || !referenceId || !amount) return;
 
       // Group 3 — Tournament registration payments are routed through the SHARED
-      // Payment capability. G11.1 — CARD registration fee recognition is now
-      // posted through the explicit tournament accounting branch below; the
-      // tournament events are source-segregated (source_type='tournament',
-      // source_id=paymentId, dedicated tournament event types) and can NEVER
-      // reach the generic card_payment fallthrough (which would post the full
-      // gross as generic CourtZon revenue — wrong custody model). CASH
-      // tournament payments stay OUT of G11.1 scope (un-posted, unchanged).
+      // Payment capability. The dedicated tournament accounting branch below is
+      // source-segregated (source_type='tournament', source_id=paymentId,
+      // dedicated tournament event types) and can NEVER reach the generic
+      // card_payment fallthrough (which would post the full gross as generic
+      // CourtZon revenue — wrong custody model).
+      //   G11.1 — CARD registration fee recognition.
+      //   G11.2 — CASH registration recognition (org collected; platform/
+      //           community CASH has NO custody model → fail-closed, un-posted).
       if (referenceType === 'tournament') {
-        await postTournamentCardPaymentAccounting(paymentMethod, amount, currency, data);
+        if (paymentMethod === 'cash') {
+          await postTournamentCashAccounting(amount, currency, data);
+        } else {
+          await postTournamentCardPaymentAccounting(paymentMethod, amount, currency, data);
+        }
         return;
       }
 
