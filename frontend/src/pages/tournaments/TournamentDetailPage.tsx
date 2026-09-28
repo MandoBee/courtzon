@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { tournamentRefundApi } from '../../services/tournament';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { Modal } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -93,6 +94,25 @@ export default function TournamentDetailPage() {
     onError: (e: any) => showToast(translateEligibilityError(t, e, e?.response?.data?.message || 'Registration failed'), 'error'),
   });
 
+  // G11.3 — player requests a FULL registration refund (own registration only).
+  // Computed from the raw participants query BEFORE any early return so hooks
+  // keep constant order; participantList (post-guard derived) is not used here.
+  const participantRaw = Array.isArray(participants) ? participants : [];
+  const myRegistrationId = participantRaw.find((p: any) => Number(p.player_id) === Number(user?.id))?.registration_id ?? undefined;
+  const { data: myRefundRequest } = useQuery({
+    queryKey: ['tournament', id, 'refund-request', myRegistrationId],
+    queryFn: () => tournamentRefundApi.getMyRefundRequest(Number(myRegistrationId!)).then((r) => r.status ? r : null),
+    enabled: Boolean(myRegistrationId),
+  });
+  const refundMutation = useMutation({
+    mutationFn: () => tournamentRefundApi.requestRefund(Number(myRegistrationId)),
+    onSuccess: () => {
+      showToast('Refund request submitted for approval', 'success');
+      qc.invalidateQueries({ queryKey: ['tournament', id, 'refund-request', myRegistrationId] });
+    },
+    onError: (e: any) => showToast(e?.response?.data?.message || 'Refund request failed', 'error'),
+  });
+
   if (isLoading) return <div className="space-y-4"><Skeleton width={300} height={28} /><SkeletonRow count={6} /></div>;
   if (!tournament) return <p className="text-[var(--color-text-muted)] text-center py-8">Tournament not found.</p>;
 
@@ -165,6 +185,26 @@ export default function TournamentDetailPage() {
             <button onClick={() => setShowRegisterModal(true)} className="btn-primary text-sm">
               {registerPaymentMethods.length === 0 ? 'Register' : 'Register & Pay'}
             </button>
+          </Can>
+        )}
+        {/* G11.3 — player registration refund request (own registration; approval by the organisation) */}
+        {myRegistration && (
+          <Can permission="tournaments.registration.refund-request">
+            <div className="border-t border-[var(--color-border)] pt-3 mt-3 w-full">
+              <p className="text-xs font-medium text-[var(--color-text)] mb-1">Registration Refund</p>
+              {myRefundRequest ? (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Status: <span className="capitalize font-semibold text-[var(--color-text)]">{String(myRefundRequest.status)}</span>
+                  {myRefundRequest.rejection_reason ? ` — ${myRefundRequest.rejection_reason}` : ''}
+                </p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-[var(--color-text-muted)]">Request a full refund before the draw is locked.</p>
+                  <button onClick={() => refundMutation.mutate()} disabled={refundMutation.isPending}
+                    className="text-xs btn-secondary">{refundMutation.isPending ? 'Requesting...' : 'Request Refund'}</button>
+                </div>
+              )}
+            </div>
           </Can>
         )}
       </div>

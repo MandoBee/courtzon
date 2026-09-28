@@ -200,6 +200,26 @@ export async function cancelRegistrationHandler(request: FastifyRequest, reply: 
   return reply.send({ message: 'Registration cancelled' });
 }
 
+// ── G11.3 — player refund-request endpoints (ownership enforced in service) ──
+
+export async function requestRefundHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { regId } = request.params as any;
+  const { RefundRequestSchema } = await import('./tournament.dto.js');
+  const body = RefundRequestSchema.parse(request.body ?? {});
+  const { tournamentRefundService } = await import('../application/tournament-refund.service.js');
+  const created = await tournamentRefundService.requestRefund(Number(regId), userId, body.reason);
+  return reply.status(201).send(created);
+}
+
+export async function getMyRefundRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { regId } = request.params as any;
+  const { tournamentRefundService } = await import('../application/tournament-refund.service.js');
+  const current = await tournamentRefundService.getMyRefundRequest(Number(regId), userId);
+  return reply.send(current ?? { status: null });
+}
+
 export async function confirmRegistrationHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { regId } = request.params as any;

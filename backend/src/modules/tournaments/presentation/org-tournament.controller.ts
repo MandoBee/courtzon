@@ -23,6 +23,40 @@ import { AppError } from '../../../shared/errors/app-error.js';
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 function getOrgId(request: FastifyRequest): number { return Number((request.params as any).orgId); }
 
+// ── G11.3 — organisation official: refund-request review / approve / reject ──
+// Approval/rejection/execution is gated by the financial.reconcile permission
+// at the route layer; the service additionally enforces tenant ownership
+// (tournament.organisation_id === orgId) and the execution-time draw-lock check.
+
+export async function listOrgRefundRequestsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { ListRefundRequestsQuerySchema } = await import('./tournament.dto.js');
+  const query = ListRefundRequestsQuerySchema.parse(request.query ?? {});
+  const { tournamentRefundService } = await import('../application/tournament-refund.service.js');
+  const rows = await tournamentRefundService.listRequestsForOrganisation(orgId, query.status);
+  return reply.send({ data: rows });
+}
+
+export async function approveOrgRefundRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { requestId } = request.params as any;
+  const { tournamentRefundService } = await import('../application/tournament-refund.service.js');
+  const result = await tournamentRefundService.approveRefundRequest(Number(requestId), orgId, userId);
+  return reply.send(result);
+}
+
+export async function rejectOrgRefundRequestHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { requestId } = request.params as any;
+  const { RefundRejectSchema } = await import('./tournament.dto.js');
+  const body = RefundRejectSchema.parse(request.body ?? {});
+  const { tournamentRefundService } = await import('../application/tournament-refund.service.js');
+  const result = await tournamentRefundService.rejectRefundRequest(Number(requestId), orgId, userId, body.reason);
+  return reply.send(result);
+}
+
 // ── Group 5B-SR — org-scoped configuration reads (delegate to the SAME shared service) ──
 
 export async function listActiveBracketTypesHandler(_request: FastifyRequest, reply: FastifyReply) {

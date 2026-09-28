@@ -104,4 +104,8 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.get('/tournaments/:id/matches', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getMatchesHandler);
   app.get('/tournaments/:id/participants', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getParticipantsHandler);
   app.post('/tournaments/:id/register', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.registerPlayerHandler);
+
+  // G11.3 — player refund request (own registration) + status read.
+  app.post('/tournaments/registrations/:regId/refund-request', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.requestRefundHandler);
+  app.get('/tournaments/registrations/:regId/refund-request', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.getMyRefundRequestHandler);
 }

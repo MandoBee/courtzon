@@ -9,7 +9,7 @@ import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Modal } from '../../../components/ui/Modal';
 import { GeneratedRules } from '../../../components/tournaments/GeneratedRules';
 import { PrizeList } from '../../../components/tournaments/PrizeList';
-import { tournamentApi, orgTournamentApi } from '../../../services/tournament';
+import { tournamentApi, orgTournamentApi, tournamentRefundApi } from '../../../services/tournament';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -66,6 +66,24 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const perms = isOrg
     ? { page: 'org.tournaments.view' as string, edit: 'org.tournaments.update' as string, register: 'org.tournaments.register' as string }
     : { page: 'admin-tournaments.view' as string, edit: 'tournaments.edit' as string, register: 'tournaments.edit' as string };
+
+  // G11.3 — organisation official: pending registration refund requests
+  // (financial.reconcile). Org-scoped; cross-org enforced server-side.
+  const { data: refundRequests } = useQuery({
+    queryKey: ['tournament-refund-requests', orgId],
+    queryFn: () => tournamentRefundApi.listOrgRequests(orgId!, 'pending').then((r) => r.data || []),
+    enabled: Boolean(isOrg && orgId),
+  });
+  const approveRefund = useMutation({
+    mutationFn: (requestId: number) => tournamentRefundApi.approve(orgId!, requestId),
+    onSuccess: () => { showToast('Refund approved and executed', 'success'); qc.invalidateQueries({ queryKey: ['tournament-refund-requests', orgId] }); },
+    onError: (e: any) => showToast(getErrorMessage(e) || 'Approval failed', 'error'),
+  });
+  const rejectRefund = useMutation({
+    mutationFn: ({ requestId, reason }: { requestId: number; reason: string }) => tournamentRefundApi.reject(orgId!, requestId, reason),
+    onSuccess: () => { showToast('Refund request rejected', 'success'); qc.invalidateQueries({ queryKey: ['tournament-refund-requests', orgId] }); },
+    onError: (e: any) => showToast(getErrorMessage(e) || 'Rejection failed', 'error'),
+  });
 
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -188,6 +206,40 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
             </button>
           ))}
         </div>
+
+        {/* G11.3 — org official: pending refund requests (financial.reconcile) */}
+        {isOrg && (
+          <Can permission="financial.reconcile">
+            <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3">
+              <h3 className="font-semibold text-[var(--color-text)]">Registration Refund Requests</h3>
+              {(!refundRequests || refundRequests.length === 0) ? (
+                <p className="text-xs text-[var(--color-text-muted)]">No pending refund requests.</p>
+              ) : (
+                <div className="space-y-2">
+                  {refundRequests.map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between gap-3 border border-[var(--color-border)] rounded-lg p-3">
+                      <div className="text-xs space-y-0.5">
+                        <p className="font-medium text-[var(--color-text)]">{r.player_name || `Player #${r.requested_by}`}</p>
+                        <p className="text-[var(--color-text-muted)]">Registration #{r.registration_id} · {r.tournamentName}</p>
+                        <p className="text-[var(--color-text-muted)]">Reason: {r.reason || '—'}</p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => approveRefund.mutate(r.id)} disabled={approveRefund.isPending}
+                          className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-green-600 text-white disabled:opacity-50">
+                          Approve & Refund
+                        </button>
+                        <button onClick={() => { const reason = window.prompt('Rejection reason'); rejectRefund.mutate({ requestId: r.id, reason: reason || '' }); }} disabled={rejectRefund.isPending}
+                          className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-error)]">
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Can>
+        )}
 
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

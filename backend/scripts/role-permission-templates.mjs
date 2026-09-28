@@ -220,6 +220,8 @@ const PLAYER_PATTERNS = [
   /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
   /^player\.tournaments\.register/,
   /^tournaments\.view/,
+  // G11.3 — the player's own registration full-refund request action.
+  /^tournaments\.registration\.refund-request$/,
   /^community\./,
   /^branches\.(request-access|view)/,
   /^organisations\.storefront\./,

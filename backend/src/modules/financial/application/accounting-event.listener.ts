@@ -1861,6 +1861,111 @@ async function postTournamentCashAccounting(
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// G11.3 — TOURNAMENT FULL-REFUND accounting reversals (CARD and CASH).
+//
+// Both reverse the respective recognition EXACTLY, on source_type='tournament'
+// + source_id=paymentId with dedicated tournament reversal event types — never
+// the generic card_refund fallthrough. Commission uses the IMMUTABLE
+// tournament.commission_rate snapshot; the refund amount (payment amount) is
+// authoritative; registration_fee is never used; tax = 0 (nothing recognized
+// to reverse). Platform/community tournaments (organisation_id NULL) are OUT OF
+// G11.3 scope → fail-closed, no posting.
+// ─────────────────────────────────────────────────────────────────────────────
+async function resolveTournamentRefundEconomy(registrationId: number, paymentId: number, amount: number) {
+  const registration = registrationId ? await tournamentRepository.getRegistrationById(registrationId) : null;
+  if (!registration) {
+    log.info({ paymentId, registrationId }, 'Tournament registration not found — no refund accounting posted');
+    return null;
+  }
+  const tournament = await tournamentRepository.findById(Number(registration.tournament_id));
+  if (!tournament) {
+    log.warn({ paymentId, registrationId }, 'Tournament not found for registration — no refund accounting posted');
+    return null;
+  }
+  const gross = Math.round(Number(amount) * 100) / 100;
+  if (gross <= 0) return null;
+  const commissionRate = Number(tournament.commission_rate ?? 0);
+  const commission = Math.round(((gross * commissionRate) / 100) * 100) / 100;
+  const orgNet = Math.round((gross - commission) * 100) / 100;
+  const orgId = tournament.organisation_id != null ? Number(tournament.organisation_id) : null;
+  const currencyCode = String(tournament.currency_code || 'EGP');
+  return { registration, tournament, gross, commission, orgNet, orgId, currencyCode };
+}
+
+// Serialized wrappers — tournament refund postings run under the SAME
+// per-entity exclusive mutex the booking/academy postings use, so the two
+// (CourtZon + org) postings of one refund — and any concurrent settlement/
+// replay delivery for the SAME payment — can never race first-time org
+// provisioning (MySQL gap-lock deadlock, see runEntityExclusive comment).
+async function postTournamentCardRefundAccountingSerialized(amount: number, currency: string, data: any): Promise<void> {
+  return runEntityExclusive(`tournament-refund:${Number(data.paymentId ?? 0)}`, () =>
+    postTournamentCardRefundAccounting(amount, currency, data));
+}
+
+async function postTournamentCashRefundAccountingSerialized(amount: number, currency: string, data: any): Promise<void> {
+  return runEntityExclusive(`tournament-refund:${Number(data.paymentId ?? 0)}`, () =>
+    postTournamentCashRefundAccounting(amount, currency, data));
+}
+
+async function postTournamentCardRefundAccounting(amount: number, currency: string, data: any): Promise<void> {
+  const paymentId = Number(data.paymentId);
+  const econ = await resolveTournamentRefundEconomy(Number(data.referenceId), paymentId, amount);
+  if (!econ) return;
+  // Platform/community card tournaments are OUT of G11.3 scope — fail closed.
+  if (econ.orgId == null) {
+    log.info({ paymentId, registrationId: Number(data.referenceId) }, 'Platform/community tournament card refund — OUT of G11.3 scope; no accounting posted');
+    return;
+  }
+  const description = `Tournament #${econ.tournament.id} registration #${econ.registration.id} card refund (payment #${paymentId})`;
+  // CourtZon book (org NULL): Dr 2202 orgNet · Dr 4192 commission · Cr 1100 gross.
+  await postAccountingEvent(
+    'tournament_registration_card_refund', 'tournament', paymentId, null,
+    { merchant_payable: econ.orgNet, tournament_commission: econ.commission, payment_clearing: econ.gross },
+    econ.currencyCode,
+    description,
+  );
+  // Organization book (org-scoped): Dr 4140 gross · Cr 1161 orgNet · Cr MKT-COMM-EXP commission.
+  await postAccountingEvent(
+    'tournament_org_receivable_reversal', 'tournament', paymentId, econ.orgId,
+    { tournament_revenue: econ.gross, marketplace_receivable: econ.orgNet, commission_expense: econ.commission },
+    econ.currencyCode,
+    `${description} (organization book)`,
+    undefined,
+    { tournament_revenue: econ.orgId, marketplace_receivable: econ.orgId, commission_expense: econ.orgId },
+  );
+}
+
+async function postTournamentCashRefundAccounting(amount: number, currency: string, data: any): Promise<void> {
+  const paymentId = Number(data.paymentId);
+  const econ = await resolveTournamentRefundEconomy(Number(data.referenceId), paymentId, amount);
+  if (!econ) return;
+  // Platform/community CASH has NO recognition (G11.2 fail-closed) and is OUT
+  // of G11.3 scope — nothing to reverse.
+  if (econ.orgId == null) {
+    log.info({ paymentId, registrationId: Number(data.referenceId) }, 'Platform/community tournament cash refund — OUT of G11.3 scope; no accounting posted');
+    return;
+  }
+  const description = `Tournament #${econ.tournament.id} registration #${econ.registration.id} cash refund (payment #${paymentId})`;
+  // CourtZon book (org NULL): Dr 4192 commission · Cr 2202 commission.
+  await postAccountingEvent(
+    'tournament_cash_commission_refund', 'tournament', paymentId, null,
+    { tournament_commission: econ.commission, merchant_payable: econ.commission },
+    econ.currencyCode,
+    description,
+  );
+  // Organization book (org-scoped): Dr 4140 gross · Dr MKT-CZ-PAY commission ·
+  // Cr ORG-CASH gross · Cr MKT-COMM-EXP commission.
+  await postAccountingEvent(
+    'tournament_org_cash_payment_reversal', 'tournament', paymentId, econ.orgId,
+    { tournament_revenue: econ.gross, courtzon_payable: econ.commission, org_cash_bank: econ.gross, commission_expense: econ.commission },
+    econ.currencyCode,
+    `${description} (organization book)`,
+    undefined,
+    { tournament_revenue: econ.orgId, courtzon_payable: econ.orgId, org_cash_bank: econ.orgId, commission_expense: econ.orgId },
+  );
+}
+
 export function registerAccountingEventListeners(): void {
   // Idempotent: registering twice would duplicate every in-memory handler and
   // fire each domain event multiple times (the event bus does not await
@@ -2076,6 +2181,25 @@ export function registerAccountingEventListeners(): void {
       // the SAME accounts as the original postings.
       if (referenceType === 'academy') {
         await postAcademyRefundAccounting(Number(referenceId), paymentMethod, currency);
+        return;
+      }
+
+      // ── G11.3 — Tournament FULL refund → dedicated reversal events (source
+      //   _type='tournament', source_id=paymentId). CARD reverses the G11.1
+      //    recognition; CASH reverses the G11.2 recognition gateway-free. Never
+      //    falls through to the generic card_refund/wallet_refund fallthrough
+      //    (which would post a WRONG source_type='tournament' generic reversal).
+      if (referenceType === 'tournament') {
+        const method: string = data.metadata?.paymentMethod || paymentMethod;
+        if (method === 'cash') {
+          await postTournamentCashRefundAccountingSerialized(amount, currency, data);
+        } else if (method === 'card') {
+          await postTournamentCardRefundAccountingSerialized(amount, currency, data);
+        } else {
+          // Fail closed — an unsupported tournament refund method must not post
+          // any generic accounting reversal.
+          log.warn({ paymentId: data.paymentId, registrationId: referenceId, method }, 'Tournament refund with unsupported payment method — no accounting posted (fail-closed)');
+        }
         return;
       }
 

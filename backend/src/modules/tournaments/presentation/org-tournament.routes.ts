@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
+import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import { requireOrgScopedPermission } from '../../../shared/middleware/route-guard.js';
 import * as ctrl from './org-tournament.controller.js';
 
@@ -320,5 +320,25 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     '/org/:orgId/tournaments/matches/:matchId/result',
     { preHandler: [requireOrgScopedPermission('org.tournaments.result.manage')] },
     ctrl.recordOrgMatchResultHandler,
+  );
+
+  // ── G11.3 — organisation official: refund-request review (financial.reconcile) ──
+  // Tenant ownership of the request's tournament is enforced in the service
+  // (cross-org approval is rejected); the execution-time draw-lock check runs
+  // under a row lock. Players never hold financial.reconcile.
+  app.get(
+    '/org/:orgId/tournaments/refund-requests',
+    { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] },
+    ctrl.listOrgRefundRequestsHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/refund-requests/:requestId/approve',
+    { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] },
+    ctrl.approveOrgRefundRequestHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/refund-requests/:requestId/reject',
+    { preHandler: [authMiddleware, requirePermission(['financial.reconcile'])] },
+    ctrl.rejectOrgRefundRequestHandler,
   );
 }

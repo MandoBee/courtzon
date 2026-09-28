@@ -451,6 +451,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'tournaments.view', moduleSlug: 'tournaments', elementType: 'page', elementLabel: 'Tournaments List Page', componentPath: 'pages/tournaments/TournamentListPage.tsx' },
   { permissionKey: 'tournaments.create', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Create Tournament', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
   { permissionKey: 'tournaments.join', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Join Tournament', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },
+  // G11.3 — player request for a FULL registration refund (own registration; approval by org financial.reconcile officials).
+  { permissionKey: 'tournaments.registration.refund-request', moduleSlug: 'tournaments', elementType: 'action', elementLabel: 'Request Tournament Registration Refund', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },
   // Tournament form fields
   { permissionKey: 'tournaments.create.name', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Tournament Name Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
   { permissionKey: 'tournaments.create.sport', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Tournament Sport Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },

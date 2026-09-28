@@ -131,6 +131,13 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   // accounts: Dr 2202 Merchant Payable = commission · Cr 4192 Tournament
   // Commission Revenue = commission.
   tournament_cash_commission_receivable: { merchant_payable: '2202', tournament_commission: '4192' },
+  // G11.3 — Tournament CARD full-refund CourtZon reversal (exact negation of
+  // tournament_registration_card_payment). No DB mapping rows: full concept set
+  // from code to the EXISTING global accounts 2202/4192/1100.
+  tournament_registration_card_refund: { merchant_payable: '2202', tournament_commission: '4192', payment_clearing: '1100' },
+  // G11.3 — Tournament CASH full-refund CourtZon reversal (exact negation of
+  // tournament_cash_commission_receivable). Dr 4192 / Cr 2202, both global.
+  tournament_cash_commission_refund: { tournament_commission: '4192', merchant_payable: '2202' },
 };
 
 /**
@@ -266,6 +273,12 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // CourtZon payable) with the DEDICATED org 4140 Tournament / Event Revenue
   // leg — provisioned per org (idempotently) by the accounting engine.
   tournament_org_cash_payment: ['org_cash_bank', 'commission_expense', 'tournament_revenue', 'courtzon_payable'],
+  // G11.3 — Tournament CARD full-refund org-book reversal (exact negation of
+  // tournament_org_registration_receivable): Dr 4140 / Cr 1161 + MKT-COMM-EXP.
+  tournament_org_receivable_reversal: ['tournament_revenue', 'marketplace_receivable', 'commission_expense'],
+  // G11.3 — Tournament CASH full-refund org-book reversal (exact negation of
+  // tournament_org_cash_payment): Dr 4140 + MKT-CZ-PAY / Cr ORG-CASH + MKT-COMM-EXP.
+  tournament_org_cash_payment_reversal: ['tournament_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.

@@ -89,7 +89,10 @@ describe('G11.2 — tournament CASH registration accounting contract', () => {
 
   it('commission uses the IMMUTABLE tournament.commission_rate snapshot; payment amount is authoritative; registration_fee never used', () => {
     const listener = be('src/modules/financial/application/accounting-event.listener.ts');
-    const fn = listener.slice(listener.indexOf('async function postTournamentCashAccounting'));
+    const start = listener.indexOf('async function postTournamentCashAccounting');
+    // Bound the slice to the G11.2 cash function only (stops at the G11.3 section banner).
+    const g113 = listener.indexOf('// G11.3 — TOURNAMENT FULL-REFUND');
+    const fn = listener.slice(start, g113 > -1 ? g113 : start + 4000);
     expect(fn).toContain('tournament.commission_rate');
     expect(fn).toContain('const commission = Math.round(((gross * commissionRate) / 100) * 100) / 100;');
     expect(fn).toContain('const gross = Math.round(Number(amount) * 100) / 100;');

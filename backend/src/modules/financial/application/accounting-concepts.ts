@@ -659,6 +659,45 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['org_cash_bank', 'commission_expense'],
     credit: ['tournament_revenue', 'courtzon_payable'],
   },
+  // ── TOURNAMENT (G11.3) — FULL refund reversals (exact negation of G11.1/G11.2)
+  // Full refund ONLY; landing on source_type='tournament' + source_id=paymentId
+  // with dedicated reversal event types — NEVER the generic card_refund path.
+  //
+  // CARD full refund — exact reversal of tournament_registration_card_payment:
+  //   CourtZon book (org NULL):
+  //     Dr 2202 Merchant Payable = orgNet · Dr 4192 Tournament Commission =
+  //     commission · Cr 1100 Payment Clearing = gross. Balanced.
+  tournament_registration_card_refund: {
+    debit: ['merchant_payable', 'tournament_commission'],
+    credit: ['payment_clearing'],
+  },
+  // Organization-book CARD refund reversal — exact negation of
+  // tournament_org_registration_receivable:
+  //   Dr org 4140 Tournament / Event Revenue = gross · Cr org 1161
+  //   Marketplace Receivable = orgNet · Cr org MKT-COMM-EXP = commission.
+  tournament_org_receivable_reversal: {
+    debit: ['tournament_revenue'],
+    credit: ['marketplace_receivable', 'commission_expense'],
+  },
+  // CASH full refund — exact reversal of tournament_cash_commission_receivable
+  // (gateway-free physical cash reversal per the approved custody model):
+  //   CourtZon book (org NULL):
+  //     Dr 4192 Tournament Commission = commission · Cr 2202 Merchant Payable =
+  //     commission. Balanced.
+  tournament_cash_commission_refund: {
+    debit: ['tournament_commission'],
+    credit: ['merchant_payable'],
+  },
+  // Organization-book CASH refund reversal — exact negation of
+  // tournament_org_cash_payment:
+  //   Dr org 4140 Tournament / Event Revenue = gross · Dr org MKT-CZ-PAY
+  //   (CourtZon Payable) = commission · Cr org ORG-CASH = gross ·
+  //   Cr org MKT-COMM-EXP = commission. Balanced by construction
+  //   (Dr gross+commission = Cr gross+commission).
+  tournament_org_cash_payment_reversal: {
+    debit: ['tournament_revenue', 'courtzon_payable'],
+    credit: ['org_cash_bank', 'commission_expense'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

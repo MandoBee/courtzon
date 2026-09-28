@@ -107,6 +107,17 @@ export const bracketTypeApi = {
     api.get(`/tournaments/sports/${sportId}/formats`, { params: bracketTypeId ? { bracket_type_id: bracketTypeId } : undefined }).then(r => r.data),
 };
 
+// ── G11.3 — tournament FULL refund request workflow ──
+// Player: request + status on their OWN registration.
+export const tournamentRefundApi = {
+  requestRefund: (regId: number, reason?: string) => api.post(`/tournaments/registrations/${regId}/refund-request`, { reason }).then(r => r.data),
+  getMyRefundRequest: (regId: number) => api.get(`/tournaments/registrations/${regId}/refund-request`).then(r => r.data),
+  // Organisation official (financial.reconcile): list / approve / reject.
+  listOrgRequests: (orgId: number | string, status?: string) => api.get(`/org/${orgId}/tournaments/refund-requests`, { params: status ? { status } : undefined }).then(r => r.data),
+  approve: (orgId: number | string, requestId: number) => api.post(`/org/${orgId}/tournaments/refund-requests/${requestId}/approve`).then(r => r.data),
+  reject: (orgId: number | string, requestId: number, reason?: string) => api.post(`/org/${orgId}/tournaments/refund-requests/${requestId}/reject`, { reason }).then(r => r.data),
+};
+
 // ── Group 5 — Participant / Seeding / Draw foundation ──
 export const tournamentParticipantApi = {
   getParticipants: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/participants`).then(r => r.data),

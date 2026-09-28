@@ -1062,6 +1062,63 @@ export class TournamentRepository {
       status_breakdown,
     };
   }
+
+  // ── G11.3 — tournament FULL refund payment plumbing ───────────────────────
+  // One paid payment per registration: reference_type='tournament',
+  // reference_id=registrationId. Returns the payment row so the refund executor
+  // can branch on payment_method (card → PaymentService, cash → gateway-free).
+  async findPaymentByRegistration(registrationId: number, conn?: PoolConnection): Promise<Record<string, any> | null> {
+    const db = conn ?? getPool();
+    const [rows] = await db.execute<RowData>(
+      `SELECT * FROM payment_transactions
+       WHERE reference_type = 'tournament' AND reference_id = ?
+       ORDER BY id DESC LIMIT 1`,
+      [registrationId],
+    );
+    return rows.length ? rows[0] : null;
+  }
+
+  /** Idempotent conditional paid → refunded (no gateway) — the academy offline-cash-refund primitive. */
+  async markPaymentRefundedIfPaid(paymentId: number, conn?: PoolConnection): Promise<boolean> {
+    const db = conn ?? getPool();
+    const [res] = await db.execute<ResultSet>(
+      `UPDATE payment_transactions
+       SET payment_status = 'refunded', updated_at = NOW()
+       WHERE id = ? AND payment_status = 'paid'`,
+      [paymentId],
+    );
+    return (res as any).affectedRows > 0;
+  }
+
+  /** G11.3 — PAYMENT-SCOPED settlement detach (never the whole batch). */
+  async detachPaymentSettlement(paymentId: number, conn?: PoolConnection): Promise<boolean> {
+    const db = conn ?? getPool();
+    const [res] = await db.execute<ResultSet>(
+      `UPDATE payment_transactions
+       SET gateway_settlement_id = NULL, gateway_settled_at = NULL, updated_at = NOW()
+       WHERE id = ? AND gateway_settlement_id IS NOT NULL`,
+      [paymentId],
+    );
+    return (res as any).affectedRows > 0;
+  }
+
+  async lockPaymentRow(paymentId: number, conn: PoolConnection): Promise<Record<string, any> | null> {
+    const [rows] = await conn.execute<RowData>(
+      'SELECT id, payment_status, payment_method, amount, currency, gateway_settlement_id FROM payment_transactions WHERE id = ? FOR UPDATE',
+      [paymentId],
+    );
+    return rows.length ? rows[0] : null;
+  }
+
+  async findParticipantByRegistration(registrationId: number): Promise<Record<string, any> | null> {
+    const [rows] = await getPool().execute<RowData>(
+      `SELECT id, participant_type, status, member_user_ids
+       FROM tournament_participants WHERE registration_id = ?
+       ORDER BY id DESC LIMIT 1`,
+      [registrationId],
+    );
+    return rows.length ? rows[0] : null;
+  }
 }
 
 export const tournamentRepository = new TournamentRepository();

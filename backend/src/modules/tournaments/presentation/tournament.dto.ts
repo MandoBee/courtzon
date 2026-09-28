@@ -148,6 +148,17 @@ export const BracketTypeUpdateSchema = z.object({
   is_active: z.boolean(),
 });
 
+// G11.3 — tournament registration full-refund request/approval contracts.
+export const RefundRequestSchema = z.object({
+  reason: z.string().max(255).optional(),
+});
+export const RefundRejectSchema = z.object({
+  reason: z.string().max(255).optional(),
+});
+export const ListRefundRequestsQuerySchema = z.object({
+  status: z.enum(['pending', 'approved', 'rejected', 'executed']).optional(),
+});
+
 export const ListTournamentsQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
