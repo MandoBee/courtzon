@@ -2431,9 +2431,9 @@ describe('R5-D2-B — multiple partial gateway refunds (allocations)', () => {
     await waitFor(() => occurrenceRows(series.seriesId), (rows) => allOccurrencesIn(rows, ['confirmed']), 'occurrences confirmed');
     const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
     const allocations = await waitFor(() => paymentAllocationService.findByPayment(paymentId), (rows) => rows.length === 2, 'two allocations');
-    const byGross = Object.fromEntries(allocations.map((a) => [a.grossAmount, a.id]));
-    allocA = byGross[1801.6];
-    allocB = byGross[1351.2];
+    const occ = await occurrenceRows(series.seriesId);
+    allocA = allocations.find((a) => a.bookingId === Number(occ[0].id))!.id;
+    allocB = allocations.find((a) => a.bookingId === Number(occ[1].id))!.id;
     expect(allocA).toBeTruthy();
     expect(allocB).toBeTruthy();
     const [pt] = await paymentRow(series.seriesId);
@@ -2586,6 +2586,209 @@ describe('R5-D2-B — multiple partial gateway refunds (allocations)', () => {
     expect(again.success).toBe(true);
     expect(refundSpy.mock.calls.length).toBe(before); // no third call
     refundSpy.mockRestore();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// R5-D2-C — PARTIAL REFUND ACCOUNTING (per allocation-refund line).
+// Each successful underlying allocation refund emits payment:allocation-refunded
+// → the listener posts ONE per-line reversal (booking_refund CourtZon +
+// booking_org_receivable_reversal org book) using ONLY the persisted allocation
+// snapshot, keyed by a deterministic per-(payment, allocation, op) source id.
+// No new concepts, no ENUM change, no full-series reversal for partials (R5-D1
+// remains the only full-reversal path).
+// ────────────────────────────────────────────────────────────────────────────
+describe('R5-D2-C — partial refund accounting (per allocation line)', () => {
+  let series: any;
+  let paymentId: number;
+  let allocA: number;
+  let allocB: number;
+
+  async function buildPaidCardSeries() {
+    series = await createSeries();
+    const res = await recurringPayment.initiateSeriesCardPayment(series.seriesId, ADMIN);
+    paymentId = Number(res.paymentId);
+    await pool.execute(`UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW() WHERE id = ?`, [paymentId]);
+    await eventBusV2.emit('payment:succeeded', {
+      paymentId, referenceType: 'booking_series', referenceId: series.seriesId,
+      amount: TWO_OCC_GROSS, metadata: { paymentMethod: 'card', currency: 'EGP' },
+    } as any);
+    await waitFor(() => occurrenceRows(series.seriesId), (rows) => allOccurrencesIn(rows, ['confirmed']), 'occurrences confirmed');
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    const allocations = await waitFor(() => paymentAllocationService.findByPayment(paymentId), (rows) => rows.length === 2, 'two allocations');
+    const occ = await occurrenceRows(series.seriesId);
+    allocA = allocations.find((a) => a.bookingId === Number(occ[0].id))!.id;
+    allocB = allocations.find((a) => a.bookingId === Number(occ[1].id))!.id;
+    expect(allocA).toBeTruthy();
+    expect(allocB).toBeTruthy();
+  }
+
+  beforeEach(async () => {
+    await resetSeriesState();
+    (paymentGateway as any).clearRefundLedger();
+    await buildPaidCardSeries();
+  });
+
+  async function lineRows(sourceId: number): Promise<any[]> {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT le.side, le.amount, le.organisation_id, c.code AS account_code, le.event_type
+       FROM ledger_entries le JOIN chart_of_accounts c ON c.id = le.chart_account_id
+       WHERE le.source_type = 'booking' AND le.source_id = ? ORDER BY le.event_type, le.id`,
+      [sourceId],
+    );
+    return rows as any[];
+  }
+
+  it('1/2 — full allocation A refund posts the exact CourtZon + organisation reversals, balanced', async () => {
+    const key = `c-${allocA}-1`;
+    await paymentService.refund(paymentId, 1801.6, 'alloc-A', { allocationId: allocA, idempotencyKey: key });
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    const lineId = paymentAllocationService.refundLineSourceId(paymentId, allocA, key);
+
+    await waitFor(async () => (await lineRows(lineId)).filter((r) => r.event_type === 'booking_refund').length, (c) => c === 4, 'CourtZon line (4 legs)');
+    await waitFor(async () => (await lineRows(lineId)).filter((r) => r.event_type === 'booking_org_receivable_reversal').length, (c) => c === 3, 'org line (3 legs)');
+
+    const rows = await lineRows(lineId);
+    const court = rows.filter((r) => r.event_type === 'booking_refund');
+    const org = rows.filter((r) => r.event_type === 'booking_org_receivable_reversal');
+    const find = (arr: any[], side: string, code: string) => Number(arr.find((r: any) => r.side === side && r.account_code === code)?.amount ?? -1);
+    expect(court.every((r) => r.organisation_id === null)).toBe(true); // CourtZon book
+    expect(find(court, 'debit', '2202')).toBe(1440);
+    expect(find(court, 'debit', '4110')).toBe(160);
+    expect(find(court, 'debit', '2300')).toBe(201.6);
+    expect(find(court, 'credit', '1100')).toBe(1801.6);
+    const dr = (arr: any[]) => Number(arr.filter((r) => r.side === 'debit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    const cr = (arr: any[]) => Number(arr.filter((r) => r.side === 'credit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+    expect(dr(court)).toBe(cr(court)); // balanced CourtZon
+
+    expect(org.every((r) => Number(r.organisation_id) === ORG1)).toBe(true); // org book
+    expect(find(org, 'debit', 'MKT-COURT-REN')).toBe(1600);
+    expect(find(org, 'credit', '1161')).toBe(1440);
+    expect(find(org, 'credit', 'MKT-COMM-EXP')).toBe(160);
+    expect(dr(org)).toBe(cr(org)); // balanced org
+  });
+
+  it('5/7/9 — two allocations produce two INDEPENDENT journals with distinct source_ids', async () => {
+    const keyA = `c-${allocA}-x`;
+    const keyB = `c-${allocB}-x`;
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    const lineA = paymentAllocationService.refundLineSourceId(paymentId, allocA, keyA);
+    const lineB = paymentAllocationService.refundLineSourceId(paymentId, allocB, keyB);
+    expect(lineA).not.toBe(lineB);
+    expect(lineA).not.toBe(series.seriesId);
+    expect([lineA, lineB].every((sid) => Number.isInteger(sid) && sid > 0)).toBe(true);
+
+    await paymentService.refund(paymentId, 1801.6, 'a', { allocationId: allocA, idempotencyKey: keyA });
+    await paymentService.refund(paymentId, 1351.2, 'b', { allocationId: allocB, idempotencyKey: keyB });
+    await waitFor(() => lineRows(lineA).then((r) => r.length), (c) => c === 7, 'line A (4+3 legs)');
+    await waitFor(() => lineRows(lineB).then((r) => r.length), (c) => c === 7, 'line B (4+3 legs)');
+    const rowsA = (await lineRows(lineA)).filter((r) => r.event_type === 'booking_refund');
+    const rowsB = (await lineRows(lineB)).filter((r) => r.event_type === 'booking_refund');
+    expect(rowsA).toHaveLength(4);
+    expect(rowsB).toHaveLength(4);
+  });
+
+  it('3 — zero-tax allocation reversal omits the 2300 leg and stays balanced', async () => {
+    await pool.execute(`UPDATE tax_rates SET rate = 0 WHERE organisation_id = ${ORG1}`);
+    try {
+      await resetSeriesState();
+      (paymentGateway as any).clearRefundLedger();
+      await buildPaidCardSeries();
+      const [ar] = await pool.execute<RowData>('SELECT gross_amount AS g FROM payment_allocations WHERE id = ?', [allocA]);
+      const grossA = Number((ar as any[])[0].g);
+      const key = `c-${allocA}-zt`;
+      await paymentService.refund(paymentId, grossA, 'zt', { allocationId: allocA, idempotencyKey: key });
+      const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+      const lineId = paymentAllocationService.refundLineSourceId(paymentId, allocA, key);
+      await waitFor(() => lineRows(lineId).then((r) => r.length), (c) => c === 6, 'zero-tax line (3 CourtZon + 3 org)');
+      const court = (await lineRows(lineId)).filter((r) => r.event_type === 'booking_refund');
+      expect(court).toHaveLength(3); // no 2300 leg
+      expect(court.find((r) => r.account_code === '2300')).toBeUndefined();
+      const dr = Number(court.filter((r) => r.side === 'debit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+      const cr = Number(court.filter((r) => r.side === 'credit').reduce((s: number, r: any) => s + Number(r.amount), 0).toFixed(2));
+      expect(dr).toBe(cr);
+    } finally {
+      await pool.execute(`UPDATE tax_rates SET rate = 14 WHERE organisation_id = ${ORG1}`);
+    }
+  });
+
+  it('6/15 — replay of the SAME refund line is idempotent (no duplicate journal)', async () => {
+    const key = `c-${allocA}-rp`;
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    const lineId = paymentAllocationService.refundLineSourceId(paymentId, allocA, key);
+    await paymentService.refund(paymentId, 1801.6, 'rp', { allocationId: allocA, idempotencyKey: key });
+    await waitFor(() => lineRows(lineId).then((r) => r.length), (c) => c === 7, 'line posted');
+    // Replay the same operation (event fade + accounting listener re-run).
+    await eventBusV2.emit('payment:allocation-refunded', {
+      paymentId, allocationId: allocA, amount: 1801.6, idempotencyKey: key, seriesId: series.seriesId,
+      referenceType: 'booking_series', referenceId: series.seriesId, currency: 'EGP', metadata: {},
+    } as any);
+    await settleNegativeOnly();
+    expect((await lineRows(lineId)).length).toBe(7); // unchanged
+  });
+
+  it('12 — both allocations refunded ⇒ total reversal equals the original series recognition', async () => {
+    const keyA = `c-${allocA}-tot`;
+    const keyB = `c-${allocB}-tot`;
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    const lineA = paymentAllocationService.refundLineSourceId(paymentId, allocA, keyA);
+    const lineB = paymentAllocationService.refundLineSourceId(paymentId, allocB, keyB);
+    await paymentService.refund(paymentId, 1801.6, 'a', { allocationId: allocA, idempotencyKey: keyA });
+    await paymentService.refund(paymentId, 1351.2, 'b', { allocationId: allocB, idempotencyKey: keyB });
+    await waitFor(() => lineRows(lineA).then((r) => r.length), (c) => c === 7, 'line A');
+    await waitFor(() => lineRows(lineB).then((r) => r.length), (c) => c === 7, 'line B');
+
+    // Net per account across the series recognition (booking_series_card_payment
+    // at source_id=seriesId) + both refund lines must equal ZERO for the CourtZon
+    // custody accounts, and for the org accounts.
+    const [rows] = await pool.execute<RowData>(
+      `SELECT le.side, le.amount, le.organisation_id, c.code AS account_code, le.event_type, le.source_id AS sid
+       FROM ledger_entries le JOIN chart_of_accounts c ON c.id = le.chart_account_id
+       WHERE le.source_type = 'booking'
+         AND (le.source_id = ? OR le.source_id IN (?, ?))`,
+      [series.seriesId, lineA, lineB],
+    );
+    const all = rows as any[];
+    const net = new Map<string, number>();
+    const orgNet = new Map<string, number>();
+    for (const r of all) {
+      const delta = r.side === 'debit' ? Number(r.amount) : -Number(r.amount);
+      const map = r.organisation_id != null && Number(r.organisation_id) === ORG1 ? orgNet : net;
+      if (map.has(r.account_code)) map.set(r.account_code, Math.round((map.get(r.account_code)! + delta) * 100) / 100);
+      else map.set(r.account_code, delta);
+    }
+    const val = (m: Map<string, number>, code: string) => Math.round((m.get(code) ?? 0) * 100) / 100;
+    expect(val(net, '1100')).toBe(0);
+    expect(val(net, '2202')).toBe(0);
+    expect(val(net, '4110')).toBe(0);
+    expect(val(net, '2300')).toBe(0);
+    expect(val(orgNet, '1161')).toBe(0);
+    expect(val(orgNet, 'MKT-COURT-REN')).toBe(0);
+    expect(val(orgNet, 'MKT-COMM-EXP')).toBe(0);
+  });
+
+  it('13 — R5-D1 full series refund (no partials) is UNCHANGED and creates NO allocation-line journals', async () => {
+    const countLines = async () => Number(((await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND event_type IN ('booking_refund','booking_org_receivable_reversal')`,
+      []) )[0] as any[])[0].c);
+    const beforeLines = await countLines();
+    await recurringPayment.refundSeriesCard(series.seriesId, ADMIN);
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_refund'), (c) => c === 4, 'D1 CourtZon reversal');
+    await waitFor(() => seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable_reversal'), (c) => c === 3, 'D1 org reversal');
+    // D1 adds ONLY the series-wide reversal — zero allocation-line journals.
+    const afterLines = await countLines();
+    expect(afterLines).toBe(beforeLines);
+  });
+
+  it('14 — an INTERMEDIATE partial posts only its own line, never the full-series reversal', async () => {
+    await paymentService.refund(paymentId, 1801.6, 'a', { allocationId: allocA, idempotencyKey: `c-${allocA}-mid` });
+    const { paymentAllocationService } = await import('../application/payment-allocation.service.js');
+    const lineId = paymentAllocationService.refundLineSourceId(paymentId, allocA, `c-${allocA}-mid`);
+    await waitFor(() => lineRows(lineId).then((r) => r.length), (c) => c === 7, 'line A posted');
+    const [st] = await pool.execute<RowData>('SELECT payment_status FROM payment_transactions WHERE id = ?', [paymentId]);
+    expect((st as any[])[0].payment_status).toBe('paid');
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_refund')).toBe(0); // no full reversal
+    expect(await seriesLedgerRowCount(series.seriesId, 'booking_series_org_receivable_reversal')).toBe(0);
   });
 });
 

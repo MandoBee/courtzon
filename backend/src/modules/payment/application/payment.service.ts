@@ -1442,24 +1442,28 @@ export class PaymentService {
            WHERE id = ? AND payment_status = 'paid'`,
           [op.paymentId],
         );
-        if (upd.affectedRows === 1) {
-          // Full payment now returned → canonical payment:refunded (the existing
-          // listener reverses the R5-C2 series recognition once — financially
-          // the whole series is returned, so the full reversal is correct).
-          await eventBusV2.emit('payment:refunded', {
-            paymentId: op.paymentId,
-            userId: payment.user_id,
-            amount: paymentAmount,
-            reason: op.reason,
-            traceId: op.traceId,
-            referenceType: String(payment.reference_type || 'booking_series'),
-            referenceId: Number(payment.reference_id ?? op.seriesId ?? 0) || null,
-            metadata: { paymentMethod: payment.payment_method, allocationId: op.allocationId },
-          }, undefined, conn);
-        }
+        void upd; // final status flip (once); per-line accounting below covers the whole amount.
       }
-      // else — intermediate partial: payment stays 'paid', allocation advanced,
-      // NO payment:refunded (D2-C owns partial accounting).
+
+      // R5-D2-C — ONE canonical per-refund-line accounting signal per allocation
+      // refund operation. The listener reverses exactly this allocation's slice
+      // (idempotent per line id). Emitted for EVERY successful refund operation
+      // (intermediate partials AND the final one) so reversals never pile onto a
+      // series-wide event: the allocation refund path does NOT emit the full
+      // series `payment:refunded` (which would double-reverse once all lines are
+      // posted). R5-D1's full refund (no allocation context) keeps its own
+      // payment:refunded → series-wide reversal, unchanged.
+      await eventBusV2.emit('payment:allocation-refunded', {
+        paymentId: op.paymentId,
+        allocationId: op.allocationId,
+        amount: op.amount,
+        idempotencyKey: op.idempotencyKey,
+        seriesId: op.seriesId,
+        referenceType: String(payment.reference_type || 'booking_series'),
+        referenceId: Number(payment.reference_id ?? op.seriesId ?? 0) || null,
+        currency: op.currency,
+        metadata: { paymentMethod: payment.payment_method, userId: payment.user_id },
+      }, undefined, conn);
     });
   }
 

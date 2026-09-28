@@ -727,10 +727,13 @@ describe('R5-D2-B — partial refund payment lifecycle contract (internal only)'
   });
 
   it('payment stays paid until the FULL amount is returned; refunded exactly once', () => {
-    const fn = svc.slice(svc.indexOf('private async _finalizeAllocationRefund'), svc.indexOf('private async _finalizeAllocationRefund') + 3200);
+    const start = svc.indexOf('private async _finalizeAllocationRefund');
+    const fn = svc.slice(start, start + 6000);
     expect(fn).toContain("UPDATE payment_allocations");
     expect(fn).toContain("payment_status = 'refunded'");
-    expect(fn).toContain('eventBusV2.emit(\'payment:refunded\'');
+    // D2-C — the allocation path emits the per-line event (accounting per refund
+    // line); the full-series payment:refunded event rides ONLY the D1 path.
+    expect(fn).toContain("eventBusV2.emit('payment:allocation-refunded'");
   });
 
   it('partial intents are keyed per (payment + allocation + idempotency key), legacy single-intent untouched', () => {
@@ -752,5 +755,50 @@ describe('R5-D2-B — partial refund payment lifecycle contract (internal only)'
   it('allocation repo exposes per-allocation FOR UPDATE + cumulative sum (D2-B guards)', () => {
     expect(alloc).toContain('async findByIdForUpdate(id: number, conn');
     expect(alloc).toContain('async sumRefundedByPayment(paymentTransactionId: number, conn');
+  });
+});
+
+describe('R5-D2-C — partial refund accounting contract (per allocation line, no new concepts)', () => {
+  const svc = be('src/modules/payment/application/payment.service.ts');
+  const listener = be('src/modules/financial/application/accounting-event.listener.ts');
+  const concepts = be('src/modules/financial/application/accounting-concepts.ts');
+  const palloc = be('src/modules/booking/application/payment-allocation.service.ts');
+
+  it('the allocation refund path emits the per-line event and NOT the full-series payment:refunded', () => {
+    expect(svc).toContain("eventBusV2.emit('payment:allocation-refunded'");
+    // In the ALLOCATION finalize, the full-series event is gone (it stays on the
+    // wallet + normal-card + R5-D1 paths only).
+    const start = svc.indexOf('private async _finalizeAllocationRefund');
+    const finalize = svc.slice(start, start + 6000);
+    expect(finalize).not.toContain("eventBusV2.emit('payment:refunded'");
+  });
+
+  it('the accounting listener consumes the per-line event, keyed by a unique line source id', () => {
+    expect(listener).toContain("eventBusV2.on('payment:allocation-refunded'");
+    expect(listener).toContain("'booking_refund', 'booking', sourceId, null,");
+    expect(listener).toContain("'booking_org_receivable_reversal', 'booking', sourceId, orgId,");
+    expect(listener).toContain('refundLineSourceId(paymentId, allocationId, idempotencyKey)');
+  });
+
+  it('reuses existing concepts — NO new accounting concept entries', () => {
+    const c0 = concepts;
+    expect(c0).not.toContain('booking_series_allocation_refund');
+    expect(c0).not.toContain('booking_series_allocation_org_receivable_reversal');
+  });
+
+  it('crash-safe: the per-line event is in the durable accounting replay list', () => {
+    expect(listener).toContain("'payment:allocation-refunded',");
+  });
+
+  it('source identity is a deterministic hash of (payment, allocation, idempotency key) — never seriesId', () => {
+    expect(palloc).toContain('refundLineSourceId(paymentId: number, allocationId: number, idempotencyKey: string)');
+    const fn = palloc.slice(palloc.indexOf('refundLineSourceId(paymentId: number'));
+    expect(fn).toContain('`${paymentId}:${allocationId}:${idempotencyKey}`');
+  });
+
+  it('balanced by construction and no org payable leg (CourtZon clears, org books revenue)', () => {
+    expect(listener).toContain('const grossSlice = r2(orgNet + commission + tax);');
+    expect(listener).toContain('const subtotalSlice = r2(orgNet + commission);');
+    expect(listener).toContain('auditLabel =');
   });
 });

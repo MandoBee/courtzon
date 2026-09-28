@@ -7,6 +7,8 @@ import type { RefundEconomics } from './booking-accounting.service.js';
 import { academyPaymentRepository } from '../../academy/infrastructure/repositories/academy-payment.repository.js';
 import { bookingSeriesRepository } from '../../booking/infrastructure/repositories/booking-series.repository.js';
 import { bookingRepository } from '../../booking/infrastructure/repositories/booking.repository.js';
+import { paymentAllocationRepository } from '../../booking/infrastructure/repositories/payment-allocation.repository.js';
+import { paymentAllocationService } from '../../booking/application/payment-allocation.service.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
@@ -1875,6 +1877,84 @@ export function registerAccountingEventListeners(): void {
     }
   });
 
+  // ── R5-D2-C — per-refund-line accounting for one recurring-series PARTIAL
+  //    refund allocation. Reverses EXACTLY the refunded slice of ONE
+  //    allocation using only its PERSISTED snapshot:
+  //      CourtZon  booking_refund:                Dr 2202 orgNet · Dr 4110 comm ·
+  //                                                Dr 2300 tax · Cr 1100 gross
+  //      Org book  booking_org_receivable_reversal: Dr org revenue(orgNet+comm) ·
+  //                                                Cr org 1161 orgNet · Cr comm exp
+  //    `source_id` = a deterministic per-(payment, allocation, idempotency-key)
+  //    line identity (never the seriesId), so two allocations and two operations
+  //    on one allocation never collide, and a replay of the SAME operation is
+  //    idempotent via hasPosting('booking', sourceId, event_type).
+  //    The allocation refund path never emits the full-series `payment:refunded`
+  //    (see PaymentService._finalizeAllocationRefund), so this line-level
+  //    reversal does not double with R5-D1's series-wide reversal.
+  eventBusV2.on('payment:allocation-refunded', async (data: any) => {
+    try {
+      if (data?.referenceType && data.referenceType !== 'booking_series') return;
+      const paymentId = Number(data.paymentId);
+      const allocationId = Number(data.allocationId);
+      const amount = Number(data.amount);
+      const idempotencyKey = String(data.idempotencyKey || '');
+      if (!paymentId || !allocationId || !(amount > 0) || !idempotencyKey) return;
+
+      const allocation = await paymentAllocationRepository.findById(allocationId);
+      if (!allocation) {
+        log.error({ paymentId, allocationId }, 'Allocation not found for partial refund accounting');
+        return;
+      }
+      if (allocation.paymentTransactionId !== paymentId) {
+        log.error({ paymentId, allocationId }, 'Allocation does not belong to this payment — skipping');
+        return;
+      }
+      const seriesId = allocation.seriesId ?? (Number(data.seriesId ?? 0) || null);
+      const orgId = seriesId
+        ? (await bookingSeriesRepository.findById(seriesId))?.organisationId ?? null
+        : null;
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      // Prorate the snapshot by the refunded fraction of THIS allocation (1 for a
+      // full-allocation refund → components equal the snapshot exactly).
+      const gross = allocation.grossAmount > 0 ? allocation.grossAmount : 1;
+      const ratio = Math.min(Math.max(amount / gross, 0), 1);
+      const orgNet = r2(allocation.orgNetAmount * ratio);
+      const commission = r2(allocation.commissionAmount * ratio);
+      const tax = r2(allocation.taxAmount * ratio);
+      const grossSlice = r2(orgNet + commission + tax);   // balanced CourtZon credit
+      const subtotalSlice = r2(orgNet + commission);      // balanced org revenue leg
+      const sourceId = paymentAllocationService.refundLineSourceId(paymentId, allocationId, idempotencyKey);
+      const auditLabel = `Recurring series #${seriesId ?? '?'} allocation refund (payment ${paymentId}, allocation ${allocationId}, op ${idempotencyKey})`;
+
+      // CourtZon book (org NULL) — per-line slice of booking_refund.
+      await postAccountingEvent(
+        'booking_refund', 'booking', sourceId, null,
+        { merchant_payable: orgNet, platform_commission: commission, tax_liability: tax, payment_clearing: grossSlice },
+        allocation.currency || 'EGP',
+        auditLabel,
+        undefined,
+        { merchant_payable: null, platform_commission: null, tax_liability: null, payment_clearing: null },
+      );
+
+      // Organization book — per-line booking_org_receivable_reversal.
+      if (orgId != null) {
+        await postAccountingEvent(
+          'booking_org_receivable_reversal', 'booking', sourceId, orgId,
+          { court_rental_revenue: subtotalSlice, marketplace_receivable: orgNet, commission_expense: commission },
+          allocation.currency || 'EGP',
+          `${auditLabel} (organization book)`,
+          undefined,
+          { court_rental_revenue: orgId, marketplace_receivable: orgId, commission_expense: orgId },
+        );
+      } else {
+        log.info({ seriesId }, 'Allocation refund: no organisationId — organization reversal skipped (CourtZon reversed)');
+      }
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate allocation refund entry — idempotent skip'); return; }
+      log.error({ err }, 'Allocation refund accounting failed');
+    }
+  });
+
   // A failed payment (pending → failed) is a non-event economically:
   //   - No money moved (gateway declined / wallet never debited).
   //   - No revenue was recognized (recognition only happens on payment:succeeded).
@@ -2193,6 +2273,8 @@ export function registerAccountingEventListeners(): void {
 const ACCOUNTING_REPLAY_EVENTS = [
   'payment:succeeded',
   'payment:refunded',
+  // R5-D2-C — per-allocation partial refund line (crash-safe durable replay).
+  'payment:allocation-refunded',
 'payment:gateway-settled',
   'payment:gateway-settlement-reversed',
   'marketplace:order-processing',

@@ -29,6 +29,31 @@ const ALLOCATION_EXCLUDED_STATUSES = new Set(['cancelled', 'completed', 'no_show
  */
 export const paymentAllocationService = {
   /**
+   * Deterministic, collision-resistant 53-bit source identity for ONE refund
+   * operation on an allocation. Used as the accounting `source_id` for a
+   * partial-refund reversal so that:
+   *   - two different allocations get different identities (no dedup collision),
+   *   - two refund operations on the SAME allocation get different identities,
+   *   - a replay of the SAME operation (same payment+allocation+idempotency key)
+   *     reproduces the SAME identity → hasPosting() idempotency prevents a
+   *     second journal.
+   * Source_type stays 'booking' (ledger_entries ENUM untouched) and the posting
+   * description/reference carries seriesId/bookingId/allocationId/opKey.
+   */
+  refundLineSourceId(paymentId: number, allocationId: number, idempotencyKey: string): number {
+    // FNV-1a 32-bit folded into a small positive integer — deterministic for
+    // the same (payment, allocation, operator key), stable across replay, and
+    // guaranteed to fit `ledger_entries.source_id BIGINT`.
+    let h = 0x811c9dc5;
+    const s = `${paymentId}:${allocationId}:${idempotencyKey}`;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    // ledger_entries.source_id is INT UNSIGNED — keep the fold ≤ 2^31-1.
+    return (h >>> 1) || 1;
+  },
+  /**
    * Create one allocation per occurrence of a PAID series payment.
    *
    * Occurrences already in a terminal state (cancelled/completed/no_show/
