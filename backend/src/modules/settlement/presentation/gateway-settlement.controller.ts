@@ -1,7 +1,21 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { gatewaySettlementService as svc } from '../application/gateway-settlement.service.js';
+import { gatewaySettlementReconciliationService } from '../application/gateway-settlement.reconciliation.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
+
+export async function reconcileGatewaySettlementsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const query = request.query as any;
+  // Report-only and server-side scoped: the caller supplies no organisation /
+  // batch selection at all, the service inspects the whole settlement ledger, and
+  // the route itself is gated by `financial.gateway-settlement.view` through
+  // authMiddleware + requirePermission. There is nothing client-controllable to
+  // escalate, and the service has no write path (no autoFix).
+  const report = await gatewaySettlementReconciliationService.run({
+    limit: Number(query.limit) || 500,
+  });
+  return reply.send(report);
+}
 
 export async function listEligibleGatewaySettlementsHandler(request: FastifyRequest, reply: FastifyReply) {
   const eligible = await svc.listEligible();

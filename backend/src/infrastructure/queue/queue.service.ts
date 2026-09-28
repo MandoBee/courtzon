@@ -22,7 +22,10 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'complaint_collection_escalation'
   | 'match_result_deadlines'
   | 'match_lifecycle'
-  | 'expire_academy_holds';
+  | 'expire_academy_holds'
+  // G11.4 — tournament entitlement activation (CARD after gateway settlement,
+  // CASH after the current draw is locked).
+  | 'tournament_entitlement_activation';
 
 export interface EmailAttachment {
   filename: string;
@@ -155,6 +158,9 @@ export type JobPayloadMap = {
   booking_settlement_eligibility: Record<string, never>;
   activate_entitlements: Record<string, never>;
   complaint_period_activation: Record<string, never>;
+  // G11.4 — no payload: the worker re-scans PENDING tournament entitlements and
+  // applies the custody-correct release conditions itself (idempotent).
+  tournament_entitlement_activation: Record<string, never>;
   complaint_receipt_timeout: Record<string, never>;
   complaint_collection_escalation: Record<string, never>;
   match_result_deadlines: Record<string, never>;

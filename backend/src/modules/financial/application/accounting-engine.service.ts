@@ -138,6 +138,14 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   // G11.3 — Tournament CASH full-refund CourtZon reversal (exact negation of
   // tournament_cash_commission_receivable). Dr 4192 / Cr 2202, both global.
   tournament_cash_commission_refund: { tournament_commission: '4192', merchant_payable: '2202' },
+  // G11.4 — Tournament CARD full refund AFTER the gateway batch was received.
+  // Same accounts as the G11.3 CourtZon reversal EXCEPT the credit leg, which
+  // is 1120 Cash/Bank (the funds already left 1100 Payment Clearing when the
+  // gateway settlement was recorded) instead of 1100. The 2202 / 4192 codes are
+  // the SAME canonical control/revenue accounts the G11.1 recognition booked to.
+  // payment_gateway_fee is deliberately ABSENT: the gateway fee is a
+  // non-refundable expense and stays in 5210 (never reversed, never credited).
+  tournament_registration_card_refund_settled: { merchant_payable: '2202', tournament_commission: '4192', cash_bank: '1120' },
 };
 
 /**

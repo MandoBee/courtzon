@@ -149,8 +149,11 @@ export const gatewaySettlementService = {
    * Duplicate protection:
    *   - uk_gst_active_payment UNIQUE(active_payment_transaction_id) throws
    *     ER_DUP_ENTRY (full rollback) if any payment is already in an ACTIVE
-   *     (non-reversed) settlement
+   *     (non-reversed, non-released) settlement
    *   - UPDATE ... WHERE gateway_settlement_id IS NULL guard
+   *   - G11.4: an explicit ACTIVE-line ownership pre-check, so a RELEASED
+   *     historical line (from a payment-scoped dismantle) can never block a
+   *     valid new settlement while a genuinely active one always can.
    */
   async create(data: {
     paymentTransactionIds: number[];
@@ -181,6 +184,25 @@ export const gatewaySettlementService = {
         if (!txn) throw new ConflictError(`Payment transaction ${id} not found`);
         if (txn.gateway_settlement_id != null) {
           throw new ConflictError(`Payment transaction ${id} is already included in a gateway settlement`);
+        }
+        // G11.4 — defensive: an ACTIVE settlement line (the
+        // uk_gst_active_payment partial-unique key) also owns this payment. A
+        // payment whose dismantle already ran has BOTH the column cleared AND
+        // its line released, so it passes this check and may legitimately enter a
+        // NEW batch. Conversely, a payment that still owns an active line can
+        // never be settled twice even if the linkage column was tampered with.
+        const [activeLines] = await conn.execute<RowData>(
+          `SELECT gst.id, gst.gateway_settlement_id
+           FROM gateway_settlement_transactions gst
+           WHERE gst.active_payment_transaction_id = ?
+           LIMIT 1`,
+          [id],
+        );
+        if ((activeLines as any[]).length > 0) {
+          const owner = (activeLines as any[])[0];
+          throw new ConflictError(
+            `Payment transaction ${id} is already an ACTIVE line of gateway settlement ${owner.gateway_settlement_id}`,
+          );
         }
         if (txn.payment_status !== 'paid') {
           throw new ConflictError(`Payment transaction ${id} is not paid (status ${txn.payment_status})`);
@@ -291,6 +313,11 @@ export const gatewaySettlementService = {
    *   - posts the EXACT reversal journal in the SAME transaction
    *     (Dr Payment Clearing gross / Cr Cash-Bank net / Cr Gateway Fees) using
    *     the STORED batch amounts — the ORIGINAL journal is never edited/deleted
+   *   - G11.4: reverses ONLY the batch's ACTIVE lines. Lines released by a
+   *     payment-scoped settlement dismantle are skipped (they are already
+   *     un-settled and their payment was refunded out of the bank), and the
+   *     stored header already represents the active remainder, so the journal
+   *     matches exactly what is being un-linked
    *   - clears payment_transactions.gateway_settlement_id/gateway_settled_at,
    *     which IMMEDIATELY makes the payments eligible again and re-locks any
    *     org/seller entitlement availability backed by those card/online orders
@@ -338,12 +365,20 @@ export const gatewaySettlementService = {
       const net = Number(gs.net_amount || 0);
       const currency = gs.currency || 'EGP';
 
-      // 2. Lock this settlement's transaction lines AND the linked payment
-      //    transactions (prevents a concurrent settle/reverse race).
+      // 2. Lock this settlement's ACTIVE transaction lines AND the linked
+      //    payment transactions (prevents a concurrent settle/reverse race).
+      //    G11.4: only ACTIVE lines participate. A line released by a
+      //    payment-scoped dismantle (active_payment_transaction_id IS NULL) is
+      //    historical evidence only — its payment was already refunded out of
+      //    the bank, so it must NOT be re-settled, re-linked or reversed here,
+      //    and it must not abort the reversal of the batch's remaining lines.
+      //    The stored header already represents exactly this active remainder,
+      //    so the reversal journal below is correct without recomputation.
       const [lines] = await conn.execute<RowData>(
         `SELECT gst.id AS line_id, gst.payment_transaction_id
          FROM gateway_settlement_transactions gst
          WHERE gst.gateway_settlement_id = ?
+           AND gst.active_payment_transaction_id IS NOT NULL
          ORDER BY gst.id ASC
          FOR UPDATE`,
         [settlementId],
@@ -443,7 +478,14 @@ export const gatewaySettlementService = {
       `SELECT gs.*,
               u.full_name AS settled_by_name,
               rb.full_name AS reversed_by_name,
-              (SELECT COUNT(*) FROM gateway_settlement_transactions gst WHERE gst.gateway_settlement_id = gs.id) AS transaction_count
+              (SELECT COUNT(*) FROM gateway_settlement_transactions gst
+                WHERE gst.gateway_settlement_id = gs.id
+                  AND gst.active_payment_transaction_id IS NOT NULL) AS transaction_count,
+              (SELECT COUNT(*) FROM gateway_settlement_transactions gst
+                WHERE gst.gateway_settlement_id = gs.id) AS total_line_count,
+              (SELECT COUNT(*) FROM gateway_settlement_transactions gst
+                WHERE gst.gateway_settlement_id = gs.id
+                  AND gst.active_payment_transaction_id IS NULL) AS released_line_count
        FROM gateway_settlements gs
        LEFT JOIN users u ON u.id = gs.settled_by
        LEFT JOIN users rb ON rb.id = gs.reversed_by
@@ -452,7 +494,21 @@ export const gatewaySettlementService = {
        LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     );
-    return { data: (rows as any[]).map((r) => ({ ...r, gross_amount: Number(r.gross_amount), gateway_fee_amount: Number(r.gateway_fee_amount), net_amount: Number(r.net_amount), transaction_count: Number(r.transaction_count || 0) })), total };
+    return {
+      data: (rows as any[]).map((r) => ({
+        ...r,
+        gross_amount: Number(r.gross_amount),
+        gateway_fee_amount: Number(r.gateway_fee_amount),
+        net_amount: Number(r.net_amount),
+        // transaction_count reports the ACTIVE settlement transactions only —
+        // released historical lines (G11.4 dismantles) are never counted as
+        // active; the released/total counts are surfaced separately.
+        transaction_count: Number(r.transaction_count || 0),
+        total_line_count: Number(r.total_line_count || 0),
+        released_line_count: Number(r.released_line_count || 0),
+      })),
+      total,
+    };
   },
 
   async get(settlementId: number): Promise<any> {

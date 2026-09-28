@@ -147,8 +147,73 @@ export const financialEntitlementRepository = {
          -- Marketplace entitlements are activated by the complaint-period worker
          -- (after delivered_at + complaint window), never by the generic worker.
          AND NOT (source_type = 'marketplace' AND available_at IS NULL)
+         -- G11.4: tournament entitlements have their OWN release conditions — a
+         -- CARD registration is only releasable after its backing payment was
+         -- gateway-settled, a CASH registration only once the current draw is
+         -- locked. Their available_at is NULL (not "immediate"), so the generic
+         -- worker would otherwise qualify them on the very next run and release
+         -- funds CourtZon does not hold yet. They are excluded here and are
+         -- activated exclusively by the tournament activation worker.
+         AND source_type <> 'tournament'
        ORDER BY created_at ASC
        LIMIT ${safeBatch}`,
+    );
+    return rows.map(mapRow);
+  },
+
+  /**
+   * G11.4 — tournament entitlements that are still PENDING AND whose business
+   * release condition is already satisfied.
+   *
+   * CARD: the backing payment must own an ACTIVE gateway settlement
+   * (`payment_transactions.gateway_settlement_id IS NOT NULL`, i.e. the funds
+   * actually moved from 1100 Payment Clearing into 1120 Cash/Bank). "Customer
+   * paid" is deliberately NOT enough — Customer Paid ≠ Gateway Settled, and
+   * paying the organisation before the funds arrive would overdraw the bank leg.
+   *
+   * CASH: the organisation already holds the money (G11.2), so the only release
+   * condition is the tournament's CURRENT draw reaching `locked`
+   * (`is_current = 1 AND status = 'locked'`) — the same authoritative "refunds
+   * are closed" state G11.3 uses as its refund cutoff. Cash never depends on the
+   * gateway, and the EXISTS makes a tournament with no current locked draw fail
+   * closed (the entitlement simply stays PENDING).
+   *
+   * The payment method is read from the entitlement's own immutable metadata
+   * snapshot, so an upstream change can never silently re-route an
+   * already-created entitlement.
+   */
+  async findPendingTournamentDueForActivation(
+    paymentMethod: 'card' | 'cash',
+    batchSize: number = 200,
+  ): Promise<EntitlementRecord[]> {
+    const pool = getPool();
+    const safeBatch = Math.max(1, Math.floor(Number(batchSize) || 200));
+    const method = paymentMethod === 'cash' ? 'cash' : 'card';
+    const releaseCondition = method === 'cash'
+      ? `AND EXISTS (
+           SELECT 1
+           FROM tournament_registrations tr
+           JOIN tournaments t ON t.id = tr.tournament_id
+           JOIN tournament_draws d ON d.tournament_id = t.id AND d.is_current = 1
+           WHERE tr.id = fe.source_id AND d.status = 'locked'
+         )`
+      : `AND EXISTS (
+           SELECT 1
+           FROM payment_transactions pt
+           WHERE pt.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(fe.metadata, '$.paymentId')) AS UNSIGNED)
+             AND pt.payment_status = 'paid'
+             AND pt.gateway_settlement_id IS NOT NULL
+         )`;
+    const [rows] = await pool.execute<RowData>(
+      `SELECT fe.*
+       FROM financial_entitlements fe
+       WHERE fe.source_type = 'tournament'
+         AND fe.status = 'PENDING'
+         AND JSON_UNQUOTE(JSON_EXTRACT(fe.metadata, '$.paymentMethod')) = ?
+         ${releaseCondition}
+       ORDER BY fe.created_at ASC
+       LIMIT ${safeBatch}`,
+      [method],
     );
     return rows.map(mapRow);
   },
@@ -271,7 +336,7 @@ export const financialEntitlementRepository = {
    * any settlement (settlement_id IS NULL). These are the eligible pool for a
    * unified settlement.
    *
-   * GATEWAY-SETTLEMENT ELIGIBILITY (seller settlement):
+   * GATEWAY-SETTLEMENT ELIGIBILITY:
    *   Customer Paid ≠ Gateway Settled ≠ Seller Settled. An entitlement backed by
    *   a card/online payment is only eligible for seller settlement once the
    *   gateway funds have actually been settled to CourtZon (i.e. no outstanding
@@ -279,6 +344,17 @@ export const financialEntitlementRepository = {
    *   Payment Clearing). Cash/COD (collector=org) and wallet payments are not
    *   subject to this check — the seller collected the cash directly, and wallet
    *   funds are already held by CourtZon (never in 1100 clearing).
+   *
+   * G11.4 — TOURNAMENT entitlements carry no `orderId` (their source is
+   * tournament_registrations), so the marketplace gate above silently let every
+   * tournament entitlement through. They now get their OWN gate keyed on the
+   * `metadata.paymentId` snapshot taken at entitlement creation: a tournament CARD
+   * entitlement is settlement-eligible only while its backing payment is still
+   * gateway-settled (`gateway_settlement_id IS NOT NULL`). A CASH tournament
+   * entitlement never matches the card/online method list, so it is never blocked
+   * by the gateway (CourtZon does not hold that cash and must never wait for a
+   * gateway batch that will not exist). The marketplace orderId logic is
+   * untouched.
    */
   async findAvailableForOrganisation(orgId: number): Promise<EntitlementRecord[]> {
     const pool = getPool();
@@ -295,6 +371,16 @@ export const financialEntitlementRepository = {
              AND pt.payment_status = 'paid'
              AND pt.payment_method IN ('card','online')
              AND pt.gateway_settlement_id IS NULL
+         )
+         AND NOT (
+           fe.source_type = 'tournament'
+           AND EXISTS (
+             SELECT 1
+             FROM payment_transactions pt
+             WHERE pt.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(fe.metadata, '$.paymentId')) AS UNSIGNED)
+               AND pt.payment_method IN ('card','online')
+               AND pt.gateway_settlement_id IS NULL
+           )
          )
        ORDER BY fe.id`,
       [orgId],

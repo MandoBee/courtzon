@@ -247,6 +247,56 @@ export class FinancialEntitlementService {
     return activated;
   }
 
+  // ── G11.4 — tournament activation ──
+
+  /**
+   * Activate TOURNAMENT entitlements whose business release condition is already
+   * met. Called by the scheduled tournament activation worker.
+   *
+   *   CARD → only after the backing payment owns an ACTIVE gateway settlement
+   *   CASH → only after the tournament's current draw is LOCKED
+   *
+   * Idempotent and concurrency-safe: only PENDING rows are matched and the bulk
+   * activation is a guarded "WHERE status = 'PENDING'" UPDATE, so two concurrent
+   * worker runs (or a worker run racing the refund-cancellation path) can never
+   * double-activate, and a replay is a no-op. Returns the number of entitlements
+   * that actually transitioned.
+   */
+  async activateTournamentEligible(
+    paymentMethod: 'card' | 'cash',
+    batchSize: number = 200,
+  ): Promise<number> {
+    const pending = await financialEntitlementRepository.findPendingTournamentDueForActivation(paymentMethod, batchSize);
+    if (!pending.length) return 0;
+
+    const activated = await financialEntitlementRepository.batchActivate(pending.map(e => e.id));
+
+    if (activated > 0) {
+      for (const e of pending) {
+        try {
+          eventBusV2.emit('entitlement:activated', {
+            entitlementId: e.id,
+            publicId: e.public_id,
+            organisationId: e.organisation_id,
+            entitlementType: e.entitlement_type,
+            sourceType: e.source_type,
+            sourceId: e.source_id,
+            amount: e.amount,
+            currency: e.currency,
+            // Release reason, so the realtime/UI layer can explain WHY a
+            // tournament position became available without re-deriving it.
+            activationReason: paymentMethod === 'cash' ? 'tournament_draw_locked' : 'gateway_settlement_received',
+          } as any);
+        } catch (err) {
+          log.error({ err, entitlementId: e.id }, 'Failed to emit entitlement:activated (tournament)');
+        }
+      }
+    }
+
+    log.info({ activated, paymentMethod, candidates: pending.length }, 'Activated tournament entitlements');
+    return activated;
+  }
+
   // ── Read ──
 
   async getEntitlement(id: number) {

@@ -1,6 +1,7 @@
 import { getPool } from '../../../database/mysql.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { paymentGateway } from '../../../shared/services/gateway/gateway-factory.js';
+import type { Pool } from 'mysql2/promise';
 
 
 const log = createModuleLogger('reconciliation');
@@ -221,6 +222,19 @@ export class ReconciliationService {
       run.infoCount++;
     }
 
+    // ── 5b. G11.4 — TOURNAMENT registration ↔ payment ↔ settlement checks ──
+    // STRICTLY REPORT-ONLY. None of these is `autoFixable`, so the existing
+    // autoFix block below is untouched and can never act on them: a financial
+    // ledger discrepancy is a human decision, never an automated repair.
+    const tournamentChecks = await this.runTournamentChecks(pool, dateFilter, dateFilter2, limit);
+    for (const issue of tournamentChecks.issues) {
+      run.issues.push(issue);
+      if (issue.status === 'CRITICAL') run.criticalCount++;
+      else if (issue.status === 'WARNING') run.warningCount++;
+      else run.infoCount++;
+    }
+    run.itemsChecked += tournamentChecks.itemsChecked;
+
     // ── 6. Auto-fix: gateway_paid_local_pending ────────────────────────
     if (options.autoFix) {
       for (const issue of run.issues) {
@@ -269,6 +283,190 @@ export class ReconciliationService {
     }, 'Reconciliation run completed');
 
     return run;
+  }
+
+  /**
+   * G11.4 — six REPORT-ONLY tournament checks that complete the
+   * registration ↔ payment ↔ gateway-settlement triangle.
+   *
+   * G11.1 recognised the money, G11.3 refundable it, and G11.4 made it
+   * settleable, but none of those steps guarantees the three sides still agree.
+   * These checks surface the disagreement instead of silently reconciling it.
+   * Every issue is `autoFixable: false`, so the existing autoFix block ignores
+   * them by construction.
+   */
+  private async runTournamentChecks(
+    pool: Pool,
+    dateFilter: string,
+    dateFilter2: string,
+    limit: string,
+  ): Promise<{ issues: ReconciliationIssue[]; itemsChecked: number }> {
+    const issues: ReconciliationIssue[] = [];
+    let itemsChecked = 0;
+    const push = (
+      type: string,
+      status: CheckStatus,
+      entityType: string,
+      entityId: number,
+      detail: string,
+      recommendation: string,
+    ) => issues.push({ type, status, entityType, entityId, detail, recommendation, autoFixable: false });
+
+    // 5b-1. Registration paid without a valid paid payment.
+    const [paidNoPayment] = await pool.execute<any[]>(
+      `SELECT tr.id AS registration_id, tr.tournament_id, tr.payment_status
+       FROM tournament_registrations tr
+       WHERE tr.payment_status = 'paid'
+         AND NOT EXISTS (
+           SELECT 1 FROM payment_transactions pt
+           WHERE pt.reference_type = 'tournament'
+             AND pt.reference_id = tr.id
+             AND pt.payment_status IN ('paid', 'refunded')
+         )
+       ORDER BY tr.id DESC ${limit}`,
+    );
+    itemsChecked += (paidNoPayment as any[]).length;
+    for (const r of paidNoPayment as any[]) {
+      push(
+        'tournament_registration_paid_without_payment',
+        'CRITICAL',
+        'tournament_registration',
+        Number(r.registration_id),
+        `Registration ${r.registration_id} (tournament ${r.tournament_id}) is PAID but no paid/refunded tournament payment exists`,
+        'Either the payment row is missing (reconcile with the gateway) or the registration was marked paid in error.',
+      );
+    }
+
+    // 5b-2. Tournament payment paid but its registration is not paid.
+    const [paymentNoRegistration] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.reference_id AS registration_id, tr.payment_status
+       FROM payment_transactions pt
+       LEFT JOIN tournament_registrations tr ON tr.id = pt.reference_id
+       WHERE pt.reference_type = 'tournament'
+         AND pt.payment_status = 'paid'
+         AND (tr.id IS NULL OR tr.payment_status <> 'paid')
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (paymentNoRegistration as any[]).length;
+    for (const r of paymentNoRegistration as any[]) {
+      push(
+        'tournament_payment_paid_registration_not_paid',
+        'CRITICAL',
+        'payment_transaction',
+        Number(r.payment_id),
+        `Tournament payment ${r.payment_id} is PAID but registration ${r.registration_id ?? 'MISSING'} is ${r.payment_status ?? 'MISSING'}`,
+        'The payment:succeeded listener did not finish. Re-run registration marking, or refund the payment if the registration is gone.',
+      );
+    }
+
+    // 5b-3. Refunded tournament payment whose registration is still 'paid'.
+    const [refundedStillPaid] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.reference_id AS registration_id, tr.payment_status
+       FROM payment_transactions pt
+       JOIN tournament_registrations tr ON tr.id = pt.reference_id
+       WHERE pt.reference_type = 'tournament'
+         AND pt.payment_status = 'refunded'
+         AND tr.payment_status = 'paid'
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (refundedStillPaid as any[]).length;
+    for (const r of refundedStillPaid as any[]) {
+      push(
+        'tournament_refunded_payment_registration_still_paid',
+        'CRITICAL',
+        'tournament_registration',
+        Number(r.registration_id),
+        `Registration ${r.registration_id} is still PAID although its payment ${r.payment_id} is REFUNDED`,
+        'The refund executed but the registration state was not updated — the player appears entitled to a slot they no longer paid for.',
+      );
+    }
+
+    // 5b-4. Gateway-settled tournament payment with no settlement history line.
+    // Reads the DURABLE history (not payment.gateway_settlement_id, which a
+    // dismantle clears) so it also catches a partially dismantled batch.
+    const [settledNoHistory] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.reference_id AS registration_id, pt.gateway_settlement_id
+       FROM payment_transactions pt
+       WHERE pt.reference_type = 'tournament'
+         AND pt.gateway_settlement_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM gateway_settlement_transactions gst
+           WHERE gst.payment_transaction_id = pt.id
+         )
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (settledNoHistory as any[]).length;
+    for (const r of settledNoHistory as any[]) {
+      push(
+        'tournament_settled_payment_missing_lineage',
+        'CRITICAL',
+        'payment_transaction',
+        Number(r.payment_id),
+        `Tournament payment ${r.payment_id} (registration ${r.registration_id}) points at gateway settlement ${r.gateway_settlement_id} but has NO settlement line at all`,
+        'The batch cannot be reconciled or reversed for this payment. Re-create the line from the gateway statement or clear the linkage.',
+      );
+    }
+
+    // 5b-5. Refund-after-settlement with an inconsistent bank / clearing state.
+    // The settled refund must have left 1100 untouched and 1120 debited; the
+    // unsettled one must have credited 1100 and never touched 1120.
+    const [refundBankClearing] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.reference_id AS registration_id, pt.amount,
+              COALESCE(SUM(CASE WHEN c.code = '1100' THEN gl.credit - gl.debit ELSE 0 END), 0) AS clearing_net,
+              COALESCE(SUM(CASE WHEN c.code = '1120' THEN gl.debit - gl.credit ELSE 0 END), 0) AS bank_debit
+       FROM payment_transactions pt
+       JOIN ledger_entries le
+         ON le.source_type = 'tournament'
+        AND le.source_id = pt.id
+        AND le.event_type = 'tournament_registration_card_refund_settled'
+       JOIN general_ledger gl ON gl.ledger_entry_id = le.id
+       JOIN chart_of_accounts c ON c.id = gl.account_id
+       WHERE pt.reference_type = 'tournament'
+       GROUP BY pt.id, pt.reference_id, pt.amount
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (refundBankClearing as any[]).length;
+    for (const r of refundBankClearing as any[]) {
+      const clearingNet = Math.round(Number(r.clearing_net) * 100) / 100;
+      const bankDebit = Math.round(Number(r.bank_debit) * 100) / 100;
+      const gross = Math.round(Number(r.amount) * 100) / 100;
+      if (bankDebit === gross && clearingNet === 0) continue;
+      push(
+        'tournament_settled_refund_bank_clearing_inconsistent',
+        'CRITICAL',
+        'payment_transaction',
+        Number(r.payment_id),
+        `Tournament payment ${r.payment_id} (registration ${r.registration_id}, ${gross}) has a settled refund but bank debit is ${bankDebit} and 1100 net movement is ${clearingNet} (expected ${gross} and 0)`,
+        'The settled refund must debit 1120 by the gross and never touch 1100. Investigate the journal before any further settlement.',
+      );
+    }
+
+    // 5b-6. Settlement line / payment mismatch for a tournament payment.
+    const [lineMismatch] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.reference_id AS registration_id, pt.gateway_settlement_id,
+              gst.id AS line_id, gst.gateway_settlement_id AS line_settlement_id,
+              gst.active_payment_transaction_id
+       FROM payment_transactions pt
+       JOIN gateway_settlement_transactions gst ON gst.payment_transaction_id = pt.id
+       WHERE pt.reference_type = 'tournament'
+         AND pt.gateway_settlement_id IS NOT NULL
+         AND (gst.gateway_settlement_id <> pt.gateway_settlement_id
+              OR gst.active_payment_transaction_id IS NULL)
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (lineMismatch as any[]).length;
+    for (const r of lineMismatch as any[]) {
+      push(
+        'tournament_settlement_line_payment_mismatch',
+        'CRITICAL',
+        'payment_transaction',
+        Number(r.payment_id),
+        `Tournament payment ${r.payment_id} (registration ${r.registration_id}) points at settlement ${r.gateway_settlement_id} but its line ${r.line_id} is in batch ${r.line_settlement_id} and is ${r.active_payment_transaction_id === null ? 'RELEASED' : 'active'}`,
+        'The batch and the payment disagree. Run the gateway settlement reconciliation for the full picture before acting.',
+      );
+    }
+
+    return { issues, itemsChecked };
   }
 
   async getHistory(limit = 20): Promise<any[]> {

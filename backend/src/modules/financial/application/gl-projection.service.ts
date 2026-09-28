@@ -6,6 +6,50 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 const log = createModuleLogger('gl-projection');
 type RowData = RowDataPacket[];
 
+/**
+ * `general_ledger.reference_type` is `VARCHAR(50)` (indexed by `idx_reference`,
+ * but NOT unique — so shortening a value can never collide with another row's
+ * key). The natural forensic key is `<source_type>_<event_type>`, and every
+ * existing posting in the system already fits inside 50 characters.
+ *
+ * Long event types are legitimate and unavoidable — e.g. G11.4's
+ * `tournament_registration_card_refund_settled` composes to 53 characters.
+ * Without a guard here, MySQL rejects the INSERT with ER_DATA_TOO_LONG and the
+ * ENTIRE journal fails to project to the GL, silently losing a balanced,
+ * already-validated accounting entry.
+ *
+ * Resolution order (only ever engaged when the composed key does NOT fit, so
+ * behaviour for every currently-valid event type is byte-for-byte unchanged):
+ *   1. the composed `<source_type>_<event_type>` key;
+ *   2. the event type alone — it is the most specific part of the key, and since
+ *      the dropped prefix is always the same source type it stays unambiguous
+ *      for a given event type;
+ *   3. a hard truncation of the event type, which is logged so the loss of
+ *      forensic detail is always observable rather than silent.
+ */
+const GL_REFERENCE_TYPE_MAX = 50;
+
+function buildReferenceType(sourceType: string, eventType?: string | null): string {
+  const src = String(sourceType ?? '');
+  const evt = eventType ? String(eventType) : '';
+  const composed = evt ? `${src}_${evt}` : src;
+  if (composed.length <= GL_REFERENCE_TYPE_MAX) return composed;
+
+  if (evt && evt.length <= GL_REFERENCE_TYPE_MAX) {
+    log.warn(
+      { sourceType: src, eventType: evt, composedLength: composed.length, max: GL_REFERENCE_TYPE_MAX },
+      'GL reference_type composite exceeded the column width — using the event type alone',
+    );
+    return evt;
+  }
+
+  log.error(
+    { sourceType: src, eventType: evt, max: GL_REFERENCE_TYPE_MAX },
+    'GL reference_type exceeded the column width even without the source type — truncating (forensic detail lost)',
+  );
+  return (evt || src).slice(0, GL_REFERENCE_TYPE_MAX);
+}
+
 export interface ProjectableEntry {
   sourceType: string;
   sourceId: number;
@@ -92,7 +136,7 @@ export class GlProjectionService {
       const debit = entry.side === 'debit' ? entry.amount : 0;
       const credit = entry.side === 'credit' ? entry.amount : 0;
       const entryDate = entry.recordedAt.slice(0, 10);
-      const refType = `${entry.sourceType}${entry.eventType ? `_${entry.eventType}` : ''}`;
+      const refType = buildReferenceType(entry.sourceType, entry.eventType);
 
       await conn.execute(
         `INSERT INTO general_ledger (ledger_entry_id, organisation_id, period_id, account_id, entry_date, debit, credit, balance, reference_type, reference_id, description, created_by)

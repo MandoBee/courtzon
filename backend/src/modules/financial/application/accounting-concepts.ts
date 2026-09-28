@@ -698,6 +698,30 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['tournament_revenue', 'courtzon_payable'],
     credit: ['org_cash_bank', 'commission_expense'],
   },
+  // ── TOURNAMENT (G11.4) — CARD full refund AFTER gateway settlement ───────
+  // Once the gateway batch has moved the funds out of 1100 Payment Clearing
+  // into 1120 Cash/Bank, the customer refund is paid OUT OF THE BANK — crediting
+  // 1100 again would resurrect a clearing balance that no longer exists.
+  //   CourtZon book (org NULL):
+  //     Dr 2202 Merchant Payable = orgNet · Dr 4192 Tournament Commission =
+  //     commission · Cr 1120 Cash / Bank = gross. Balanced.
+  //
+  // The gateway fee (5210 Payment Gateway Fees) is deliberately NOT reversed:
+  // the provider charge is non-refundable and stays a permanent CourtZon
+  // expense. No fee-refund leg is invented for this event.
+  //
+  // The ORGANIZATION book is unchanged — it still reverses
+  // tournament_org_registration_receivable via tournament_org_receivable_reversal
+  // (Dr 4140 / Cr 1161 + MKT-COMM-EXP), because the org's claim never depended
+  // on which CourtZon account held the cash.
+  //
+  // Distinct event_type (never the G11.3 `tournament_registration_card_refund`)
+  // so a settled and an unsettled refund of the SAME payment can never collide
+  // on the (source_type, source_id, event_type) idempotency key.
+  tournament_registration_card_refund_settled: {
+    debit: ['merchant_payable', 'tournament_commission'],
+    credit: ['cash_bank'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

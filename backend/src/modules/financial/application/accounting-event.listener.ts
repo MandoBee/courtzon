@@ -1908,6 +1908,44 @@ async function postTournamentCashRefundAccountingSerialized(amount: number, curr
     postTournamentCashRefundAccounting(amount, currency, data));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// G11.4 — REFUND-AFTER-SETTLEMENT detection from the DURABLE settlement history.
+//
+// `payment_transactions.gateway_settlement_id` CANNOT answer "did CourtZon
+// already receive this payment's gateway funds?" at refund time: the G11.3
+// payment-scoped settlement dismantle nulls exactly that column (and its
+// gateway_settled_at sibling) before the refund is executed. Reading it would
+// therefore always answer "not settled" and post the refund against 1100 even
+// when the batch already moved the money to 1120 — leaving 1100 with a phantom
+// +gross and never returning it to zero.
+//
+// The settlement HISTORY is the durable authority: a line in
+// gateway_settlement_transactions whose batch is still 'completed' proves the
+// funds were received into 1120. A 'reversed' batch proves the opposite (the
+// bank transfer was undone and the money is back in 1100), so a reversed batch
+// must be treated as NOT settled and the refund keeps the G11.3 clearing leg.
+// The historical line row itself is never deleted by the dismantle, so this
+// answer is stable forever.
+//
+// Replay-safe: the variant is derived from durable rows, not from a transient
+// column, so re-delivering `payment:refunded` can never pick a DIFFERENT variant
+// and double-post. Each variant is additionally guarded by
+// hasPosting('tournament', paymentId, eventType) + uk_dedup.
+// ─────────────────────────────────────────────────────────────────────────────
+async function tournamentPaymentWasGatewaySettled(paymentId: number): Promise<boolean> {
+  if (!(paymentId > 0)) return false;
+  const [rows] = await getPool().execute<RowData>(
+    `SELECT 1
+     FROM gateway_settlement_transactions gst
+     JOIN gateway_settlements gs ON gs.id = gst.gateway_settlement_id
+     WHERE gst.payment_transaction_id = ?
+       AND gs.settlement_status = 'completed'
+     LIMIT 1`,
+    [paymentId],
+  );
+  return (rows as any[]).length > 0;
+}
+
 async function postTournamentCardRefundAccounting(amount: number, currency: string, data: any): Promise<void> {
   const paymentId = Number(data.paymentId);
   const econ = await resolveTournamentRefundEconomy(Number(data.referenceId), paymentId, amount);
@@ -1917,20 +1955,41 @@ async function postTournamentCardRefundAccounting(amount: number, currency: stri
     log.info({ paymentId, registrationId: Number(data.referenceId) }, 'Platform/community tournament card refund — OUT of G11.3 scope; no accounting posted');
     return;
   }
-  const description = `Tournament #${econ.tournament.id} registration #${econ.registration.id} card refund (payment #${paymentId})`;
-  // CourtZon book (org NULL): Dr 2202 orgNet · Dr 4192 commission · Cr 1100 gross.
-  await postAccountingEvent(
-    'tournament_registration_card_refund', 'tournament', paymentId, null,
-    { merchant_payable: econ.orgNet, tournament_commission: econ.commission, payment_clearing: econ.gross },
-    econ.currencyCode,
-    description,
-  );
+  const baseDescription = `Tournament #${econ.tournament.id} registration #${econ.registration.id} card refund (payment #${paymentId})`;
+
+  // G11.4 — two CourtZon variants, selected from the durable settlement history
+  // (NOT from payment_transactions.gateway_settlement_id, which the dismantle
+  // already nulled). Both fully reverse the G11.1 recognition legs; they differ
+  // ONLY in the account the cash leaves from.
+  const wasSettled = await tournamentPaymentWasGatewaySettled(paymentId);
+  if (wasSettled) {
+    // Funds already received into 1120 by the gateway batch → pay the refund out
+    // of the bank. Reverses 2202 (org net) + 4192 (commission) in full, so the
+    // CourtZon book nets to zero on this payment while 1100 stays at zero.
+    // The gateway fee (5210) is intentionally left in place — non-refundable.
+    await postAccountingEvent(
+      'tournament_registration_card_refund_settled', 'tournament', paymentId, null,
+      { merchant_payable: econ.orgNet, tournament_commission: econ.commission, cash_bank: econ.gross },
+      econ.currencyCode,
+      `${baseDescription} — settled cash leg`,
+    );
+  } else {
+    // Not gateway-settled (or the batch was reversed) → the G11.3 reversal is
+    // unchanged: the refund simply returns the clearing balance.
+    await postAccountingEvent(
+      'tournament_registration_card_refund', 'tournament', paymentId, null,
+      { merchant_payable: econ.orgNet, tournament_commission: econ.commission, payment_clearing: econ.gross },
+      econ.currencyCode,
+      `${baseDescription} — unsettled clearing leg`,
+    );
+  }
+
   // Organization book (org-scoped): Dr 4140 gross · Cr 1161 orgNet · Cr MKT-COMM-EXP commission.
   await postAccountingEvent(
     'tournament_org_receivable_reversal', 'tournament', paymentId, econ.orgId,
     { tournament_revenue: econ.gross, marketplace_receivable: econ.orgNet, commission_expense: econ.commission },
     econ.currencyCode,
-    `${description} (organization book)`,
+    `${baseDescription} (organization book)`,
     undefined,
     { tournament_revenue: econ.orgId, marketplace_receivable: econ.orgId, commission_expense: econ.orgId },
   );

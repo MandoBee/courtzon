@@ -199,10 +199,45 @@ class TournamentRefundService {
       if (amount <= 0) throw new ConflictError('Refund amount must be positive');
       const currencyCode = String(payment.currency || tournament.currency_code || 'EGP');
 
-      // Refund-after-settlement: PAYMENT-SCOPED detach (never the whole batch).
+      // Refund-after-settlement: PAYMENT-SCOPED dismantle (never the whole batch
+      // reversal). G11.4 completes it: the active settlement line is released,
+      // the batch header is reduced to its remaining active lines, the payment is
+      // detached, and the history rows are preserved. No accounting journal is
+      // posted here — the refund event picks the bank vs clearing leg from the
+      // durable settlement history.
       if (paymentRow.gateway_settlement_id != null && Number(paymentRow.gateway_settlement_id) !== 0) {
-        await tournamentRepository.detachPaymentSettlement(paymentId, conn);
-        log.info({ paymentId, registrationId: req.registrationId }, 'Tournament refund: payment-scoped settlement detach performed');
+        const dismantle = await tournamentRepository.detachPaymentSettlement(paymentId, conn);
+        log.info({ paymentId, registrationId: req.registrationId, settlementId: dismantle.settlementId, lineId: dismantle.lineId, lineReleased: dismantle.lineReleased }, 'Tournament refund: payment-scoped settlement dismantle performed');
+        // Audit the dismantle inside the SAME transaction so the pre/post header
+        // snapshot can never outlive (or be rolled back independently of) the
+        // settlement rows it describes. `before`/`after` carry gross / fee / net
+        // / transaction_count; the released line + settlement ids preserve the
+        // financial history without destroying the rows themselves.
+        await recordAudit({
+          actorId: officialId,
+          action: 'TOURNAMENT.SETTLEMENT_DISMANTLED',
+          entityType: 'gateway_settlement',
+          entityId: dismantle.settlementId ?? 0,
+          beforeState: dismantle.before
+            ? { paymentId, lineId: dismantle.lineId, gross: dismantle.before.gross, fee: dismantle.before.fee, net: dismantle.before.net, transactionCount: dismantle.before.transactionCount }
+            : null,
+          afterState: {
+            paymentId,
+            settlementId: dismantle.settlementId,
+            lineId: dismantle.lineId,
+            lineReleased: dismantle.lineReleased,
+            paymentDetached: dismantle.paymentDetached,
+            releasedGross: dismantle.releasedAmounts?.gross ?? null,
+            releasedFee: dismantle.releasedAmounts?.fee ?? null,
+            releasedNet: dismantle.releasedAmounts?.net ?? null,
+            gross: dismantle.after?.gross ?? null,
+            fee: dismantle.after?.fee ?? null,
+            net: dismantle.after?.net ?? null,
+            transactionCount: dismantle.after?.transactionCount ?? null,
+            reason: req.reason ?? null,
+            source: 'tournament.full_refund',
+          },
+        });
       }
 
       const participant = await tournamentRepository.findParticipantByRegistration(req.registrationId);

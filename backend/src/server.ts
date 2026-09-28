@@ -18,6 +18,7 @@ import { handleAutoCompleteBookings } from "./modules/booking/infrastructure/boo
 import { handleBookingSettlementEligibility } from "./modules/booking/infrastructure/booking-settlement-eligibility.worker.js";
 import { handleActivateEntitlements } from "./modules/financial/infrastructure/financial-entitlement.worker.js";
 import { handleComplaintPeriodActivation } from "./modules/financial/infrastructure/marketplace-complaint-period.worker.js";
+import { handleTournamentEntitlementActivation } from "./modules/financial/infrastructure/tournament-entitlement-activation.worker.js";
 import { processMatchResultDeadlines, scheduleMatchResultDeadlines } from "./modules/match-result/index.js";
 import { processMatchLifecycle, scheduleMatchLifecycle } from "./modules/match/infrastructure/match-lifecycle.worker.js";
 import { handleComplaintReceiptTimeout, handleComplaintCollectionEscalation } from "./modules/marketplace/infrastructure/marketplace-complaint.worker.js";
@@ -106,6 +107,10 @@ async function bootstrap() {
     });
     registerHandler('activate_entitlements', handleActivateEntitlements);
     registerHandler('complaint_period_activation', handleComplaintPeriodActivation);
+    // G11.4 — tournament entitlement activation (CARD after gateway settlement,
+    // CASH after the current draw is locked). The generic activation worker
+    // deliberately skips source_type='tournament'.
+    registerHandler('tournament_entitlement_activation', handleTournamentEntitlementActivation);
     registerHandler('complaint_receipt_timeout', handleComplaintReceiptTimeout);
     registerHandler('complaint_collection_escalation', handleComplaintCollectionEscalation);
     registerHandler('match_result_deadlines', processMatchResultDeadlines);
@@ -237,6 +242,14 @@ async function bootstrap() {
     registerEntitlementMarketplaceSubscribers();
     createEntitlementMarketplaceWorkers();
     app.log.info('Entitlement marketplace subscribers + workers registered');
+
+    // G11.4 — tournament entitlement subscribers (registration paid → entitlement,
+    // refund → cancel). Durable BullMQ subscribers, registered beside the booking /
+    // academy / marketplace entitlement subscribers.
+    const { registerEntitlementTournamentSubscribers, createEntitlementTournamentWorkers } = await import('./modules/financial/application/entitlement-tournament.listener.js');
+    registerEntitlementTournamentSubscribers();
+    createEntitlementTournamentWorkers();
+    app.log.info('Entitlement tournament subscribers + workers registered');
 
     const { registerTournamentProgressionSubscribers, createTournamentProgressionWorkers } = await import('./modules/tournaments/application/tournament-progression.listener.js');
     registerTournamentProgressionSubscribers();
@@ -377,6 +390,14 @@ async function bootstrap() {
 
     // Marketplace complaint-period activation — every 5 minutes
     await queueService.add('complaint_period_activation', {}, {
+      repeat: { every: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 86400 },
+    });
+
+    // G11.4 — Tournament entitlement activation — every 5 minutes
+    // (CARD after the gateway settlement is received, CASH after the draw is locked)
+    await queueService.add('tournament_entitlement_activation', {}, {
       repeat: { every: 300_000 },
       removeOnComplete: true,
       removeOnFail: { age: 86400 },

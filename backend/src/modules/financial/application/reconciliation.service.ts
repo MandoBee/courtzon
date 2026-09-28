@@ -84,7 +84,14 @@ export class ReconciliationService {
     const entNet = round2(entPayable - entReceivable);
 
     // ── GL side (mirror) ──
-    const controlAccounts = await glControlRepository.resolveControlAccountIds();
+    // G11.4 (R-4): resolve the org's OWN organisation-scoped control accounts in
+    // addition to the global ones. The per-organisation books auto-provision
+    // their own 1161 / 1160 through the accounting engine, but those mapping
+    // lines are organisation-scoped, so the global-only query could never see
+    // them — an organisation with a real org-book receivable was reconciled
+    // against a FALSE ZERO. De-duplication by account id (done in the
+    // repository) guarantees the global accounts are never counted twice.
+    const controlAccounts = await glControlRepository.resolveControlAccountIds(orgId);
     const totals = await glControlRepository.controlTotalsForOrg(orgId, controlAccounts.map((a) => a.id));
 
     // Liability control (2200-family): credit-positive = CourtZon owes org.
@@ -159,7 +166,13 @@ export class ReconciliationService {
     const controlAccounts = await glControlRepository.resolveControlAccountIds();
     const [entOrgs, glOrgs] = await Promise.all([
       positionRepository.openPositionsOrgIds(),
-      glControlRepository.orgsWithControlActivity(controlAccounts.map((a) => a.id)),
+      // G11.4 (R-4): pass the discovered control CODES as well, so an org whose
+      // only control activity is on its own org-scoped 1161 (the G11.1
+      // tournament case) is discovered even when it has NO open entitlement.
+      glControlRepository.orgsWithControlActivity(
+        controlAccounts.map((a) => a.id),
+        controlAccounts.map((a) => a.code),
+      ),
     ]);
     const orgSet = new Set<number>([...entOrgs, ...glOrgs]);
     const limit = opts?.limit ?? 200;
