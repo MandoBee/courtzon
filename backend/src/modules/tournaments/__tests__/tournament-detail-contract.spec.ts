@@ -14,6 +14,16 @@ const repo = vi.hoisted(() => ({ countBracketTypeReferences: vi.fn() }));
 
 vi.mock('../application/tournament.service.js', () => ({ tournamentService: service }));
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
+vi.mock('../application/tournament-prize-award.service.js', () => ({
+  tournamentPrizeAwardService: {
+    bindAwardsForTournament: vi.fn(async () => []),
+    manualGrant: vi.fn(),
+    refundAward: vi.fn(),
+    listAwards: vi.fn(async () => []),
+    listMyAwards: vi.fn(async () => []),
+    listAwardablePrizes: vi.fn(async () => []),
+  },
+}));
 vi.mock('../../../database/mysql.js', () => ({ getPool: vi.fn() }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: vi.fn() }));
 

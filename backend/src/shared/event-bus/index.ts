@@ -146,6 +146,19 @@ export interface DomainEventMap {
   'tournament:match-progressed': BaseEvent & { tournamentId: number; matchId: number | null; resultId?: number | null; winnerId?: number | null; participantWinnerId?: number | null; opponentMatchId?: number | null; fromSlotId?: number | null; toSlotId?: number | null; advancedTo?: string | null; stageId?: number | null; organisationId?: number | null; round?: number; bracketPosition?: number; result?: Record<string, unknown> };
   'tournament:stage-completed': BaseEvent & { tournamentId: number; stageId: number; winnerId?: number | null; organisationId?: number | null; round?: number };
   'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null; userId?: number | null; organisationId?: number | null };
+  // G11.5 — Prize payout domain events (Phase 1).
+  // standings-finalized: standings-backed (round-robin) tournaments lock their
+  //   final ranking when the operator completes them. The prize-award listener
+  //   binds winner prizes from the finalized standings (Q1b/Q2b). Bracket
+  //   tournaments still surface through tournament:completed (which carries no
+  //   standings rows — see Phase-1 gap in the G11.5 report).
+  // prize-awarded / prize-refunded: authoritative award lifecycle signals
+  //   consumed by accounting postings and the notification engine. Amounts are
+  //   snapshots from tournament_prizes; the accounting listener always re-reads
+  //   the award row (durable) instead of trusting event payload amounts.
+  'tournament:standings-finalized': BaseEvent & { tournamentId: number; name?: string; organisationId?: number | null };
+  'tournament:prize-awarded': BaseEvent & { tournamentId: number; awardId: number; winnerUserId: number; amount: number; currency: string; placement?: number | null; fundingSource: 'platform' | 'organization'; collectionMethod: 'card' | 'cash'; organisationId?: number | null; bindSource: 'standings' | 'manual' };
+  'tournament:prize-refunded': BaseEvent & { tournamentId: number; awardId: number; winnerUserId: number; amount: number; currency: string; organisationId?: number | null; reason?: string | null };
   'tournament:registration-paid': BaseEvent & { tournamentId: number; registrationId: number; userId?: number; organisationId?: number | null; paymentId?: number | null };
   'tournament:registration-payment-methods-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; methods: string[] };
   'tournament:schedule-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; startDate?: string | null; endDate?: string | null; registrationCloses?: string | null; branchId?: number | null; dailyStartTime?: string | null; dailyEndTime?: string | null; matchId?: number; resourceId?: number; date?: string; startTime?: string; endTime?: string; bookingId?: number; scheduled?: number; skipped?: number };

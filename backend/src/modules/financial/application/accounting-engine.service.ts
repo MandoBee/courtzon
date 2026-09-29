@@ -146,6 +146,16 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   // payment_gateway_fee is deliberately ABSENT: the gateway fee is a
   // non-refundable expense and stays in 5210 (never reversed, never credited).
   tournament_registration_card_refund_settled: { merchant_payable: '2202', tournament_commission: '4192', cash_bank: '1120' },
+  // G11.5 — Tournament PRIZE payout (Phase 1). No DB mapping rows: full concept
+  // sets resolve from code to the EXISTING global accounts. Platform-funded
+  // prize reduces recognized revenue through the REVENUE-CONTRA account (4300)
+  // against the wallet liability (2100) — full liability at award (Q8b/Q8c).
+  // Org-funded prize (CourtZon book, org NULL) draws from the merchant payable
+  // (2202) — the org's collected funds. Refund events mirror the same accounts.
+  tournament_prize_award: { revenue_contra: '4300', wallet_liability: '2100' },
+  tournament_prize_refund: { wallet_liability: '2100', revenue_contra: '4300' },
+  tournament_org_prize_award: { merchant_payable: '2202', wallet_liability: '2100' },
+  tournament_org_prize_refund: { wallet_liability: '2100', merchant_payable: '2202' },
 };
 
 /**
@@ -287,6 +297,16 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // G11.3 — Tournament CASH full-refund org-book reversal (exact negation of
   // tournament_org_cash_payment): Dr 4140 + MKT-CZ-PAY / Cr ORG-CASH + MKT-COMM-EXP.
   tournament_org_cash_payment_reversal: ['tournament_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
+  // G11.5 — Tournament PRIZE org books (org-scoped). The org carries the prize
+  // against its tournament revenue and one of its two funding positions:
+  //   CARD: Dr org 4140 / Cr org 1161 (reduces the CourtZon receivable).
+  //   CASH: Dr org 4140 / Cr org MKT-CZ-PAY (owes CourtZon, cleared by the
+  //         existing settlement_org_cash_pay on settlement).
+  // Refund events mirror the same accounts (full-only inverse, Q10b).
+  tournament_org_prize_award_book: ['tournament_revenue', 'marketplace_receivable'],
+  tournament_org_prize_refund_book: ['marketplace_receivable', 'tournament_revenue'],
+  tournament_org_cash_prize_award_book: ['tournament_revenue', 'courtzon_payable'],
+  tournament_org_cash_prize_refund_book: ['courtzon_payable', 'tournament_revenue'],
   // Settlement receipt (org book): Dr org Cash/Bank / Cr org 1161 Marketplace
   // Receivable — clears the org's receivable against the cash received from
   // CourtZon on settlement.

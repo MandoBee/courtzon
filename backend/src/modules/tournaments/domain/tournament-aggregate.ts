@@ -583,6 +583,76 @@ export interface TournamentStanding {
   rank_position?: number;
 }
 
+// ── G11.5 — Tournament Prize Award (Phase 1) ────────────────────────────────
+// Authoritative prize payout ledger. Winner resolution is rank_position →
+// registration.player_id (Q2b); amount/currency are snapshotted from
+// tournament_prizes. Lifecycle: awarded → credited → refunded (FULL-ONLY
+// clawback while funds remain in wallet custody — post-payout recovery and
+// partial clawback are OUT OF SCOPE by locked decision).
+export type PrizeAwardStatus = 'awarded' | 'credited' | 'refunded';
+export type PrizeFundingSource = 'platform' | 'organization';
+export type PrizeCollectionMethod = 'card' | 'cash';
+export type PrizeBindSource = 'standings' | 'manual';
+
+export interface TournamentPrizeAward {
+  id: number;
+  public_id?: string | null;
+  tournament_id: number;
+  prize_id: number;
+  placement?: number | null;
+  registration_id: number;
+  winner_user_id: number;
+  amount: number;
+  currency_code: string;
+  funding_source: PrizeFundingSource;
+  collection_method: PrizeCollectionMethod;
+  status: PrizeAwardStatus;
+  bind_source: PrizeBindSource;
+  created_by?: number | null;
+  awarded_at?: string;
+  credited_at?: string | null;
+  refunded_at?: string | null;
+  refunded_by?: number | null;
+  refund_reason?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CreatePrizeAwardInput {
+  tournamentId: number;
+  prizeId: number;
+  placement?: number | null;
+  registrationId: number;
+  winnerUserId: number;
+  amount: number;
+  currencyCode: string;
+  fundingSource: PrizeFundingSource;
+  collectionMethod: PrizeCollectionMethod;
+  bindSource: PrizeBindSource;
+  createdBy?: number | null;
+}
+
+export const ALLOWED_PRIZE_AWARD_TRANSITIONS: Record<PrizeAwardStatus, PrizeAwardStatus[]> = {
+  awarded: ['credited'],
+  credited: ['refunded'],
+  refunded: [],
+};
+
+export function assertValidPrizeAwardTransition(from: PrizeAwardStatus, to: PrizeAwardStatus): void {
+  const allowed = ALLOWED_PRIZE_AWARD_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(to)) {
+    throw new Error(`Illegal prize award state transition: ${from} → ${to}`);
+  }
+}
+
+export function validatePrizeAwardAmount(amount: number): void {
+  if (!Number.isFinite(amount)) throw new Error('Prize amount must be finite');
+  if (amount <= 0) throw new Error('Prize amount must be positive');
+  if (Math.round(amount * 100) !== amount * 100) {
+    throw new Error('Prize amount must have at most 2 decimal places');
+  }
+}
+
 /**
  * Deterministic PRNG (mulberry32). Seeded draws are reproducible + auditable —
  * the same seed always yields the same bracket. No `Math.random()`.

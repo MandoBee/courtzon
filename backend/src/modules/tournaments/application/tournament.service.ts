@@ -1000,7 +1000,24 @@ export class TournamentService {
         );
       }
     }
-    return this.updateStatus(id, 'completed');
+    const updated = await this.updateStatus(id, 'completed');
+    // G11.5 — standings-finalization signal for standings-backed (round-robin)
+    // tournaments: the operator's Complete action locks the final rankings,
+    // which is when the prize obligation binds (Q1b). The prize-award listener
+    // binds winner prizes idempotently from the finalized standings. RR emits
+    // nothing today, so this emission is purely additive; bracket tournaments
+    // continue to surface through tournament:completed (they materialize no
+    // standings rows → no auto awards; manual grant covers them — Phase-1 gap).
+    if (t.format === 'round_robin') {
+      eventBusV2.emit('tournament:standings-finalized', {
+        tournamentId: id,
+        name: t.name,
+        organisationId: t.organisation_id ?? null,
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+      });
+    }
+    return updated;
   }
   async cancel(id: number) { return this.updateStatus(id, 'cancelled'); }
   async archive(id: number) { return this.updateStatus(id, 'archived'); }

@@ -453,6 +453,11 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'tournaments.join', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Join Tournament', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },
   // G11.3 — player request for a FULL registration refund (own registration; approval by org financial.reconcile officials).
   { permissionKey: 'tournaments.registration.refund-request', moduleSlug: 'tournaments', elementType: 'action', elementLabel: 'Request Tournament Registration Refund', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },
+  // G11.5 — Prize payout (Phase 1): award ledger management for org/operator staff.
+  { permissionKey: 'tournaments.awards.view', moduleSlug: 'tournaments', elementType: 'page', elementLabel: 'View Tournament Prize Awards', componentPath: 'pages/admin/tournaments/TournamentAwardsPage.tsx' },
+  { permissionKey: 'tournaments.awards.grant', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Grant Tournament Prize Award', componentPath: 'pages/admin/tournaments/TournamentAwardsPage.tsx' },
+  { permissionKey: 'tournaments.awards.refund', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Refund Tournament Prize (Full Clawback)', componentPath: 'pages/admin/tournaments/TournamentAwardsPage.tsx' },
+  { permissionKey: 'tournaments.awards.withdraw', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Withdraw Awarded Prize', componentPath: 'pages/admin/tournaments/TournamentAwardsPage.tsx' },
   // Tournament form fields
   { permissionKey: 'tournaments.create.name', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Tournament Name Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
   { permissionKey: 'tournaments.create.sport', moduleSlug: 'tournaments', elementType: 'field', elementLabel: 'Tournament Sport Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },

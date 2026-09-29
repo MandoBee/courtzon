@@ -549,6 +549,22 @@ export class TournamentRepository {
     return rows.length ? this.mapRegistrationRow(rows[0] as Record<string, unknown>) : null;
   }
 
+  /**
+   * G11.5 — resolve a player's registration in a tournament (manual prize grant
+   * path: bracket tournaments materialise no standings rows, so winner awards
+   * are granted explicitly against a confirmed registration).
+   */
+  async findRegistrationForTournamentPlayer(tournamentId: number, playerId: number): Promise<TournamentRegistration | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT r.*, u.full_name AS player_name
+       FROM tournament_registrations r
+       LEFT JOIN users u ON u.id = r.player_id
+       WHERE r.tournament_id = ? AND r.player_id = ? ORDER BY r.id ASC LIMIT 1`,
+      [tournamentId, playerId],
+    );
+    return rows.length ? this.mapRegistrationRow(rows[0] as Record<string, unknown>) : null;
+  }
+
   // ── Prizes (tournament_prizes — Group 2) ──
 
   async findPrizesByTournament(tournamentId: number): Promise<TournamentPrize[]> {

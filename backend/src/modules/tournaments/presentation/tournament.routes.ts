@@ -49,6 +49,13 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/admin/tournaments/dashboard', { preHandler: [requirePermission(['tournament.dashboard.view'])] }, ctrl.getDashboardHandler);
 
+  // ── G11.5 — Prize awards ──
+
+  app.get('/admin/tournaments/:id/awards/prizes', { preHandler: [requirePermission(['tournaments.awards.view'])] }, ctrl.listAwardablePrizesHandler);
+  app.get('/admin/tournaments/:id/awards', { preHandler: [requirePermission(['tournaments.awards.view'])] }, ctrl.listPrizeAwardsHandler);
+  app.post('/admin/tournaments/:id/awards', { preHandler: [requirePermission(['tournaments.awards.grant'])] }, ctrl.grantPrizeAwardHandler);
+  app.post('/admin/tournaments/awards/:awardId/refund', { preHandler: [requirePermission(['tournaments.awards.refund'])] }, ctrl.refundPrizeAwardHandler);
+
   app.get('/admin/tournaments', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listTournamentsHandler);
   app.post('/admin/tournaments', { preHandler: [requirePermission(['tournament.create'])] }, ctrl.createTournamentHandler);
   app.get('/admin/tournaments/:id', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getTournamentHandler);

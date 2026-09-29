@@ -10,6 +10,7 @@ import { bookingRepository } from '../../booking/infrastructure/repositories/boo
 import { paymentAllocationRepository } from '../../booking/infrastructure/repositories/payment-allocation.repository.js';
 import { paymentAllocationService } from '../../booking/application/payment-allocation.service.js';
 import { tournamentRepository } from '../../tournaments/infrastructure/repositories/tournament.repository.js';
+import { tournamentPrizeAwardRepository } from '../../tournaments/infrastructure/repositories/tournament-prize-award.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket } from 'mysql2';
 import type { SourceType, LedgerLineInput, EntrySide, LedgerEntry } from '../domain/ledger-aggregate.js';
@@ -2025,6 +2026,113 @@ async function postTournamentCashRefundAccounting(amount: number, currency: stri
   );
 }
 
+// ── G11.5 — Tournament Prize Payout postings ─────────────────────────────────
+// Mirrors the locked award topology (Q8b/Q8c/Q10b):
+//   Platform-funded award:  Dr 4300 Revenue Contra · Cr 2100 Wallet Liability.
+//   Org-funded award (CourtZon book, org NULL):
+//                           Dr 2202 Merchant Payable · Cr 2100 Wallet Liability.
+//   Org CARD org book:      Dr org 4140 · Cr org 1161.
+//   Org CASH org book:      Dr org 4140 · Cr org MKT-CZ-PAY.
+//   Refunds are the EXACT FULL inverse (separate event types — postAccountingEvent
+//   rejects negative amounts, and the mirrored side swap keeps every posting
+//   positive/balanced).
+// Amounts are always re-read from the durable award row (never the event
+// payload), and every posting is idempotent via hasPosting on
+// (source_type='tournament', source_id=awardId, event_type).
+async function postPrizeAwardAccounting(awardId: number): Promise<void> {
+  const award = await tournamentPrizeAwardRepository.findById(awardId);
+  if (!award) {
+    log.error({ awardId }, 'Prize award not found — award accounting skipped');
+    return;
+  }
+  const amount = Number(award.amount);
+  const currency = award.currency_code || 'EGP';
+  const description = `Tournament prize award #${awardId} (${award.bind_source})`;
+
+  if (award.funding_source === 'platform') {
+    await postAccountingEvent(
+      'tournament_prize_award', 'tournament', awardId, null,
+      { revenue_contra: amount, wallet_liability: amount },
+      currency, description,
+    );
+    return;
+  }
+
+  // Organization-funded — CourtZon book (org NULL).
+  await postAccountingEvent(
+    'tournament_org_prize_award', 'tournament', awardId, null,
+    { merchant_payable: amount, wallet_liability: amount },
+    currency, description,
+  );
+
+  const tournament = await tournamentRepository.findById(award.tournament_id);
+  const orgId = tournament?.organisation_id ?? null;
+  if (orgId == null) return;
+
+  if (award.collection_method === 'cash') {
+    await postAccountingEvent(
+      'tournament_org_cash_prize_award_book', 'tournament', awardId, orgId,
+      { tournament_revenue: amount, courtzon_payable: amount },
+      currency, `${description} (organization book)`, undefined,
+      { tournament_revenue: orgId, courtzon_payable: orgId },
+    );
+  } else {
+    await postAccountingEvent(
+      'tournament_org_prize_award_book', 'tournament', awardId, orgId,
+      { tournament_revenue: amount, marketplace_receivable: amount },
+      currency, `${description} (organization book)`, undefined,
+      { tournament_revenue: orgId, marketplace_receivable: orgId },
+    );
+  }
+}
+
+async function postPrizeRefundAccounting(awardId: number): Promise<void> {
+  const award = await tournamentPrizeAwardRepository.findById(awardId);
+  if (!award) {
+    log.error({ awardId }, 'Prize award not found — refund accounting skipped');
+    return;
+  }
+  const amount = Number(award.amount);
+  const currency = award.currency_code || 'EGP';
+  const description = `Tournament prize refund #${awardId} (full clawback)`;
+
+  if (award.funding_source === 'platform') {
+    await postAccountingEvent(
+      'tournament_prize_refund', 'tournament', awardId, null,
+      { wallet_liability: amount, revenue_contra: amount },
+      currency, description,
+    );
+    return;
+  }
+
+  // Organization-funded — CourtZon book (org NULL).
+  await postAccountingEvent(
+    'tournament_org_prize_refund', 'tournament', awardId, null,
+    { wallet_liability: amount, merchant_payable: amount },
+    currency, description,
+  );
+
+  const tournament = await tournamentRepository.findById(award.tournament_id);
+  const orgId = tournament?.organisation_id ?? null;
+  if (orgId == null) return;
+
+  if (award.collection_method === 'cash') {
+    await postAccountingEvent(
+      'tournament_org_cash_prize_refund_book', 'tournament', awardId, orgId,
+      { courtzon_payable: amount, tournament_revenue: amount },
+      currency, `${description} (organization book)`, undefined,
+      { courtzon_payable: orgId, tournament_revenue: orgId },
+    );
+  } else {
+    await postAccountingEvent(
+      'tournament_org_prize_refund_book', 'tournament', awardId, orgId,
+      { marketplace_receivable: amount, tournament_revenue: amount },
+      currency, `${description} (organization book)`, undefined,
+      { marketplace_receivable: orgId, tournament_revenue: orgId },
+    );
+  }
+}
+
 export function registerAccountingEventListeners(): void {
   // Idempotent: registering twice would duplicate every in-memory handler and
   // fire each domain event multiple times (the event bus does not await
@@ -2650,6 +2758,34 @@ export function registerAccountingEventListeners(): void {
     }
   });
 
+  // ── Tournament Prize Payout Accounting (G11.5 Phase 1) ─────────────────
+  // The business module never posts directly — it emits the award lifecycle
+  // domain events AFTER the award transaction commits; this listener posts the
+  // GL idempotently (source_type='tournament', source_id=awardId, dedicated
+  // event types). Amounts are re-read from the durable award row, never from
+  // the event payload. Refunds are FULL-ONLY inverse postings (Q10b).
+  eventBusV2.on('tournament:prize-awarded', async (data: any) => {
+    try {
+      const awardId = Number(data.awardId);
+      if (!awardId) return;
+      await postPrizeAwardAccounting(awardId);
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
+      log.error({ err, awardId: data.awardId }, 'Prize award accounting failed');
+    }
+  });
+
+  eventBusV2.on('tournament:prize-refunded', async (data: any) => {
+    try {
+      const awardId = Number(data.awardId);
+      if (!awardId) return;
+      await postPrizeRefundAccounting(awardId);
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
+      log.error({ err, awardId: data.awardId }, 'Prize refund accounting failed');
+    }
+  });
+
   log.info('Accounting event listeners registered');
 }
 
@@ -2689,6 +2825,11 @@ const ACCOUNTING_REPLAY_EVENTS = [
   'settlement:paid',
   'booking:paid',
   'booking:refunded',
+  // G11.5 — prize award lifecycle postings replay through the same durable
+  // outbox → BullMQ channel (award commits and the postings must never be lost
+  // to a process crash between commit and the in-memory handler).
+  'tournament:prize-awarded',
+  'tournament:prize-refunded',
 ] as const;
 
 const ACCOUNTING_REPLAY_QUEUE = 'accounting-replay';

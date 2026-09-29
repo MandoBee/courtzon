@@ -18,6 +18,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
  */
 
 vi.mock('../application/tournament.service.js', () => ({ tournamentService: {} }));
+vi.mock('../application/tournament-prize-award.service.js', () => ({ tournamentPrizeAwardService: {} }));
 vi.mock('../application/participant-draw.service.js', () => ({ participantDrawService: {} }));
 vi.mock('../application/participant-member.service.js', () => ({ participantMemberService: {} }));
 vi.mock('../application/match-schedule.service.js', () => ({ matchScheduleService: {} }));

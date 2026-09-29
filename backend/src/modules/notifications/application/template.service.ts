@@ -704,6 +704,19 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'tournament:bracket-generated', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'قرعة البطولة جاهزة', bodyTemplate: 'قرعة البطولة جاهزة. تعرّف على منافسيك!',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // G11.5 — Prize payout notifications (delivered to the winner).
+    { eventName: 'tournament:prize-awarded', locale: 'en', categorySlug: 'tournament', type: 'success', priority: 'high',
+      titleTemplate: 'Prize Awarded 🏆', bodyTemplate: 'Congratulations! You placed #{{placement}} — {{amount}} {{currency}} was credited to your wallet.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:prize-awarded', locale: 'ar', categorySlug: 'tournament', type: 'success', priority: 'high',
+      titleTemplate: 'تم منح الجائزة 🏆', bodyTemplate: 'تهانينا! حصلت على المركز #{{placement}} — تمت إضافة {{amount}} {{currency}} إلى محفظتك.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:prize-refunded', locale: 'en', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'Prize Recalled', bodyTemplate: 'Your prize of {{amount}} {{currency}} was withdrawn from your wallet for tournament #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:prize-refunded', locale: 'ar', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'استرداد الجائزة', bodyTemplate: 'تم سحب جائزتك بمبلغ {{amount}} {{currency}} من محفظتك للبطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
 
     // Support
     { eventName: 'support:ticket-opened', locale: 'en', categorySlug: 'system', type: 'info', priority: 'normal',

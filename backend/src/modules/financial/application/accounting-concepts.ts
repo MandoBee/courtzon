@@ -722,6 +722,71 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['merchant_payable', 'tournament_commission'],
     credit: ['cash_bank'],
   },
+  // ── TOURNAMENT (G11.5) — Prize payout (Phase 1) ───────────────────────────
+  // Award = full prize liability recognized at winner confirmation (Q8b/Q8c):
+  // Dr 4300 Revenue Contra-expense (platform) OR Dr 2202 Merchant Payable
+  // (org-funded, CourtZon book) and Cr 2100 Wallet Liability. Refund = FULL-ONLY
+  // inverse posting (Q10b), mirrored exactly — postAccountingEvent rejects
+  // negative amounts, so refunds are their own event types with swapped sides.
+  //
+  // Platform / community tournament (funding = CourtZon):
+  //   Dr 4300 Tournament Revenue Contra = prize · Cr 2100 Wallet Liability =
+  //   prize. (Reduces platform revenue by the full liability at award.)
+  tournament_prize_award: {
+    debit: ['revenue_contra'],
+    credit: ['wallet_liability'],
+  },
+  // Platform prize FULL clawback while funds remain in wallet custody:
+  //   Dr 2100 Wallet Liability = prize · Cr 4300 Revenue Contra = prize.
+  tournament_prize_refund: {
+    debit: ['wallet_liability'],
+    credit: ['revenue_contra'],
+  },
+  // Organisation-owned tournament, CARD collection — COURTZON BOOK (org NULL):
+  // CourtZon holds the org funds (merchant payable) and credits the winner:
+  //   Dr 2202 Merchant Payable = prize · Cr 2100 Wallet Liability = prize.
+  tournament_org_prize_award: {
+    debit: ['merchant_payable'],
+    credit: ['wallet_liability'],
+  },
+  // Organisation-owned tournament, CARD collection — COURTZON BOOK refund:
+  //   Dr 2100 Wallet Liability = prize · Cr 2202 Merchant Payable = prize.
+  tournament_org_prize_refund: {
+    debit: ['wallet_liability'],
+    credit: ['merchant_payable'],
+  },
+  // Organisation-owned tournament, CARD collection — ORGANIZATION BOOK
+  // (org-scoped), mirroring tournament_org_registration_receivable's revenue
+  // leg: the prize reduces the org's receivable from CourtZon:
+  //   Dr org 4140 Tournament / Event Revenue = prize · Cr org 1161
+  //   Marketplace Receivable = prize. Balanced.
+  tournament_org_prize_award_book: {
+    debit: ['tournament_revenue'],
+    credit: ['marketplace_receivable'],
+  },
+  // Organisation-owned tournament, CARD collection — ORGANIZATION BOOK refund:
+  //   Dr org 1161 Marketplace Receivable = prize · Cr org 4140 Tournament /
+  //   Event Revenue = prize. Balanced.
+  tournament_org_prize_refund_book: {
+    debit: ['marketplace_receivable'],
+    credit: ['tournament_revenue'],
+  },
+  // Organisation-owned tournament, CASH collection — ORGANIZATION BOOK: the org
+  // collected cash directly; CourtZon paid the winner, so the org owes CourtZon
+  // the prize (Cr org MKT-CZ-PAY, later cleared by settlement_org_cash_pay):
+  //   Dr org 4140 Tournament / Event Revenue = prize · Cr org MKT-CZ-PAY
+  //   (CourtZon Payable) = prize. Balanced.
+  tournament_org_cash_prize_award_book: {
+    debit: ['tournament_revenue'],
+    credit: ['courtzon_payable'],
+  },
+  // Organisation-owned tournament, CASH collection — ORGANIZATION BOOK refund:
+  //   Dr org MKT-CZ-PAY (CourtZon Payable) = prize · Cr org 4140 Tournament /
+  //   Event Revenue = prize. Balanced.
+  tournament_org_cash_prize_refund_book: {
+    debit: ['courtzon_payable'],
+    credit: ['tournament_revenue'],
+  },
 };
 
 /** Returns the flat list of concepts with their inherent sides for an event_type */

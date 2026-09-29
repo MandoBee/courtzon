@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { tournamentService } from '../application/tournament.service.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
+import { tournamentPrizeAwardService } from '../application/tournament-prize-award.service.js';
 import {
   CreateTournamentSchema, UpdateTournamentSchema, ListTournamentsQuerySchema,
   RegisterSchema, GenerateGroupsSchema,
@@ -125,6 +126,46 @@ export async function completeTournamentHandler(request: FastifyRequest, reply: 
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(tournament);
+}
+
+// ── G11.5 — Prize Awards ─────────────────────────────────────────────────────
+// Staff-scoped award management. Award creation + refund already record their
+// own audit entries inside the service (tournament.prize.awarded/refunded) — no
+// duplicate audit here.
+
+export async function listPrizeAwardsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const awards = await tournamentPrizeAwardService.listAwards(Number(id));
+  return reply.send(awards);
+}
+
+export async function listAwardablePrizesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const prizes = await tournamentPrizeAwardService.listAwardablePrizes(Number(id));
+  return reply.send(prizes);
+}
+
+export async function grantPrizeAwardHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = (request.body ?? {}) as { prizeId?: number; winnerUserId?: number };
+  if (!body.prizeId || !body.winnerUserId) {
+    return reply.status(400).send({ message: 'prizeId and winnerUserId are required', code: 'VALIDATION_ERROR' });
+  }
+  const award = await tournamentPrizeAwardService.manualGrant(Number(id), {
+    prizeId: Number(body.prizeId),
+    winnerUserId: Number(body.winnerUserId),
+    createdBy: userId,
+  });
+  return reply.status(201).send(award);
+}
+
+export async function refundPrizeAwardHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { awardId } = request.params as any;
+  const body = (request.body ?? {}) as { reason?: string };
+  const award = await tournamentPrizeAwardService.refundAward(Number(awardId), userId, body.reason);
+  return reply.send(award);
 }
 
 export async function cancelTournamentHandler(request: FastifyRequest, reply: FastifyReply) {

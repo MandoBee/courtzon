@@ -652,12 +652,26 @@ const eventGroups: EventGroupConfig[] = [
       // G9-D5-B — recipient resolution for lifecycle/progression events.
       'tournament:stage-completed', 'tournament:match-created', 'tournament:match-progressed',
       'tournament:participant-replaced', 'tournament:withdrawal-resolved',
+      // G11.5 — prize payout lifecycle events (dispach to the winner).
+      'tournament:prize-awarded', 'tournament:prize-refunded',
     ],
     handler: async (eventName, data, categorySlug) => {
       if (eventName === 'tournament:completed') {
         if (data.userId) {
           await dispatchToUser({
             userId: data.userId, eventName, categorySlug, data,
+            relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),
+            action: a(`/tournaments/${data.tournamentId}`),
+          });
+        }
+        return;
+      }
+      if (eventName === 'tournament:prize-awarded' || eventName === 'tournament:prize-refunded') {
+        // G11.5 — deliver to the WINNER (awarded: funds credited; refunded:
+        // full clawback notice). eventName carries the venue; templates localize.
+        if (data.winnerUserId) {
+          await dispatchToUser({
+            userId: data.winnerUserId, eventName, categorySlug, data,
             relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),
             action: a(`/tournaments/${data.tournamentId}`),
           });

@@ -222,6 +222,10 @@ async function bootstrap() {
     registerTournamentPaymentListeners();
     app.log.info('Tournament payment listeners registered');
 
+    const { registerTournamentPrizeListeners } = await import('./modules/tournaments/application/tournament-prize-award.listener.js');
+    registerTournamentPrizeListeners();
+    app.log.info('Tournament prize payout listeners registered');
+
     const { registerAccountingEventListeners, registerAccountingReplaySubscribers, createAccountingReplayWorkers } = await import('./modules/financial/application/accounting-event.listener.js');
     registerAccountingEventListeners();
     registerAccountingReplaySubscribers();

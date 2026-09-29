@@ -180,6 +180,11 @@ const TOURNAMENT_WORKBENCH_KEYS = new Set([
   'tournament.result.manage',
   'tournaments.edit',
   'tournaments.delete',
+  // G11.5 — prize payout management (workbench route guards + actions).
+  'tournaments.awards.view',
+  'tournaments.awards.grant',
+  'tournaments.awards.refund',
+  'tournaments.awards.withdraw',
 ]);
 function canAccessTournamentWorkbench(templateSlug, permissionKey) {
   return templateSlug === 'master-admin' && TOURNAMENT_WORKBENCH_KEYS.has(permissionKey);
@@ -391,6 +396,11 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'settlements.cancel',
   'org.finance.position.view',
   'academies.enroll',
+  // G11.5 — prize payout management for organisation administrators.
+  'tournaments.awards.view',
+  'tournaments.awards.grant',
+  'tournaments.awards.refund',
+  'tournaments.awards.withdraw',
 ]);
 
 const INDEPENDENT_COACH_PATTERNS = [
