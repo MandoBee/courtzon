@@ -93,13 +93,14 @@ export default function WithdrawalQueuePage() {
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="border-b text-xs text-muted">
-              <th className="text-left px-3 py-2">User</th><th className="text-right px-3 py-2">Amount</th><th className="text-center px-3 py-2">Status</th><th className="text-center px-3 py-2">SLA</th><th className="text-left px-3 py-2">Assigned</th><th className="text-left px-3 py-2">Date</th><th className="text-right px-3 py-2">Actions</th>
+              <th className="text-left px-3 py-2">User</th><th className="text-right px-3 py-2">Amount</th><th className="text-center px-3 py-2">Method</th><th className="text-center px-3 py-2">Status</th><th className="text-center px-3 py-2">SLA</th><th className="text-left px-3 py-2">Assigned</th><th className="text-left px-3 py-2">Date</th><th className="text-right px-3 py-2">Actions</th>
             </tr></thead>
             <tbody>
               {data.data.map((w: any) => (
                 <tr key={w.id} className="border-b hover:bg-bg cursor-pointer" onClick={() => setSelected(w)}>
                   <td className="px-3 py-2"><div className="font-medium">{w.full_name}</div><div className="text-[10px] text-muted">{w.email}</div></td>
                   <td className="px-3 py-2 text-right font-medium">{formatPrice(Number(w.amount))}</td>
+                  <td className="px-3 py-2 text-center"><span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 text-gray-700 capitalize">{w.method ? w.method.replace('_', ' ') : 'bank transfer'}</span></td>
                   <td className="px-3 py-2 text-center">{statusBadge(w.status)}</td>
                   <td className="px-3 py-2 text-center">{slaBadge(w.sla_due_at, w.status)}</td>
                   <td className="px-3 py-2 text-xs">
@@ -111,7 +112,7 @@ export default function WithdrawalQueuePage() {
                       {w.status === 'pending' && <Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'under_review' }); }} className="!text-[10px] !px-2 !py-1">Review</Button>}
                       {w.status === 'under_review' && <><Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'approved' }); }} className="!text-[10px] !px-2 !py-1 mr-1">Approve</Button><Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'rejected' }); }} className="!text-[10px] !px-2 !py-1 !text-red-600">Reject</Button></>}
                       {w.status === 'approved' && <Button size="sm" onClick={(e) => { e.stopPropagation(); transitionMutation.mutate({ id: w.id, toStatus: 'processing' }); }} className="!text-[10px] !px-2 !py-1">Process</Button>}
-                      {w.status === 'processing' && <Button size="sm" onClick={(e) => { e.stopPropagation(); const m = prompt('Execution method (Bank Transfer/Cash/Other):'); if (m) { const r = prompt('Reference number (optional):'); transitionMutation.mutate({ id: w.id, toStatus: 'completed', executionMethod: m, referenceNumber: r || undefined }); } }} className="!text-[10px] !px-2 !py-1">Complete</Button>}
+                      {w.status === 'processing' && <Button size="sm" onClick={(e) => { e.stopPropagation(); const isCash = w.method === 'cash'; const label = isCash ? 'Cash payout evidence (reference number):' : 'Bank transfer reference number:'; const r = prompt(label); if (r !== null) { transitionMutation.mutate({ id: w.id, toStatus: 'completed', referenceNumber: r || undefined }); } }} className="!text-[10px] !px-2 !py-1">Complete</Button>}
                       {(w.status === 'pending' || w.status === 'under_review') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); if (confirm('Cancel?')) transitionMutation.mutate({ id: w.id, toStatus: 'cancelled' }); }} className="!text-[10px] !px-2 !py-1 !text-gray-500">Cancel</Button>}
                     </Can>
                   </td>
@@ -133,6 +134,7 @@ export default function WithdrawalQueuePage() {
                 {admins.length > 1 && <select className="ml-2 text-[10px] border rounded px-1" onChange={(e) => { if (e.target.value) assignMutation.mutate({ id: selected.id, assignedTo: Number(e.target.value) }); }} value=""><option value="">Reassign...</option>{admins.filter((a:any) => a.id !== selected.assigned_to).map((a:any) => <option key={a.id} value={a.id}>{a.full_name}</option>)}</select>}
               </div></div>
               <div><label className="text-[10px] text-muted">Amount</label><div className="font-bold">{formatPrice(Number(selected.amount))}</div></div>
+              <div><label className="text-[10px] text-muted">Method</label><div className="capitalize">{selected.method ? selected.method.replace('_', ' ') : 'Bank Transfer'}</div></div>
               <div><label className="text-[10px] text-muted">Status</label><div>{statusBadge(selected.status)}</div></div>
               <div><label className="text-[10px] text-muted">SLA</label><div className="text-xs">{selected.sla_due_at ? new Date(selected.sla_due_at).toLocaleString('en-GB') : '—'} {slaBadge(selected.sla_due_at, selected.status)}</div></div>
               <div><label className="text-[10px] text-muted">Submitted</label><div className="text-xs">{selected.submitted_at ? new Date(selected.submitted_at).toLocaleString('en-GB') : new Date(selected.created_at).toLocaleString('en-GB')}</div></div>
@@ -142,7 +144,8 @@ export default function WithdrawalQueuePage() {
             <div><label className="text-[10px] text-muted">Reason</label><div>{selected.reason || '—'}</div></div>
             {selected.player_notes && <div><label className="text-[10px] text-muted">Player Notes</label><div className="text-xs">{selected.player_notes}</div></div>}
             {selected.resolution_notes && <div><label className="text-[10px] text-muted">Resolution Notes</label><div className="text-xs whitespace-pre-wrap">{selected.resolution_notes}</div></div>}
-            {selected.execution_method && <div><label className="text-[10px] text-muted">Execution</label><div className="text-xs">{selected.execution_method}{selected.reference_number ? ` (Ref: ${selected.reference_number})` : ''}</div></div>}
+            {selected.reference_number && <div><label className="text-[10px] text-muted">Evidence / Reference</label><div className="text-xs">{selected.reference_number}</div></div>}
+            {selected.execution_method && selected.execution_method !== selected.method && <div><label className="text-[10px] text-muted">Execution Annotation</label><div className="text-xs">{selected.execution_method}</div></div>}
           </div>
         </Modal>
       )}

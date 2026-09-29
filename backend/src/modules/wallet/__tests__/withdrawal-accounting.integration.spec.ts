@@ -81,7 +81,7 @@ describe('Wallet Withdrawal Accounting Unification', () => {
 
   it('1. withdrawalService.submit produces canonical withdrawal_request accounting', async () => {
     const { withdrawalService } = await import('../application/withdrawal.service.js');
-    const result = await withdrawalService.submit(TEST_USER, 100, 'test withdrawal');
+    const result = await withdrawalService.submit(TEST_USER, 100, 'test withdrawal', undefined, 'cash');
     const withdrawalId = result.id;
 
     const { c, d } = await waitForPosting(withdrawalId);

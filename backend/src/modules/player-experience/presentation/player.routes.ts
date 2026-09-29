@@ -11,6 +11,10 @@ export async function playerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/players/my/statistics', { preHandler: [requirePermission(['player.statistics.view'])] }, ctrl.getStatisticsHandler);
   app.get('/players/my/qr-profile', { preHandler: [requirePermission(['player.qr.view'])] }, ctrl.getQRProfileHandler);
 
+  // G11.6 — player bank payout details (self-service; same domain as withdraw).
+  app.get('/players/me/financial-details', { preHandler: [authMiddleware] }, ctrl.getMyFinancialDetailsHandler);
+  app.put('/players/me/financial-details', { preHandler: [requirePermission(['financial.withdraw'])] }, ctrl.updateMyFinancialDetailsHandler);
+
   app.get('/players/search', { preHandler: [requirePermission(['player.search'])] }, ctrl.searchPlayersHandler);
   app.get('/players/:id/profile', { preHandler: [requirePermission(['player.profile.view'])] }, ctrl.getPlayerProfileHandler);
 

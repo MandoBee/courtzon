@@ -4153,6 +4153,10 @@ CREATE TABLE `player_profiles` (
   `privacy_show_profile` tinyint(1) NOT NULL DEFAULT '1',
   `privacy_show_stats` tinyint(1) NOT NULL DEFAULT '1',
   `privacy_show_activity` tinyint(1) NOT NULL DEFAULT '1',
+  `bank_account_holder` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `bank_account_number` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `bank_name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `iban` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
   CONSTRAINT `fk_player_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
@@ -6657,6 +6661,7 @@ CREATE TABLE `withdrawal_requests` (
   `amount` decimal(10,2) NOT NULL,
   `reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `player_notes` text COLLATE utf8mb4_unicode_ci,
+  `method` enum('bank_transfer','cash') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'bank_transfer',
   `branch_financial_details_id` int unsigned DEFAULT NULL,
   `status` enum('pending','under_review','approved','rejected','processing','completed','cancelled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
   `admin_notes` text COLLATE utf8mb4_unicode_ci,

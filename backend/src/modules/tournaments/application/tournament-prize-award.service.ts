@@ -244,8 +244,13 @@ class TournamentPrizeAwardService {
       if (!wallet) throw new ConflictError('Winner wallet not found');
       const state = await walletRepository.lockAndGetBalance(wallet.id, conn);
       if (!state) throw new ConflictError('Winner wallet is locked');
-      if (state.balance < amount) {
-        throw new ConflictError('Insufficient wallet balance for full prize clawback');
+      // G11.6 — clawback must respect the canonical AVAILABLE balance
+      // (balance − reserved_balance) so it can NEVER consume funds reserved by an
+      // active withdrawal. The lock (FOR UPDATE) is held for the full transaction;
+      // on insufficient available balance the throw rolls back every write and no
+      // accounting reversal ever occurs. Clawback remains FULL-ONLY.
+      if (state.balance - state.reserved_balance < amount) {
+        throw new ConflictError('Insufficient available balance for full prize clawback (funds may be reserved by an active withdrawal)');
       }
 
       const newBalance = round2(state.balance - amount);

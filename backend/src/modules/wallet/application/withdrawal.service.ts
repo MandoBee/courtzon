@@ -2,6 +2,12 @@ import { getPool } from '../../../database/mysql.js';
 import type mysql from 'mysql2/promise';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
+import { playerProfileRepository } from '../../player-experience/infrastructure/repositories/player-profile.repository.js';
+
+export type WithdrawalMethod = 'bank_transfer' | 'cash';
+
+const WITHDRAWAL_METHODS: WithdrawalMethod[] = ['bank_transfer', 'cash'];
 
 type RowData = mysql.RowDataPacket[];
 
@@ -25,7 +31,8 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 };
 
 export const withdrawalService = {
-  async submit(userId: number, amount: number, reason: string, playerNotes?: string) {
+  async submit(userId: number, amount: number, reason: string, playerNotes?: string, method: WithdrawalMethod = 'bank_transfer') {
+    if (!WITHDRAWAL_METHODS.includes(method)) throw new Error('Invalid withdrawal method');
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
@@ -39,20 +46,34 @@ export const withdrawalService = {
       const available = Number(w.balance) - Number(w.reserved_balance);
       if (amount <= 0) throw new Error('Amount must be positive');
       if (amount > available) throw new Error('Insufficient available balance');
+
+      // G11.6 — Bank Transfer REQUIRES validated player bank payout details.
+      // Plaintext player-scoped storage on player_profiles (repo convention,
+      // mirroring the org branch_financial_details pattern). Reads through the
+      // player-profile repository (single SQL source) inside the same tx.
+      if (method === 'bank_transfer') {
+        const bank = await playerProfileRepository.findBankPayoutDetails(userId, conn);
+        if (!bank || !String(bank.bankAccountHolder ?? '').trim()
+          || !String(bank.bankAccountNumber ?? '').trim()
+          || !String(bank.bankName ?? '').trim()) {
+          throw new Error('Bank payout details are required for a bank transfer withdrawal');
+        }
+      }
+
       await conn.execute(
         'UPDATE user_wallets SET reserved_balance = reserved_balance + ? WHERE id = ?',
         [amount, w.id]
       );
       const [result] = await conn.execute(
-        `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, reason, player_notes, status, submitted_at, sla_due_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', NOW(), DATE_ADD(NOW(), INTERVAL ${slaHours} HOUR))`,
-        [userId, w.id, amount, reason, playerNotes || null]
+        `INSERT INTO withdrawal_requests (user_id, wallet_id, amount, reason, player_notes, method, status, submitted_at, sla_due_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW(), DATE_ADD(NOW(), INTERVAL ${slaHours} HOUR))`,
+        [userId, w.id, amount, reason, playerNotes || null, method]
       ) as any;
       await conn.commit();
       const requestId = result.insertId;
-      try { eventBusV2.emit('wallet:withdrawal-submitted' as any, { withdrawalId: requestId, userId, amount, reason }); } catch {}
-      recordAudit({ actorId: userId, action: 'WITHDRAWAL.SUBMIT', entityType: 'withdrawal_request', entityId: requestId, afterState: { amount, reason, status: 'pending' } });
-      return { id: requestId, status: 'pending', amount, reserved: true };
+      try { eventBusV2.emit('wallet:withdrawal-submitted' as any, { withdrawalId: requestId, userId, amount, reason, method }); } catch {}
+      recordAudit({ actorId: userId, action: 'WITHDRAWAL.SUBMIT', entityType: 'withdrawal_request', entityId: requestId, afterState: { amount, reason, status: 'pending', method } });
+      return { id: requestId, status: 'pending', amount, method, reserved: true };
     } catch (e) { await conn.rollback(); throw e; }
     finally { conn.release(); }
   },
@@ -88,6 +109,19 @@ export const withdrawalService = {
         if (!debitResult || debitResult.affectedRows === 0) {
           throw new Error(`Withdrawal ${requestId}: wallet debit failed — reserved balance insufficient or wallet missing`);
         }
+        // G11.6 — write the ONE wallet_transactions debit history row
+        // (type='withdrawal', reference withdrawal_request/<id>). Idempotent via
+        // uq_wallet_txn_ref(reference_type, reference_id) — a replayed delivery
+        // can never create a second debit row.
+        await walletRepository.createTransaction({
+          walletId: req.wallet_id as number,
+          type: 'withdrawal',
+          amount: Number(req.amount),
+          direction: 'debit',
+          referenceType: 'withdrawal_request',
+          referenceId: Number(requestId),
+          description: `Withdrawal #${requestId} completed (${req.method})`,
+        }, conn);
       }
       if (toStatus === 'rejected' || toStatus === 'cancelled') {
         const [releaseResult] = await conn.execute('UPDATE user_wallets SET reserved_balance = reserved_balance - ? WHERE user_id = ? AND reserved_balance >= ?', [req.amount, req.user_id, req.amount]) as any;
@@ -102,8 +136,8 @@ export const withdrawalService = {
       await conn.execute(`UPDATE withdrawal_requests SET ${updates.join(', ')} WHERE id = ?`, params);
       await conn.commit();
       const eventName = `wallet:withdrawal-${toStatus.replace(/_/g, '-')}`;
-      try { eventBusV2.emit(eventName as any, { withdrawalId: requestId, userId: req.user_id, amount: req.amount, status: toStatus, reason: req.reason }); } catch {}
-      recordAudit({ actorId, action: 'WITHDRAWAL.' + toStatus.toUpperCase(), entityType: 'withdrawal_request', entityId: requestId, afterState: { status: toStatus, ...data } });
+      try { eventBusV2.emit(eventName as any, { withdrawalId: requestId, userId: req.user_id, amount: req.amount, status: toStatus, reason: req.reason, method: req.method }); } catch {}
+      recordAudit({ actorId, action: 'WITHDRAWAL.' + toStatus.toUpperCase(), entityType: 'withdrawal_request', entityId: requestId, afterState: { status: toStatus, method: req.method, ...data } });
       return { id: requestId, status: toStatus };
     } catch (e) { await conn.rollback(); throw e; }
     finally { conn.release(); }

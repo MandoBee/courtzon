@@ -1,5 +1,6 @@
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { playerProfileRepository } from '../infrastructure/repositories/player-profile.repository.js';
 import type {
   PlayerDashboardData, PlayerActivityItem, PlayerStatisticsSummary, PlayerNavSummary,
   PlayerSearchResult, QRProfileData, PlayerFavorite, PlayerDevice, PlayerAchievement,
@@ -352,6 +353,31 @@ class PlayerService {
       { id: 4, key: 'tournament_participant', title: 'Tournament Participant', description: 'Joined your first tournament', icon_url: undefined },
       { id: 5, key: 'academy_graduate', title: 'Academy Graduate', description: 'Completed an academy program', icon_url: undefined },
     ];
+  }
+
+  // ── G11.6 — player bank payout details (player-scoped) ─────────────────────
+  // Stored plaintext on player_profiles per the repo's established convention
+  // (mirrors the org branch_financial_details pattern); zod-validated at the API
+  // and never exposed to other users.
+
+  async getBankPayoutDetails(userId: number) {
+    const details = await playerProfileRepository.findBankPayoutDetails(userId);
+    return {
+      bankAccountHolder: details?.bankAccountHolder ?? null,
+      bankAccountNumber: details?.bankAccountNumber ?? null,
+      bankName: details?.bankName ?? null,
+      iban: details?.iban ?? null,
+      hasValidBankDetails: Boolean(
+        details && String(details.bankAccountHolder ?? '').trim()
+          && String(details.bankAccountNumber ?? '').trim()
+          && String(details.bankName ?? '').trim(),
+      ),
+    };
+  }
+
+  async upsertBankPayoutDetails(userId: number, details: { bankAccountHolder: string; bankAccountNumber: string; bankName: string; iban?: string | null }) {
+    await playerProfileRepository.upsertBankPayoutDetails(userId, details);
+    return this.getBankPayoutDetails(userId);
   }
 }
 

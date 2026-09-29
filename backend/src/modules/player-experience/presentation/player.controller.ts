@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { playerService } from '../application/player.service.js';
 import { SearchQuerySchema } from './player.dto.js';
 import { recordAudit } from '../../audit-log/index.js';
+import { z } from 'zod';
 
 function getUserId(request: FastifyRequest): number { return (request as any).userId; }
 function getUserAgent(request: FastifyRequest): string | undefined {
@@ -51,6 +52,36 @@ export async function getPlayerProfileHandler(request: FastifyRequest, reply: Fa
   const currentUserId = getUserId(request);
   const data = await playerService.getPlayerProfile(Number(id), currentUserId);
   return reply.send(data);
+}
+
+// ── G11.6 — player bank payout details (own data only) ──────────────────────
+const BankPayoutDetailsSchema = z.object({
+  bankAccountHolder: z.string().min(1).max(200),
+  bankAccountNumber: z.string().min(1).max(100),
+  bankName: z.string().min(1).max(200),
+  iban: z.string().max(50).optional().or(z.literal('')).transform((v) => (v ? v : null)),
+});
+
+export async function getMyFinancialDetailsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const data = await playerService.getBankPayoutDetails(userId);
+  return reply.send({ data });
+}
+
+export async function updateMyFinancialDetailsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const body = BankPayoutDetailsSchema.parse(request.body);
+  const data = await playerService.upsertBankPayoutDetails(userId, body);
+  recordAudit({
+    actorId: userId,
+    action: 'PLAYER.BANK_DETAILS_UPSERT',
+    entityType: 'player_profile',
+    entityId: userId,
+    afterState: { bankAccountHolder: body.bankAccountHolder, hasAccount: true },
+    ipAddress: request.ip,
+    userAgent: getUserAgent(request),
+  });
+  return reply.send({ data });
 }
 
 export async function getFavoriteClubsHandler(request: FastifyRequest, reply: FastifyReply) {

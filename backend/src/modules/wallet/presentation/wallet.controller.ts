@@ -44,13 +44,13 @@ export async function withdrawHandler(request: FastifyRequest, reply: FastifyRep
   // reachable funds-loss defect. withdrawalService.submit is the same F-13
   // reservation flow used by POST /withdrawals: it reserves the amount, and
   // reject/cancel release the reservation back to available balance.
-  const result = await withdrawalService.submit(userId, body.amount, body.notes || 'Withdrawal request', body.notes);
+  const result = await withdrawalService.submit(userId, body.amount, body.notes || 'Withdrawal request', body.notes, body.method);
   recordAudit({
     actorId: userId ?? null,
     action: 'WALLET.WITHDRAW',
     entityType: 'wallet',
     entityId: userId,
-    afterState: { amount: body.amount, branchFinancialDetailsId: body.branchFinancialDetailsId },
+    afterState: { amount: body.amount, branchFinancialDetailsId: body.branchFinancialDetailsId, method: body.method },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });

@@ -615,7 +615,7 @@ describe('G11.5 — tournament prize payout', () => {
     awardIds.push(a3);
     await pool.execute<RowData>('UPDATE user_wallets SET balance = balance - 50 WHERE user_id = ?', [WIN3]);
 
-    await expect(prizeService.refundAward(a3, CREATOR, 'drain')).rejects.toThrow(/Insufficient wallet balance/);
+    await expect(prizeService.refundAward(a3, CREATOR, 'drain')).rejects.toThrow(/Insufficient available balance/);
 
     await prizeService.refundAward(a1, CREATOR, 'ok');
     await expect(prizeService.refundAward(a1, CREATOR, 'again')).rejects.toThrow(/credited/);

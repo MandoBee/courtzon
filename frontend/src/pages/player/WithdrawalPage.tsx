@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Modal } from '../../components/ui';
 import { useToast } from '../../components/ui/Toast';
@@ -22,6 +22,13 @@ export default function WithdrawalPage() {
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  // G11.6 — validated payout channel: bank_transfer | cash.
+  const [method, setMethod] = useState<'bank_transfer' | 'cash'>('bank_transfer');
+  // Player bank payout details (required for bank transfer only).
+  const [bankHolder, setBankHolder] = useState('');
+  const [bankNumber, setBankNumber] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [iban, setIban] = useState('');
 
   const { data: wallet, isLoading: walletLoading } = useQuery({
     queryKey: ['wallet', 'me'],
@@ -31,6 +38,24 @@ export default function WithdrawalPage() {
   const { data: withdrawals } = useQuery({
     queryKey: ['my-withdrawals'],
     queryFn: () => api.get('/withdrawals/me').then(r => r.data?.data || []),
+  });
+
+  const { data: bankDetails } = useQuery({
+    queryKey: ['my-financial-details'],
+    queryFn: () => api.get('/players/me/financial-details').then(r => r.data?.data || {}),
+  });
+
+  useEffect(() => {
+    if (bankDetails?.bankAccountHolder) setBankHolder(bankDetails.bankAccountHolder);
+    if (bankDetails?.bankAccountNumber) setBankNumber(bankDetails.bankAccountNumber);
+    if (bankDetails?.bankName) setBankName(bankDetails.bankName);
+    if (bankDetails?.iban) setIban(bankDetails.iban);
+  }, [bankDetails]);
+
+  const saveBankDetailsMutation = useMutation({
+    mutationFn: (data: any) => api.put('/players/me/financial-details', data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['my-financial-details'] }); showToast('Bank details saved!'); },
+    onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const submitMutation = useMutation({
@@ -45,10 +70,11 @@ export default function WithdrawalPage() {
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
-  // F-13: use the backend-exposed canonical available balance (the single
-  // financial authority). The backend computes it as balance − reserved funds;
-  // the frontend must not reconstruct it from wallet.balance/reserved_balance.
+  // F-13: backend-exposed canonical available balance (single financial authority).
   const available = wallet ? Number(wallet.available_balance ?? 0) : 0;
+  const bankDetailsValid = Boolean(bankHolder.trim() && bankNumber.trim() && bankName.trim());
+  const canSubmit = Boolean(amount && reason && (reason !== 'Other' || notes) && Number(amount) <= available
+    && (method === 'cash' || bankDetailsValid));
 
   const statusBadge = (s: string) => {
     const map: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-800', under_review: 'bg-blue-100 text-blue-800', approved: 'bg-green-100 text-green-800', rejected: 'bg-red-100 text-red-800', processing: 'bg-purple-100 text-purple-800', completed: 'bg-green-200 text-green-900', cancelled: 'bg-gray-200 text-gray-700' };
@@ -74,10 +100,11 @@ export default function WithdrawalPage() {
                 <div className="font-medium">{formatPrice(Number(w.amount))}</div>
                 <div className="text-xs text-muted">{w.reason}</div>
                 <div className="text-xs text-muted">{new Date(w.created_at).toLocaleDateString('en-GB')}</div>
+                {w.method && <div className="text-xs mt-0.5 capitalize"><span className="text-muted">Method: </span>{w.method.replace('_', ' ')}</div>}
               </div>
               <div className="text-right">
                 {statusBadge(w.status)}
-                {w.status === 'completed' && w.execution_method && <div className="text-xs text-muted mt-1">{w.execution_method}</div>}
+                {w.status === 'completed' && w.reference_number && <div className="text-xs text-muted mt-1">Ref: {w.reference_number}</div>}
               </div>
             </Card>
           ))}
@@ -92,6 +119,38 @@ export default function WithdrawalPage() {
             <div className="text-xs text-muted mt-1">Available: {formatPrice(available)}</div>
           </div>
           <div>
+            <label className="block text-sm mb-1">Payout Method *</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setMethod('bank_transfer')} className={`flex-1 px-3 py-2 rounded border text-sm ${method === 'bank_transfer' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200'}`}>Bank Transfer</button>
+              <button type="button" onClick={() => setMethod('cash')} className={`flex-1 px-3 py-2 rounded border text-sm ${method === 'cash' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200'}`}>Cash (CourtZon)</button>
+            </div>
+          </div>
+          {method === 'bank_transfer' && (
+            <div className="space-y-3 rounded border border-gray-200 p-3">
+              <div className="text-sm font-medium">Bank Payout Details</div>
+              <div>
+                <label className="block text-sm mb-1">Account Holder *</label>
+                <input value={bankHolder} onChange={e => setBankHolder(e.target.value)} className="w-full px-3 py-2 rounded border text-sm" placeholder="Name on account" />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Account Number *</label>
+                <input value={bankNumber} onChange={e => setBankNumber(e.target.value)} className="w-full px-3 py-2 rounded border text-sm" placeholder="Bank account number" />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Bank Name *</label>
+                <input value={bankName} onChange={e => setBankName(e.target.value)} className="w-full px-3 py-2 rounded border text-sm" placeholder="Bank name" />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">IBAN (optional)</label>
+                <input value={iban} onChange={e => setIban(e.target.value)} className="w-full px-3 py-2 rounded border text-sm" placeholder="IBAN" />
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => saveBankDetailsMutation.mutate({ bankAccountHolder: bankHolder, bankAccountNumber: bankNumber, bankName, iban: iban || undefined })} loading={saveBankDetailsMutation.isPending}>
+                Save Bank Details
+              </Button>
+              {!bankDetailsValid && <div className="text-xs text-red-600">Bank details are required for a bank transfer withdrawal.</div>}
+            </div>
+          )}
+          <div>
             <label className="block text-sm mb-1">Reason *</label>
             <select value={reason} onChange={e => setReason(e.target.value)} className="w-full px-3 py-2 rounded border text-sm">
               <option value="">Select reason...</option>
@@ -103,7 +162,7 @@ export default function WithdrawalPage() {
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full px-3 py-2 rounded border text-sm" placeholder="Additional details..." />
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => submitMutation.mutate({ amount: Number(amount), reason, playerNotes: notes || undefined })} loading={submitMutation.isPending} disabled={!amount || !reason || (reason === 'Other' && !notes) || Number(amount) > available}>Submit</Button>
+            <Button onClick={() => submitMutation.mutate({ amount: Number(amount), reason, playerNotes: notes || undefined, method })} loading={submitMutation.isPending} disabled={!canSubmit}>Submit</Button>
             <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
           </div>
         </div>

@@ -10,6 +10,9 @@ export const WithdrawSchema = z.object({
   amount: z.number().positive(),
   branchFinancialDetailsId: z.number().int().positive().optional(),
   notes: z.string().optional(),
+  // G11.6 — validated payout channel (defaults to bank_transfer for the legacy
+  // endpoint; the canonical POST /withdrawals carries the explicit choice).
+  method: z.enum(['bank_transfer', 'cash']).default('bank_transfer'),
 });
 
 export const TransferSchema = z.object({

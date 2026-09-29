@@ -77,7 +77,7 @@ beforeEach(() => {
 
 describe('Legacy withdraw route â†’ reservation flow (reject/cancel release funds)', () => {
   it('submit reserves the amount (balance unchanged, reserved_balance increased)', async () => {
-    const r = await withdrawalService.submit(5, 100, 'Payout');
+    const r = await withdrawalService.submit(5, 100, 'Payout', undefined, 'cash');
     expect(r.status).toBe('pending');
     expect(r.amount).toBe(100);
     // reserved flag confirms the reservation model is in effect
@@ -85,7 +85,7 @@ describe('Legacy withdraw route â†’ reservation flow (reject/cancel release
   });
 
   it('rejection releases the reservation back to available balance (funds not lost)', async () => {
-    const { id } = await withdrawalService.submit(5, 100, 'Payout');
+    const { id } = await withdrawalService.submit(5, 100, 'Payout', undefined, 'cash');
 
     // chain: pending â†’ under_review â†’ rejected
     await withdrawalService.transition(id, 'under_review', 1);
@@ -94,14 +94,14 @@ describe('Legacy withdraw route â†’ reservation flow (reject/cancel release
   });
 
   it('cancellation releases the reservation (funds not lost)', async () => {
-    const { id } = await withdrawalService.submit(5, 50, 'Payout');
+    const { id } = await withdrawalService.submit(5, 50, 'Payout', undefined, 'cash');
 
     const res = await withdrawalService.transition(id, 'cancelled', 1);
     expect(res.status).toBe('cancelled');
   });
 
   it('completion only settles the reserved amount', async () => {
-    const { id } = await withdrawalService.submit(5, 100, 'Payout');
+    const { id } = await withdrawalService.submit(5, 100, 'Payout', undefined, 'cash');
 
     // chain: pending â†’ under_review â†’ approved â†’ processing â†’ completed
     await withdrawalService.transition(id, 'under_review', 1);
@@ -112,7 +112,7 @@ describe('Legacy withdraw route â†’ reservation flow (reject/cancel release
   });
 
   it('W3: completion with a MISSING reservation throws (no false payout)', async () => {
-    const { id } = await withdrawalService.submit(5, 100, 'Payout');
+    const { id } = await withdrawalService.submit(5, 100, 'Payout', undefined, 'cash');
     await withdrawalService.transition(id, 'under_review', 1);
     await withdrawalService.transition(id, 'approved', 1);
     await withdrawalService.transition(id, 'processing', 1);
@@ -128,7 +128,7 @@ describe('Legacy withdraw route â†’ reservation flow (reject/cancel release
   });
 
   it('W3: rejection with a MISSING reservation throws (no false release)', async () => {
-    const { id } = await withdrawalService.submit(5, 50, 'Payout');
+    const { id } = await withdrawalService.submit(5, 50, 'Payout', undefined, 'cash');
     await withdrawalService.transition(id, 'under_review', 1);
 
     // Reservation release fails (affectedRows 0): the service must not silently

@@ -192,7 +192,14 @@ const eventGroups: EventGroupConfig[] = [
       if (data.userId) {
         const statusLabels: Record<string,string> = { 'under-review': 'Under Review', 'approved': 'Approved', 'rejected': 'Rejected', 'processing': 'Processing', 'completed': 'Completed', 'cancelled': 'Cancelled' };
         const status = eventName.split('-').slice(2).join('-');
-        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data: { ...data, title: `Withdrawal ${statusLabels[status] || status}`, body: `Your withdrawal request of ${data.amount} has been ${statusLabels[status]?.toLowerCase() || status}.` }, relatedEntityType: 'withdrawal', relatedEntityId: String(data.withdrawalId), action: a('/wallet') });
+        // G11.6 — method flags let the localized EN/AR completion template render
+        // distinct "bank transfer completed" vs "cash payout ready" messaging.
+        const methodAware = {
+          ...data,
+          cash: data.method === 'cash',
+          bank: data.method === 'bank_transfer',
+        };
+        await dispatchToUser({ userId: data.userId, eventName, categorySlug, data: { ...methodAware, title: `Withdrawal ${statusLabels[status] || status}`, body: `Your withdrawal request of ${data.amount} has been ${statusLabels[status]?.toLowerCase() || status}.` }, relatedEntityType: 'withdrawal', relatedEntityId: String(data.withdrawalId), action: a('/wallet') });
       }
     },
   },
