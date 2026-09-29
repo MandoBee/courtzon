@@ -592,7 +592,7 @@ export interface TournamentStanding {
 export type PrizeAwardStatus = 'awarded' | 'credited' | 'refunded';
 export type PrizeFundingSource = 'platform' | 'organization';
 export type PrizeCollectionMethod = 'card' | 'cash';
-export type PrizeBindSource = 'standings' | 'manual';
+export type PrizeBindSource = 'standings' | 'manual' | 'bracket';
 
 export interface TournamentPrizeAward {
   id: number;

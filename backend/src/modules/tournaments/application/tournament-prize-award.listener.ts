@@ -44,6 +44,16 @@ export function registerTournamentPrizeListeners(): void {
     try {
       const awards = await tournamentPrizeAwardService.bindAwardsForTournament(tournamentId);
       log.info({ tournamentId, count: awards.length }, 'Prize awards bound from tournament completion');
+      // G11.7 B2 — bracket/knockout tournaments materialize no standings rows;
+      // the bracket engine authoritatively supplies the champion via
+      // winnerId. Bind ONLY placement-1 for the champion (idempotent: hasAward
+      // + unique key prevent double-award, including vs manualGrant).
+      if (data.winnerId) {
+        const bracketAwards = await tournamentPrizeAwardService.bindAwardsForBracket(tournamentId, Number(data.winnerId));
+        if (bracketAwards.length) {
+          log.info({ tournamentId, winnerId: data.winnerId, count: bracketAwards.length }, 'Bracket champion prize bound (placement 1)');
+        }
+      }
     } catch (err) {
       log.error({ err, tournamentId }, 'Failed to bind prize awards from tournament:completed');
     }

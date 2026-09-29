@@ -178,6 +178,90 @@ class TournamentPrizeAwardService {
   }
 
   /**
+   * G11.7 B2 — Bind the champion's placement-1 cash prize for bracket/knockout
+   * tournaments on `tournament:completed`.
+   *
+   * The bracket engine authoritatively provides ONLY the champion
+   * (`tournament:completed.winnerId` = the winning participant's primary
+   * member user id); runner-up / third-place are NOT produced by the engine,
+   * so ONLY placement 1 is ever bound here — placement-2/3 logic is never
+   * invented.
+   *
+   * Reuses the ENTIRE G11.5 pipeline: funding/collection resolvers, platform
+   * CASH eligibility guard, `hasAward` idempotency and the atomic
+   * `createAwardWithCredit` (award → wallet credit → accounting → org
+   * adjustment → audit → `tournament:prize-awarded`). Standings-backed
+   * tournaments are untouched (`bindAwardsForTournament`).
+   */
+  async bindAwardsForBracket(
+    tournamentId: number,
+    winnerUserId: number | null | undefined,
+    opts: { createdBy?: number | null } = {},
+  ): Promise<TournamentPrizeAward[]> {
+    if (!winnerUserId) {
+      log.warn({ tournamentId }, 'Bracket bind skipped — no winnerUserId (missing/invalid champion)');
+      return [];
+    }
+    const t = await tournamentRepository.findById(tournamentId);
+    if (!t || !t.id) {
+      log.warn({ tournamentId }, 'Bracket bind skipped — tournament not found');
+      return [];
+    }
+    if (t.status !== 'completed') {
+      log.info({ tournamentId, status: t.status }, 'Bracket bind skipped — tournament not completed');
+      return [];
+    }
+
+    const fundingSource: PrizeFundingSource = t.organisation_id != null ? 'organization' : 'platform';
+    const collectionMethod = resolveCollectionMethod(t);
+    // Phase-1 eligibility guard (same as standings binding): platform CASH
+    // tournaments have no recognized revenue source — skipped.
+    if (fundingSource === 'platform' && collectionMethod === 'cash') {
+      log.warn({ tournamentId }, 'Bracket bind skipped — platform cash-collected tournament has no recognized revenue source (Phase 1 guard)');
+      return [];
+    }
+
+    // Champion registration (same lookup manualGrant uses for bracket winners).
+    const reg = await tournamentRepository.findRegistrationForTournamentPlayer(tournamentId, winnerUserId);
+    if (!reg || !reg.id) {
+      log.warn({ tournamentId, winnerUserId }, 'Bracket bind skipped — champion registration not found');
+      return [];
+    }
+
+    // Placement-1 cash prize, deterministic first by catalog order.
+    const prize = (
+      await tournamentRepository.findPrizesByTournament(tournamentId)
+    ).filter(
+      (p) => p.placement === 1 && p.prize_type === 'cash' && p.amount != null && Number(p.amount) > 0,
+    ).sort(
+      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || (a.id ?? 0) - (b.id ?? 0),
+    )[0];
+    if (!prize || !prize.id) {
+      log.info({ tournamentId, winnerUserId }, 'Bracket bind skipped — no eligible placement-1 cash prize');
+      return [];
+    }
+
+    if (await tournamentPrizeAwardRepository.hasAward(tournamentId, 1, winnerUserId)) {
+      log.info({ tournamentId, winnerUserId }, 'Bracket bind skipped — placement-1 award already exists (idempotent/manual-granted)');
+      return [];
+    }
+
+    try {
+      const award = await this.createAwardWithCredit(
+        t, prize, 1, reg.id, winnerUserId,
+        fundingSource, collectionMethod, 'bracket', opts.createdBy ?? null,
+      );
+      return award ? [award] : [];
+    } catch (err) {
+      if (isDuplicateKeyError(err)) {
+        log.warn({ tournamentId, winnerUserId }, 'Bracket bind — concurrent duplicate award, skipped');
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  /**
    * G11.5 — Manual grant for a specific winner (bracket/knockout tournaments,
    * or any confirmed winner without standings rows). Runs the identical
    * pipeline as the auto path: award row → wallet credit → org adjustment →
