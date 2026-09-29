@@ -3,7 +3,7 @@ import { participantDrawRepository } from '../infrastructure/repositories/partic
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
-import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, SponsorSupportType } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import {
   evaluateKnockoutCorrectionBlockReason,
@@ -121,6 +121,9 @@ export class TournamentService {
     // Group 2 — validate + normalise structured prizes against the authoritative
     // tournament currency BEFORE persisting anything.
     const prizes = data.prizes ? this.normalisePrizes(data.prizes, effectiveData.currency_code) : [];
+    // Simple sponsors — strict server-side validation (cash amount>0; in-kind
+    // descriptive only): record-only, no GL/accounting in this phase.
+    const sponsors = data.sponsors ? this.normaliseSponsors(data.sponsors) : [];
     // Group 3 — the allowed registration payment methods are normalised
     // (validated + deduped + deterministic order) server-side. Missing config
     // falls back to both methods (backward-compatible default) — an existing
@@ -145,6 +148,9 @@ export class TournamentService {
     });
     if (prizes.length > 0) {
       await tournamentRepository.replacePrizes(id, prizes);
+    }
+    if (sponsors.length > 0) {
+      await tournamentRepository.replaceSponsors(id, sponsors);
     }
     const tournament = await tournamentRepository.findById(id);
     eventBusV2.emit('tournament:created', { tournamentId: id, name: data.name, format: data.format, ...this.tournamentRealtimeScope(tournament!) } as Record<string, unknown>, {
@@ -195,6 +201,52 @@ export class TournamentService {
         amount: null,
         currency_code: null,
         display_order: p.display_order ?? i,
+      };
+    });
+  }
+
+  /**
+   * Simple tournament-level sponsor normalisation — strict, SERVER-authoritative
+   * (never only the frontend):
+   *  * name must be non-empty (trimmed).
+   *  * CASH ⇒ amount is REQUIRED and > 0; description optional.
+   *  * IN-KIND ⇒ amount MUST be absent (rejected, never silently dropped) and
+   *    description REQUIRED (descriptive only — no monetary value is stored).
+   *  * display_order is deterministic (array index) unless explicitly supplied.
+   */
+  private normaliseSponsors(sponsors: TournamentSponsorInput[]): TournamentSponsorInput[] {
+    return sponsors.map((s, i) => {
+      const name = String(s.name ?? '').trim();
+      if (!name) {
+        throw new ConflictError('Sponsor name is required', ErrorCodes.TOURNAMENT_INVALID_SPONSOR);
+      }
+      const type = s.support_type as SponsorSupportType;
+      if (type === 'cash') {
+        const amount = Number(s.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          throw new ConflictError('Cash sponsor requires a positive amount', ErrorCodes.TOURNAMENT_INVALID_SPONSOR);
+        }
+        return {
+          name,
+          support_type: 'cash',
+          amount,
+          description: s.description ?? null,
+          display_order: s.display_order ?? i,
+        };
+      }
+      if (s.amount != null) {
+        throw new ConflictError('In-kind sponsor must not carry an amount', ErrorCodes.TOURNAMENT_INVALID_SPONSOR);
+      }
+      const description = String(s.description ?? '').trim();
+      if (!description) {
+        throw new ConflictError('In-kind sponsor requires a description', ErrorCodes.TOURNAMENT_INVALID_SPONSOR);
+      }
+      return {
+        name,
+        support_type: 'inkind',
+        amount: null,
+        description,
+        display_order: s.display_order ?? i,
       };
     });
   }
@@ -566,6 +618,9 @@ export class TournamentService {
     // Group 2 — attach structured prizes (authoritative when present; the
     // frontend falls back to legacy prize_description when the array is empty).
     t.prizes = await tournamentRepository.findPrizesByTournament(id);
+    // Simple sponsors — attached on the authoritative detail shape (read-only;
+    // record-only, no financial posting in this phase).
+    t.sponsors = await tournamentRepository.findSponsorsByTournament(id);
     // Group 3 — expose the normalised configured allowlist AND the effective
     // methods (config ∩ global policy ∩ org policy) to the player/management
     // surfaces. Wallet can never appear (global policy excludes it).
@@ -822,6 +877,16 @@ export class TournamentService {
         aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
       });
       delete (data as any).prizes;
+    }
+    // Simple sponsors — one authoritative replace-set operation (idempotent:
+    // retries converge to the submitted set; record-only, no GL/accounting).
+    if (data.sponsors !== undefined) {
+      const sponsors = this.normaliseSponsors(data.sponsors);
+      await tournamentRepository.replaceSponsors(id, sponsors);
+      eventBusV2.emit('tournament:sponsors-updated', { tournamentId: id, sponsorCount: sponsors.length, ...this.tournamentRealtimeScope(current) } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+      });
+      delete (data as any).sponsors;
     }
     // Group 3 — registration payment-method configuration is mutable
     // Tournament state. When supplied, normalise (validate + dedupe + order)

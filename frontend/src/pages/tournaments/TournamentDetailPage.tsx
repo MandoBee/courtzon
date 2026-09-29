@@ -9,6 +9,7 @@ import { useToast } from '../../components/ui/Toast';
 import { Can } from '../../permissions/Can';
 import { GeneratedRules } from '../../components/tournaments/GeneratedRules';
 import { PrizeList } from '../../components/tournaments/PrizeList';
+import SponsorList from '../../components/tournaments/SponsorList';
 import EligibilitySummary from '../../components/tournaments/EligibilitySummary';
 import { useTranslation } from '../../i18n';
 import { translateEligibilityError } from '../../lib/tournamentEligibility';
@@ -170,6 +171,7 @@ export default function TournamentDetailPage() {
           </a>
         )}
         <PrizeList prizes={tournament.prizes} legacyDescription={tournament.prize_description} />
+        <SponsorList sponsors={tournament.sponsors} showAmount={false} />
         <EligibilitySummary tournament={tournament} />
         {tournament.rules && (
           <GeneratedRules rules={tournament.rules} title="Tournament Rules" />

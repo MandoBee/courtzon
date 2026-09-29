@@ -9,6 +9,7 @@ const repo = vi.hoisted(() => ({
   findById: vi.fn(),
   findByIdDetailed: vi.fn(),
   findPrizesByTournament: vi.fn(),
+  findSponsorsByTournament: vi.fn(),
   findBracketTypeById: vi.fn(),
   findRegistrationsByTournament: vi.fn(),
   createRegistration: vi.fn(),

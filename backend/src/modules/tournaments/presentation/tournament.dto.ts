@@ -45,6 +45,20 @@ export const TournamentPrizeSchema = z.object({
   display_order: z.number().int().min(0).optional(),
 });
 
+/**
+ * Simple tournament-level sponsor input. CASH sponsors carry an `amount`
+ * (validated > 0 server-side); IN-KIND sponsors carry only a `description` and
+ * must NOT carry an amount. `display_order` is deterministic (array index when
+ * omitted). Server-side validation is authoritative (never only the frontend).
+ */
+export const TournamentSponsorSchema = z.object({
+  name: z.string().min(1).max(200),
+  support_type: z.enum(['cash', 'inkind']),
+  amount: z.number().min(0).optional(),
+  description: z.string().max(1000).optional(),
+  display_order: z.number().int().min(0).optional(),
+});
+
 export const CreateTournamentSchema = z.object({
   bracket_type_id: z.number().int().positive(),
   // G8-C — the ONLY competition formats the draw/match engine can execute are
@@ -81,6 +95,7 @@ export const CreateTournamentSchema = z.object({
   // override the authoritative subscription-derived value.
   prize_description: z.string().optional(),
   prizes: z.array(TournamentPrizeSchema).optional(),
+  sponsors: z.array(TournamentSponsorSchema).optional(),
   is_public: z.boolean().optional().default(true),
   registration_opens: z.string().optional(),
   registration_closes: z.string().optional(),
@@ -129,6 +144,7 @@ export const UpdateTournamentSchema = z.object({
   // Not part of the schema: updates can never change it.
   prize_description: z.string().optional(),
   prizes: z.array(TournamentPrizeSchema).optional(),
+  sponsors: z.array(TournamentSponsorSchema).optional(),
   is_public: z.boolean().optional(),
   registration_opens: z.string().optional(),
   registration_closes: z.string().optional(),

@@ -11,11 +11,14 @@ import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
 import { PrizeEditor, type PrizeEditorRow } from '../../components/tournaments/PrizeEditor';
+import SponsorEditor, { type SponsorEditorRow } from '../../components/tournaments/SponsorEditor';
 import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFormValue } from '../../components/tournaments/EligibilityFormSection';
 
 type TournamentForm = {
   name: string;
   description?: string;
+  category?: string;
+  season?: string;
   bracketTypeId: string;
   sportId?: string;
   matchFormatId?: string;
@@ -83,6 +86,8 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
         .object({
           name: z.string().min(2, t('tournaments.create.validation.name')),
           description: z.string().optional(),
+          category: z.string().optional(),
+          season: z.string().optional(),
           bracketTypeId: z.string().min(1, t('tournaments.create.validation.bracket_type')),
           sportId: z.string().optional(),
           matchFormatId: z.string().optional(),
@@ -199,6 +204,10 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   // Group 2 — structured prizes (multi-row editor).
   const [prizes, setPrizes] = useState<PrizeEditorRow[]>([]);
 
+  // Sponsors — simple tournament-level model (multiple; CASH amount>0,
+  // IN-KIND description only; record-only, no GL in this phase).
+  const [sponsors, setSponsors] = useState<SponsorEditorRow[]>([]);
+
   // Group 3 — allowed registration payment methods (Cash / Card / Both). The
   // backend re-validates; the UI never offers Wallet (globally disabled as a
   // payment method).
@@ -227,9 +236,22 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
         amount: p.prize_type === 'cash' ? p.amount ?? undefined : undefined,
         currency_code: p.prize_type === 'cash' ? undefined : undefined,
       }));
+    // Sponsors — deterministic order; CASH carries amount, IN-KIND carries
+    // description only. The backend re-validates everything server-side.
+    const sponsorPayload = sponsors
+      .map((s, i) => ({
+        name: s.name?.trim(),
+        support_type: s.support_type ?? 'cash',
+        amount: s.support_type === 'cash' ? (s.amount != null ? s.amount : undefined) : undefined,
+        description: s.support_type === 'inkind' ? (s.description?.trim() || undefined) : undefined,
+        display_order: i,
+      }))
+      .filter((s) => s.name);
     createMutation.mutate({
       name: data.name,
       description: data.description || undefined,
+      category: data.category?.trim() || undefined,
+      season: data.season?.trim() || undefined,
       bracket_type_id: Number(data.bracketTypeId),
       sport_id: data.sportId ? Number(data.sportId) : undefined,
       match_format_id: data.matchFormatId ? Number(data.matchFormatId) : undefined,
@@ -265,6 +287,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       level_ids: eligibility.levelIds.length ? eligibility.levelIds : undefined,
       prize_description: data.prizeDescription || undefined,
       prizes: structuredPrizes.length ? structuredPrizes : undefined,
+      sponsors: sponsorPayload.length ? sponsorPayload : undefined,
       organisation_id: isOrg && orgId ? Number(orgId) : undefined,
       // NOTE: `rules` is intentionally NOT sent — the backend derives the
       // Tournament Rules snapshot server-side from the selected Bracket Type +
@@ -288,6 +311,15 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
           <Can permission="tournaments.create.description">
             <Input label={t('tournaments.create.description')} tag="textarea" rows={3} {...register('description')} />
           </Can>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Can permission="tournaments.create.type">
+              <Input label={t('tournaments.create.category', 'Category')} {...register('category')} />
+            </Can>
+            <Can permission="tournaments.create.type">
+              <Input label={t('tournaments.create.season', 'Season')} {...register('season')} />
+            </Can>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <Can permission="tournaments.create.type">
@@ -475,6 +507,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
                 value={prizes}
                 onChange={setPrizes}
               />
+            </div>
+          </Can>
+
+          <Can permission="tournaments.create.prize">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30">
+              <SponsorEditor value={sponsors} onChange={setSponsors} />
             </div>
           </Can>
 

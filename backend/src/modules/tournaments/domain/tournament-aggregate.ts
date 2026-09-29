@@ -303,6 +303,33 @@ export interface TournamentPrizeInput {
   display_order?: number;
 }
 
+// ── Tournament sponsors (simple tournament-level model) ──────────────────────
+// A tournament has ZERO..MANY sponsors. CASH ⇒ amount>0 (revenue of the owning
+// Organisation/creator — never CourtZon; no GL in this phase). IN-KIND ⇒
+// description only, amount MUST stay NULL (no monetary value stored).
+export type SponsorSupportType = 'cash' | 'inkind';
+
+export interface TournamentSponsor {
+  id?: number;
+  public_id?: string | null;
+  tournament_id?: number;
+  name: string;
+  support_type: SponsorSupportType;
+  amount?: number | null;
+  description?: string | null;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TournamentSponsorInput {
+  name: string;
+  support_type: SponsorSupportType;
+  amount?: number | null;
+  description?: string | null;
+  display_order?: number;
+}
+
 export interface Tournament {
   id?: number;
   public_id?: string;
@@ -361,6 +388,9 @@ registration_payment_methods?: string[];
   /** Group 2 — structured prizes: incoming payload (no tournament_id) and, on the
    * authoritative detail shape, resolved `TournamentPrize[]` rows. */
   prizes?: TournamentPrize[] | TournamentPrizeInput[];
+  /** Tournament sponsors: incoming payload (no tournament_id) and, on the
+   * authoritative detail shape, resolved `TournamentSponsor[]` rows. */
+  sponsors?: TournamentSponsor[] | TournamentSponsorInput[];
   status: TournamentStatus;
   is_public?: boolean;
   registration_opens?: string;

@@ -3,7 +3,7 @@ import { withTransaction } from '../../../../database/database.transaction.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { normalizeEligibility, buildDiscoveryAudienceSql, resolveDiscoveryAgeFilter, resolveDiscoveryGenderFilter } from '../../domain/tournament-eligibility.js';
 import { computeStandings } from '../../domain/tournament-aggregate.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput } from '../../domain/tournament-aggregate.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput, TournamentSponsor, TournamentSponsorInput } from '../../domain/tournament-aggregate.js';
 import type { PoolConnection } from 'mysql2/promise';
 
 type RowData = import('mysql2').RowDataPacket[];
@@ -307,7 +307,7 @@ export class TournamentRepository {
 
   async create(data: Partial<Tournament>): Promise<number> {
     const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
@@ -596,6 +596,42 @@ export class TournamentRepository {
           p.amount ?? null,
           p.currency_code ?? null,
           p.display_order ?? i,
+        ],
+      );
+    }
+  }
+
+  // ── Sponsors (tournament_sponsors — simple tournament-level model) ──
+
+  async findSponsorsByTournament(tournamentId: number): Promise<TournamentSponsor[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_sponsors WHERE tournament_id = ? ORDER BY display_order ASC, id ASC',
+      [tournamentId],
+    );
+    return rows as TournamentSponsor[];
+  }
+
+  /**
+   * Replace the full sponsor set of a Tournament in one transaction (delete-all
+   * + insert), so the stored set always matches the submitted order exactly —
+   * the same idempotent strategy used for structured prizes (retries converge
+   * to the submitted set; no duplicate rows can accumulate).
+   */
+  async replaceSponsors(tournamentId: number, sponsors: TournamentSponsorInput[], conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query('DELETE FROM tournament_sponsors WHERE tournament_id = ?', [tournamentId]);
+    for (let i = 0; i < sponsors.length; i++) {
+      const s = sponsors[i];
+      await db.query(
+        `INSERT INTO tournament_sponsors (public_id, tournament_id, name, support_type, amount, description, display_order)
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?)`,
+        [
+          tournamentId,
+          s.name,
+          s.support_type,
+          s.amount ?? null,
+          s.description ?? null,
+          s.display_order ?? i,
         ],
       );
     }

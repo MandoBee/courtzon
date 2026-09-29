@@ -48,6 +48,7 @@ const repo = vi.hoisted(() => ({
   setBracketTypeActive: vi.fn(),
   countBracketTypeReferences: vi.fn(),
   findPrizesByTournament: vi.fn(),
+  findSponsorsByTournament: vi.fn(),
   replacePrizes: vi.fn(),
 }));
 
