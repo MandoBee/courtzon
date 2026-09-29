@@ -168,6 +168,14 @@ export async function refundPrizeAwardHandler(request: FastifyRequest, reply: Fa
   return reply.send(award);
 }
 
+// G11-Tournament Phase 2 — READ-ONLY tournament finances (admin, financial.reconcile).
+export async function getTournamentFinancesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const { tournamentFinancesService } = await import('../../financial/application/tournament-finances.service.js');
+  const report = await tournamentFinancesService.forTournament(Number(id));
+  return reply.send({ data: report });
+}
+
 export async function cancelTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;

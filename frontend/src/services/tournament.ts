@@ -53,6 +53,8 @@ export const tournamentApi = {
   // backend validates it against the tournament's effective allowed methods.
   publicRegister: (tournamentId: number, paymentMethod?: 'cash' | 'card') =>
     api.post(`/tournaments/${tournamentId}/register`, { payment_method: paymentMethod }).then(r => r.data),
+  // Phase 2 — READ-ONLY tournament finances (admin, financial.reconcile).
+  getFinances: (id: number) => api.get<any>(`/admin/tournaments/${id}/finances`).then(r => r.data?.data || r.data),
 };
 
 // Organisation-scoped tournament API — mirrors the admin workbench methods but
@@ -63,6 +65,8 @@ export const orgTournamentApi = {
     api.get<PaginatedResult<any>>(`/org/${orgId}/tournaments`, { params }).then(r => r.data),
   getTournament: (orgId: number | string, id: number) => api.get<any>(`/org/${orgId}/tournaments/${id}`).then(r => r.data),
   createTournament: (orgId: number | string, data: any) => api.post<any>(`/org/${orgId}/tournaments`, data).then(r => r.data),
+  // Phase 2 — READ-ONLY org tournament finances (org financial users).
+  getFinances: (orgId: number | string, id: number) => api.get<any>(`/org/${orgId}/tournaments/${id}/finances`).then(r => r.data?.data || r.data),
   updateTournament: (orgId: number | string, id: number, data: any) => api.put<any>(`/org/${orgId}/tournaments/${id}`, data).then(r => r.data),
   publish: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/publish`).then(r => r.data),
   openRegistration: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/open-reg`).then(r => r.data),

@@ -137,6 +137,16 @@ export async function updateOrgTournamentHandler(request: FastifyRequest, reply:
   return reply.send(tournament);
 }
 
+// G11-Tournament Phase 2 — READ-ONLY org tournament P&L (org financial users).
+export async function getOrgTournamentFinancesHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { tournamentFinancesService } = await import('../../financial/application/tournament-finances.service.js');
+  const report = await tournamentFinancesService.forOrganisation(orgId, Number(id));
+  return reply.send({ data: report });
+}
+
 // ── Lifecycle ──
 
 async function lifecycle(request: FastifyRequest, reply: FastifyReply, action: string) {

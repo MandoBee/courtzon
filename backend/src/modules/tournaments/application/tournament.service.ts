@@ -3,7 +3,7 @@ import { participantDrawRepository } from '../infrastructure/repositories/partic
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
-import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, SponsorSupportType } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import {
   evaluateKnockoutCorrectionBlockReason,
@@ -29,6 +29,7 @@ import { getCommissionRate } from '../../organisations/application/current-subsc
 import { resolveOrganisationCurrency } from '../../organisations/application/organisation-currency.service.js';
 import { branchRepository } from '../../organisations/infrastructure/repositories/branch.repository.js';
 import { isPaymentMethodAllowedInContext } from '../../../shared/constants/payment-methods.js';
+import { composeTournamentDescription } from './tournament-description.service.js';
 
 /**
  * Group 3 — canonical, deterministic order for the Tournament registration
@@ -152,6 +153,12 @@ export class TournamentService {
     if (sponsors.length > 0) {
       await tournamentRepository.replaceSponsors(id, sponsors);
     }
+    // Phase 2 (H2) — auto-generate ONLY when the user supplied no description;
+    // an explicit user description is preserved exactly.
+    if (!(data.description ?? '').trim()) {
+      const generated = await this.generateTournamentDescription(id);
+      await tournamentRepository.update(id, { description: generated });
+    }
     const tournament = await tournamentRepository.findById(id);
     eventBusV2.emit('tournament:created', { tournamentId: id, name: data.name, format: data.format, ...this.tournamentRealtimeScope(tournament!) } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
@@ -249,6 +256,77 @@ export class TournamentService {
         display_order: s.display_order ?? i,
       };
     });
+  }
+
+  /**
+   * Phase 2 — deterministic description regeneration from CURRENT structured
+   * data (H2). Reads through `getById` so eligibility arrays + payment methods
+   * are normalized; the Rules snapshot (`tournaments.rules`) is untouched.
+   * Never assigns monetary value to IN-KIND prizes/sponsors and never includes
+   * cash amounts (keeps the composed text safe for public detail pages).
+   */
+  private async generateTournamentDescription(id: number): Promise<string> {
+    const t = await this.getById(id);
+    const prizes = await tournamentRepository.findPrizesByTournament(id);
+    const sponsors = await tournamentRepository.findSponsorsByTournament(id);
+    const input = await this.buildDescriptionInput(t, prizes, sponsors);
+    return composeTournamentDescription(input);
+  }
+
+  /** Resolve display labels for the composer from authoritative reference tables. */
+  private async buildDescriptionInput(
+    t: Tournament,
+    prizes: TournamentPrize[],
+    sponsors: TournamentSponsor[],
+  ) {
+    const pool = getPool();
+    const one = async (sql: string, params: any[] = []): Promise<any | null> => {
+      const [rows] = await pool.query<any[]>(sql, params);
+      return (rows as any[])[0] ?? null;
+    };
+    const sport = t.sport_id ? await one('SELECT name FROM sports WHERE id = ?', [t.sport_id]) : null;
+    const bracket = t.bracket_type_id ? await one('SELECT name FROM tournament_bracket_types WHERE id = ?', [t.bracket_type_id]) : null;
+    const fmt = t.match_format_id ? await one('SELECT name, format_type FROM sport_formats WHERE id = ?', [t.match_format_id]) : null;
+    const branch = t.branch_id ? await one('SELECT name FROM branches WHERE id = ?', [t.branch_id]) : null;
+
+    const ageLabel = t.age_category_ids?.length
+      ? String((await pool.query<any[]>(
+          `SELECT GROUP_CONCAT(label_en SEPARATOR ', ') AS v FROM tournament_age_categories WHERE id IN (${(t.age_category_ids as number[]).map(() => '?').join(',')})`,
+          t.age_category_ids as number[],
+        ) as any)[0][0]?.v ?? '')
+      : null;
+
+    const levelLabel = t.level_ids?.length
+      ? String((await pool.query<any[]>(
+          `SELECT GROUP_CONCAT(name SEPARATOR ', ') AS v FROM player_levels WHERE id IN (${(t.level_ids as number[]).map(() => '?').join(',')})`,
+          t.level_ids as number[],
+        ) as any)[0][0]?.v ?? '')
+      : null;
+
+    return {
+      name: t.name,
+      sport: sport?.name ?? null,
+      bracketType: bracket?.name ?? null,
+      format: t.format ?? null,
+      matchFormat: fmt?.name ?? null,
+      matchFormatType: fmt?.format_type ?? null,
+      gender: t.gender_categories ?? null,
+      ageLabel: typeof ageLabel === 'string' ? ageLabel : null,
+      levelLabel: typeof levelLabel === 'string' ? levelLabel : null,
+      category: t.category ?? null,
+      season: t.season ?? null,
+      startDate: t.start_date ?? null,
+      endDate: t.end_date ?? null,
+      venueName: branch?.name ?? null,
+      entryFee: t.entry_fee != null ? Number(t.entry_fee) : null,
+      isFree: !t.entry_fee || Number(t.entry_fee) === 0,
+      currency: t.currency_code ?? null,
+      minParticipants: t.min_participants != null ? Number(t.min_participants) : null,
+      maxParticipants: t.max_participants != null ? Number(t.max_participants) : null,
+      maxTeams: t.max_teams != null ? Number(t.max_teams) : null,
+      prizes: (prizes ?? []).map((p) => ({ placement: p.placement ?? null, type: p.prize_type, description: p.description ?? null })),
+      sponsors: (sponsors ?? []).map((s) => ({ name: s.name, type: s.support_type, description: s.description ?? null })),
+    };
   }
 
   /**
@@ -842,6 +920,10 @@ export class TournamentService {
 
   async update(id: number, data: Partial<Tournament>): Promise<Tournament> {
     const current = await this.getById(id);
+    // Phase 2 (H2) — the description is NEVER silently overwritten. Explicit
+    // regeneration is an opt-in flag; it is stripped before repository.update.
+    const regenerateDescription = (data as any).regenerate_description === true;
+    delete (data as any).regenerate_description;
     // Group 7-B — eligibility LOCK: once the first registration exists the
     // eligibility settings (age mode/categories, gender categories, level ids)
     // are immutable. A no-op (same canonical values) update is allowed; a real
@@ -1001,6 +1083,11 @@ export class TournamentService {
       }
     }
     await tournamentRepository.update(id, data);
+    // Phase 2 (H2) — explicit regeneration only; deterministic from current data.
+    if (regenerateDescription) {
+      const generated = await this.generateTournamentDescription(id);
+      await tournamentRepository.update(id, { description: generated });
+    }
     // G7-E — eligibility-only edits have no other lifecycle event, so a generic
     // tournament.updated is emitted (scoped to tenants/operators) so connected
     // detail screens reconcile instead of showing stale eligibility.

@@ -56,6 +56,9 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/tournaments/:id/awards', { preHandler: [requirePermission(['tournaments.awards.grant'])] }, ctrl.grantPrizeAwardHandler);
   app.post('/admin/tournaments/awards/:awardId/refund', { preHandler: [requirePermission(['tournaments.awards.refund'])] }, ctrl.refundPrizeAwardHandler);
 
+  // G11-Tournament Phase 2 — READ-ONLY tournament finances (admin).
+  app.get('/admin/tournaments/:id/finances', { preHandler: [requirePermission(['financial.reconcile'])] }, ctrl.getTournamentFinancesHandler);
+
   app.get('/admin/tournaments', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listTournamentsHandler);
   app.post('/admin/tournaments', { preHandler: [requirePermission(['tournament.create'])] }, ctrl.createTournamentHandler);
   app.get('/admin/tournaments/:id', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getTournamentHandler);

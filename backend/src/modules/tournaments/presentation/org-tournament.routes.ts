@@ -49,6 +49,12 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
     ctrl.getOrgTournamentHandler,
   );
+  // G11-Tournament Phase 2 — READ-ONLY org tournament finances (financial users).
+  app.get(
+    '/org/:orgId/tournaments/:id/finances',
+    { preHandler: [requireOrgScopedPermission('org.finance.position.view')] },
+    ctrl.getOrgTournamentFinancesHandler,
+  );
   app.put(
     '/org/:orgId/tournaments/:id',
     { preHandler: [requireOrgScopedPermission('org.tournaments.update')] },

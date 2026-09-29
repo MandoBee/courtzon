@@ -145,6 +145,9 @@ export const UpdateTournamentSchema = z.object({
   prize_description: z.string().optional(),
   prizes: z.array(TournamentPrizeSchema).optional(),
   sponsors: z.array(TournamentSponsorSchema).optional(),
+  // Phase 2 (H2) — explicit opt-in to deterministically regenerate the
+  // description from current structured data. Never silent.
+  regenerate_description: z.boolean().optional(),
   is_public: z.boolean().optional(),
   registration_opens: z.string().optional(),
   registration_closes: z.string().optional(),

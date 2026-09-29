@@ -86,6 +86,13 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     onError: (e: any) => showToast(getErrorMessage(e) || 'Rejection failed', 'error'),
   });
 
+  // Phase 2 — READ-ONLY tournament finances (authorized admin/org financial users only).
+  const { data: finances } = useQuery({
+    queryKey: ['tournament-finances', isOrg ? `org-${orgId}` : 'admin', tournamentId],
+    queryFn: async () => (isOrg && orgId ? orgTournamentApi.getFinances(orgId, tournamentId) : tournamentApi.getFinances(tournamentId)),
+    enabled: !!tournamentId,
+  });
+
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerPlayerId, setRegisterPlayerId] = useState('');
@@ -285,6 +292,29 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
             </div>
             <div className="md:col-span-2">
               <SponsorList sponsors={tournament?.sponsors} showAmount />
+            </div>
+            <div className="md:col-span-2">
+              <Can permission={isOrg ? 'org.finance.position.view' : 'financial.reconcile'}>
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3">
+                  <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.finances', 'Tournament Finances')}</h3>
+                  {finances ? (
+                    <>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Registration revenue</p><p className="font-medium">{finances?.revenue?.registration?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Sponsor cash</p><p className="font-medium">{finances?.revenue?.sponsorCash?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Total revenue</p><p className="font-medium">{finances?.revenue?.total?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Cash prize expense</p><p className="font-medium">{finances?.expenses?.cashPrizes?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Net result</p><p className={`font-medium ${Number(finances?.net) >= 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-error)]'}`}>{finances?.net?.toFixed?.(2) ?? '—'}</p></div>
+                      </div>
+                      <p className="text-xs text-[var(--color-text-muted)]">
+                        Court rental, balls, equipment and other expenses are not financially represented and are therefore excluded.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-[var(--color-text-muted)]">Loading finances…</p>
+                  )}
+                </div>
+              </Can>
             </div>
           </div>
         )}
