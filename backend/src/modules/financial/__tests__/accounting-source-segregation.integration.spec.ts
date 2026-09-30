@@ -141,10 +141,13 @@ describe('Accounting source segregation — mapping resolves by economic source'
     expect(await codeOf(court.find((m: any) => m.concept === 'merchant_payable'))).toBe('2202');
     // Tournament commission is its OWN account: 4192 — never booking 4110 or marketplace 4160.
     expect(await codeOf(court.find((m: any) => m.concept === 'tournament_commission'))).toBe('4192');
-    // Platform tournament: revenue lands on the DEDICATED 4140, never 4100 / 4170.
-    const plat = await engine.accountingEngineService.resolveMapping('tournament_platform_card_payment', null);
-    const [revenueCoa] = await pool.execute<RowData>(
-      `SELECT code FROM chart_of_accounts WHERE id = ?`, [(plat.find((m: any) => m.concept === 'tournament_revenue') as any).accountId]);
-    expect((revenueCoa as any[])[0].code).toBe('4140');
+    // G11 Phase 3 — the platform tournament event is GONE: the CourtZon platform
+    // never recognises a tournament fee as its own revenue, so nothing resolves
+    // to a "platform tournament" mapping any more. The org-owned 4140
+    // Tournament / Event Revenue account remains the ONLY revenue target, and it
+    // is provisioned per-org via ORG_BOOK_EVENTS (org book) rather than a global
+    // platform clearing mapping.
+    await expect(engine.accountingEngineService.resolveMapping('tournament_platform_card_payment', null))
+      .rejects.toThrow();
   });
 });

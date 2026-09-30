@@ -43,7 +43,7 @@ beforeEach(() => {
 
 describe('Tournament admin detail contract (UAT crash regression)', () => {
   it('getTournamentHandler returns the ENRICHED detail shape via getByIdDetailed', async () => {
-    service.getByIdDetailed.mockResolvedValue({ id: 1, name: 'Padel Test Tournament', sport_name: 'Padel', max_players: 16, type: 'platform' });
+    service.getByIdDetailed.mockResolvedValue({ id: 1, name: 'Padel Test Tournament', sport_name: 'Padel', max_players: 16, type: 'community' });
     const reply = res();
     await ctrl.getTournamentHandler(req({ params: { id: '1' } }), reply);
     expect(service.getByIdDetailed).toHaveBeenCalledWith(1);

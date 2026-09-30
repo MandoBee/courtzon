@@ -60,7 +60,15 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/tournaments/:id/finances', { preHandler: [requirePermission(['financial.reconcile'])] }, ctrl.getTournamentFinancesHandler);
 
   app.get('/admin/tournaments', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listTournamentsHandler);
-  app.post('/admin/tournaments', { preHandler: [requirePermission(['tournament.create'])] }, ctrl.createTournamentHandler);
+  // G11 Phase 3 — `POST /admin/tournaments` is REMOVED. It was an unsafe global
+  // creation path: the body's `organisation_id` was trusted with NO ownership
+  // check, so it could create an org-less ("platform") tournament — CourtZon
+  // owning a competition, which the locked product rule forbids. Super-admins now
+  // create on behalf of a selected organisation through the SAME organisation-
+  // scoped capability the org portal uses:
+  //     POST /org/:orgId/tournaments → requireOrgScopedPermission('org.tournaments.create')
+  // which forces `organisation_id` from `:orgId` and can never produce an org-less
+  // tournament. There is no client payload that can create one.
   app.get('/admin/tournaments/:id', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getTournamentHandler);
   app.put('/admin/tournaments/:id', { preHandler: [requirePermission(['tournament.update'])] }, ctrl.updateTournamentHandler);
 

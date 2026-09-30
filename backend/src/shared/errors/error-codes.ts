@@ -156,6 +156,12 @@ export const ErrorCodes = {
   TOURNAMENT_FORMAT_NOT_SUPPORTED: 'TOURNAMENT_FORMAT_NOT_SUPPORTED',
   /** G8-D — a tournament cannot be completed while required matches are unresolved. */
   TOURNAMENT_MATCHES_UNRESOLVED: 'TOURNAMENT_MATCHES_UNRESOLVED',
+  /**
+   * G11 Phase 3 — a tournament must be owned by an ORGANISATION. The CourtZon
+   * platform never creates, owns, funds, or recognises a tournament, so an
+   * org-less create is rejected (422) at the application boundary.
+   */
+  TOURNAMENT_ORGANISATION_REQUIRED: 'TOURNAMENT_ORGANISATION_REQUIRED',
 
   // ── Group 7 — pair/team members + player replacement ──
   TOURNAMENT_PARTICIPANT_TYPE_INVALID: 'TOURNAMENT_PARTICIPANT_TYPE_INVALID',

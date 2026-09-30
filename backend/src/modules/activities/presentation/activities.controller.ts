@@ -7,7 +7,9 @@ import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { isPlatformAdmin } from '../../../shared/middleware/org-access.js';
 import {
-  CreateTournamentSchema,
+  // G11 Phase 3 — `CreateTournamentSchema` import removed with the legacy
+  // `POST /tournaments` route (creation is organisation-scoped in the
+  // tournaments module).
   CreateAcademySchema, CreateCurriculumSchema, EnrollPlayerSchema,
   CreateAcademySessionSchema, MarkAttendanceSchema, CreateEvaluationSchema,
   CreateCoachProfileSchema, UpsertOrgAgreementSchema, CreateCoachReviewSchema,
@@ -31,12 +33,9 @@ export async function getTournamentHandler(request: FastifyRequest, reply: Fasti
   return reply.send(t);
 }
 
-export async function createTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const body = CreateTournamentSchema.parse(request.body);
-  const userId = (request as any).userId;
-  const t = await svc.createTournament(userId, body);
-  return reply.status(201).send(t);
-}
+// G11 Phase 3 — `createTournamentHandler` is REMOVED along with `POST /tournaments`.
+// See the route file for the full rationale (no organisation enforcement; the
+// INSERT omitted `tournament_type` so the column DEFAULT wrote `platform`).
 
 // ── Academies ──
 export async function listAcademiesHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -325,17 +324,12 @@ export async function listAvailableBranchesHandler(request: FastifyRequest, repl
   return reply.send({ data: branches });
 }
 
-export async function updateTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const t = await svc.updateTournament(Number(id), request.body);
-  return reply.send(t);
-}
-
-export async function deleteTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  await svc.deleteTournament(Number(id));
-  return reply.status(204).send();
-}
+// G11 Phase 3 — the legacy tournament create/update/delete handlers are REMOVED
+// along with their routes (`POST /tournaments`, `PUT /tournaments/:id`,
+// `DELETE /tournaments/:id`). The only authoritative tournament creation path is
+// the organisation-scoped `POST /org/:orgId/tournaments`. Admin tournament
+// management (lifecycle, participants, matches, prizes) lives exclusively in the
+// tournaments module (`/admin/tournaments/*`), which validates every payload.
 
 // ── Admin: Academies ──
 export async function adminListAcademiesHandler(request: FastifyRequest, reply: FastifyReply) {

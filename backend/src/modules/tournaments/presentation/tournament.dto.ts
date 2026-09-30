@@ -78,7 +78,6 @@ export const CreateTournamentSchema = z.object({
   name: z.string().min(1).max(200),
   code: z.string().min(1).max(50).optional(),
   description: z.string().optional(),
-  tournament_type: z.enum(['platform', 'community']).optional().default('platform'),
   max_participants: z.number().int().min(1),
   max_teams: z.number().int().min(0).optional(),
   min_participants: z.number().int().min(1).optional().default(2),
@@ -112,8 +111,13 @@ export const CreateTournamentSchema = z.object({
   is_featured: z.boolean().optional().default(false),
   image_url: z.string().optional(),
   ...TournamentEligibilityInputSchema.shape,
-  organisation_id: z.number().int().positive().optional(),
   branch_id: z.number().int().positive().optional(),
+  // G11 Phase 3 — `organisation_id` and `tournament_type` are NOT client-settable.
+  //   * organisation_id is injected server-side by the organisation-scoped
+  //     controller (`POST /org/:orgId/tournaments` forces it from `:orgId`), so no
+  //     payload can create an org-less tournament.
+  //   * tournament_type is derived server-side and is always `community` — the
+  //     CourtZon platform never owns a tournament, so `platform` no longer exists.
 });
 
 export const UpdateTournamentSchema = z.object({
@@ -129,7 +133,10 @@ export const UpdateTournamentSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   code: z.string().min(1).max(50).optional(),
   description: z.string().optional(),
-  tournament_type: z.enum(['platform', 'community']).optional(),
+  // G11 Phase 3 — neither `tournament_type` nor `organisation_id` is updatable.
+  //   A tournament's competition type and its owning organisation are fixed at
+  //   creation; a client can never re-label an org tournament as a platform
+  //   tournament, nor move a tournament between organisations.
   max_participants: z.number().int().min(1).optional(),
   max_teams: z.number().int().min(0).optional(),
   min_participants: z.number().int().min(1).optional(),
@@ -159,7 +166,6 @@ export const UpdateTournamentSchema = z.object({
   is_featured: z.boolean().optional(),
   image_url: z.string().optional(),
   ...TournamentEligibilityInputSchema.shape,
-  organisation_id: z.number().int().positive().optional(),
   branch_id: z.number().int().positive().optional(),
 });
 

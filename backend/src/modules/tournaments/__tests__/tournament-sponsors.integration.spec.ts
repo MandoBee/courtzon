@@ -70,6 +70,10 @@ async function createOrgTournament(orgId: number, overrides: Record<string, unkn
     max_participants: 16,
     min_participants: 2,
     entry_fee: 0,
+    // G11 Phase 3 — the owning organisation is injected server-side (exactly
+    // like the org-scoped controller `POST /org/:orgId/tournaments` does);
+    // the service refuses to create an org-less tournament.
+    organisation_id: orgId,
     price_type: 'FREE',
     currency_code: 'EGP',
     start_date: '2026-12-01',

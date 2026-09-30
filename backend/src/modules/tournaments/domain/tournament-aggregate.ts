@@ -620,7 +620,9 @@ export interface TournamentStanding {
 // clawback while funds remain in wallet custody — post-payout recovery and
 // partial clawback are OUT OF SCOPE by locked decision).
 export type PrizeAwardStatus = 'awarded' | 'credited' | 'refunded';
-export type PrizeFundingSource = 'platform' | 'organization';
+// G11 Phase 3 — prize funding is ORGANIZATION-ONLY. The CourtZon platform never
+// funds a prize, so `platform` is no longer a possible funding source.
+export type PrizeFundingSource = 'organization';
 export type PrizeCollectionMethod = 'card' | 'cash';
 export type PrizeBindSource = 'standings' | 'manual' | 'bracket';
 

@@ -306,15 +306,28 @@ export class TournamentRepository {
   }
 
   async create(data: Partial<Tournament>): Promise<number> {
+    // G11 Phase 3 (LOCKED PRODUCT RULE) — a tournament is ALWAYS owned by an
+    // ORGANISATION. This repository invariant guard is defence in depth behind
+    // `TournamentService.create()`: no caller may persist an org-less tournament,
+    // and `platform` is no longer a valid `tournament_type` (migration 183
+    // narrowed the column enum to `community` only).
+    if (data.organisation_id == null) {
+      throw new Error('Tournament repository invariant violated: organisation_id is required — CourtZon never owns a tournament');
+    }
+    if (data.tournament_type != null && data.tournament_type !== 'community') {
+      throw new Error(`Tournament repository invariant violated: unsupported tournament_type "${data.tournament_type}" — expected "community"`);
+    }
     const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids)
                  VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
-      data.creator_id, data.organisation_id ?? null, data.branch_id ?? null,
+      data.creator_id, data.organisation_id, data.branch_id ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
       data.sport_id ?? null, data.match_format_id ?? null, data.rule_set_id ?? null,
       data.draw_seed ?? null,
       data.name, data.code ?? null, data.description ?? null,
-      data.tournament_type ?? 'platform',
+      // G11 Phase 3 — `community` is the only valid type; the service always
+      // supplies it and the DB default is now `community` (never `platform`).
+      data.tournament_type ?? 'community',
       data.max_participants, data.max_teams ?? null, data.min_participants ?? 2,
       data.entry_fee ?? 0, data.registration_fee ?? 0,
       data.currency_code, data.price_type ?? null,
@@ -339,8 +352,12 @@ export class TournamentRepository {
     const fields: string[] = [];
     const params: any[] = [];
     const updatable: (keyof Tournament)[] = [
-      'organisation_id', 'branch_id', 'bracket_type_id', 'format', 'category', 'season',
-      'sport_id', 'match_format_id', 'rule_set_id', 'name', 'code', 'description', 'tournament_type',
+      // G11 Phase 3 — `organisation_id` and `tournament_type` are deliberately NOT
+      // updatable. A tournament's owning organisation and its competition type are
+      // fixed at creation: a tournament can never be moved between organisations
+      // nor re-labelled as a platform tournament.
+      'branch_id', 'bracket_type_id', 'format', 'category', 'season',
+      'sport_id', 'match_format_id', 'rule_set_id', 'name', 'code', 'description',
       'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
       'currency_code', 'price_type', 'registration_payment_methods', 'waitlist_enabled', 'prize_description',
       'status', 'is_public', 'registration_opens', 'registration_closes',

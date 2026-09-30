@@ -51,9 +51,10 @@ interface Props {
 
 /**
  * ONE SHARED tournament list screen. The same component renders in the Super
- * Admin workbench (`mode="admin"`, platform-wide endpoint) and the Org Admin
- * portal (`mode="org"` + `orgId`, tenant-scoped endpoint). Only the API,
- * permissions and navigation change; the business logic stays single-source.
+ * Admin workbench (`mode="admin"`, management list — G11 Phase 3: creation is
+ * organisation-only, so the workbench list has no create-anywhere path) and the
+ * Org Admin portal (`mode="org"` + `orgId`, tenant-scoped endpoint). Only the
+ * API, permissions and navigation change; the business logic stays single-source.
  */
 export default function TournamentListPage({ mode = 'admin', orgId }: Props) {
   const { t } = useTranslation();

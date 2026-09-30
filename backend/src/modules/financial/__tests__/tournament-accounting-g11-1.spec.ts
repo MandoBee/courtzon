@@ -26,7 +26,12 @@ const be = (p: string) => readFileSync(resolve(ROOT, 'backend', p), 'utf8');
 // G11.1 approved model (entry_fee 1000, commission_rate 10):
 //   CourtZon: Dr 1100 1000 · Cr 2202 900 · Cr 4192 100
 //   Org book: Dr 1161 900 · Dr MKT-COMM-EXP 100 · Cr 4140 1000
-//   Platform: Dr 1100 1000 · Cr 4140 1000 · No org journal · No tax (2300).
+//   No tax (2300).
+//
+// G11 Phase 3 — the CourtZon PLATFORM never owns or recognises a tournament, so
+// the former "platform" topology (Dr 1100 1000 · Cr 4140 1000, no payable, no
+// commission, no org journal) is REMOVED. The `tournament_platform_card_payment`
+// concept no longer exists.
 
 describe('G11.1 — tournament card registration accounting contract', () => {
   it('EVENT_CONCEPTS defines the org-owned CourtZon custody event (Dr clearing / Cr payable + tournament commission)', () => {
@@ -36,11 +41,15 @@ describe('G11.1 — tournament card registration accounting contract', () => {
     });
   });
 
-  it('EVENT_CONCEPTS defines the platform event (Dr clearing / Cr tournament revenue), no payable/commission/tax', () => {
-    expect(EVENT_CONCEPTS.tournament_platform_card_payment).toEqual({
-      debit: ['payment_clearing'],
-      credit: ['tournament_revenue'],
-    });
+  it('G11 Phase 3 — the platform tournament event concept is GONE (the platform never recognises a tournament fee)', () => {
+    // LOCKED PRODUCT RULE: the CourtZon platform must not create, own, fund, or
+    // financially recognise a tournament. The org-less custody topology is
+    // therefore not merely unused — it is deleted, so nothing can post against it.
+    expect(EVENT_CONCEPTS).not.toHaveProperty('tournament_platform_card_payment');
+    expect(CONCEPT_ACCOUNT_CODE_DEFAULTS).not.toHaveProperty('tournament_platform_card_payment');
+    // The concept resolver is fail-closed: an unknown event_type throws, so a
+    // stale caller cannot silently resolve to an empty (unbalanced) posting.
+    expect(() => getEventConcepts('tournament_platform_card_payment' as never)).toThrow(/Unknown event_type/);
   });
 
   it('EVENT_CONCEPTS defines the org book event (Dr receivable + commission expense / Cr tournament revenue)', () => {
@@ -51,7 +60,7 @@ describe('G11.1 — tournament card registration accounting contract', () => {
   });
 
   it('the tournament event concept sets are complete under the code defaults (no DB mapping rows needed)', () => {
-    for (const eventType of ['tournament_registration_card_payment', 'tournament_platform_card_payment']) {
+    for (const eventType of ['tournament_registration_card_payment', 'tournament_cash_commission_receivable']) {
       const required = getEventConcepts(eventType).map((c) => c.concept);
       expect(required.length, eventType).toBeGreaterThan(0);
       const defaults = CONCEPT_ACCOUNT_CODE_DEFAULTS[eventType];
@@ -67,10 +76,10 @@ describe('G11.1 — tournament card registration accounting contract', () => {
     expect(d.tournament_commission).toBe('4192');
   });
 
-  it('the platform event resolves to 1100 / 4140 (existing global accounts)', () => {
-    const d = CONCEPT_ACCOUNT_CODE_DEFAULTS.tournament_platform_card_payment!;
-    expect(d.payment_clearing).toBe('1100');
-    expect(d.tournament_revenue).toBe('4140');
+  it('the CARD cash/commission sibling event (G11.2) still resolves to 2202 / 4192', () => {
+    const d = CONCEPT_ACCOUNT_CODE_DEFAULTS.tournament_cash_commission_receivable!;
+    expect(d.merchant_payable).toBe('2202');
+    expect(d.tournament_commission).toBe('4192');
   });
 
   it('the org book event is in ORG_BOOK_EVENTS (idempotent per-org provisioning, like booking/academy)', () => {
@@ -86,7 +95,7 @@ describe('G11.1 — tournament card registration accounting contract', () => {
   });
 
   it('NO tournament event carries a tax concept (G11.1 tax = 0 → no 2300 leg)', () => {
-    for (const eventType of ['tournament_registration_card_payment', 'tournament_platform_card_payment', 'tournament_org_registration_receivable']) {
+    for (const eventType of ['tournament_registration_card_payment', 'tournament_cash_commission_receivable', 'tournament_org_registration_receivable']) {
       const concepts = getEventConcepts(eventType).map((c) => c.concept);
       expect(concepts, eventType).not.toContain('tax_liability');
     }
@@ -99,7 +108,20 @@ describe('G11.1 — tournament card registration accounting contract', () => {
     // The tournament branch must not fall through to the generic card_payment.
     expect(listener).toContain("'tournament_registration_card_payment', 'tournament', paymentId, null,");
     expect(listener).toContain("'tournament_org_registration_receivable', 'tournament', paymentId, orgId,");
-    expect(listener).toContain("'tournament_platform_card_payment', 'tournament', paymentId, null,");
+    // G11 Phase 3 — the platform custody posting is gone, and an org-less
+    // (LEGACY) tournament fails closed instead of being recognised as revenue.
+    expect(listener).not.toContain("'tournament_platform_card_payment'");
+  });
+
+  it('G11 Phase 3 — the CARD branch fails closed for an org-less (LEGACY) tournament instead of recognising platform revenue', () => {
+    const listener = be('src/modules/financial/application/accounting-event.listener.ts');
+    const helper = listener.slice(listener.indexOf('async function postTournamentCardPaymentAccounting'));
+    // The org-less guard must run BEFORE any posting is made.
+    const guardIdx = helper.indexOf('if (orgId == null) {');
+    expect(guardIdx).toBeGreaterThan(-1);
+    const firstPost = helper.indexOf('await postAccountingEvent(');
+    expect(guardIdx, 'org-less guard must precede the first posting').toBeLessThan(firstPost);
+    expect(helper.slice(guardIdx, guardIdx + 700)).toContain('return;');
   });
 
   it('source segregation — tournament postings use source_type="tournament", source_id=paymentId, never "booking"', () => {
@@ -133,7 +155,7 @@ describe('G11.1 — tournament card registration accounting contract', () => {
     expect(helper).not.toContain('registration_fee');
   });
 
-  it('the CARD helper keeps its non-card guard, and CASH is routed to the dedicated G11.2 cash function (org cash posts; platform cash fail-closed)', () => {
+  it('the CARD helper keeps its non-card guard, and CASH is routed to the dedicated G11.2 cash function (org cash posts; org-less cash fail-closed)', () => {
     const listener = be('src/modules/financial/application/accounting-event.listener.ts');
     const card = listener.slice(listener.indexOf('async function postTournamentCardPaymentAccounting'));
     // The card helper itself still post nothing for anything but card.
@@ -143,7 +165,10 @@ describe('G11.1 — tournament card registration accounting contract', () => {
     expect(listener).toContain("if (paymentMethod === 'cash') {");
     expect(listener).toContain('await postTournamentCashAccounting(amount, currency, data);');
     expect(listener).toContain('async function postTournamentCashAccounting(');
-    // Platform/community CASH is fail-closed: no custody model → no posting.
-    expect(listener).toContain('Platform/community tournament CASH — no custody model; no accounting posted');
+    // G11 Phase 3 — an org-less (LEGACY) tournament has no custody model →
+    // fail closed, no posting. Organisation-owned cash still posts.
+    expect(listener).toContain('Org-less tournament CASH');
+    expect(listener).toContain('no custody model; no accounting posted (fail-closed)');
+    expect(listener).toContain("'tournament_org_cash_payment', 'tournament', paymentId, orgId,");
   });
 });

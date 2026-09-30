@@ -109,14 +109,17 @@ const totalFor = (sourceId: number, eventTypes: string[]) =>
 // ── fakes ────────────────────────────────────────────────────────────────────
 
 async function createTournament(opts: { bracket?: number; org: number | null; status?: string; paymentMethods?: string | null; name?: string }) {
+  // G11 Phase 3 — `tournament_type` is narrowed to 'community' only. `org` may
+  // be null ONLY to simulate a LEGACY pre-Phase-3 row; creation is
+  // organisation-only.
   const [res] = await pool.execute<RowData>(
     `INSERT INTO tournaments
        (public_id, creator_id, organisation_id, bracket_type_id, name,
         max_participants, min_participants, entry_fee, registration_fee,
         currency_code, price_type, tournament_type, commission_rate, status,
         registration_payment_methods, start_date, end_date)
-     VALUES (UUID(), ?, ?, ?, ?, 16, 2, 100, 0, 'EGP', 'FIXED', ?, 0, ?, ?, '2026-12-01', '2026-12-31')`,
-    [CREATOR, opts.org, opts.bracket ?? RR, opts.name ?? 'G11P', opts.org != null ? 'community' : 'platform',
+     VALUES (UUID(), ?, ?, ?, ?, 16, 2, 100, 0, 'EGP', 'FIXED', 'community', 0, ?, ?, '2026-12-01', '2026-12-31')`,
+    [CREATOR, opts.org, opts.bracket ?? RR, opts.name ?? 'G11P',
       opts.status ?? 'completed', opts.paymentMethods ?? null],
   );
   const tournamentId = Number((res as any).insertId);
@@ -381,21 +384,22 @@ describe('G11.5 — tournament prize payout', () => {
     expect(Number((pt as any[])[0].c)).toBe(0);
   });
 
-  it('S3 — platform/community award: CourtZon Dr 4300 / Cr 2100 only; no org events; no adjustment', async () => {
+  it('S3 — G11 Phase 3: an org-less (LEGACY) tournament binds NO awards and posts NOTHING', async () => {
     const tid = await bindPrizes({ org: null });
-    await prizeService.bindAwardsForTournament(tid);
-    const [rows] = await pool.execute<RowData>('SELECT id FROM tournament_prize_awards WHERE tournament_id = ? ORDER BY placement', [tid]);
-    const awards = rows as any[];
-    for (const a of awards) awardIds.push(a.id);
-
-    await waitFor(() => ledgerRows(awards[0].id, 'tournament_prize_award'), (r) => r.length === 2, 'platform award posting');
-    const court = await ledgerRows(awards[0].id, 'tournament_prize_award');
-    expect(amountFor(court, 'debit', '4300')).toBe(500);
-    expect(amountFor(court, 'credit', '2100')).toBe(500);
-    expect(court.every((r) => r.organisation_id === null)).toBe(true);
-    expect(await totalFor(awards[0].id, ['tournament_org_prize_award', 'tournament_org_prize_award_book', 'tournament_org_cash_prize_award_book'])).toBe(0);
-    expect(await adjustmentRows(awards[0].id)).toHaveLength(0);
-    expect(sum(court, 'debit')).toBe(sum(court, 'credit'));
+    const bound = await prizeService.bindAwardsForTournament(tid);
+    // The platform never funds a prize: an org-less tournament is a pre-Phase-3
+    // row, so award binding is skipped fail-closed before any award row exists.
+    expect(bound).toHaveLength(0);
+    await sleep(200);
+    const [rows] = await pool.execute<RowData>('SELECT COUNT(*) AS c FROM tournament_prize_awards WHERE tournament_id = ?', [tid]);
+    expect(Number((rows as any[])[0].c)).toBe(0);
+    // And nothing posts for the removed platform concepts.
+    const [led] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM ledger_entries
+       WHERE source_type = 'tournament'
+         AND source_id IN (SELECT id FROM tournament_prize_awards WHERE tournament_id = ?)
+         AND event_type IN ('tournament_prize_award', 'tournament_prize_refund')`, [tid]);
+    expect(Number((led as any[])[0].c)).toBe(0);
   });
 
   it('S4 — org CARD award: CourtZon Dr 2202 / Cr 2100 + org book Dr 4140 / Cr 1161 + negative adjustment (Q12b)', async () => {
@@ -486,7 +490,7 @@ describe('G11.5 — tournament prize payout', () => {
     expect(Number((regs as any[])[0].c)).toBe(1);
   });
 
-  it('S8 — eligibility guard: platform CASH-collected tournament binds nothing (Phase 1 guard)', async () => {
+  it('S8 — G11 Phase 3: an org-less (LEGACY) tournament binds nothing regardless of collection method', async () => {
     const tid = await bindPrizes({ org: null, paymentMethods: '["cash"]' });
     const bound = await prizeService.bindAwardsForTournament(tid);
     expect(bound).toHaveLength(0);
@@ -585,20 +589,22 @@ describe('G11.5 — tournament prize payout', () => {
     expect(Number((gl as any[])[0].x)).toBeGreaterThan(0);
   });
 
-  it('S13 — platform refund posts the exact inverse (Dr 2100 / Cr 4300)', async () => {
-    const tid = await bindPrizes({ org: null });
+  it('S13 — G11 Phase 3: no refund ever references the removed platform concepts (organization-only clawback)', async () => {
+    const tid = await bindPrizes({ org: ORG });
     await prizeService.bindAwardsForTournament(tid);
     const [rows] = await pool.execute<RowData>('SELECT id FROM tournament_prize_awards WHERE tournament_id = ? AND placement = 1', [tid]);
     const awardId = Number((rows as any[])[0].id);
     awardIds.push(awardId);
-    await waitFor(() => ledgerRows(awardId, 'tournament_prize_award'), (r) => r.length === 2, 'platform award posting');
+    await waitFor(() => ledgerRows(awardId, 'tournament_org_prize_award'), (r) => r.length === 2, 'org award posting');
+    await waitFor(() => totalFor(awardId, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'org postings');
 
-    await prizeService.refundAward(awardId, CREATOR, 'platform clawback');
-    await waitFor(() => ledgerRows(awardId, 'tournament_prize_refund'), (r) => r.length === 2, 'platform refund posting');
-    const rf = await ledgerRows(awardId, 'tournament_prize_refund');
-    expect(amountFor(rf, 'debit', '2100')).toBe(500);
-    expect(amountFor(rf, 'credit', '4300')).toBe(500);
-    expect(sum(rf, 'debit')).toBe(sum(rf, 'credit'));
+    await prizeService.refundAward(awardId, CREATOR, 'clawback');
+    await waitFor(() => ledgerRows(awardId, 'tournament_org_prize_refund'), (r) => r.length === 2, 'org refund posting');
+    // The platform-funded refund topology (Dr 2100 / Cr 4300 via
+    // `tournament_prize_refund`) is deleted — the platform never funds a prize,
+    // so it can never claw one back. Nothing references it anywhere.
+    expect(await totalFor(awardId, ['tournament_prize_refund'])).toBe(0);
+    expect(await totalFor(awardId, ['tournament_prize_award'])).toBe(0);
     expect(await walletBalance(WIN1)).toBe(0);
   });
 

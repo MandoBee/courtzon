@@ -58,6 +58,9 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     name: 'T1', max_participants: 8, min_participants: 2, entry_fee: 0,
     currency_code: 'USD', price_type: 'FREE', status: 'draft',
     sport_id: 22, match_format_id: 1, rule_set_id: 1, draw_seed: 42,
+    // G11 Phase 3 — a tournament is always owned by an organisation; an org-less
+    // create is rejected with TOURNAMENT_ORGANISATION_REQUIRED.
+    organisation_id: 1001,
     ...overrides,
   };
 }
@@ -82,18 +85,22 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     expect(types.map((t) => t.slug)).toEqual(['single-elimination', 'double-elimination', 'round-robin', 'swiss']);
   });
 
-  it('2. frontend does NOT hardcode bracket types (create page reads the API)', async () => {
+  it('2. frontend does NOT hardcode bracket types (create page reads the org-scoped API)', async () => {
     // The create page must load bracket types from the backend (DB-driven).
-    // Static assertion: the shared create page no longer contains a hardcoded
-    // bracket-option array (the old `bracketOptions` literal was removed).
+    // G11 Phase 3 — bracket types come through the owning organisation's
+    // scoped endpoint (`/org/:orgId/tournaments/bracket-types`), the same
+    // authority the rest of the create flow uses.
     const { readFileSync } = await import('node:fs');
     const { resolve, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../frontend/src/pages/tournaments/TournamentCreatePage.tsx');
     const src = readFileSync(root, 'utf8');
-    expect(src).toContain('bracketTypeApi.listActive');
-    expect(src).toContain("queryKey: ['bracket-types']");
+    expect(src).toContain('orgTournamentApi.getBracketTypes');
+    expect(src).toContain("queryKey: ['bracket-types', effectiveOrgId]");
     expect(src).not.toMatch(/bracketOptions\s*=\s*\[/);
+    // The reads are gated on the owning organisation being known — bracket types
+    // are never requested before an org exists.
+    expect(src).not.toContain('bracketTypeApi.listActive');
   });
 
   it('3. inactive bracket types cannot be selected for new tournaments', async () => {
@@ -244,10 +251,20 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 2002 }));
   });
 
-  it('18. super admin tournament creation remains functional (platform, no org)', async () => {
+  it('18. G11 Phase 3 — an org-less (platform) creation is refused; commission always comes from the owning organisation', async () => {
     repo.findBracketTypeById.mockResolvedValue(RR);
-    await svc.create(makeTournament({ organisation_id: undefined }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 0 }));
+    // G11 Phase 3 — the CourtZon PLATFORM never creates, owns, funds, or
+    // recognises a tournament. There is no "super admin platform tournament" path:
+    // a super-admin creates on behalf of a selected organisation, which is always
+    // created through the organisation-scoped `POST /org/:orgId/tournaments`.
+    await expect(svc.create(makeTournament({ organisation_id: undefined }), 1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_ORGANISATION_REQUIRED, statusCode: 422 });
+    expect(repo.create).not.toHaveBeenCalled();
+    // And for an organisation-owned create, the commission is always the
+    // organisation's subscription-derived snapshot.
+    commission.getCommissionRate.mockResolvedValue({ rate: 7.5, rateType: 'percentage' });
+    await svc.create(makeTournament(), 1);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 7.5, tournament_type: 'community' }));
   });
 
   it('19. bracket type update toggles active state with audit', async () => {

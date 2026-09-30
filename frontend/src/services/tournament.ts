@@ -7,7 +7,11 @@ export const tournamentApi = {
   getTournaments: (params?: Record<string, any>) =>
     api.get<PaginatedResult<any>>('/admin/tournaments', { params }).then(r => r.data),
   getTournament: (id: number) => api.get<any>(`/admin/tournaments/${id}`).then(r => r.data),
-  createTournament: (data: any) => api.post<any>('/admin/tournaments', data).then(r => r.data),
+  // G11 Phase 3 — there is NO platform-wide tournament creation. The CourtZon
+  // platform never creates, owns, funds, or recognises a tournament, so
+  // `POST /admin/tournaments` is gone. Creating on behalf of an organisation goes
+  // through `orgTournamentApi.createTournament(orgId, data)`, which targets the
+  // authoritative organisation-scoped route `POST /org/:orgId/tournaments`.
   updateTournament: (id: number, data: any) => api.put<any>(`/admin/tournaments/${id}`, data).then(r => r.data),
   publish: (id: number) => api.post(`/admin/tournaments/${id}/publish`).then(r => r.data),
   openRegistration: (id: number) => api.post(`/admin/tournaments/${id}/open-reg`).then(r => r.data),

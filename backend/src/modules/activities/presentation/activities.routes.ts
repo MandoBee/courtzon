@@ -3,28 +3,29 @@ import { authMiddleware, requirePermission, adminGuard } from '../../../shared/m
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import * as ctrl from './activities.controller.js';
 
-export async function activitiesRoutes(app: FastifyInstance, opts: { requireFeatureFlag: (key: string) => (req: FastifyRequest, reply: FastifyReply) => Promise<void> }): Promise<void> {
+export async function activitiesRoutes(app: FastifyInstance, _opts: { requireFeatureFlag: (key: string) => (req: FastifyRequest, reply: FastifyReply) => Promise<void> }): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
-  // Tournaments — gated by app.tournaments_enabled
-  await app.register(async function tournamentScope(scopedApp: FastifyInstance) {
-    scopedApp.addHook('preHandler', opts.requireFeatureFlag('app.tournaments_enabled'));
-
-    scopedApp.post('/tournaments', { preHandler: [requirePermission(['tournaments.create'])] }, ctrl.createTournamentHandler);
-
-    // Group 2 — the legacy activities tournament bracket/score routes are REMOVED.
-    //   * POST /tournaments/:id/generate-bracket wrote `tournament_matches` rows
-    //     directly (exactly 2 users, no shared Match) — a duplicate generator.
-    //   * POST /matches/:matchId/score wrote `tournament_match_scores` + mutated
-    //     `tournament_matches.winner_id/score_summary/status` — a duplicate result
-    //     store that bypassed the authoritative shared Match Result lifecycle.
-    // Tournament matches/results are generated/recorded exclusively through the
-    // tournaments module (G8 locked-draw generation) + `match_result_records`.
-
-    // Admin tournament routes
-    scopedApp.put('/tournaments/:id', { preHandler: [adminGuard] }, ctrl.updateTournamentHandler);
-    scopedApp.delete('/tournaments/:id', { preHandler: [adminGuard] }, ctrl.deleteTournamentHandler);
-  });
+  // ── Tournaments: the ENTIRE legacy activities tournament scope is REMOVED ──
+  //   * `POST /tournaments` created tournaments WITHOUT any organisation
+  //     enforcement and its INSERT omitted `tournament_type`, so the column
+  //     DEFAULT wrote `platform` — one of the two ways a CourtZon-owned
+  //     ("platform") tournament could be created. G11 Phase 3 forbids that.
+  //   * `PUT /tournaments/:id` was an UNVALIDATED MASS-ASSIGNMENT hole: it
+  //     interpolated arbitrary client-supplied keys straight into
+  //     `UPDATE tournaments SET ${key} = ?`, so a caller could rewrite
+  //     `organisation_id` / `tournament_type` / `commission_rate` on any row and
+  //     move or re-label a tournament across tenants.
+  //   * `DELETE /tournaments/:id` deleted the authoritative tournament row while
+  //     leaving registrations/participants/payments behind.
+  //   * (Earlier removals, Group 2: `POST /tournaments/:id/generate-bracket` and
+  //     `POST /matches/:matchId/score` — duplicate generators/result stores that
+  //     bypassed the shared Match Result lifecycle.)
+  // The single authoritative creation path is now organisation-scoped:
+  //   POST /org/:orgId/tournaments → requireOrgScopedPermission('org.tournaments.create')
+  // which forces `organisation_id` from `:orgId`. No client payload can create an
+  // org-less tournament. `app.tournaments_enabled` is left untouched (no data
+  // change) — the routes are simply gone, so the flag cannot re-expose them.
 
   // Academies — LEGACY RETIRED (PHASE 0 / GROUP 2).
   // The authoritative Academy is the new `academy` module (G1–G8). The legacy

@@ -153,7 +153,7 @@ export default function TournamentDetailPage() {
         </div>
         {tournament.description && <p className="text-sm text-[var(--color-text-muted)]">{tournament.description}</p>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div><span className="text-[var(--color-text-muted)]">Organisation:</span> <span className="font-medium">{tournament.organisation_name || 'Platform'}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Organisation:</span> <span className="font-medium">{tournament.organisation_name || '—'}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Venue:</span> <span className="font-medium">{venue ? venue.name : '—'}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{participantList.length}/{tournament.max_participants}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Fee:</span> <span className="font-medium">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span></div>

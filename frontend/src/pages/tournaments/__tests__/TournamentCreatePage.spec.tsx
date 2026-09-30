@@ -40,6 +40,10 @@ const __state = vi.hoisted(() => ({
     { id: 5, name: 'Padel Edge City', address_line1: '12 Corniche', city: 'Dubai' },
     { id: 6, name: 'Padel Edge Marina', address_line1: 'Marina Walk', city: 'Dubai' },
   ] },
+  organisationListPayload: { data: [
+    { id: 99, name: 'G11 Org A', country_code: 'AE' },
+    { id: 6, name: 'Padel Edge', country_code: 'AE' },
+  ] },
 }));
 
 vi.mock('../../../services/tournament', () => ({
@@ -93,6 +97,18 @@ function renderPage(permissions: string[]) {
   );
 }
 
+function renderAdminPage(permissions: string[]) {
+  __state.userPermissions = permissions;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <TournamentCreatePage mode="admin" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   __state.orgApi.getBracketTypes.mockResolvedValue(__state.bracketTypesPayload);
@@ -101,6 +117,7 @@ beforeEach(() => {
   (api.get as any).mockImplementation((url: string) => {
     if (url.includes('/org/6/branches')) return Promise.resolve({ data: __state.branchesPayload });
     if (url.includes('/player-levels')) return Promise.resolve({ data: { data: [] } });
+    if (url.includes('/organisations')) return Promise.resolve({ data: __state.organisationListPayload });
     return Promise.resolve({ data: __state.sportsPayload });
   });
 });
@@ -108,6 +125,7 @@ beforeEach(() => {
 describe('TournamentCreatePage — field-level permission gates (Group 5B UAT regression)', () => {
   it('renders ALL configuration fields when the org-admin holds every tournaments.create.* key', async () => {
     renderPage([
+      'org.tournaments.create',
       'tournaments.create.name',
       'tournaments.create.description',
       'tournaments.create.type',
@@ -155,11 +173,30 @@ describe('TournamentCreatePage — field-level permission gates (Group 5B UAT re
     expect(screen.queryByText('tournaments.create.generated_rules')).toBeNull();
   });
 
-  it('the create form is submitted to the org-scoped endpoint only', async () => {
+  it('the create form is submitted to the org-scoped endpoint only (G11 Phase 3: no /admin/tournaments)', async () => {
     const { orgApi } = __state;
-    renderPage(['tournaments.create.name', 'tournaments.create.type', 'tournaments.create.sport']);
+    const { fireEvent } = await import('@testing-library/react');
+    const view = renderPage(['org.tournaments.create', 'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.sport', 'tournaments.create.start-date']);
     await waitFor(() => expect(orgApi.getBracketTypes).toHaveBeenCalledWith('6'));
     await waitFor(() => expect(orgApi.getCommissionConfig).toHaveBeenCalledWith('6'));
+
+    // Submit a minimal valid create and assert the ONLY target is the
+    // organisation-scoped route. The platform-wide POST /admin/tournaments
+    // route no longer exists — the CourtZon platform never owns a tournament.
+    await screen.findByText('tournaments.create.name');
+    fireEvent.change(screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement, { target: { value: 'G11 Phase 3 Cup' } });
+    await screen.findByText('Single Elimination');
+    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
+    );
+    fireEvent.change(bracketSelect!, { target: { value: '1' } });
+    fireEvent.change(screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement, { target: { value: '2026-10-01' } });
+    fireEvent.click(screen.getByText('tournaments.create.submit'));
+
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [url] = (api.post as any).mock.calls[0] as [string, any];
+    expect(url).toBe('/org/6/tournaments');
+    expect(url).not.toContain('/admin/tournaments');
   });
 });
 
@@ -219,16 +256,19 @@ describe('TournamentCreatePage — Group 1A foundation corrections', () => {
     expect(screen.getByText('EGP')).toBeTruthy();
   });
 
-  it('no organisation-flow hardcoded AED remains in the create screen', async () => {
+  it('no hardcoded AED / currency remains anywhere in the create screen (G11 Phase 3)', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../TournamentCreatePage.tsx');
     const src = readFileSync(root, 'utf8');
-    // The org path must not hardcode AED. Only the platform (admin) path may
-    // still send an explicit currency, guarded by isOrg.
+    // G11 Phase 3 — the owning organisation's currency is ALWAYS authoritative
+    // and resolved server-side (branch → organisation country default). There is
+    // no platform path and therefore no context in which a currency is hardcoded.
     expect(src).not.toMatch(/currency_code:\s*'AED'/);
-    expect(src).toMatch(/currency_code: isOrg \? undefined : 'AED'/);
+    expect(src).toMatch(/currency_code: undefined/);
+    // The prize editor always receives the server-resolved org currency.
+    expect(src).toMatch(/currencyCode=\{orgCurrency\}/);
   });
 
   it('the selected bracket type is passed to the format cascade so preview matches the snapshot', async () => {
@@ -281,6 +321,7 @@ describe('TournamentCreatePage — registration payment methods (Group 3)', () =
   it('submits the selected registration payment methods with the create payload', async () => {
     const { fireEvent } = await import('@testing-library/react');
     const view = renderPage([
+      'org.tournaments.create',
       'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.prize',
       'tournaments.create.max-participants', 'tournaments.create.start-date',
     ]);
@@ -346,6 +387,7 @@ describe('TournamentCreatePage — venue + daily playing window (Group 4)', () =
   it('submits branch_id + daily_start_time + daily_end_time with the create payload', async () => {
     const { fireEvent } = await import('@testing-library/react');
     const view = renderPage([
+      'org.tournaments.create',
       'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.prize',
       'tournaments.create.max-participants', 'tournaments.create.start-date',
     ]);
@@ -375,5 +417,57 @@ describe('TournamentCreatePage — venue + daily playing window (Group 4)', () =
     expect(payload.branch_id).toBe(5);
     expect(payload.daily_start_time).toBe('09:00:00');
     expect(payload.daily_end_time).toBe('21:00:00');
+  });
+});
+
+describe('TournamentCreatePage — G11 Phase 3 admin mode REQUIRES an owning organisation', () => {
+  it('renders the owning-organisation picker; the submit stays disabled and NEVER fires until a real org is selected', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    const view = renderAdminPage([
+      'org.tournaments.create',
+      'tournament.create.organisation',
+      'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.start-date',
+    ]);
+
+    // The picker is rendered and lists the organisations (no "no org" option
+    // exists — the placeholder is selectable only as the empty value).
+    const orgLabel = await screen.findByText('tournaments.create.organisation');
+    expect(orgLabel).toBeTruthy();
+    // Wait for the organisation list to load into the picker.
+    await screen.findByText(/G11 Org A/);
+    const orgSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent?.includes('G11 Org A')),
+    );
+    expect(orgSelect).toBeTruthy();
+
+    // Before any org is selected: the submit button is disabled.
+    const submit = screen.getByText('tournaments.create.submit') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+
+    // Fill the remaining required fields while NO org is selected and try to
+    // submit — the disabled button cannot fire, and no API call is made.
+    fireEvent.change(screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement, { target: { value: 'No Org Cup' } });
+    fireEvent.change(screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement, { target: { value: '2026-10-01' } });
+    fireEvent.click(submit);
+    expect((api.post as any).mock.calls.length).toBe(0);
+
+    // Selecting an owning organisation enables the submit — the tournament is
+    // then created on behalf of that organisation only.
+    fireEvent.change(orgSelect!, { target: { value: '99' } });
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    // The org-scoped bracket types load for the selected organisation; pick one
+    // so the form validates (the picker gate reuses organisation-scoped reads).
+    await waitFor(() => expect(__state.orgApi.getBracketTypes).toHaveBeenCalledWith('99'));
+    await screen.findByText('Single Elimination');
+    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
+      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
+    );
+    fireEvent.change(bracketSelect!, { target: { value: '1' } });
+    fireEvent.click(submit);
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [url, payload] = (api.post as any).mock.calls[0] as [string, any];
+    expect(url).toBe('/org/99/tournaments');
+    // The org id is NEVER client-supplied in the payload — the route provides it.
+    expect(payload.organisation_id).toBeUndefined();
   });
 });

@@ -68,45 +68,13 @@ export const activitiesService = {
     const matches = await repo.findMatches(id);
     return { ...t, registrations, matches };
   },
-  async createTournament(userId: number, data: any) {
-    const orgId = data.organisationId ?? null;
-    if (orgId) {
-      const limit = await getPlanNumericLimit(orgId, 'tournaments', 0);
-      const pool = getPool();
-      const [countRows] = await pool.execute<RowData>(
-        'SELECT COUNT(*) AS cnt FROM tournaments WHERE organisation_id = ? AND deleted_at IS NULL',
-        [orgId],
-      );
-      const current = Number((countRows[0] as any)?.cnt ?? 0);
-      if (current >= limit) {
-        throw new ConflictError(
-          limit === Infinity ? '' : `Tournament limit reached (max ${limit}). Upgrade your plan to create more tournaments.`,
-        );
-      }
-    }
-    let commissionRate = 0;
-    const orgRef = data.organisationId ?? data.branchId;
-    if (orgRef) {
-      try {
-        const comm = await commissionService.calculate(orgRef, 'tournament', Math.max(Number(data.entryFee) || 0, 1));
-        commissionRate = comm.rate;
-      } catch {
-        // Plan lookup is non-fatal; tournament still created with default rate
-      }
-    }
-    const id = await repo.createTournament({ ...data, creatorId: userId, commissionRate });
-    eventBusV2.emit('tournament:created', {
-      tournamentId: id,
-      userId,
-      name: data.name || 'Tournament',
-    });
-    return repo.findTournamentById(id);
-  },
-  async updateTournament(id: number, data: any) {
-    const updated = await repo.updateTournament(id, data);
-    if (!updated) throw new NotFoundError('Tournament');
-    return repo.findTournamentById(id);
-  },
+  // G11 Phase 3 — `createTournament` / `updateTournament` are REMOVED.
+  // The legacy path never enforced an owning organisation (its repository INSERT
+  // omitted `tournament_type`, so the column DEFAULT wrote `platform`), and its
+  // update path was an unvalidated mass-assignment hole that let a caller rewrite
+  // `organisation_id` / `tournament_type` / `commission_rate` on any row. The
+  // authoritative, plan-enforcing, organisation-scoped creation capability is
+  // `TournamentService.create()` via `POST /org/:orgId/tournaments`.
   async registerPlayer(tournamentId: number, playerId: number) {
     const t = await repo.findTournamentById(tournamentId);
     if (!t) throw new NotFoundError('Tournament');
@@ -501,12 +469,10 @@ export const activitiesService = {
   async listTournamentsAdmin(page: number, limit: number, status?: string) {
     return repo.findTournamentsAdmin({ page, limit, status });
   },
-  async deleteTournament(id: number) {
-    const t = await repo.findTournamentByIdAdmin(id);
-    if (!t) throw new NotFoundError('Tournament');
-    await repo.softDeleteTournament(id);
-    return { success: true };
-  },
+  // G11 Phase 3 — `deleteTournament` is REMOVED together with
+  // `DELETE /tournaments/:id`. Archiving an organisation-owned tournament is now
+  // exclusively `POST /admin/tournaments/:id/archive` (permission-guarded,
+  // audit-logged) in the tournaments module.
 
   // ── Admin: Academies ──
   async listAcademiesAdmin(page: number, limit: number) {

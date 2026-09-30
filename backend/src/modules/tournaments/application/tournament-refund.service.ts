@@ -28,8 +28,9 @@ const log = createModuleLogger('tournament-refund');
  *  - Refund-after-settlement is allowed before draw lock via a PAYMENT-SCOPED
  *    detach (gateway_settlement_id=NULL on THIS payment only) — never the whole
  *    settlement batch.
- *  - Platform/community tournaments (organisation_id NULL) are OUT of G11.3
- *    scope: fail-closed (no request, no execution).
+ *  - G11 Phase 3 — creation is organisation-only, so an org-less tournament can
+ *    only be a LEGACY row. It has no owning organisation and no recognised
+ *    revenue source to refund against: fail-closed (no request, no execution).
  *  - Entitlement revocation reuses the existing tournament withdrawal
  *    architecture (withdrawParticipant) as the consequence of a successful
  *    refund — refund is its own financial domain operation, not an alias.
@@ -82,7 +83,9 @@ class TournamentRefundService {
   /**
    * Player requests a refund for their OWN registration. Request-time draw check
    * is ADVISORY only — the authoritative lock check happens at execution.
-   * Platform/community tournaments (org NULL) are out of scope → fail closed.
+   * G11 Phase 3 — creation is organisation-only, so an org-less tournament can
+   * only be a LEGACY row. It has no owning organisation, hence no recognised
+   * revenue source to refund against → fail closed (unchanged behaviour).
    */
   async requestRefund(registrationId: number, playerId: number, reason?: string | null) {
     const registration = await tournamentRepository.getRegistrationById(registrationId);
@@ -91,7 +94,7 @@ class TournamentRefundService {
     const tournament = await tournamentRepository.findById(Number(registration.tournament_id));
     if (!tournament) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
     if (tournament.organisation_id == null) {
-      throw new ConflictError('Platform/community tournaments do not support refund requests (G11.3 out of scope)');
+      throw new ConflictError('This tournament has no owning organisation, so it has no recognised revenue source to refund against');
     }
 
     const participant = await tournamentRepository.findParticipantByRegistration(registrationId);

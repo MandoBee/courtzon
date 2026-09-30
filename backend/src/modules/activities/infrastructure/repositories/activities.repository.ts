@@ -67,27 +67,18 @@ export const activitiesRepository = {
     return rows[0] || null;
   },
 
-  async createTournament(data: any) {
-    const pool = getPool();
-    const [result] = await pool.execute(
-      `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, sport_id, name, description, max_participants, min_participants, entry_fee, currency_code, commission_rate, prize_description, registration_opens, registration_closes, start_date, end_date, rules, image_url)
-       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.creatorId, data.organisationId || null, data.branchId || null, data.bracketTypeId, data.sportId || null, data.name, data.description || null, data.maxParticipants, data.minParticipants || 2, data.entryFee || 0, data.currencyCode, data.commissionRate || 0, data.prizeDescription || null, data.registrationOpens || null, data.registrationCloses || null, data.startDate, data.endDate || null, data.rules || null, data.imageUrl || null]
-    );
-    return (result as any).insertId;
-  },
-
-  async updateTournament(id: number, data: any) {
-    const pool = getPool();
-    const fields: string[] = []; const params: any[] = [];
-    for (const [key, val] of Object.entries(data)) {
-      if (val !== undefined) { fields.push(`${key} = ?`); params.push(val); }
-    }
-    if (!fields.length) return false;
-    params.push(id);
-    const [result] = await pool.execute(`UPDATE tournaments SET ${fields.join(', ')} WHERE id = ?`, params);
-    return (result as any).affectedRows > 0;
-  },
+  // G11 Phase 3 — `createTournament` and `updateTournament` are REMOVED here.
+  //   * `createTournament` never enforced an owning organisation and its INSERT
+  //     omitted `tournament_type`, so the column DEFAULT wrote `platform` onto
+  //     whatever row it created (this is why production had an organisation-owned
+  //     tournament stored as `platform`).
+  //   * `updateTournament` was an unvalidated mass-assignment hole that
+  //     interpolated arbitrary client keys into `UPDATE tournaments SET ${key} = ?`,
+  //     allowing a caller to rewrite `organisation_id`, `tournament_type` or
+  //     `commission_rate` on any row and move/re-label a tournament across tenants.
+  // The single authoritative creation/update path is the organisation-scoped
+  // tournaments module (`POST|PUT /org/:orgId/tournaments`), which validates the
+  // payload and forces `organisation_id` from `:orgId`.
 
   async findRegistrations(tournamentId: number) {
     const pool = getPool();

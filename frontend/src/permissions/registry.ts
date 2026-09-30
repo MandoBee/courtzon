@@ -143,6 +143,11 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'org.academies.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Org Academies Page' },
   { permissionKey: 'org.leagues.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Org Leagues Page' },
   { permissionKey: 'org.tournaments.view', moduleSlug: 'org', elementType: 'page', elementLabel: 'Org Tournaments Page' },
+  // G11 Phase 3 — this is the ONLY tournament-create action gate. It is the same
+  // key the authoritative organisation-scoped route enforces
+  // (`requireOrgScopedPermission('org.tournaments.create')` on
+  // `POST /org/:orgId/tournaments`) and now also gates the shared create form's
+  // submit button. The platform-wide `POST /admin/tournaments` route is removed.
   { permissionKey: 'org.tournaments.create', moduleSlug: 'org', elementType: 'button', elementLabel: 'Org Create Tournament', componentPath: 'pages/org/OrgTournamentCreatePage.tsx' },
   { permissionKey: 'org.tournaments.update', moduleSlug: 'org', elementType: 'button', elementLabel: 'Org Update Tournament', componentPath: 'pages/org/OrgTournamentDetailPage.tsx' },
   { permissionKey: 'org.tournaments.publish', moduleSlug: 'org', elementType: 'button', elementLabel: 'Org Publish Tournament', componentPath: 'pages/org/OrgTournamentDetailPage.tsx' },
@@ -450,6 +455,13 @@ export const uiRegistry: UIElement[] = [
   // ==========================================================================
   { permissionKey: 'tournaments.view', moduleSlug: 'tournaments', elementType: 'page', elementLabel: 'Tournaments List Page', componentPath: 'pages/tournaments/TournamentListPage.tsx' },
   { permissionKey: 'tournaments.create', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Create Tournament', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
+  // G11 Phase 3 — the OWNING ORGANISATION field on the shared create screen. A
+  // tournament is always owned by an organisation (the CourtZon platform never
+  // creates, owns, funds, or recognises one), so in the Super Admin workbench this
+  // field is REQUIRED: it selects the organisation on whose behalf the admin
+  // creates, and the create is then submitted through the authoritative
+  // organisation-scoped route `POST /org/:orgId/tournaments`.
+  { permissionKey: 'tournament.create.organisation', moduleSlug: 'tournament', elementType: 'field', elementLabel: 'Tournament Owning Organisation Field', componentPath: 'pages/tournaments/TournamentCreatePage.tsx' },
   { permissionKey: 'tournaments.join', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Join Tournament', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },
   // G11.3 — player request for a FULL registration refund (own registration; approval by org financial.reconcile officials).
   { permissionKey: 'tournaments.registration.refund-request', moduleSlug: 'tournaments', elementType: 'action', elementLabel: 'Request Tournament Registration Refund', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },

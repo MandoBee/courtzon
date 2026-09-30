@@ -108,18 +108,18 @@ class TournamentPrizeAwardService {
       return [];
     }
 
-    const fundingSource: PrizeFundingSource = t.organisation_id != null ? 'organization' : 'platform';
-    const collectionMethod = resolveCollectionMethod(t);
-
-    // Phase-1 eligibility guard (locked Q5 + G11.4 gap): platform/community
-    // tournaments collected via CASH have no recognized revenue source to draw
-    // the prize from, so they are excluded until a CASH recognition concept
-    // exists. Org-owned tournaments (CARD or CASH collection) and card-collected
-    // platform tournaments are eligible.
-    if (fundingSource === 'platform' && collectionMethod === 'cash') {
-      log.warn({ tournamentId }, 'Award bind skipped — platform cash-collected tournament has no recognized revenue source (Phase 1 guard)');
+    // G11 Phase 3 (LOCKED PRODUCT RULE) — prize funding is ORGANIZATION-ONLY.
+    // `PrizeFundingSource` is no longer a runtime choice: the CourtZon platform
+    // never funds a prize, so the funding source is always the owning
+    // organisation. An org-less tournament is a LEGACY row only (creation has been
+    // organisation-scoped since Phase 3) — it is skipped fail-closed because the
+    // platform-funded prize concepts no longer exist.
+    if (t.organisation_id == null) {
+      log.warn({ tournamentId }, 'Award bind skipped — tournament has no owning organisation; the platform never funds a prize (fail-closed)');
       return [];
     }
+    const fundingSource: PrizeFundingSource = 'organization';
+    const collectionMethod = resolveCollectionMethod(t);
 
     const standings = await tournamentRepository.getStandings(tournamentId);
     const buckets = new Map<number, TournamentStandingRow[]>();
@@ -212,14 +212,15 @@ class TournamentPrizeAwardService {
       return [];
     }
 
-    const fundingSource: PrizeFundingSource = t.organisation_id != null ? 'organization' : 'platform';
-    const collectionMethod = resolveCollectionMethod(t);
-    // Phase-1 eligibility guard (same as standings binding): platform CASH
-    // tournaments have no recognized revenue source — skipped.
-    if (fundingSource === 'platform' && collectionMethod === 'cash') {
-      log.warn({ tournamentId }, 'Bracket bind skipped — platform cash-collected tournament has no recognized revenue source (Phase 1 guard)');
+    // G11 Phase 3 — same organization-only rule as standings binding: the
+    // platform never funds a prize, so an org-less (LEGACY) tournament is skipped
+    // fail-closed.
+    if (t.organisation_id == null) {
+      log.warn({ tournamentId }, 'Bracket bind skipped — tournament has no owning organisation; the platform never funds a prize (fail-closed)');
       return [];
     }
+    const fundingSource: PrizeFundingSource = 'organization';
+    const collectionMethod = resolveCollectionMethod(t);
 
     // Champion registration (same lookup manualGrant uses for bracket winners).
     const reg = await tournamentRepository.findRegistrationForTournamentPlayer(tournamentId, winnerUserId);
@@ -285,11 +286,13 @@ class TournamentPrizeAwardService {
     const reg = await tournamentRepository.findRegistrationForTournamentPlayer(tournamentId, input.winnerUserId);
     if (!reg) throw new NotFoundError('No confirmed registration found for this player in the tournament');
 
-    const fundingSource: PrizeFundingSource = t.organisation_id != null ? 'organization' : 'platform';
-    const collectionMethod = resolveCollectionMethod(t);
-    if (fundingSource === 'platform' && collectionMethod === 'cash') {
-      throw new ConflictError('Platform cash-collected tournaments have no recognized revenue source — prize grants are not supported (Phase 1 guard)');
+    // G11 Phase 3 — prize funding is organization-only, so a tournament with no
+    // owning organisation can never have a prize granted (fail-closed).
+    if (t.organisation_id == null) {
+      throw new ConflictError('Tournament has no owning organisation — the CourtZon platform never funds a prize');
     }
+    const fundingSource: PrizeFundingSource = 'organization';
+    const collectionMethod = resolveCollectionMethod(t);
 
     const placement = prize.placement ?? null;
     if (placement != null && await tournamentPrizeAwardRepository.hasAward(tournamentId, placement, input.winnerUserId)) {

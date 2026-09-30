@@ -101,6 +101,8 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     name: 'T1', max_participants: 8, min_participants: 2, entry_fee: 0,
     currency_code: 'USD', price_type: 'FREE', status: 'registration_open',
     sport_id: 22, match_format_id: 1, rule_set_id: 1, draw_seed: 42,
+    // G11 Phase 3 — a tournament is always owned by an organisation.
+    organisation_id: 1001,
     ...overrides,
   };
 }

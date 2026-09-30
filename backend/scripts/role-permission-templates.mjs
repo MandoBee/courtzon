@@ -172,6 +172,14 @@ const TOURNAMENT_WORKBENCH_KEYS = new Set([
   'tournament.view',
   'tournament.dashboard.view',
   'tournament.create',
+  // G11 Phase 3 — a tournament is ALWAYS owned by an organisation (the CourtZon
+  // platform never creates, owns, funds, or recognises one). `tournament.create`
+  // is now purely the UI gate for the Workbench create screen; the screen itself
+  // requires this key to pick the owning organisation and then submits through
+  // the authoritative organisation-scoped route `POST /org/:orgId/tournaments`.
+  // The removed `POST /admin/tournaments` route is what used to make it a
+  // backend capability, so there is no longer a platform-wide create path.
+  'tournament.create.organisation',
   'tournament.update',
   'tournament.publish',
   'tournament.delete',

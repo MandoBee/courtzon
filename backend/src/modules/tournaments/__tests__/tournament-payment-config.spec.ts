@@ -72,6 +72,8 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     currency_code: 'AED', price_type: 'FREE', status: 'registration_open',
     sport_id: 22, match_format_id: 1, rule_set_id: 1, draw_seed: 42,
     registration_payment_methods: ['cash', 'card'],
+    // G11 Phase 3 — a tournament is always owned by an organisation.
+    organisation_id: 1001,
     ...overrides,
   };
 }

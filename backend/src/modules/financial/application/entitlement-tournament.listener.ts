@@ -142,9 +142,13 @@ export async function handleTournamentRegistrationPaid(envelope: EventEnvelope):
   }
 
   // ── Fail closed: no counterparty, no entitlement ──
+  // Preserved from before G11 Phase 3 and still load-bearing for LEGACY rows:
+  // creation is organisation-only since Phase 3, so an org-less tournament can
+  // only predate it. With no owning organisation there is no counterparty and
+  // nothing to recognise.
   const orgId = Number(tournament.organisation_id ?? 0);
   if (!orgId) {
-    log.info({ registrationId, paymentId, tournamentId: tournament.id }, 'Platform/community tournament — no financial entitlement created (no counterparty, no commission)');
+    log.info({ registrationId, paymentId, tournamentId: tournament.id }, 'Tournament has no owning organisation — no financial entitlement created (no counterparty, no commission)');
     return;
   }
 

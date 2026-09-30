@@ -3,7 +3,7 @@ import { tournamentService } from '../application/tournament.service.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { tournamentPrizeAwardService } from '../application/tournament-prize-award.service.js';
 import {
-  CreateTournamentSchema, UpdateTournamentSchema, ListTournamentsQuerySchema,
+  UpdateTournamentSchema, ListTournamentsQuerySchema,
   RegisterSchema, GenerateGroupsSchema,
   AssignCourtSchema, AssignRefereeSchema, CreateStageSchema, BracketTypeUpdateSchema,
 } from './tournament.dto.js';
@@ -40,17 +40,14 @@ export async function getTournamentHandler(request: FastifyRequest, reply: Fasti
   return reply.send(tournament);
 }
 
-export async function createTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = getUserId(request);
-  const body = CreateTournamentSchema.parse(request.body);
-  const tournament = await tournamentService.create(body, userId);
-  recordAudit({
-    actorId: userId, action: 'TOURNAMENT.CREATE', entityType: 'tournament',
-    entityId: tournament.id!, afterState: { code: body.code, name: body.name, format: body.format },
-    ipAddress: request.ip, userAgent: getUserAgent(request),
-  });
-  return reply.status(201).send(tournament);
-}
+// G11 Phase 3 — `createTournamentHandler` is REMOVED. The global
+// `POST /admin/tournaments` route that referenced it is gone: it trusted the
+// body `organisation_id` with no ownership check and could therefore create an
+// org-less ("platform") tournament, which the locked product rule forbids.
+// Tournament creation is now organisation-only via
+// `POST /org/:orgId/tournaments` (`createOrgTournamentHandler`), which forces
+// `organisation_id` from `:orgId`. Super-admins create on behalf of a selected
+// organisation through that same organisation-scoped capability.
 
 export async function updateTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);

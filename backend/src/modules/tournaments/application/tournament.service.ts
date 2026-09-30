@@ -64,8 +64,35 @@ export interface BracketProgressionMeta {
  */
 export const ENGINE_SUPPORTED_BRACKET_SLUGS = ['single-elimination', 'round-robin'] as const;
 
+/**
+ * G11 Phase 3 (LOCKED PRODUCT RULE) — the CourtZon PLATFORM must never create,
+ * own, fund, or financially recognise a tournament. Only an ORGANISATION may
+ * create and own one, so `community` is the ONLY `tournaments.tournament_type`
+ * and `platform` no longer exists (the DB enum was narrowed in migration 183).
+ * The type is DERIVED server-side and can never be supplied by a client.
+ */
+export const ORGANISATION_TOURNAMENT_TYPE = 'community';
+
 export class TournamentService {
   async create(data: Partial<Tournament>, creatorId: number): Promise<Tournament> {
+    // G11 Phase 3 (LOCKED PRODUCT RULE) — the CourtZon PLATFORM must never
+    // create, own, fund, or financially recognise a tournament. Only an
+    // ORGANISATION may create and own one. The organisation id is injected
+    // server-side by the organisation-scoped controller
+    // (`POST /org/:orgId/tournaments` forces it from `:orgId`), so a client
+    // payload can never produce an org-less tournament. Fail closed here — the
+    // single authoritative creation capability — before anything else runs.
+    if (data.organisation_id == null) {
+      throw new AppError(
+        'Tournament creation requires an owning organisation — CourtZon as a platform never owns a tournament',
+        422,
+        ErrorCodes.TOURNAMENT_ORGANISATION_REQUIRED,
+        { code: ErrorCodes.TOURNAMENT_ORGANISATION_REQUIRED, details: { organisationId: null } },
+      );
+    }
+    // Captured once so every downstream derivation (commission, currency) is
+    // bound to the authoritative owning organisation for the whole create.
+    const owningOrgId: number = data.organisation_id;
     if (data.code) {
       const existing = await tournamentRepository.findByCode(data.code);
       if (existing) throw new ConflictError('Tournament code already exists', ErrorCodes.ACADEMY_PROGRAM_CODE_EXISTS);
@@ -104,19 +131,18 @@ export class TournamentService {
     }
     // Group 5B-SR — commission is derived from the organisation's authoritative
     // active subscription/plan. The client can never supply it.
-    const commissionRate = await this.resolveCommissionRate(data.organisation_id, data.entry_fee);
-    // Group 1A — an organisation-owned tournament must NEVER be stored as
-    // `platform`. The client can never turn an org tournament into a platform
-    // tournament: when organisation_id is present we derive the correct
-    // non-platform type (`community`) unless the caller explicitly supplied it.
-    const effectiveType = this.deriveOrgTournamentType(data.organisation_id, data.tournament_type);
+    const commissionRate = await this.resolveCommissionRate(owningOrgId, data.entry_fee);
+    // G11 Phase 3 — `community` is the ONLY tournament_type. The CourtZon
+    // platform never owns a tournament, so `platform` no longer exists: the type
+    // is derived server-side and can never be supplied or overridden by a client.
+    const effectiveType = ORGANISATION_TOURNAMENT_TYPE;
     // Group 1A — authoritative currency is resolved server-side for
     // organisation tournaments (branch currency → organisation country
     // default). A client-supplied currency_code is never trusted as
     // authoritative for an org-owned tournament.
     const effectiveData = { ...data };
-    if (data.organisation_id != null) {
-      const resolvedCurrency = await resolveOrganisationCurrency(data.organisation_id, data.branch_id);
+    {
+      const resolvedCurrency = await resolveOrganisationCurrency(owningOrgId, data.branch_id);
       if (resolvedCurrency) effectiveData.currency_code = resolvedCurrency;
     }
     // Group 2 — validate + normalise structured prizes against the authoritative
@@ -327,18 +353,6 @@ export class TournamentService {
       prizes: (prizes ?? []).map((p) => ({ placement: p.placement ?? null, type: p.prize_type, description: p.description ?? null })),
       sponsors: (sponsors ?? []).map((s) => ({ name: s.name, type: s.support_type, description: s.description ?? null })),
     };
-  }
-
-  /**
-   * Group 1A — derive the correct tournament_type for an organisation-owned
-   * tournament. `platform` is reserved for platform-owned tournaments
-   * (organisation_id NULL). An org-owned tournament is stored as `community`
-   * (the existing non-platform enum value) — the client can never turn an org
-   * tournament into a `platform` tournament.
-   */
-  private deriveOrgTournamentType(organisationId: number | undefined, suppliedType: string | undefined): string {
-    if (organisationId == null) return suppliedType ?? 'platform';
-    return 'community';
   }
 
   /**
@@ -661,12 +675,14 @@ export class TournamentService {
 
   /**
    * Group 5B-SR — resolve the tournament commission rate from the
-   * organisation's active subscription/plan. Platform tournaments (no org) get
-   * 0. When no subscription rate is configured the tournament is created with
-   * 0 (historical snapshot stays 0).
+   * organisation's active subscription/plan. When no subscription rate is
+   * configured the tournament is created with 0 (historical snapshot stays 0).
+   *
+   * G11 Phase 3 — there is no org-less branch any more: `create()` already
+   * rejected a missing `organisation_id` with TOURNAMENT_ORGANISATION_REQUIRED,
+   * so a commission is ALWAYS derived from a real organisation.
    */
-  private async resolveCommissionRate(organisationId: number | undefined, entryFee?: number): Promise<number> {
-    if (organisationId == null) return 0;
+  private async resolveCommissionRate(organisationId: number, _entryFee?: number): Promise<number> {
     const rate = await getCommissionRate(organisationId, 'tournament');
     return rate?.rate ?? 0;
   }
@@ -933,18 +949,24 @@ export class TournamentService {
       const existing = await tournamentRepository.findByCode(data.code);
       if (existing && existing.id !== id) throw new ConflictError('Tournament code already exists', ErrorCodes.ACADEMY_PROGRAM_CODE_EXISTS);
     }
-    // Group 1A — an organisation-owned tournament must never be stored as
-    // `platform`. Apply the same derivation on update so a client cannot turn
-    // an org tournament into a platform tournament after creation.
-    const effectiveOrgId = data.organisation_id ?? current.organisation_id;
-    if (data.tournament_type !== undefined) {
-      data = { ...data, tournament_type: this.deriveOrgTournamentType(effectiveOrgId, data.tournament_type) };
+    // G11 Phase 3 — the owning organisation and the competition type are FIXED at
+    // creation and can never be changed. `tournament_type` and `organisation_id`
+    // are stripped from ANY inbound payload (the DTO already rejects them, and
+    // the repository update allowlist excludes them) so a hostile or legacy
+    // caller can neither re-label a tournament as a platform one nor move it
+    // between organisations. The currency is still re-resolved server-side from
+    // the owning organisation/branch whenever the branch or a currency is
+    // supplied.
+    {
+      const { tournament_type: _ignoredType, organisation_id: _ignoredOrg, ...safeUpdate } = data as Partial<Tournament>;
+      data = safeUpdate;
     }
+    const effectiveOrgId = current.organisation_id ?? undefined;
     // Group 1A — authoritative currency for organisation tournaments. When the
-    // organisation or branch changes (or a client supplies a currency), re-resolve
-    // server-side from the effective org/branch. A client-supplied currency_code
-    // is never trusted as authoritative for an org-owned tournament.
-    if (effectiveOrgId != null && (data.organisation_id !== undefined || data.branch_id !== undefined || data.currency_code !== undefined)) {
+    // branch changes (or a client supplies a currency), re-resolve server-side
+    // from the effective org/branch. A client-supplied currency_code is never
+    // trusted as authoritative for an org-owned tournament.
+    if (effectiveOrgId != null && (data.branch_id !== undefined || data.currency_code !== undefined)) {
       const effectiveBranchId = data.branch_id ?? current.branch_id;
       const resolvedCurrency = await resolveOrganisationCurrency(effectiveOrgId, effectiveBranchId);
       if (resolvedCurrency) data = { ...data, currency_code: resolvedCurrency };

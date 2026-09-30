@@ -118,14 +118,14 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   academy_wallet_refund: { merchant_payable: '2202', platform_commission: '4191', tax_liability: '2300', wallet_liability_spend: '2100' },
   academy_cash_refund: { platform_commission: '4191', tax_liability: '2300', marketplace_receivable: '1161' },
   // G11.1 — Tournament card registration recognition. No DB mapping rows: the
-  // FULL concept set resolves from code to the EXISTING global accounts:
-  //   organisation-owned tournament (CourtZon book, org NULL):
-  //     Dr 1100 Payment Clearing = gross · Cr 2202 Merchant Payable = orgNet ·
-  //     Cr 4192 Tournament Commission Revenue = commission.
-  //   platform tournament (org NULL, commission_rate 0):
-  //     Dr 1100 Payment Clearing = gross · Cr 4140 Tournament / Event Revenue.
+  // FULL concept set resolves from code to the EXISTING global accounts.
+  // G11 Phase 3 — every tournament is organisation-owned, so there is only ONE
+  // CourtZon-book shape (org NULL):
+  //   Dr 1100 Payment Clearing = gross · Cr 2202 Merchant Payable = orgNet ·
+  //   Cr 4192 Tournament Commission Revenue = commission.
+  // The former platform map `tournament_platform_card_payment`
+  // ({ payment_clearing: '1100', tournament_revenue: '4140' }) is REMOVED.
   tournament_registration_card_payment: { payment_clearing: '1100', merchant_payable: '2202', tournament_commission: '4192' },
-  tournament_platform_card_payment: { payment_clearing: '1100', tournament_revenue: '4140' },
   // G11.2 — Tournament CASH registration recognition (org collected). The
   // CourtZon book resolves fully from code (no DB mapping rows) to the EXISTING
   // accounts: Dr 2202 Merchant Payable = commission · Cr 4192 Tournament
@@ -147,13 +147,14 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   // non-refundable expense and stays in 5210 (never reversed, never credited).
   tournament_registration_card_refund_settled: { merchant_payable: '2202', tournament_commission: '4192', cash_bank: '1120' },
   // G11.5 — Tournament PRIZE payout (Phase 1). No DB mapping rows: full concept
-  // sets resolve from code to the EXISTING global accounts. Platform-funded
-  // prize reduces recognized revenue through the REVENUE-CONTRA account (4300)
-  // against the wallet liability (2100) — full liability at award (Q8b/Q8c).
-  // Org-funded prize (CourtZon book, org NULL) draws from the merchant payable
-  // (2202) — the org's collected funds. Refund events mirror the same accounts.
-  tournament_prize_award: { revenue_contra: '4300', wallet_liability: '2100' },
-  tournament_prize_refund: { wallet_liability: '2100', revenue_contra: '4300' },
+  // sets resolve from code to the EXISTING global accounts. Prize funding is
+  // ORGANIZATION-ONLY (G11 Phase 3): the org-funded prize draws from the merchant
+  // payable (2202) — the org's collected funds — against the wallet liability
+  // (2100) for the full liability at award (Q8b/Q8c). Refund events mirror the
+  // same accounts. The former platform maps `tournament_prize_award`
+  // ({ revenue_contra: '4300', wallet_liability: '2100' }) and
+  // `tournament_prize_refund` ({ wallet_liability: '2100', revenue_contra: '4300' })
+  // are REMOVED — accounts 4300 and 4140 are untouched.
   tournament_org_prize_award: { merchant_payable: '2202', wallet_liability: '2100' },
   tournament_org_prize_refund: { wallet_liability: '2100', merchant_payable: '2202' },
 };

@@ -1661,13 +1661,16 @@ async function postBookingOrganisationCashBookReversal(refund: RefundEconomics, 
 // amount = round2(entry_fee)). The PAYMENT amount is authoritative — it is
 // never re-priced; the persisted entry_fee is only verified defensively.
 //
-// Organisation-owned tournament (organisation_id NOT NULL):
+// Organisation-owned tournament (the ONLY kind — see G11 Phase 3):
 //   CourtZon book (org NULL): Dr 1100 Payment Clearing = gross · Cr 2202
 //     Merchant Payable = orgNet · Cr 4192 Tournament Commission = commission.
 //   Organization book (org-scoped): Dr org 1161 = orgNet · Dr org MKT-COMM-EXP
 //     = commission · Cr org 4140 Tournament / Event Revenue = gross.
-// Platform tournament (organisation_id NULL, commission_rate 0): CourtZon owns
-//   the ENTIRE fee: Dr 1100 = gross · Cr 4140 = gross. No org journal.
+// G11 Phase 3 — the CourtZon platform never owns a tournament, so the former
+//   platform branch (`tournament_platform_card_payment`: Dr 1100 = gross ·
+//   Cr 4140 = gross) is REMOVED. A legacy org-less row is handled FAIL-CLOSED
+//   below: no accounting is posted, because there is no counterparty and no
+//   custody model to book against.
 //
 // commission = round2(gross × tournament.commission_rate / 100) from the
 // IMMUTABLE tournament snapshot — the live subscription rate is never re-read
@@ -1731,33 +1734,32 @@ async function postTournamentCardPaymentAccounting(
   const orgId = tournament.organisation_id != null ? Number(tournament.organisation_id) : null;
   const description = `Tournament #${tournament.id} registration #${registration.id} card payment (payment #${paymentId})`;
 
-  if (orgId != null) {
-    // CourtZon book (org NULL) — merchant-of-record custody over the org's net.
-    await postAccountingEvent(
-      'tournament_registration_card_payment', 'tournament', paymentId, null,
-      { payment_clearing: gross, merchant_payable: orgNet, tournament_commission: commission },
-      currencyCode,
-      description,
-    );
-    // Organization book — the org records its OWN economics (org-scoped 1161 /
-    // MKT-COMM-EXP / 4140, auto-provisioned per org by the accounting engine).
-    await postAccountingEvent(
-      'tournament_org_registration_receivable', 'tournament', paymentId, orgId,
-      { marketplace_receivable: orgNet, commission_expense: commission, tournament_revenue: gross },
-      currencyCode,
-      `${description} (organization book)`,
-      undefined,
-      { marketplace_receivable: orgId, commission_expense: orgId, tournament_revenue: orgId },
-    );
-  } else {
-    // Platform tournament — CourtZon owns the entire fee; no org journal.
-    await postAccountingEvent(
-      'tournament_platform_card_payment', 'tournament', paymentId, null,
-      { payment_clearing: gross, tournament_revenue: gross },
-      currencyCode,
-      description,
-    );
+  if (orgId == null) {
+    // G11 Phase 3 fail-closed guard. An org-less tournament is a legacy row only
+    // (creation is organisation-only since Phase 3). There is no counterparty and
+    // no custody model, so NO accounting is posted — the platform must never
+    // recognise a tournament fee as its own revenue.
+    log.info({ paymentId, registrationId, tournamentId: tournament.id }, 'Org-less tournament CARD payment — no owning organisation; no accounting posted (fail-closed)');
+    return;
   }
+
+  // CourtZon book (org NULL) — merchant-of-record custody over the org's net.
+  await postAccountingEvent(
+    'tournament_registration_card_payment', 'tournament', paymentId, null,
+    { payment_clearing: gross, merchant_payable: orgNet, tournament_commission: commission },
+    currencyCode,
+    description,
+  );
+  // Organization book — the org records its OWN economics (org-scoped 1161 /
+  // MKT-COMM-EXP / 4140, auto-provisioned per org by the accounting engine).
+  await postAccountingEvent(
+    'tournament_org_registration_receivable', 'tournament', paymentId, orgId,
+    { marketplace_receivable: orgNet, commission_expense: commission, tournament_revenue: gross },
+    currencyCode,
+    `${description} (organization book)`,
+    undefined,
+    { marketplace_receivable: orgId, commission_expense: orgId, tournament_revenue: orgId },
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1779,9 +1781,9 @@ async function postTournamentCardPaymentAccounting(
 //     Cr org 4140 Tournament / Event Revenue = gross · Cr org MKT-CZ-PAY
 //     (CourtZon Payable) = commission. Balanced by construction.
 //
-// Platform / community tournament (organisation_id NULL): there is NO custody
-// model for org-less cash — FAIL-CLOSED, no accounting is posted (explicit
-// guard below). FREE (payment amount <= 0) posts nothing. commission uses the
+// G11 Phase 3 — an org-less tournament (LEGACY rows only, since creation is now
+// organisation-only) has NO custody model — FAIL-CLOSED, no accounting is
+// posted (explicit guard below). FREE (payment amount <= 0) posts nothing. commission uses the
 // IMMUTABLE tournament.commission_rate snapshot; the payment amount is
 // authoritative (registration_fee never used); tax = 0 (no 2300 leg).
 //
@@ -1829,11 +1831,13 @@ async function postTournamentCashAccounting(
   const commissionRate = Number(tournament.commission_rate ?? 0);
   const commission = Math.round(((gross * commissionRate) / 100) * 100) / 100;
 
-  // G11.2 fail-closed guard: org-less (platform/community) tournament CASH has
-  // NO custodial organization to book against — no accounting is posted.
+  // G11.2 fail-closed guard (preserved from before Phase 3, still load-bearing for
+  // LEGACY rows): an org-less tournament CASH has NO custodial organisation to
+  // book against — no accounting is posted. Since Phase 3 creation is
+  // organisation-only, this can only be reached by a pre-Phase-3 row.
   const orgId = tournament.organisation_id != null ? Number(tournament.organisation_id) : null;
   if (orgId == null) {
-    log.info({ paymentId, registrationId, tournamentId: tournament.id }, 'Platform/community tournament CASH — no custody model; no accounting posted (fail-closed)');
+    log.info({ paymentId, registrationId, tournamentId: tournament.id }, 'Org-less tournament CASH — no custody model; no accounting posted (fail-closed)');
     return;
   }
 
@@ -2027,8 +2031,8 @@ async function postTournamentCashRefundAccounting(amount: number, currency: stri
 }
 
 // ── G11.5 — Tournament Prize Payout postings ─────────────────────────────────
-// Mirrors the locked award topology (Q8b/Q8c/Q10b):
-//   Platform-funded award:  Dr 4300 Revenue Contra · Cr 2100 Wallet Liability.
+// Mirrors the locked award topology (Q8b/Q8c/Q10b). G11 Phase 3 — prize funding
+// is ORGANIZATION-ONLY, so there is exactly one award topology:
 //   Org-funded award (CourtZon book, org NULL):
 //                           Dr 2202 Merchant Payable · Cr 2100 Wallet Liability.
 //   Org CARD org book:      Dr org 4140 · Cr org 1161.
@@ -2036,6 +2040,9 @@ async function postTournamentCashRefundAccounting(amount: number, currency: stri
 //   Refunds are the EXACT FULL inverse (separate event types — postAccountingEvent
 //   rejects negative amounts, and the mirrored side swap keeps every posting
 //   positive/balanced).
+// The platform-funded topology (Dr 4300 Revenue Contra · Cr 2100) is REMOVED with
+// the `tournament_prize_award` / `tournament_prize_refund` concepts — the CourtZon
+// platform never funds a prize, so it never has prize revenue to contra-expense.
 // Amounts are always re-read from the durable award row (never the event
 // payload), and every posting is idempotent via hasPosting on
 // (source_type='tournament', source_id=awardId, event_type).
@@ -2049,12 +2056,12 @@ async function postPrizeAwardAccounting(awardId: number): Promise<void> {
   const currency = award.currency_code || 'EGP';
   const description = `Tournament prize award #${awardId} (${award.bind_source})`;
 
-  if (award.funding_source === 'platform') {
-    await postAccountingEvent(
-      'tournament_prize_award', 'tournament', awardId, null,
-      { revenue_contra: amount, wallet_liability: amount },
-      currency, description,
-    );
+  // G11 Phase 3 fail-closed guard. A `platform`-funded award can only be a
+  // LEGACY row (funding is organization-only since Phase 3, and the
+  // `tournament_prize_award` concept is deleted) — nothing is posted rather than
+  // booked against a concept that no longer exists.
+  if (award.funding_source !== 'organization') {
+    log.error({ awardId, fundingSource: award.funding_source }, 'Prize award is not organization-funded — no accounting posted (fail-closed)');
     return;
   }
 
@@ -2096,12 +2103,11 @@ async function postPrizeRefundAccounting(awardId: number): Promise<void> {
   const currency = award.currency_code || 'EGP';
   const description = `Tournament prize refund #${awardId} (full clawback)`;
 
-  if (award.funding_source === 'platform') {
-    await postAccountingEvent(
-      'tournament_prize_refund', 'tournament', awardId, null,
-      { wallet_liability: amount, revenue_contra: amount },
-      currency, description,
-    );
+  // G11 Phase 3 fail-closed guard (mirrors the award path above): a
+  // `platform`-funded refund can only be a LEGACY row — the
+  // `tournament_prize_refund` concept no longer exists, so nothing is posted.
+  if (award.funding_source !== 'organization') {
+    log.error({ awardId, fundingSource: award.funding_source }, 'Prize refund is not organization-funded — no accounting posted (fail-closed)');
     return;
   }
 

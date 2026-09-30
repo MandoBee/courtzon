@@ -74,6 +74,9 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     sport_id: 22, match_format_id: 1, rule_set_id: 1, draw_seed: 42,
     start_date: '2026-12-01',
     registration_payment_methods: ['cash', 'card'],
+    // G11 Phase 3 — a tournament is always owned by an organisation, so venue
+    // branch validation is always evaluated against a real owning org.
+    organisation_id: 1001,
     ...overrides,
   };
 }
@@ -182,7 +185,7 @@ describe('Group 4 — daily playing window validation', () => {
     expect(repo.create).toHaveBeenCalled();
   });
 
-  it('8c. a daily window without a branch is NOT branch-validated (platform tournaments)', async () => {
+  it('8c. a daily window without a branch is NOT branch-validated (org-owned, no venue branch)', async () => {
     branchRepo.findById.mockResolvedValue(null);
     await svc.create(makeTournament({ start_date: '2026-12-01', daily_start_time: '06:00:00', daily_end_time: '23:00:00' }), 1);
     expect(repo.create).toHaveBeenCalled();

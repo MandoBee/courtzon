@@ -14,7 +14,9 @@ beforeEach(() => {
 function minimalData(overrides: Record<string, unknown> = {}) {
   return {
     creator_id: 1,
-    organisation_id: undefined,
+    // G11 Phase 3 — a tournament is always owned by an organisation; the
+    // repository refuses to persist an org-less row.
+    organisation_id: 42,
     branch_id: undefined,
     bracket_type_id: 1,
     format: 'knockout',
@@ -26,7 +28,8 @@ function minimalData(overrides: Record<string, unknown> = {}) {
     name: 'UAT Padel',
     code: undefined,
     description: undefined,
-    tournament_type: 'platform',
+    // G11 Phase 3 — `community` is the only valid `tournament_type`.
+    tournament_type: 'community',
     max_participants: 16,
     max_teams: undefined,
     min_participants: 2,
@@ -99,22 +102,22 @@ describe('TournamentRepository.findByIdDetailed — management detail shape', ()
   it('returns the raw row enriched with sport_name / organisation_name / max_players / type', async () => {
     pool.query.mockResolvedValue([[{
       id: 1, name: 'Padel Test Tournament', sport_id: 22, max_participants: 16,
-      tournament_type: 'platform', sport_name: 'Padel', organisation_name: null,
-      max_players: 16, type: 'platform', registration_deadline: null,
+      tournament_type: 'community', sport_name: 'Padel', organisation_name: null,
+      max_players: 16, type: 'community', registration_deadline: null,
     }]]);
 
     const row = await repo.findByIdDetailed(1);
     expect(row.sport_name).toBe('Padel');
     expect(row.max_players).toBe(16);
-    expect(row.type).toBe('platform');
+    expect(row.type).toBe('community');
     expect(row.max_participants).toBe(16);
   });
 
   it('resolves organisation_name for org-owned tournaments', async () => {
     pool.query.mockResolvedValue([[{
       id: 2, name: 'Org Cup', organisation_id: 1001, sport_id: null,
-      tournament_type: 'platform', sport_name: null, organisation_name: 'Padel Edge',
-      max_players: 16, type: 'platform', registration_deadline: null,
+      tournament_type: 'community', sport_name: null, organisation_name: 'Padel Edge',
+      max_players: 16, type: 'community', registration_deadline: null,
     }]]);
 
     const row = await repo.findByIdDetailed(2);

@@ -19,7 +19,9 @@ type RowData = RowDataPacket[];
  *   Organisation book (org-scoped):
  *     Dr ORG-CASH 1000 · Dr MKT-COMM-EXP 100 · Cr 4140 1000 ·
  *     Cr MKT-CZ-PAY (CourtZon Payable) 100.
- *   Platform/community CASH (organisation_id NULL) → FAIL-CLOSED, no posting.
+ *   Org-less CASH (LEGACY pre-Phase-3 row, organisation_id NULL) →
+ *   FAIL-CLOSED, no posting. Since G11 Phase 3 creation is organisation-only,
+ *   an org-less row can only predate it; the guard is load-bearing for it.
  *
  * Rules under test:
  *   - tax = 0 (no 2300) and account 1100 Payment Clearing is NEVER used for
@@ -116,15 +118,18 @@ async function countTournamentRows(paymentId: number): Promise<number> {
 }
 
 async function createTournament(opts: { entryFee: number; rate: number; org: number | null; regFee?: number; currency?: string }) {
+  // G11 Phase 3 — `tournament_type` is narrowed to 'community' only (the
+  // platform never owns a tournament). `org` may still be null ONLY to simulate
+  // a LEGACY pre-Phase-3 row exercising the fail-closed cash guard.
   const [res] = await pool.execute<RowData>(
     `INSERT INTO tournaments
        (public_id, creator_id, organisation_id, bracket_type_id, name,
         max_participants, min_participants, entry_fee, registration_fee,
         currency_code, price_type, tournament_type, commission_rate, status,
         start_date)
-     VALUES (UUID(), ?, ?, ?, ?, 16, 2, ?, ?, ?, 'FIXED', ?, ?, 'registration_open', '2026-12-01')`,
+     VALUES (UUID(), ?, ?, ?, ?, 16, 2, ?, ?, ?, 'FIXED', 'community', ?, 'registration_open', '2026-12-01')`,
     [CREATOR, opts.org, BRACKET, `G11M2 ${Date.now()}`, opts.entryFee, opts.regFee ?? 0,
-      opts.currency ?? 'EGP', opts.org != null ? 'community' : 'platform', opts.rate],
+      opts.currency ?? 'EGP', opts.rate],
   );
   const tournamentId = Number((res as any).insertId);
   tournamentIds.push(tournamentId);
@@ -208,10 +213,16 @@ async function cleanupAll() {
   if (!pool) return;
   await pool.execute(`DELETE FROM payment_transactions WHERE id IN (${paymentIds.length ? paymentIds.join(',') : 0})`);
   await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ${ORG} OR source_type = 'tournament'`);
-  await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ${ORG}`);
+  await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ${ORG} OR account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id = ${ORG})`);
   await pool.execute(`DELETE FROM tournament_registrations WHERE id IN (${regIds.length ? regIds.join(',') : 0})`);
   await pool.execute(`DELETE FROM tournaments WHERE id IN (${tournamentIds.length ? tournamentIds.join(',') : 0})`);
   await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id = ${ORG})`);
+  // Re-clean general_ledger immediately before the chart accounts so a prize/card
+  // accounting posting that landed asynchronously during this cleanup is removed
+  // too — otherwise `chart_of_accounts` deletion can trip the fk_gl_account FK
+  // (async event-bus postings are awaited by waitFor on the CURRENT test but can
+  // be emitted by a PREVIOUS test's event before the wait begins).
+  await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ${ORG} OR account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id = ${ORG})`);
   await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id = ${ORG}`);
   await pool.execute(`DELETE FROM organisation_subscriptions WHERE organisation_id = ${ORG}`);
   await pool.execute(`DELETE FROM subscription_plan_rates WHERE plan_id = ${PLAN}`);

@@ -220,16 +220,20 @@ describe('Group 3A + G11.1/G11.2 — Tournament payment:succeeded → accounting
     expect(emitted.some((e) => e.name === 'accounting:entry-recorded')).toBe(true);
   });
 
-  it('G11.1 — a PLATFORM Tournament CARD payment posts only the platform entry (no org journal)', async () => {
+  it('G11 Phase 3 — an org-less (LEGACY) Tournament CARD payment posts NOTHING (the platform never recognises a tournament fee)', async () => {
     (tournamentRepository.findById as any).mockImplementation(async () => ({
       id: 401, organisation_id: null, commission_rate: 0, entry_fee: 250, currency_code: 'AED',
     }));
     const handler = capturePaymentSucceededHandler();
     await handler(PAID({ registrationId: 99, referenceId: 99 }));
 
-    const postingCalls = (ledgerRepository.hasPosting as any).mock.calls as Array<[string, number, string]>;
-    expect(postingCalls.map((c) => c[2])).toEqual(['tournament_platform_card_payment']);
-    expect(ledgerRepository.createEntries).toHaveBeenCalled();
+    // The former behaviour posted `tournament_platform_card_payment`
+    // (Dr 1100 · Cr 4140) — CourtZon recognising a tournament fee as its own
+    // revenue. That concept is deleted; an org-less tournament is a pre-Phase-3
+    // row only and is now skipped fail-closed.
+    expect(ledgerRepository.hasPosting).not.toHaveBeenCalled();
+    expect(ledgerRepository.createEntries).not.toHaveBeenCalled();
+    expect(emitted.some((e) => e.name === 'accounting:entry-recorded')).toBe(false);
   });
 
   it('G11.1 — a zero-fee (FREE) Tournament payment creates NO accounting posting', async () => {

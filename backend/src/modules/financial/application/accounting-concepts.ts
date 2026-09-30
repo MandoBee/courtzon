@@ -614,14 +614,14 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['payment_clearing'],
     credit: ['merchant_payable', 'tournament_commission'],
   },
-  // Platform / community tournament (organisation_id NULL, commission_rate 0):
-  // CourtZon owns the ENTIRE fee — no merchant payable and no commission split:
-  //   Dr 1100 Payment Clearing = gross · Cr 4140 Tournament / Event Revenue =
-  //   gross. COURTZON BOOK only (org NULL); no organization journal.
-  tournament_platform_card_payment: {
-    debit: ['payment_clearing'],
-    credit: ['tournament_revenue'],
-  },
+  // G11 Phase 3 — the platform/org-less tournament concept
+  // `tournament_platform_card_payment` is REMOVED. The CourtZon platform never
+  // owns, funds, or financially recognises a tournament, so the "CourtZon owns
+  // the entire fee, no org journal" model no longer exists. Every registration
+  // belongs to an organisation and posts `tournament_registration_card_payment`
+  // (CourtZon book, org NULL) plus `tournament_org_registration_receivable`
+  // (organization book, org-scoped). A legacy org-less row is handled FAIL-CLOSED
+  // in the listener (nothing is posted).
   // Organization book for an org-owned tournament (org-scoped), mirroring the
   // org-book shape used by booking/marketplace (Dr 1161 + commission expense /
   // Cr revenue) with the DEDICATED org 4140 Tournament / Event Revenue leg so
@@ -724,24 +724,18 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
   },
   // ── TOURNAMENT (G11.5) — Prize payout (Phase 1) ───────────────────────────
   // Award = full prize liability recognized at winner confirmation (Q8b/Q8c):
-  // Dr 4300 Revenue Contra-expense (platform) OR Dr 2202 Merchant Payable
-  // (org-funded, CourtZon book) and Cr 2100 Wallet Liability. Refund = FULL-ONLY
-  // inverse posting (Q10b), mirrored exactly — postAccountingEvent rejects
-  // negative amounts, so refunds are their own event types with swapped sides.
+  // Dr 2202 Merchant Payable (org-funded, CourtZon book) and Cr 2100 Wallet
+  // Liability. Refund = FULL-ONLY inverse posting (Q10b), mirrored exactly —
+  // postAccountingEvent rejects negative amounts, so refunds are their own event
+  // types with swapped sides.
   //
-  // Platform / community tournament (funding = CourtZon):
-  //   Dr 4300 Tournament Revenue Contra = prize · Cr 2100 Wallet Liability =
-  //   prize. (Reduces platform revenue by the full liability at award.)
-  tournament_prize_award: {
-    debit: ['revenue_contra'],
-    credit: ['wallet_liability'],
-  },
-  // Platform prize FULL clawback while funds remain in wallet custody:
-  //   Dr 2100 Wallet Liability = prize · Cr 4300 Revenue Contra = prize.
-  tournament_prize_refund: {
-    debit: ['wallet_liability'],
-    credit: ['revenue_contra'],
-  },
+  // G11 Phase 3 — the platform-funded prize concepts `tournament_prize_award`
+  // (Dr 4300 Revenue Contra / Cr 2100) and `tournament_prize_refund`
+  // (Dr 2100 / Cr 4300) are REMOVED. Prize funding is ORGANIZATION-ONLY: the
+  // CourtZon platform never funds a prize, so there is no revenue-contra model.
+  // A legacy award with funding_source='platform' is handled FAIL-CLOSED in the
+  // listener (nothing is posted). Accounts 4300 and 4140 are untouched.
+  //
   // Organisation-owned tournament, CARD collection — COURTZON BOOK (org NULL):
   // CourtZon holds the org funds (merchant payable) and credits the winner:
   //   Dr 2202 Merchant Payable = prize · Cr 2100 Wallet Liability = prize.

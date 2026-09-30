@@ -169,8 +169,11 @@ describe('G11.3 — refund service contract (guard order, no partial refunds, no
     expect(svc).toContain('does not belong to your organisation');
   });
 
-  it('platform/community tournaments are fail-closed at request + execution', () => {
-    expect(svc).toContain('Platform/community tournaments do not support refund requests (G11.3 out of scope)');
+  it('an org-less (LEGACY, pre-Phase-3) tournament is fail-closed at request + execution', () => {
+    // G11 Phase 3 — creation is organisation-only, so an org-less tournament can
+    // only predate it. With no owning organisation there is no recognised revenue
+    // source, so a refund is refused rather than booked against nothing.
+    expect(svc).toContain('This tournament has no owning organisation, so it has no recognised revenue source to refund against');
     expect(svc).toContain('tournament.organisation_id == null || Number(tournament.organisation_id) !== orgId');
   });
 });

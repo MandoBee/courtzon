@@ -20,8 +20,10 @@ type RowData = RowDataPacket[];
  *       Merchant Payable 900 · Cr 4192 Tournament Commission 100.
  *     Org book (org-scoped): Dr 1161 900 · Dr MKT-COMM-EXP 100 ·
  *       Cr 4140 Tournament / Event Revenue 1000.
- *   Platform tournament (organisation_id NULL, commission_rate 0): CourtZon
- *     owns everything: Dr 1100 1000 · Cr 4140 1000. No org journal.
+ *   Platform tournament (organisation_id NULL, commission_rate 0): G11 Phase 3
+ *     removes this path — the CourtZon platform never recognises a tournament
+ *     fee as its own revenue, so an org-less (LEGACY) row is FAIL-CLOSED: no
+ *     accounting is posted at all.
  *
  * Rules under test:
  *   - tax = 0 (G11.1 decision) → NO 2300 leg.
@@ -32,6 +34,7 @@ type RowData = RowDataPacket[];
  *   - source_type='tournament', source_id=paymentId, dedicated event types
  *     (no generic card_payment fallthrough, no 'booking' source).
  *   - each posting is independently idempotent via hasPosting + uk_dedup.
+ *   - org-less (LEGACY) tournament → fail-closed, no posting.
  *   - FREE (zero fee) registers → no posting. CASH is covered by G11.2
  *     (this spec is CARD-only).
  */
@@ -92,12 +95,13 @@ async function orgRows(paymentId: number): Promise<any[]> {
   return rows as any[];
 }
 
-async function platformRows(paymentId: number): Promise<any[]> {
+/** rows for an org-less (LEGACY) tournament card payment — expected to be EMPTY (fail-closed). */
+async function orglessRows(paymentId: number): Promise<any[]> {
   const [rows] = await pool.execute<RowData>(
     `SELECT le.side, le.amount, le.event_type, le.source_type, le.source_id,
             le.organisation_id, c.code AS account_code
      FROM ledger_entries le JOIN chart_of_accounts c ON c.id = le.chart_account_id
-     WHERE le.source_type = 'tournament' AND le.source_id = ? AND le.event_type = 'tournament_platform_card_payment'
+     WHERE le.source_type = 'tournament' AND le.source_id = ?
      ORDER BY le.id`,
     [paymentId],
   );
@@ -113,15 +117,18 @@ async function countTournamentRows(paymentId: number): Promise<number> {
 }
 
 async function createTournament(opts: { id?: number; entryFee: number; rate: number; org: number | null; regFee?: number; currency?: string }) {
+  // G11 Phase 3 — `tournament_type` is narrowed to 'community' only. `org` may
+  // be null ONLY to simulate a LEGACY pre-Phase-3 row (fixture for the
+  // fail-closed guard); creation itself is organisation-only.
   const [res] = await pool.execute<RowData>(
     `INSERT INTO tournaments
        (public_id, creator_id, organisation_id, bracket_type_id, name,
         max_participants, min_participants, entry_fee, registration_fee,
         currency_code, price_type, tournament_type, commission_rate, status,
         start_date)
-     VALUES (UUID(), ?, ?, ?, ?, 16, 2, ?, ?, ?, 'FIXED', ?, ?, 'registration_open', '2026-12-01')`,
+     VALUES (UUID(), ?, ?, ?, ?, 16, 2, ?, ?, ?, 'FIXED', 'community', ?, 'registration_open', '2026-12-01')`,
     [CREATOR, opts.org, BRACKET, `G11M ${opts.id ?? 'T'}`, opts.entryFee, opts.regFee ?? 0,
-      opts.currency ?? 'EGP', opts.org != null ? 'community' : 'platform', opts.rate],
+      opts.currency ?? 'EGP', opts.rate],
   );
   const tournamentId = Number((res as any).insertId);
   tournamentIds.push(tournamentId);
@@ -282,23 +289,20 @@ describe('G11.1 — tournament card registration accounting', () => {
     expect(sum(org, 'debit')).toBe(sum(org, 'credit'));
   });
 
-  it('B/C — platform tournament (1000 @ 0%): CourtZon owns everything, NO organisation journal', async () => {
+  it('B/C — G11 Phase 3: an org-less (LEGACY) tournament card payment posts NOTHING', async () => {
     const tid = await createTournament({ entryFee: 1000, rate: 0, org: null });
     const regId = await createRegistration(tid);
     const pid = await createPaidCardPayment(regId, 1000);
     await emitPaymentSucceeded(pid, regId, 1000);
 
-    await waitFor(() => platformRows(pid), (rows) => rows.length === 2, 'platform posting (2 legs)');
-    const rows = await platformRows(pid);
-
-    expect(rows.every((r) => r.organisation_id === null)).toBe(true);
-    expect(amountFor(rows, 'debit', '1100')).toBe(1000);
-    expect(amountFor(rows, 'credit', '4140')).toBe(1000);
-    expect(sum(rows, 'debit')).toBe(sum(rows, 'credit'));
-    // No org journal for a platform tournament.
-    const [orgCount] = await pool.execute<RowData>(
-      `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='tournament' AND source_id=? AND event_type='tournament_org_registration_receivable'`, [pid]);
-    expect(Number((orgCount as any[])[0].c)).toBe(0);
+    // The former `tournament_platform_card_payment` concept is deleted — the
+    // CourtZon platform never recognises a tournament fee as its own revenue.
+    // An org-less row can only be a LEGACY pre-Phase-3 row, and the listener
+    // fails closed: NO posting of any kind, no org journal, no platform journal.
+    await sleep(1200);
+    const rows = await orglessRows(pid);
+    expect(rows).toEqual([]);
+    expect(await countTournamentRows(pid)).toBe(0);
   });
 
   it('D — NO 2300 Tax Liability leg for any tournament posting (G11.1 tax = 0)', async () => {
@@ -383,14 +387,15 @@ describe('G11.1 — tournament card registration accounting', () => {
 
     // The charged amount is the PAYMENT amount even if it drifts from entry_fee
     // (defensive verification only — never silently re-priced).
-    const tid2 = await createTournament({ entryFee: 1000, rate: 10, org: null });
+    const tid2 = await createTournament({ entryFee: 1000, rate: 10, org: ORG });
     const regId2 = await createRegistration(tid2);
     const pid2 = await createPaidCardPayment(regId2, 1005);
     await emitPaymentSucceeded(pid2, regId2, 1005);
-    await waitFor(() => platformRows(pid2), (rows) => rows.length === 2, 'platform posting');
-    const plat = await platformRows(pid2);
+    await waitFor(() => courtzonRows(pid2), (rows) => rows.length === 3, 'CourtZon posting');
+    const plat = await courtzonRows(pid2);
     expect(amountFor(plat, 'debit', '1100')).toBe(1005);
-    expect(amountFor(plat, 'credit', '4140')).toBe(1005);
+    expect(amountFor(plat, 'credit', '2202')).toBe(904.5);
+    expect(amountFor(plat, 'credit', '4192')).toBe(100.5);
   });
 
   it('I — FREE / zero-fee registration creates NO accounting journal (CASH is covered by the G11.2 spec)', async () => {

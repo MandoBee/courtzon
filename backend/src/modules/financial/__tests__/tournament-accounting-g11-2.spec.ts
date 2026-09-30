@@ -80,11 +80,15 @@ describe('G11.2 — tournament CASH registration accounting contract', () => {
     expect(fn).not.toContain("'booking', paymentId");
   });
 
-  it('platform/community tournament CASH is FAIL-CLOSED (no custody model → no posting)', () => {
+  it('an org-less (LEGACY, pre-Phase-3) tournament CASH payment is FAIL-CLOSED (no owning org → no posting)', () => {
     const listener = be('src/modules/financial/application/accounting-event.listener.ts');
     const fn = listener.slice(listener.indexOf('async function postTournamentCashAccounting'));
     expect(fn).toContain('if (orgId == null) {');
-    expect(fn).toContain('Platform/community tournament CASH — no custody model; no accounting posted (fail-closed)');
+    expect(fn).toContain('Org-less tournament CASH');
+    expect(fn).toContain('no custody model; no accounting posted (fail-closed)');
+    // The guard must short-circuit BEFORE any posting is made.
+    const guardIdx = fn.indexOf('if (orgId == null) {');
+    expect(guardIdx).toBeLessThan(fn.indexOf('await postAccountingEvent('));
   });
 
   it('commission uses the IMMUTABLE tournament.commission_rate snapshot; payment amount is authoritative; registration_fee never used', () => {

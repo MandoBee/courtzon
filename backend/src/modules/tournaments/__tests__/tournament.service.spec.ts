@@ -97,6 +97,10 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     name: 'T1', max_participants: 8, min_participants: 2, entry_fee: 0,
     currency_code: 'USD', price_type: 'FREE', status: 'registration_open',
     sport_id: 22, match_format_id: 1, rule_set_id: 1, draw_seed: 42,
+    // G11 Phase 3 — every tournament is owned by an ORGANISATION. The CourtZon
+    // platform never creates, owns, funds, or recognises a tournament, so a
+    // create payload without `organisation_id` is rejected outright.
+    organisation_id: 1001,
     ...overrides,
   };
 }
@@ -337,23 +341,31 @@ describe('TournamentService (Group 5A)', () => {
     expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 1001, tournament_type: 'community' }));
   });
 
-  it('G1A-type-3. platform create (no org) remains platform', async () => {
+  it('G1A-type-3. G11 Phase 3 — an org-less (platform) create is REJECTED', async () => {
     repo.findByCode.mockResolvedValue(null);
     repo.create.mockResolvedValue(10);
-    repo.findById.mockResolvedValue(makeTournament({ id: 10, organisation_id: undefined, tournament_type: 'platform' }));
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, organisation_id: 1001, tournament_type: 'community' }));
     mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
-    await svc.create(makeTournament({ organisation_id: undefined, tournament_type: 'platform' }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: undefined, tournament_type: 'platform' }));
+    // The CourtZon PLATFORM never creates, owns, funds, or recognises a
+    // tournament, so there is no such thing as a "platform" tournament to create.
+    await expect(svc.create(makeTournament({ organisation_id: undefined, tournament_type: 'platform' }), 1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_ORGANISATION_REQUIRED, statusCode: 422 });
+    // Defence in depth: nothing is persisted.
+    expect(repo.create).not.toHaveBeenCalled();
   });
 
-  it('G1A-type-4. update cannot turn an org-owned tournament into platform', async () => {
+  it('G1A-type-4. G11 Phase 3 — update cannot turn an org tournament into a platform one', async () => {
     const current = makeTournament({ id: 1, organisation_id: 1001, tournament_type: 'community' });
     repo.findById.mockResolvedValue(current);
     mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
+    // `tournament_type` is no longer updatable at all — the DTO strips it and the
+    // repository update allowlist excludes it, so a hostile payload is inert.
     await svc.update(1, { tournament_type: 'platform' } as any);
-    expect(repo.update).toHaveBeenCalledWith(1, expect.objectContaining({ tournament_type: 'community' }));
+    const updated = repo.update.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
+    expect(updated ?? {}).not.toHaveProperty('tournament_type');
+    expect(updated ?? {}).not.toHaveProperty('organisation_id');
   });
 
   // ── Group 1A — authoritative currency ──
@@ -390,15 +402,18 @@ describe('TournamentService (Group 5A)', () => {
     expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'AED' }));
   });
 
-  it('G1A-curr-3. platform tournament (no org) keeps client-supplied currency', async () => {
+  it('G1A-curr-3. G11 Phase 3 — an org-less create is rejected before any currency resolution', async () => {
     repo.findByCode.mockResolvedValue(null);
     repo.create.mockResolvedValue(10);
-    repo.findById.mockResolvedValue(makeTournament({ id: 10, organisation_id: undefined }));
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
     mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
     pool.execute.mockImplementation(async () => [[]]);
-    await svc.create(makeTournament({ organisation_id: undefined, currency_code: 'AED' }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'AED' }));
+    // No platform tournament exists, so there is no "client currency wins" case:
+    // the owning organisation is always authoritative for currency.
+    await expect(svc.create(makeTournament({ organisation_id: undefined, currency_code: 'AED' }), 1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_ORGANISATION_REQUIRED });
+    expect(repo.create).not.toHaveBeenCalled();
   });
 
   it('G1A-curr-4. getOrgCommissionConfig exposes the resolved org currency', async () => {
@@ -467,7 +482,11 @@ describe('TournamentService — structured prizes (Group 2)', () => {
       sport_id: 22,
       name: 'Prize Cup',
       max_participants: 8,
-      currency_code: 'USD',
+      // G11 Phase 3 — a tournament is always owned by an organisation, and the
+      // owning organisation's currency is authoritative (it overrides any
+      // client-supplied `currency_code`). The mocked resolver yields EGP.
+      organisation_id: 1001,
+      currency_code: 'EGP',
       start_date: '2026-11-01',
       ...overrides,
     };
@@ -487,10 +506,10 @@ describe('TournamentService — structured prizes (Group 2)', () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
     await svc.create(prizesPayload({
       prizes: [
-        { placement: 1, prize_type: 'cash', amount: 10000, currency_code: 'USD', description: 'Winner' },
+        { placement: 1, prize_type: 'cash', amount: 10000, currency_code: 'EGP', description: 'Winner' },
         { placement: 1, prize_type: 'gold', description: 'Gold medal' },
         { placement: 1, prize_type: 'trophy', description: 'Trophy' },
-        { placement: 2, prize_type: 'cash', amount: 5000, currency_code: 'USD' },
+        { placement: 2, prize_type: 'cash', amount: 5000, currency_code: 'EGP' },
         { placement: 2, prize_type: 'silver', description: 'Silver medal' },
         { placement: null, prize_type: 'gift', description: 'Padel racket' },
       ],
@@ -504,13 +523,13 @@ describe('TournamentService — structured prizes (Group 2)', () => {
 
   it('3. cash prize validation — rejects a cash prize without an amount', async () => {
     await expect(svc.create(prizesPayload({
-      prizes: [{ placement: 1, prize_type: 'cash', currency_code: 'USD' }],
+      prizes: [{ placement: 1, prize_type: 'cash', currency_code: 'EGP' }],
     }) as any, 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PRIZE });
   });
 
   it('3b. cash prize validation — rejects a zero/negative amount', async () => {
     await expect(svc.create(prizesPayload({
-      prizes: [{ placement: 1, prize_type: 'cash', amount: 0, currency_code: 'USD' }],
+      prizes: [{ placement: 1, prize_type: 'cash', amount: 0, currency_code: 'EGP' }],
     }) as any, 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PRIZE });
   });
 
@@ -533,7 +552,7 @@ describe('TournamentService — structured prizes (Group 2)', () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
     await svc.create(prizesPayload({
       prizes: [
-        { placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD' },
+        { placement: 1, prize_type: 'cash', amount: 100, currency_code: 'EGP' },
         { placement: 1, prize_type: 'trophy', description: 'Trophy' },
       ],
     }) as any, 1);
@@ -549,9 +568,9 @@ describe('TournamentService — structured prizes (Group 2)', () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
     await svc.create(prizesPayload({
       prizes: [
-        { placement: 1, prize_type: 'cash', amount: 100, currency_code: 'USD' },
-        { placement: 2, prize_type: 'cash', amount: 50, currency_code: 'USD' },
-        { placement: 3, prize_type: 'cash', amount: 25, currency_code: 'USD' },
+        { placement: 1, prize_type: 'cash', amount: 100, currency_code: 'EGP' },
+        { placement: 2, prize_type: 'cash', amount: 50, currency_code: 'EGP' },
+        { placement: 3, prize_type: 'cash', amount: 25, currency_code: 'EGP' },
         { placement: null, prize_type: 'gift', description: 'Special' },
       ],
     }) as any, 1);

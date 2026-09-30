@@ -129,14 +129,16 @@ async function accountBalance(code: string, organisationId: number | null = null
 }
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
-async function createTournament(org: number | null, entryFee = GROSS, rate = 10, type: 'community' | 'platform' = 'community') {
+async function createTournament(org: number | null, entryFee = GROSS, rate = 10) {
+  // G11 Phase 3 — `tournament_type` is narrowed to 'community' only. `org` may
+  // be null ONLY to simulate a LEGACY pre-Phase-3 row (fail-closed guard path).
   const [res] = await pool.execute<RowData>(
     `INSERT INTO tournaments
        (public_id, creator_id, organisation_id, bracket_type_id, name,
         max_participants, min_participants, entry_fee, registration_fee,
         currency_code, price_type, tournament_type, commission_rate, status, start_date)
-     VALUES (UUID(), ?, ?, ?, ?, 16, 2, ?, 0, 'EGP', 'FIXED', ?, ?, 'registration_open', '2026-12-01')`,
-    [CREATOR, org, BRACKET, `G114-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, entryFee, type, rate],
+     VALUES (UUID(), ?, ?, ?, ?, 16, 2, ?, 0, 'EGP', 'FIXED', 'community', ?, 'registration_open', '2026-12-01')`,
+    [CREATOR, org, BRACKET, `G114-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, entryFee, rate],
   );
   const id = Number((res as any).insertId);
   tournamentIds.push(id);
@@ -435,8 +437,8 @@ describe('G11.4 — R-3: tournament entitlement creation', () => {
     expect(meta.releaseCondition).toBe('tournament_draw_locked');
   });
 
-  it('PLATFORM / COMMUNITY tournament (organisation_id IS NULL) — fails closed, zero entitlements', async () => {
-    const tid = await createTournament(null, GROSS, 10, 'platform');
+  it('G11 Phase 3 — an org-less (LEGACY) tournament (organisation_id IS NULL) fails closed, zero entitlements', async () => {
+    const tid = await createTournament(null, GROSS, 10);
     const regId = await registerPlayer(tid, PLAYER);
     const pid = await chargeAndPayCard(regId);
     const payload = await emitRegistrationPaid(pid, regId);

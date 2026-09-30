@@ -73,13 +73,18 @@ async function mkUser(id: number, email: string, withBank: boolean) {
 }
 
 async function createPlatformTournament(): Promise<number> {
+  // G11 Phase 3 — the CourtZon platform never owns a tournament, so an
+  // org-less row cannot exist. The fixture therefore attaches the tournament to
+  // an organisation while keeping the name/intent of the G11.6 withdrawal test.
+  const [orgs] = await pool.execute<RowData>('SELECT id FROM organisations ORDER BY id LIMIT 1');
+  const orgId = (orgs as any[])[0].id;
   const [res] = await pool.execute<RowData>(
     `INSERT INTO tournaments
        (public_id, creator_id, organisation_id, bracket_type_id, name, max_participants, min_participants,
         entry_fee, registration_fee, currency_code, price_type, tournament_type, commission_rate, status,
         registration_payment_methods, start_date, end_date)
-     VALUES (UUID(), ?, NULL, 3, 'G11.6 Cup', 16, 2, 100, 0, 'EGP', 'FIXED', 'platform', 0, 'completed', NULL, '2026-12-01', '2026-12-31')`,
-    [WIN],
+     VALUES (UUID(), ?, ?, 3, 'G11.6 Cup', 16, 2, 100, 0, 'EGP', 'FIXED', 'community', 0, 'completed', NULL, '2026-12-01', '2026-12-31')`,
+    [WIN, orgId],
   );
   const tid = Number((res as any).insertId);
   tournamentIds.push(tid);

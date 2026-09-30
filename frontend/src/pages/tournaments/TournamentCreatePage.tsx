@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../../i18n';
 import api from '../../services/api';
-import { orgTournamentApi, bracketTypeApi } from '../../services/tournament';
+import { orgTournamentApi } from '../../services/tournament';
 import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
@@ -15,6 +15,13 @@ import SponsorEditor, { type SponsorEditorRow } from '../../components/tournamen
 import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFormValue } from '../../components/tournaments/EligibilityFormSection';
 
 type TournamentForm = {
+  /**
+   * G11 Phase 3 — the OWNING ORGANISATION. Required in BOTH contexts: the
+   * CourtZon platform never creates, owns, funds, or recognises a tournament.
+   * In `org` mode it is forced from the route (rendered read-only); in `admin`
+   * mode the super admin picks it, and submitting without one is impossible.
+   */
+  organisationId: string;
   name: string;
   description?: string;
   category?: string;
@@ -53,6 +60,13 @@ interface BracketTypeOption {
   config_schema: string | null;
 }
 
+interface OrganisationOption {
+  id: number;
+  name: string;
+  country_code?: string | null;
+  status?: string | null;
+}
+
 interface SportFormatGroup {
   format: { id: number; name: string; formatType: string; description?: string | null };
   ruleSets: { id: number; name: string | null; version: number; humanReadable?: string | null }[];
@@ -61,9 +75,25 @@ interface SportFormatGroup {
 /**
  * ONE SHARED create-tournament screen. Used by the Super Admin workbench
  * (`/admin/tournament/list/new`) and the Org Admin portal
- * (`/org/:orgId/tournaments/new`). Only the API endpoint and post-create
- * navigation differ per context; the form, validation and field permissions
- * stay single-source.
+ * (`/org/:orgId/tournaments/new`). Only the owning-organisation field and the
+ * post-create navigation differ per context; the form, validation and field
+ * permissions stay single-source.
+ *
+ * G11 Phase 3 (LOCKED PRODUCT RULE) — the CourtZon PLATFORM must never create,
+ * own, fund, or financially recognise a tournament. Only an ORGANISATION may
+ * create and own one. Therefore:
+ *   • every create is submitted to the authoritative organisation-scoped route
+ *     `POST /org/:orgId/tournaments`, in BOTH contexts. The platform-wide
+ *     `POST /admin/tournaments` route no longer exists;
+ *   • `admin` mode requires the super admin to select the owning organisation
+ *     first — the submit action is disabled until it is set, and `onSubmit`
+ *     refuses to call the API without it;
+ *   • `tournament_type` is never sent: the backend derives it and rejects an
+ *     org-less create with `TOURNAMENT_ORGANISATION_REQUIRED`;
+ *   • the currency is never client-authoritative: the owning organisation
+ *     resolves it server-side (branch → organisation country default);
+ *   • `commission_rate` is never sent: the backend derives it from the owning
+ *     organisation's active subscription.
  *
  * Group 5B-SR: bracket types are loaded from the DB (single source of truth),
  * commission is locked (subscription-derived, server-authoritative), and the
@@ -76,14 +106,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   const { showToast } = useToast();
 
   const isOrg = mode === 'org';
-  const endpoint = isOrg && orgId ? `/org/${orgId}/tournaments` : `/admin/tournaments`;
-  const detailPath = (id: number) =>
-    isOrg && orgId ? `/org/${orgId}/tournaments/${id}` : `/admin/tournament/list/${id}`;
 
   const TournamentSchema = useMemo(
     () =>
       z
         .object({
+          organisationId: z.string(),
           name: z.string().min(2, t('tournaments.create.validation.name')),
           description: z.string().optional(),
           category: z.string().optional(),
@@ -114,6 +142,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   );
 
   const {
+    control,
     register,
     handleSubmit,
     watch,
@@ -121,37 +150,71 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     formState: { errors },
   } = useForm<TournamentForm>({
     resolver: zodResolver(TournamentSchema),
-    defaultValues: { bracketTypeId: '', maxParticipants: '16' },
+    defaultValues: {
+      organisationId: isOrg ? (orgId ?? '') : '',
+      bracketTypeId: '',
+      maxParticipants: '16',
+    },
   });
+
+  // ── G11 Phase 3 — the owning organisation is the single tenant key for the
+  // whole create flow. In `org` mode it comes from the route; in `admin` mode it
+  // is chosen by the super admin. `effectiveOrgId` stays empty until it is
+  // known, and every dependent read + the submission itself is blocked while
+  // empty — the screen can never produce an org-less tournament.
+  const selectedOrgId = useWatch({ control, name: 'organisationId' }) ?? '';
+  const effectiveOrgId = (isOrg ? (orgId ?? '') : selectedOrgId).trim();
+  const hasOwningOrg = effectiveOrgId !== '';
+  // The endpoint is ALWAYS organisation-scoped — the platform creation path
+  // (`POST /admin/tournaments`) is removed.
+  const endpoint = hasOwningOrg ? `/org/${effectiveOrgId}/tournaments` : null;
+  // Post-create navigation stays per context (workbench vs org portal).
+  const detailPath = (id: number) =>
+    isOrg && orgId ? `/org/${orgId}/tournaments/${id}` : `/admin/tournament/list/${id}`;
 
   const selectedSport = watch('sportId');
   const selectedFormat = watch('matchFormatId');
   const selectedBracket = watch('bracketTypeId');
 
-  // ── Group 5B-SR — bracket types from the authoritative DB table ──
+  // ── G11 Phase 3 — admin mode: the super admin picks the owning organisation
+  // from the standard super-admin organisation list (`GET /organisations?limit=200`
+  // — the established picker pattern used by every admin accounting screen).
+  // There is deliberately NO "no organisation" option.
+  const { data: organisationList, isLoading: orgsLoading } = useQuery({
+    queryKey: ['admin-organisations', 'tournament-create'],
+    queryFn: () => api.get('/organisations', { params: { limit: 200 } }).then((r) => r.data),
+    enabled: !isOrg,
+  });
+  const orgOptions: OrganisationOption[] = useMemo(() => {
+    const raw = organisationList?.data ?? organisationList ?? [];
+    return Array.isArray(raw) ? (raw as OrganisationOption[]) : [];
+  }, [organisationList]);
+
+  // ── Group 5B-SR — bracket types from the authoritative DB table (read through
+  // the owning organisation in BOTH contexts). ──
   const { data: bracketTypes } = useQuery({
-    queryKey: ['bracket-types'],
-    queryFn: isOrg && orgId ? () => orgTournamentApi.getBracketTypes(orgId) : bracketTypeApi.listActive,
-    enabled: !isOrg || !!orgId,
+    queryKey: ['bracket-types', effectiveOrgId],
+    queryFn: () => orgTournamentApi.getBracketTypes(effectiveOrgId),
+    enabled: hasOwningOrg,
   });
 
   // ── Commission is locked + subscription-derived (read-only display) ──
   // Group 1A — the same org config read exposes the authoritative currency so
   // the screen can display it (single server-side source of truth).
   const { data: commissionConfig } = useQuery({
-    queryKey: ['org-commission', orgId],
-    queryFn: () => orgTournamentApi.getCommissionConfig(orgId!),
-    enabled: isOrg && !!orgId,
+    queryKey: ['org-commission', effectiveOrgId],
+    queryFn: () => orgTournamentApi.getCommissionConfig(effectiveOrgId),
+    enabled: hasOwningOrg,
   });
   const commissionRate = commissionConfig?.commissionRate ?? 0;
-  const orgCurrency = isOrg ? commissionConfig?.currencyCode : undefined;
+  const orgCurrency = commissionConfig?.currencyCode as string | undefined;
 
-  // ── Group 4 — venue: the organisation's branches (reuses the existing
+  // ── Group 4 — venue: the owning organisation's branches (reuses the existing
   // org/branch architecture; no free-text location system). ──
   const { data: orgBranches } = useQuery({
-    queryKey: ['org-branches', orgId],
-    queryFn: () => api.get(`/org/${orgId}/branches`).then((r) => r.data),
-    enabled: isOrg && !!orgId,
+    queryKey: ['org-branches', effectiveOrgId],
+    queryFn: () => api.get(`/org/${effectiveOrgId}/branches`).then((r) => r.data),
+    enabled: hasOwningOrg,
   });
   const branchOptions: { id: number; name: string; address_line1?: string | null; city?: string | null }[] = orgBranches?.data ?? orgBranches ?? [];
 
@@ -164,12 +227,10 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   // Group 1A — the selected bracket is passed so the server-derived
   // humanReadable includes it (the preview matches the persisted snapshot).
   const { data: formatCascade } = useQuery({
-    queryKey: ['sport-formats-cascade', selectedSport, selectedBracket],
+    queryKey: ['sport-formats-cascade', effectiveOrgId, selectedSport, selectedBracket],
     queryFn: () =>
-      isOrg && orgId
-        ? orgTournamentApi.getSportFormats(orgId, selectedSport!, selectedBracket || undefined)
-        : bracketTypeApi.getSportFormats(selectedSport!, selectedBracket || undefined),
-    enabled: !!selectedSport,
+      orgTournamentApi.getSportFormats(effectiveOrgId, selectedSport!, selectedBracket || undefined),
+    enabled: hasOwningOrg && !!selectedSport,
   });
   const formatGroups: SportFormatGroup[] = formatCascade?.data ?? [];
 
@@ -190,8 +251,16 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     setValue('ruleSetId', '');
   }, [selectedFormat, setValue]);
 
+  // Changing the owning organisation invalidates every organisation-scoped
+  // selection (venue branch, bracket) so nothing leaks across tenants.
+  useEffect(() => {
+    if (isOrg) return;
+    setValue('branchId', '');
+    setValue('bracketTypeId', '');
+  }, [selectedOrgId, isOrg, setValue]);
+
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post(endpoint, data),
+    mutationFn: (data: any) => api.post(endpoint as string, data),
     onSuccess: (res) => {
       showToast(t('tournaments.create.success'));
       navigate(detailPath(res.data.id));
@@ -220,6 +289,13 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   const [eligibility, setEligibility] = useState<TournamentEligibilityFormValue>(EMPTY_ELIGIBILITY);
 
   const onSubmit = (data: TournamentForm) => {
+    // G11 Phase 3 fail-closed — the CourtZon platform never owns a tournament.
+    // Even if a future caller managed to submit without one, nothing is sent:
+    // there is no platform endpoint left to receive it.
+    if (!hasOwningOrg || !endpoint) {
+      showToast(t('tournaments.create.validation.organisation_required'), 'error');
+      return;
+    }
     // G7-D — the backend rejects category-mode with no selected category.
     if (eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length === 0) {
       showToast(t('tournaments.eligibility.age.validation'), 'error');
@@ -263,11 +339,10 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       // server-side (dedupe + deterministic order); empty selection is rejected
       // by the backend (a Tournament can never be unpayable). Wallet never sent.
       registration_payment_methods: paymentMethods.length ? paymentMethods : ['cash', 'card'],
-      // Group 1A — currency is NEVER hardcoded and NEVER client-authoritative
-      // for organisation tournaments: the backend resolves it server-side
-      // (branch → organisation country default) and overrides. Only the
-      // platform (admin) path still sends an explicit currency.
-      currency_code: isOrg ? undefined : 'AED',
+      // Group 1A — the currency is NEVER hardcoded and NEVER client-authoritative:
+      // the backend resolves it server-side (branch → organisation country
+      // default) for the owning organisation and overrides whatever is sent.
+      currency_code: undefined,
       price_type: data.entryFee && Number(data.entryFee) > 0 ? 'FIXED' : 'FREE',
       start_date: data.startDate,
       end_date: data.endDate || undefined,
@@ -288,12 +363,14 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       prize_description: data.prizeDescription || undefined,
       prizes: structuredPrizes.length ? structuredPrizes : undefined,
       sponsors: sponsorPayload.length ? sponsorPayload : undefined,
-      organisation_id: isOrg && orgId ? Number(orgId) : undefined,
+      // G11 Phase 3 — `organisation_id` is NOT client-supplied. The owning
+      // organisation is taken from the route (`:orgId`) by the org-scoped
+      // controller, which forces it before the service runs.
       // NOTE: `rules` is intentionally NOT sent — the backend derives the
       // Tournament Rules snapshot server-side from the selected Bracket Type +
       // Match Format + Rule Set (Group 1/1A). Client-supplied rules are never
       // authoritative. commission_rate is intentionally NOT sent — the backend
-      // derives it from the organisation's active subscription (Group 5B-SR).
+      // derives it from the owning organisation's active subscription (Group 5B-SR).
     });
   };
 
@@ -305,6 +382,55 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">{t('tournaments.create.title')}</h1>
       <Card>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* G11 Phase 3 — the owning organisation is REQUIRED in both contexts.
+              `org` mode: it is already fixed by the route, so it is shown
+              read-only (there is nothing for the user to choose, so it is not a
+              permission-gated input). `admin` mode: the super admin must select
+              the organisation the tournament will belong to, and the create is
+              then submitted through `POST /org/:orgId/tournaments` — the
+              organisation-scoped route that forces `organisation_id`. There is
+              deliberately no "no organisation" option. */}
+          {isOrg ? (
+            <div>
+              <span className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                {t('tournaments.create.organisation')}
+              </span>
+              <p className="px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)]/30 text-[var(--color-text)]">
+                {t('tournaments.create.organisation_selected', { id: effectiveOrgId })}
+              </p>
+            </div>
+          ) : (
+            <Can permission="tournament.create.organisation">
+              <div>
+                <label htmlFor="tournament-owning-organisation" className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                  {t('tournaments.create.organisation')}
+                </label>
+                <select
+                  id="tournament-owning-organisation"
+                  {...register('organisationId')}
+                  className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
+                >
+                  <option value="">
+                    {orgsLoading ? t('common.loading') : t('tournaments.create.organisation_placeholder')}
+                  </option>
+                  {orgOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}{o.country_code ? ` — ${o.country_code}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {!hasOwningOrg && (
+                  <p className="text-xs text-[var(--color-error)] mt-1">
+                    {t('tournaments.create.validation.organisation_required')}
+                  </p>
+                )}
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                  {t('tournaments.create.organisation_hint')}
+                </p>
+              </div>
+            </Can>
+          )}
+
           <Can permission="tournaments.create.name">
             <Input label={t('tournaments.create.name')} {...register('name')} error={errors.name?.message} />
           </Can>
@@ -326,7 +452,8 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
               <div>
                 <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.bracket_type')}</label>
                 <select {...register('bracketTypeId')}
-                  className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
+                  disabled={!hasOwningOrg}
+                  className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)] disabled:opacity-70">
                   <option value="">{t('tournaments.create.select_bracket_type')}</option>
                   {bracketOptions.map((b) => (
                     <option key={b.id} value={b.id} disabled={!isEngineSupported(b.slug)}>
@@ -356,7 +483,8 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.match_format')}</label>
                   <select {...register('matchFormatId')}
-                    className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
+                    disabled={!hasOwningOrg}
+                    className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)] disabled:opacity-70">
                     <option value="">{t('tournaments.create.select_format')}</option>
                     {formatGroups.map((g) => (
                       <option key={g.format.id} value={g.format.id}>{g.format.name}</option>
@@ -369,7 +497,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.rule_set')}</label>
                   <select {...register('ruleSetId')}
                     className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]"
-                    disabled={!selectedFormat}>
+                    disabled={!selectedFormat || !hasOwningOrg}>
                     <option value="">{t('tournaments.create.select_rule_set')}</option>
                     {formatGroups
                       .filter((g) => String(g.format.id) === selectedFormat)
@@ -397,15 +525,18 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
             </Can>
           </div>
 
+          {/* G11 Phase 3 — commission and currency are ALWAYS the owning
+              organisation's (subscription-derived / server-resolved). There is
+              no "platform" variant any more. */}
           <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30">
             <div className="flex items-center justify-between">
               <label className="block text-sm font-medium text-[var(--color-text)]">{t('tournaments.create.commission_rate')}</label>
               <span className="font-semibold text-[var(--color-primary)]">{commissionRate}%</span>
             </div>
             <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              {isOrg ? t('tournaments.create.commission_locked') : t('tournaments.create.commission_platform')}
+              {t('tournaments.create.commission_locked')}
             </p>
-            {isOrg && orgCurrency && (
+            {orgCurrency && (
               <p className="text-xs text-[var(--color-text-muted)] mt-1">
                 {t('tournaments.create.currency')}: <span className="font-medium text-[var(--color-text)]">{orgCurrency}</span>
               </p>
@@ -463,21 +594,18 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
             </Can>
           </div>
 
-          {/* Group 4 — venue (organisation branch) + daily playing window. */}
+          {/* Group 4 — venue (owning organisation's branch) + daily playing window. */}
           <Can permission="tournaments.create.prize">
             <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30 space-y-3">
               <div>
                 <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.venue')}</label>
-                {isOrg ? (
-                  <select {...register('branchId')} className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
-                    <option value="">{t('tournaments.create.venue_none')}</option>
-                    {branchOptions.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}{b.city ? ` — ${b.city}` : ''}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.create.venue_platform')}</p>
-                )}
+                <select {...register('branchId')} disabled={!hasOwningOrg}
+                  className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)] disabled:opacity-70">
+                  <option value="">{t('tournaments.create.venue_none')}</option>
+                  {branchOptions.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}{b.city ? ` — ${b.city}` : ''}</option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -503,7 +631,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
           <Can permission="tournaments.create.prize">
             <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30">
               <PrizeEditor
-                currencyCode={isOrg ? orgCurrency : 'AED'}
+                currencyCode={orgCurrency}
                 value={prizes}
                 onChange={setPrizes}
               />
@@ -531,9 +659,21 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
             </div>
           </Can>
 
-          <Button type="submit" loading={createMutation.isPending} className="w-full">
-            {t('tournaments.create.submit')}
-          </Button>
+          {/* G11 Phase 3 — the submit action is permission-gated on the SAME key
+              the authoritative organisation-scoped route enforces
+              (`org.tournaments.create`), and it is disabled until an owning
+              organisation is selected. A tournament can never be created
+              without one, and no role can submit the create action itself. */}
+          <Can permission="org.tournaments.create">
+            <Button
+              type="submit"
+              loading={createMutation.isPending}
+              disabled={!hasOwningOrg}
+              className="w-full"
+            >
+              {t('tournaments.create.submit')}
+            </Button>
+          </Can>
 
           {createMutation.isError && (
             <p className="text-sm text-[var(--color-error)]">{t('tournaments.create.error')}</p>

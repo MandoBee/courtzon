@@ -157,7 +157,8 @@ export interface DomainEventMap {
   //   snapshots from tournament_prizes; the accounting listener always re-reads
   //   the award row (durable) instead of trusting event payload amounts.
   'tournament:standings-finalized': BaseEvent & { tournamentId: number; name?: string; organisationId?: number | null };
-  'tournament:prize-awarded': BaseEvent & { tournamentId: number; awardId: number; winnerUserId: number; amount: number; currency: string; placement?: number | null; fundingSource: 'platform' | 'organization'; collectionMethod: 'card' | 'cash'; organisationId?: number | null; bindSource: 'standings' | 'manual' };
+  // G11 Phase 3 — funding is organization-only (the platform never funds a prize).
+  'tournament:prize-awarded': BaseEvent & { tournamentId: number; awardId: number; winnerUserId: number; amount: number; currency: string; placement?: number | null; fundingSource: 'organization'; collectionMethod: 'card' | 'cash'; organisationId?: number | null; bindSource: 'standings' | 'manual' };
   'tournament:prize-refunded': BaseEvent & { tournamentId: number; awardId: number; winnerUserId: number; amount: number; currency: string; organisationId?: number | null; reason?: string | null };
   'tournament:registration-paid': BaseEvent & { tournamentId: number; registrationId: number; userId?: number; organisationId?: number | null; paymentId?: number | null };
   'tournament:registration-payment-methods-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; methods: string[] };

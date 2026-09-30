@@ -78,13 +78,15 @@ async function seedOrg(orgId: number, slug: string) {
 }
 
 async function createTournament(opts: { org: number | null; bracket?: number; paymentMethods?: string | null; name?: string }): Promise<number> {
+  // G11 Phase 3 — `tournament_type` is narrowed to 'community' only. `org` may
+  // be null ONLY to simulate a LEGACY pre-Phase-3 row (fail-closed guard path).
   const [res] = await pool.execute<RowData>(
     `INSERT INTO tournaments
        (public_id, creator_id, organisation_id, bracket_type_id, name, max_participants, min_participants,
         entry_fee, registration_fee, currency_code, price_type, tournament_type, commission_rate, status,
         registration_payment_methods, start_date, end_date)
-     VALUES (UUID(), ?, ?, ?, ?, 16, 2, 100, 0, 'EGP', 'FIXED', ?, 0, 'completed', ?, '2026-12-01', '2026-12-31')`,
-    [ACTOR, opts.org, opts.bracket ?? 1, opts.name ?? 'G11.7B', opts.org != null ? 'community' : 'platform', opts.paymentMethods ?? null],
+     VALUES (UUID(), ?, ?, ?, ?, 16, 2, 100, 0, 'EGP', 'FIXED', 'community', 0, 'completed', ?, '2026-12-01', '2026-12-31')`,
+    [ACTOR, opts.org, opts.bracket ?? 1, opts.name ?? 'G11.7B', opts.paymentMethods ?? null],
   );
   const tid = Number((res as any).insertId);
   tournamentIds.push(tid);
@@ -202,6 +204,11 @@ async function cleanup() {
   await pool.execute(`DELETE FROM user_wallets WHERE user_id IN (${WINNER}, ${WINNER2}, ${RR_PLAYER}, ${ACTOR})`);
   await pool.execute(`DELETE FROM users WHERE id IN (${WINNER}, ${WINNER2}, ${RR_PLAYER}, ${ACTOR})`);
   await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id IN (${ORG_CARD}, ${ORG_CASH}))`);
+  // Re-clean general_ledger immediately before the chart accounts (belt-and-
+  // braces): async prize-accounting postings from a freshly-bound award can land
+  // during this cleanup and would otherwise trip the fk_gl_account FK on the
+  // chart_of_accounts delete below.
+  await pool.execute(`DELETE FROM general_ledger WHERE organisation_id IN (${ORG_CARD}, ${ORG_CASH}) OR account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id IN (${ORG_CARD}, ${ORG_CASH}))`);
   await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id IN (${ORG_CARD}, ${ORG_CASH})`);
   await pool.execute(`DELETE FROM organisation_subscriptions WHERE organisation_id IN (${ORG_CARD}, ${ORG_CASH})`);
   await pool.execute(`DELETE FROM subscription_plan_rates WHERE plan_id = ${PLAN}`);
@@ -224,7 +231,9 @@ afterEach(() => vi.clearAllMocks());
 
 describe('G11.7 B2 — bracket automatic prize binding', () => {
   it('1 & 2. bracket champion receives placement-1 cash prize (snapshotted from catalog)', async () => {
-    const tid = await createTournament({ org: null });
+    // G11 Phase 3 — the bracket-bind flow is an ORGANISATION capability: the
+    // platform never funds a prize, so the tournament is owned by ORG_CARD.
+    const tid = await createTournament({ org: ORG_CARD });
     await createRegistration(tid, WINNER);
     await createPrize(tid, 1, 'cash', 500);
     const awards = await prizeService.bindAwardsForBracket(tid, WINNER);
@@ -236,6 +245,10 @@ describe('G11.7 B2 — bracket automatic prize binding', () => {
     expect(a.status).toBe('credited');
     expect(Number(a.amount)).toBe(500);
     expect(a.currency_code).toBe('EGP');
+    // Drain the ASYNC accounting postings for this award before the next test:
+    // the prize listener posts on the event bus, and the next test's cleanup
+    // must not race a late general_ledger write (fk_gl_account).
+    await waitFor(() => totalFor(a.id, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'org card postings');
     const [rows] = await pool.execute<RowData>('SELECT amount, currency_code FROM tournament_prizes WHERE tournament_id = ? AND placement = 1', [tid]);
     expect(Number((rows as any[])[0].amount)).toBe(Number(a.amount));
     expect((rows as any[])[0].currency_code).toBe(a.currency_code);
@@ -270,7 +283,7 @@ describe('G11.7 B2 — bracket automatic prize binding', () => {
   });
 
   it('4. no eligible placement-1 cash prize → no award', async () => {
-    const tid = await createTournament({ org: null });
+    const tid = await createTournament({ org: ORG_CARD });
     await createRegistration(tid, WINNER);
     await createPrize(tid, 2, 'cash', 250);
     await createPrize(tid, 1, 'trophy', null);
@@ -295,28 +308,30 @@ describe('G11.7 B2 — bracket automatic prize binding', () => {
   });
 
   it('6. manualGrant remains idempotent (double grant rejected)', async () => {
-    const tid = await createTournament({ org: null });
+    const tid = await createTournament({ org: ORG_CARD });
     await createRegistration(tid, WINNER);
     const pid = await createPrize(tid, 2, 'cash', 250);
     const a = await prizeService.manualGrant(tid, { prizeId: pid, winnerUserId: WINNER, createdBy: ACTOR });
     awardIds.push(a.id);
+    await waitFor(() => totalFor(a.id, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'manual grant postings');
     await expect(prizeService.manualGrant(tid, { prizeId: pid, winnerUserId: WINNER, createdBy: ACTOR })).rejects.toThrow(/already awarded/);
     expect(await awardCount(tid)).toBe(1);
   });
 
   it('7. manual-grant-then-auto-bind and auto-bind-then-manual-grant never double-award', async () => {
-    const tid = await createTournament({ org: null });
+    const tid = await createTournament({ org: ORG_CARD });
     await createRegistration(tid, WINNER2);
     const pid = await createPrize(tid, 1, 'cash', 500);
     // (a) manual first → auto-bind no-op
     const manual = await prizeService.manualGrant(tid, { prizeId: pid, winnerUserId: WINNER2, createdBy: ACTOR });
     awardIds.push(manual.id);
+    await waitFor(() => totalFor(manual.id, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'manual grant postings');
     expect(await prizeService.bindAwardsForBracket(tid, WINNER2)).toHaveLength(0);
     expect(await awardCount(tid)).toBe(1);
   });
 
   it('8. unsupported placements (2/3) are never automatically bound', async () => {
-    const tid = await createTournament({ org: null });
+    const tid = await createTournament({ org: ORG_CARD });
     await createRegistration(tid, WINNER);
     await createPrize(tid, 1, 'cash', 500);
     await createPrize(tid, 2, 'cash', 250);
@@ -324,23 +339,16 @@ describe('G11.7 B2 — bracket automatic prize binding', () => {
     const awards = await prizeService.bindAwardsForBracket(tid, WINNER);
     expect(awards).toHaveLength(1);
     awardIds.push(awards[0].id);
+    await waitFor(() => totalFor(awards[0].id, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'bracket bind postings');
     expect(awards[0].placement).toBe(1);
     const [rows] = await pool.execute<RowData>('SELECT COUNT(*) AS v FROM tournament_prize_awards WHERE tournament_id = ? AND placement IN (2,3)', [tid]);
     expect(Number((rows as any[])[0].v)).toBe(0);
   });
 
-  it('9. accounting postings identical to G11.5 (platform, org CARD, org CASH)', async () => {
-    // Platform
-    const pt = await createTournament({ org: null });
-    await createRegistration(pt, WINNER);
-    await createPrize(pt, 1, 'cash', 300);
-    const [pa] = await prizeService.bindAwardsForBracket(pt, WINNER);
-    awardIds.push(pa.id);
-    await waitFor(() => ledgerRows(pa.id, 'tournament_prize_award'), (r) => r.length === 2, 'platform award posting');
-    const plat = await ledgerRows(pa.id, 'tournament_prize_award');
-    expect(amountFor(plat, 'debit', '4300')).toBe(300);
-    expect(amountFor(plat, 'credit', '2100')).toBe(300);
-
+  it('9. accounting postings identical to G11.5 (org CARD, org CASH) — no platform topology', async () => {
+    // G11 Phase 3 — the platform-funded topology (Dr 4300 Revenue Contra · Cr
+    // 2100) is removed: the CourtZon platform never funds a prize. Bracket binds
+    // produce exactly the organisation bookkeeping paths.
     // Org CARD
     const ct = await createTournament({ org: ORG_CARD });
     await createRegistration(ct, WINNER2);
@@ -388,7 +396,7 @@ describe('G11.7 B2 — bracket automatic prize binding', () => {
   });
 
   it('11. notification + audit emitted exactly once per award', async () => {
-    const tid = await createTournament({ org: null });
+    const tid = await createTournament({ org: ORG_CARD });
     await createRegistration(tid, WINNER);
     await createPrize(tid, 1, 'cash', 500);
     const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
@@ -398,6 +406,7 @@ describe('G11.7 B2 — bracket automatic prize binding', () => {
     await waitFor(async () => awardCount(tid), (n) => n === 1, 'one award');
     const [a] = await awardsFor(tid);
     awardIds.push(a.id);
+    await waitFor(() => totalFor(a.id, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'org card postings');
     const [aud] = await pool.execute<RowData>(
       `SELECT COUNT(*) AS v FROM audit_logs WHERE action = 'tournament.prize.awarded' AND entity_type = 'tournament_prize_award' AND entity_id = ?`, [a.id],
     );
