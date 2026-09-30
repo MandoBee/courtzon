@@ -28,13 +28,15 @@ posting. The exposure is the **un-refunded 600.00 AED cash** held by CourtZon.
 
 ## Outstanding operational steps (R-C — require explicit user action, NOT run by the assistant)
 
-1. **Cancel/archive production tournament 1** ("Padel Test Tournment", org-less,
-   `status='registration_open'`) so the migration guard (a) passes first —
-   cancellation is a deliberate operational action and was the agreed R-C plan.
-   (Migration 183 is already applied to the local dev DB only.)
-2. **Manually refund 600.00 AED CASH to player 122** (`payment_transactions` id 55,
-   paid by cash into the org-less tournament). The assistant will NOT move money;
-   this is reported as an outstanding manual operational action for the user.
+1. **✅ Done (2026-09-30) — production tournament 1 cancelled.** Via SSH:
+   `UPDATE tournaments SET status='cancelled', archived_at=NOW() WHERE id=1 AND organisation_id IS NULL`.
+   Pre: `registration_open`, org NULL, `platform`; Post: `cancelled`, archived `2026-09-30 10:41:31`.
+   The row stays inert; migration 183 (PRODUCTION_SAFE) can now be applied on
+   Hostinger (pending — applied locally only; deploy/pull runs `migrate.js` and
+   will normalise the historical `platform` labels to `community`).
+2. **⏳ OUTSTANDING — manually refund 600.00 AED CASH to player 122**
+   (`payment_transactions` id 55, paid-cash into the org-less tournament).
+   The assistant does NOT move money; this must be performed by an operator.
 
 ## Order of work
 
