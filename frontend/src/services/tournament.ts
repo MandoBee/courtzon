@@ -126,6 +126,10 @@ export const bracketTypeApi = {
 
 // ── G11.3 — tournament FULL refund request workflow ──
 // Player: request + status on their OWN registration.
+
+/** G11.8 — player SELF-SERVICE cancellation of their own registration. */
+export const playerCancelRegistration = (registrationId: number, payload: { reason?: string } = {}) =>
+  api.post(`/tournaments/registration/${registrationId}/cancel`, payload).then((r) => r.data);
 export const tournamentRefundApi = {
   requestRefund: (regId: number, reason?: string) => api.post(`/tournaments/registrations/${regId}/refund-request`, { reason }).then(r => r.data),
   getMyRefundRequest: (regId: number) => api.get(`/tournaments/registrations/${regId}/refund-request`).then(r => r.data),

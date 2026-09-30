@@ -123,6 +123,11 @@ const RECIPIENT_NOTICE_TITLES: Record<string, { en: string; ar: string }> = {
   'tournament:participant-replaced:orgStaff': { en: 'Participant Updated', ar: 'تم تحديث مشترك' },
   'tournament:participant-replaced:admin': { en: 'Participant Updated', ar: 'تم تحديث مشترك' },
   'tournament:participant-replaced:default': { en: 'Participant Updated', ar: 'تم تحديث مشترك' },
+  // G11.8 — player self-service cancellation + automatic full refund.
+  'tournament:registration-refunded:player': { en: 'Registration Cancelled & Refunded', ar: 'تم إلغاء التسجيل واسترداد الرسوم' },
+  'tournament:registration-refunded:orgStaff': { en: 'Registration Cancelled & Refunded', ar: 'تم إلغاء تسجيل واسترداد الرسوم' },
+  'tournament:registration-refunded:admin': { en: 'Registration Cancelled & Refunded', ar: 'تم إلغاء تسجيل واسترداد الرسوم' },
+  'tournament:registration-refunded:default': { en: 'Registration Cancelled', ar: 'تم إلغاء التسجيل' },
 };
 
 const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
@@ -145,6 +150,23 @@ const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
   'tournament:withdrawal-resolved:default': {
     en: 'A withdrawal was processed in tournament #{{tournamentId}}.',
     ar: 'تمت معالجة انسحاب في البطولة #{{tournamentId}}.',
+  },
+  // G11.8 — player self-service cancellation + automatic full refund.
+  'tournament:registration-refunded:player': {
+    en: 'Your registration in tournament #{{tournamentId}} was cancelled and your entry fee was fully refunded.',
+    ar: 'تم إلغاء تسجيلك في البطولة #{{tournamentId}} وتم استرداد رسوم اشتراكك بالكامل.',
+  },
+  'tournament:registration-refunded:orgStaff': {
+    en: 'A player cancelled their registration in tournament #{{tournamentId}} and their entry fee was refunded.',
+    ar: 'ألغى لاعب تسجيله في البطولة #{{tournamentId}} وتم استرداد رسوم اشتراكه.',
+  },
+  'tournament:registration-refunded:admin': {
+    en: 'A registration was cancelled and refunded in tournament #{{tournamentId}}.',
+    ar: 'تم إلغاء تسجيل واسترداد رسومه في البطولة #{{tournamentId}}.',
+  },
+  'tournament:registration-refunded:default': {
+    en: 'A registration in tournament #{{tournamentId}} was cancelled and refunded.',
+    ar: 'تم إلغاء تسجيل في البطولة #{{tournamentId}} واسترداد رسومه.',
   },
 
   'tournament:match-created:participant': {
@@ -672,6 +694,13 @@ export async function seedTemplates(): Promise<void> {
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:withdrawal-resolved', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'تحديث البطولة', bodyTemplate: 'تمت معالجة تحديث في البطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // G11.8 — player self-service cancellation + automatic full refund.
+    { eventName: 'tournament:registration-refunded', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'Refund Processed', bodyTemplate: 'Your registration for tournament #{{tournamentId}} was cancelled and your entry fee was fully refunded.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:registration-refunded', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'تمت معالجة الاسترداد', bodyTemplate: 'تم إلغاء تسجيلك في البطولة #{{tournamentId}} وتم استرداد رسوم الاشتراك بالكامل.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-created', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'Match Added', bodyTemplate: 'A new match was added to tournament #{{tournamentId}}.',

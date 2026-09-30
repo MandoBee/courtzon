@@ -235,6 +235,8 @@ const PLAYER_PATTERNS = [
   /^tournaments\.view/,
   // G11.3 — the player's own registration full-refund request action.
   /^tournaments\.registration\.refund-request$/,
+  // G11.8 — player self-service cancellation of their OWN registration.
+  /^tournaments\.registration\.cancel$/,
   /^community\./,
   /^branches\.(request-access|view)/,
   /^organisations\.storefront\./,

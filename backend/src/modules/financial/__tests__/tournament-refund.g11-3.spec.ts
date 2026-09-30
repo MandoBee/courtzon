@@ -121,7 +121,9 @@ describe('G11.3 — refund service contract (guard order, no partial refunds, no
 
   it('execution performs the AUTHORITATIVE draw-lock check under a row lock', () => {
     expect(svc).toContain('FROM tournament_draws WHERE tournament_id = ? AND is_current = 1 FOR UPDATE');
-    expect(svc).toContain('assertDrawNotLockedAtExecution(req.tournamentId, conn)');
+    // G11.8 refactor: the check lives in the shared execution core used by BOTH
+    // the organisation approval and the player self-service paths.
+    expect(svc).toContain('assertDrawNotLockedAtExecution(tournamentId, conn)');
     expect(svc).toContain('The tournament draw is LOCKED');
   });
 

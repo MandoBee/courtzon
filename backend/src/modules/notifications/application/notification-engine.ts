@@ -659,6 +659,8 @@ const eventGroups: EventGroupConfig[] = [
       // G9-D5-B — recipient resolution for lifecycle/progression events.
       'tournament:stage-completed', 'tournament:match-created', 'tournament:match-progressed',
       'tournament:participant-replaced', 'tournament:withdrawal-resolved',
+      // G11.8 — player self-service cancellation refund (player + org notice).
+      'tournament:registration-refunded',
       // G11.5 — prize payout lifecycle events (dispach to the winner).
       'tournament:prize-awarded', 'tournament:prize-refunded',
     ],
@@ -687,7 +689,7 @@ const eventGroups: EventGroupConfig[] = [
       }
       if (eventName === 'tournament:withdrawal-resolved' || eventName === 'tournament:participant-replaced'
           || eventName === 'tournament:stage-completed' || eventName === 'tournament:match-created'
-          || eventName === 'tournament:match-progressed') {
+          || eventName === 'tournament:match-progressed' || eventName === 'tournament:registration-refunded') {
         // G9-D5-B — recipient resolution performed by the tournament notification
         // service (participants/rosters, referee, org staff, admins) with
         // notification-level idempotency. Realtime delivery is untouched.
@@ -1139,6 +1141,7 @@ class NotificationEngine {
       'tournament:bracket-generated', 'tournament:stage-completed', 'tournament:match-created',
       'tournament:match-progressed', 'tournament:completed', 'tournament:waitlist-promoted',
       'tournament:participant-replaced', 'tournament:withdrawal-resolved',
+      'tournament:registration-refunded',
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',

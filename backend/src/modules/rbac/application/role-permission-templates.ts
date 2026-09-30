@@ -221,6 +221,8 @@ const PLAYER_PATTERNS = [
   /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
   /^player\.tournaments\.register/,
   /^tournaments\.view/,
+  // G11.8 — player self-service cancellation of their OWN registration.
+  /^tournaments\.registration\.cancel$/,
   /^community\./,
   /^branches\.(request-access|view)/,
   /^organisations\.storefront\./,

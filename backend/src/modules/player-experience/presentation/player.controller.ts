@@ -187,9 +187,13 @@ export async function getMyTournamentsHandler(request: FastifyRequest, reply: Fa
   type RowData = import('mysql2').RowDataPacket[];
   const [rows] = await pool.query<RowData>(
     `SELECT tr.*, t.name AS tournament_name, t.code AS tournament_code, t.status AS tournament_status,
-            t.format, t.start_date, t.end_date
+            t.format, t.start_date, t.end_date,
+            -- G11.8 — drawLocked: derived read-only from the CURRENT draw row
+            -- (tournament_draws.is_current=1 / status='locked'). No new column.
+            (td.status = 'locked') AS drawLocked
      FROM tournament_registrations tr
      JOIN tournaments t ON t.id = tr.tournament_id
+     LEFT JOIN tournament_draws td ON td.tournament_id = t.id AND td.is_current = 1
      WHERE tr.player_id = ?
      ORDER BY tr.registered_at DESC`, [userId],
   );

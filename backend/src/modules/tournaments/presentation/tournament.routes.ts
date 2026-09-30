@@ -126,4 +126,8 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   // G11.3 — player refund request (own registration) + status read.
   app.post('/tournaments/registrations/:regId/refund-request', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.requestRefundHandler);
   app.get('/tournaments/registrations/:regId/refund-request', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.getMyRefundRequestHandler);
+
+  // G11.8 — player SELF-SERVICE cancellation (own registration, pre-draw-lock,
+  // automatic 100% full refund). Ownership + draw-lock are enforced server-side.
+  app.post('/tournaments/registration/:registrationId/cancel', { preHandler: [requirePermission(['tournaments.registration.cancel'])] }, ctrl.cancelRegistrationSelfServiceHandler);
 }

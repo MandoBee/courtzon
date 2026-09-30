@@ -180,6 +180,12 @@ export const RefundRequestSchema = z.object({
 export const RefundRejectSchema = z.object({
   reason: z.string().max(255).optional(),
 });
+
+// G11.8 — player self-service cancellation (own registration, pre-draw-lock).
+// Automatic FULL refund with no fee; reuse of the G11.3 execution core.
+export const CancelRegistrationSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
 export const ListRefundRequestsQuerySchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected', 'executed']).optional(),
 });

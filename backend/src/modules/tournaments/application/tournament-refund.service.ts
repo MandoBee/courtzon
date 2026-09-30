@@ -1,7 +1,7 @@
 import { getPool } from '../../../database/mysql.js';
 import { withTransaction } from '../../../database/database.transaction.js';
 import type { PoolConnection } from 'mysql2/promise';
-import { ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { AppError, ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
@@ -68,6 +68,7 @@ async function assertDrawNotLockedAtExecution(tournamentId: number, conn: PoolCo
 
 interface ApprovalOutcome {
   alreadyHandled: boolean;
+  alreadyRefunded: boolean;
   requestId: number;
   paymentId: number;
   amount: number;
@@ -80,6 +81,116 @@ interface ApprovalOutcome {
 }
 
 class TournamentRefundService {
+  /**
+   * Shared financial execution core (G11.3 + G11.8). Runs INSIDE the caller's
+   * open transaction (serialization via the draw row FOR UPDATE and the payment
+   * row FOR UPDATE). Performs draw-lock check, registration+payment resolution,
+   * payment-state guard, payment-scoped settlement detach, the accounting
+   * recognition prerequisite, the exactly-once cash mark, and returns an
+   * execution outcome for the post-commit payment-layer step.
+   *
+   * Caller responsibilities (unchanged):
+   *  - G11.3 approval: request row lock + org ownership first, then this core.
+   *  - G11.8 self-service: ownership + org-less fail-closed checks first.
+   */
+  private async executeFullRefundCore(
+    conn: PoolConnection,
+    opts: { tournament: any; registrationId: number; actorId: number; reason?: string | null },
+  ): Promise<ApprovalOutcome> {
+    const { tournament, registrationId, actorId, reason } = opts;
+    const tournamentId = Number(tournament.id);
+
+    // AUTHORITATIVE execution-time draw-lock check (row lock serializes with lockDraw).
+    await assertDrawNotLockedAtExecution(tournamentId, conn);
+
+    const registration = await tournamentRepository.getRegistrationById(registrationId);
+    if (!registration) throw new NotFoundError('Tournament registration', ErrorCodes.TOURNAMENT_REGISTRATION_NOT_FOUND);
+
+    const payment = await tournamentRepository.findPaymentByRegistration(registrationId, conn);
+    if (!payment) throw new ConflictError('No tournament payment found for this registration');
+    const paymentId = Number(payment.id);
+    const paymentRow = await tournamentRepository.lockPaymentRow(paymentId, conn);
+    if (!paymentRow) throw new NotFoundError('Payment transaction');
+
+    const method = String(paymentRow.payment_method || 'card');
+    if (method !== 'card' && method !== 'cash') {
+      throw new ConflictError(`Tournament refunds do not support payment method '${method}'`);
+    }
+
+    const alreadyRefunded = String(paymentRow.payment_status) === 'refunded';
+    if (!alreadyRefunded && String(paymentRow.payment_status) !== 'paid') {
+      throw new ConflictError(`Payment is ${paymentRow.payment_status} — only 'paid' payments can be refunded`);
+    }
+
+    const amount = Math.round(Number(payment.amount ?? paymentRow.amount ?? 0) * 100) / 100;
+    if (amount <= 0) throw new ConflictError('Refund amount must be positive');
+    const currencyCode = String(payment.currency || tournament.currency_code || 'EGP');
+
+    // Refund-after-settlement: PAYMENT-SCOPED dismantle (never the whole batch
+    // reversal). G11.4 completes it: the active settlement line is released,
+    // the batch header is reduced, the payment is detached, nothing is deleted.
+    if (paymentRow.gateway_settlement_id != null && Number(paymentRow.gateway_settlement_id) !== 0) {
+      const dismantle = await tournamentRepository.detachPaymentSettlement(paymentId, conn);
+      log.info({ paymentId, registrationId, settlementId: dismantle.settlementId, lineId: dismantle.lineId, lineReleased: dismantle.lineReleased }, 'Tournament refund: payment-scoped settlement dismantle performed');
+      await recordAudit({
+        actorId,
+        action: 'TOURNAMENT.SETTLEMENT_DISMANTLED',
+        entityType: 'gateway_settlement',
+        entityId: dismantle.settlementId ?? 0,
+        beforeState: dismantle.before
+          ? { paymentId, lineId: dismantle.lineId, gross: dismantle.before.gross, fee: dismantle.before.fee, net: dismantle.before.net, transactionCount: dismantle.before.transactionCount }
+          : null,
+        afterState: {
+          paymentId,
+          settlementId: dismantle.settlementId,
+          lineId: dismantle.lineId,
+          lineReleased: dismantle.lineReleased,
+          paymentDetached: dismantle.paymentDetached,
+          releasedGross: dismantle.releasedAmounts?.gross ?? null,
+          releasedFee: dismantle.releasedAmounts?.fee ?? null,
+          releasedNet: dismantle.releasedAmounts?.net ?? null,
+          gross: dismantle.after?.gross ?? null,
+          fee: dismantle.after?.fee ?? null,
+          net: dismantle.after?.net ?? null,
+          transactionCount: dismantle.after?.transactionCount ?? null,
+          reason: reason ?? null,
+          source: 'tournament.full_refund',
+        },
+      });
+    }
+
+    const participant = await tournamentRepository.findParticipantByRegistration(registrationId);
+
+    // Accounting recognition must exist (financially consistent refund).
+    const recognitionEvent = method === 'cash' ? 'tournament_cash_commission_receivable' : 'tournament_registration_card_payment';
+    const { ledgerRepository } = await import('../../financial/infrastructure/repositories/ledger.repository.js');
+    if (!(await ledgerRepository.hasPosting('tournament', paymentId, recognitionEvent))) {
+      throw new ConflictError(`Tournament ${method} accounting recognition is missing — cannot refund a financially inconsistent registration`);
+    }
+
+    // Exactly-once CASH mark (conditional paid→refunded; no-op when already refunded).
+    if (!alreadyRefunded && method === 'cash') {
+      const cashApplied = await tournamentRepository.markPaymentRefundedIfPaid(paymentId, conn);
+      if (!cashApplied) throw new ConflictError('Cash payment is no longer in paid state — cannot be refunded');
+    }
+
+    return {
+      alreadyHandled: false,
+      alreadyRefunded,
+      requestId: 0,
+      paymentId,
+      amount,
+      method,
+      currency: currencyCode,
+      registration,
+      tournament,
+      cashEmit: !alreadyRefunded && method === 'cash'
+        ? { paymentId, userId: Number(payment.user_id ?? registration.player_id ?? actorId), amount, reason: reason ?? undefined, currency: currencyCode }
+        : null,
+      participantId: participant ? Number(participant.id) : null,
+    };
+  }
+
   /**
    * Player requests a refund for their OWN registration. Request-time draw check
    * is ADVISORY only — the authoritative lock check happens at execution.
@@ -167,7 +278,7 @@ class TournamentRefundService {
       if (!req) throw new NotFoundError('Refund request not found');
       if (req.status === 'rejected') throw new ConflictError('This refund request has already been rejected');
       if (req.status === 'executed') {
-        return { alreadyHandled: true, requestId: req.id, paymentId: 0, amount: 0, method: '', currency: '', registration: null, tournament: await tournamentRepository.findById(req.tournamentId), cashEmit: null, participantId: null } as ApprovalOutcome;
+        return { alreadyHandled: true, alreadyRefunded: false, requestId: req.id, paymentId: 0, amount: 0, method: '', currency: '', registration: null, tournament: await tournamentRepository.findById(req.tournamentId), cashEmit: null, participantId: null } as ApprovalOutcome;
       }
 
       const tournament = await tournamentRepository.findById(req.tournamentId);
@@ -176,107 +287,22 @@ class TournamentRefundService {
         throw new ConflictError('This refund request does not belong to your organisation');
       }
 
-      // AUTHORITATIVE execution-time draw-lock check (row lock serializes with lockDraw).
-      await assertDrawNotLockedAtExecution(req.tournamentId, conn);
+      // Shared financial execution core (draw-lock, payment lock, settlement
+      // detach, recognition prerequisite, cash mark) — pure extraction of the
+      // original G11.3 body; identical primitives, ordering and side effects.
+      const executed = await this.executeFullRefundCore(conn, {
+        tournament,
+        registrationId: req.registrationId,
+        actorId: officialId,
+        reason: req.reason ?? null,
+      });
 
-      const registration = await tournamentRepository.getRegistrationById(req.registrationId);
-      if (!registration) throw new NotFoundError('Tournament registration', ErrorCodes.TOURNAMENT_REGISTRATION_NOT_FOUND);
-
-      const payment = await tournamentRepository.findPaymentByRegistration(req.registrationId, conn);
-      if (!payment) throw new ConflictError('No tournament payment found for this registration');
-      const paymentId = Number(payment.id);
-      const paymentRow = await tournamentRepository.lockPaymentRow(paymentId, conn);
-      if (!paymentRow) throw new NotFoundError('Payment transaction');
-
-      const method = String(paymentRow.payment_method || 'card');
-      if (method !== 'card' && method !== 'cash') {
-        throw new ConflictError(`Tournament refunds do not support payment method '${method}'`);
-      }
-
-      const alreadyRefunded = String(paymentRow.payment_status) === 'refunded';
-      if (!alreadyRefunded && String(paymentRow.payment_status) !== 'paid') {
-        throw new ConflictError(`Payment is ${paymentRow.payment_status} — only 'paid' payments can be refunded`);
-      }
-
-      const amount = Math.round(Number(payment.amount ?? paymentRow.amount ?? 0) * 100) / 100;
-      if (amount <= 0) throw new ConflictError('Refund amount must be positive');
-      const currencyCode = String(payment.currency || tournament.currency_code || 'EGP');
-
-      // Refund-after-settlement: PAYMENT-SCOPED dismantle (never the whole batch
-      // reversal). G11.4 completes it: the active settlement line is released,
-      // the batch header is reduced to its remaining active lines, the payment is
-      // detached, and the history rows are preserved. No accounting journal is
-      // posted here — the refund event picks the bank vs clearing leg from the
-      // durable settlement history.
-      if (paymentRow.gateway_settlement_id != null && Number(paymentRow.gateway_settlement_id) !== 0) {
-        const dismantle = await tournamentRepository.detachPaymentSettlement(paymentId, conn);
-        log.info({ paymentId, registrationId: req.registrationId, settlementId: dismantle.settlementId, lineId: dismantle.lineId, lineReleased: dismantle.lineReleased }, 'Tournament refund: payment-scoped settlement dismantle performed');
-        // Audit the dismantle inside the SAME transaction so the pre/post header
-        // snapshot can never outlive (or be rolled back independently of) the
-        // settlement rows it describes. `before`/`after` carry gross / fee / net
-        // / transaction_count; the released line + settlement ids preserve the
-        // financial history without destroying the rows themselves.
-        await recordAudit({
-          actorId: officialId,
-          action: 'TOURNAMENT.SETTLEMENT_DISMANTLED',
-          entityType: 'gateway_settlement',
-          entityId: dismantle.settlementId ?? 0,
-          beforeState: dismantle.before
-            ? { paymentId, lineId: dismantle.lineId, gross: dismantle.before.gross, fee: dismantle.before.fee, net: dismantle.before.net, transactionCount: dismantle.before.transactionCount }
-            : null,
-          afterState: {
-            paymentId,
-            settlementId: dismantle.settlementId,
-            lineId: dismantle.lineId,
-            lineReleased: dismantle.lineReleased,
-            paymentDetached: dismantle.paymentDetached,
-            releasedGross: dismantle.releasedAmounts?.gross ?? null,
-            releasedFee: dismantle.releasedAmounts?.fee ?? null,
-            releasedNet: dismantle.releasedAmounts?.net ?? null,
-            gross: dismantle.after?.gross ?? null,
-            fee: dismantle.after?.fee ?? null,
-            net: dismantle.after?.net ?? null,
-            transactionCount: dismantle.after?.transactionCount ?? null,
-            reason: req.reason ?? null,
-            source: 'tournament.full_refund',
-          },
-        });
-      }
-
-      const participant = await tournamentRepository.findParticipantByRegistration(req.registrationId);
-
-      // Accounting recognition must exist (financially consistent refund).
-      const recognitionEvent = method === 'cash' ? 'tournament_cash_commission_receivable' : 'tournament_registration_card_payment';
-      const { ledgerRepository } = await import('../../financial/infrastructure/repositories/ledger.repository.js');
-      if (!(await ledgerRepository.hasPosting('tournament', paymentId, recognitionEvent))) {
-        throw new ConflictError(`Tournament ${method} accounting recognition is missing — cannot refund a financially inconsistent registration`);
-      }
-
-      // Mark the request reviewed/approved under the request row lock — a second
-      // concurrent approval blocks here and enters the recovery branch (payment
-      // already refunded → finalize only) instead of re-executing the refund.
+      // Mark the request reviewed/approved under the request row lock — a
+      // second concurrent approval blocks here and enters the recovery branch
+      // (payment already refunded → finalize only) instead of re-executing.
       await tournamentRefundRequestRepository.updateStatus(req.id, { status: 'approved', reviewedBy: officialId, reviewedAt: true }, conn);
 
-      if (!alreadyRefunded && method === 'cash') {
-        // GATEWAY-FREE cash refund (academy offline-cash-refund primitive).
-        const cashApplied = await tournamentRepository.markPaymentRefundedIfPaid(paymentId, conn);
-        if (!cashApplied) throw new ConflictError('Cash payment is no longer in paid state — cannot be refunded');
-      }
-
-      return {
-        alreadyHandled: false,
-        requestId: req.id,
-        paymentId,
-        amount,
-        method,
-        currency: currencyCode,
-        registration,
-        tournament,
-        cashEmit: !alreadyRefunded && method === 'cash'
-          ? { paymentId, userId: Number(payment.user_id ?? registration.player_id ?? officialId), amount, reason: req.reason ?? undefined, currency: currencyCode }
-          : null,
-        participantId: participant ? Number(participant.id) : null,
-      } as ApprovalOutcome;
+      return { ...executed, requestId: req.id };
     });
 
     if (outcome.alreadyHandled) return { success: true, refunded: false, alreadyHandled: true };
@@ -360,6 +386,151 @@ class TournamentRefundService {
         registrationId: Number(registration.id),
         paymentId: outcome.paymentId,
         status: 'executed',
+      } as Record<string, unknown>, tournament as any);
+    }
+  }
+
+  /**
+   * G11.8 — PLAYER SELF-SERVICE registration cancellation (own registration,
+   * PRE-draw-lock). Automatic 100% full refund with NO fee. Reuses the EXACT
+   * G11.3 execution core (draw-lock row check, payment row lock, settlement
+   * detach, accounting recognition prerequisite, cash mark / card
+   * `PaymentService.refund`, `payment:refunded`, entitlement withdrawal, audit
+   * `TOURNAMENT.REFUND_EXECUTED`). NO `tournament_registration_refund_requests`
+   * row is created. Org-less (Phase 3) tournaments fail closed. Idempotent:
+   * an already-withdrawn registration or an already-refunded payment returns
+   * `alreadyHandled:true` with no side effects.
+   */
+  async cancelRegistrationSelfService(
+    registrationId: number,
+    playerId: number,
+    reason?: string | null,
+  ): Promise<{ success: boolean; alreadyHandled: boolean; paymentId?: number; amount?: number; method?: string }> {
+    const registration = await tournamentRepository.getRegistrationById(registrationId);
+    if (!registration) throw new NotFoundError('Tournament registration', ErrorCodes.TOURNAMENT_REGISTRATION_NOT_FOUND);
+
+    const tournament = await tournamentRepository.findById(Number(registration.tournament_id));
+    if (!tournament) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
+
+    // Phase 3 — org-less legacy tournaments fail closed (no recognised revenue
+    // source to refund against). Never relaxed for self-service. 422 per the
+    // approved G11.8 API contract (the G11.3 approval path keeps its own 409).
+    if (tournament.organisation_id == null) {
+      throw new AppError(
+        'This tournament has no owning organisation, so it has no recognised revenue source to refund against',
+        422,
+        ErrorCodes.TOURNAMENT_ORGANISATION_REQUIRED,
+        { code: ErrorCodes.TOURNAMENT_ORGANISATION_REQUIRED },
+      );
+    }
+
+    // IDOR — the player may only cancel their OWN registration (solo/pair/team).
+    const participant = await tournamentRepository.findParticipantByRegistration(registrationId);
+    if (!isRegistrationOwner(registration as any, playerId, participant)) {
+      // 404 (approved decision) — avoid leaking registration-id existence.
+      throw new NotFoundError('Tournament registration');
+    }
+
+    // Idempotent fast path: registration already withdrawn → done.
+    if (String(registration.status) === 'withdrawn') {
+      return { success: true, alreadyHandled: true };
+    }
+
+    const outcome = await withTransaction(async (conn) => {
+      const executed = await this.executeFullRefundCore(conn, {
+        tournament,
+        registrationId,
+        actorId: playerId,
+        reason: reason ?? null,
+      });
+      // Payment already refunded (e.g., a concurrent G11.3 organisation refund
+      // completed first): idempotent, nothing further to execute.
+      if (executed.alreadyRefunded) {
+        return { ...executed, alreadyHandled: true } as ApprovalOutcome;
+      }
+      return { ...executed, alreadyHandled: false } as ApprovalOutcome;
+    });
+
+    if (outcome.alreadyHandled) {
+      return { success: true, alreadyHandled: true };
+    }
+
+    // ── post-commit: execute at the payment layer (idempotent) ─────────────
+    if (outcome.method === 'card') {
+      const { paymentService } = await import('../../payment/application/payment.service.js');
+      const current = await tournamentRepository.findPaymentByRegistration(Number((outcome.registration as any).id));
+      if (String(current?.payment_status ?? '') !== 'refunded') {
+        const result = await paymentService.refund(outcome.paymentId, outcome.amount, 'Tournament registration self-service cancellation refund');
+        if (!result?.success) {
+          throw new Error(`Tournament card refund failed: ${(result as any)?.errorMessage || 'unknown error'}`);
+        }
+      }
+    }
+
+    if (outcome.cashEmit) {
+      const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+      await eventBusV2.emit('payment:refunded', {
+        paymentId: outcome.cashEmit.paymentId,
+        userId: outcome.cashEmit.userId,
+        amount: outcome.cashEmit.amount,
+        reason: outcome.cashEmit.reason,
+        traceId: `tournament_cash_self_${outcome.cashEmit.paymentId}_${Date.now().toString(36)}`,
+        referenceType: 'tournament',
+        referenceId: Number((outcome.registration as any).id),
+        metadata: { paymentMethod: 'cash', currency: outcome.cashEmit.currency },
+      } as any);
+    }
+
+    // ── finalize: registration / participant state (idempotent) ────────────
+    await this.finalizeSelfService(outcome, playerId);
+    return { success: true, alreadyHandled: false, paymentId: outcome.paymentId, amount: outcome.amount, method: outcome.method };
+  }
+
+  /** Idempotent post-refund state for PLAYER SELF-SERVICE (no request row). */
+  private async finalizeSelfService(outcome: ApprovalOutcome, playerId: number) {
+    const registration = outcome.registration;
+    if (!registration) return;
+    const tournamentId = Number(outcome.tournament?.id ?? registration.tournament_id ?? 0);
+    const actor = playerId || Number(registration.player_id ?? 0) || 0;
+
+    await tournamentRepository.updateRegistrationPaymentStatus(Number(registration.id), 'refunded');
+    // registration.status → 'withdrawn' is performed by `withdrawParticipant`
+    // (existing primitive, idempotent active-only) — do NOT double-transition.
+
+    if (outcome.participantId != null && tournamentId) {
+      const participant = await tournamentRepository.findParticipantByRegistration(Number(registration.id));
+      if (participant && String(participant.status) === 'active') {
+        try {
+          const { participantDrawService } = await import('./participant-draw.service.js');
+          await participantDrawService.withdrawParticipant(tournamentId, Number(participant.id), actor, 'registration_cancellation_refund');
+        } catch (err: any) {
+          log.warn({ err, registrationId: registration.id }, 'Tournament self-cancellation: entitlement withdrawal skipped');
+        }
+      }
+    }
+
+    await recordAudit({
+      actorId: actor,
+      action: 'TOURNAMENT.REFUND_EXECUTED',
+      entityType: 'tournament_registration',
+      entityId: Number(registration.id),
+      afterState: { paymentId: outcome.paymentId, amount: outcome.amount, method: outcome.method, paymentStatus: 'refunded', source: 'player_self_service' },
+    });
+
+    const tournament = await tournamentRepository.findById(tournamentId);
+    if (tournament) {
+      emitTournamentScoped('tournament:registration-refunded', {
+        tournamentId,
+        registrationId: Number(registration.id),
+        paymentId: outcome.paymentId,
+        userId: registration.player_id ?? null,
+        status: 'refunded',
+      } as Record<string, unknown>, tournament as any);
+      emitTournamentScoped('registration.received', {
+        tournamentId,
+        registrationId: Number(registration.id),
+        userId: registration.player_id ?? null,
+        status: 'withdrawn',
       } as Record<string, unknown>, tournament as any);
     }
   }

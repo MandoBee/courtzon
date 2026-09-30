@@ -266,6 +266,18 @@ export async function getMyRefundRequestHandler(request: FastifyRequest, reply: 
   return reply.send(current ?? { status: null });
 }
 
+// ── G11.8 — player self-service cancellation (own registration) ──
+
+export async function cancelRegistrationSelfServiceHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { registrationId } = request.params as any;
+  const { CancelRegistrationSchema } = await import('./tournament.dto.js');
+  const body = CancelRegistrationSchema.parse(request.body ?? {});
+  const { tournamentRefundService } = await import('../application/tournament-refund.service.js');
+  const result = await tournamentRefundService.cancelRegistrationSelfService(Number(registrationId), userId, body.reason);
+  return reply.send(result);
+}
+
 export async function confirmRegistrationHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { regId } = request.params as any;

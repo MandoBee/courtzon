@@ -1801,6 +1801,15 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'player.tournaments.browse', defaultValue: 'Browse Tournaments', moduleSlug: 'player', elementType: 'link', elementLabel: 'Browse tournaments link' },
   { key: 'player.tournaments.starts', defaultValue: 'Starts', moduleSlug: 'player', elementType: 'label', elementLabel: 'Starts label' },
   { key: 'player.tournaments.cancelled', defaultValue: 'Registration cancelled', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancelled toast' },
+  // G11.8 — player self-service cancellation (own registration, automatic full refund).
+  { key: 'player.tournaments.cancel_confirm', defaultValue: 'Cancel your registration? Your entry fee will be 100% refunded (allowed before the tournament draw is locked).', moduleSlug: 'player', elementType: 'text', elementLabel: 'Cancel confirmation' },
+  { key: 'player.tournaments.cancel_refunded', defaultValue: 'Registration cancelled and your entry fee was fully refunded.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancel refunded toast' },
+  { key: 'player.tournaments.cancel_unauthorized', defaultValue: 'Please sign in to cancel your registration.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancel unauthenticated error' },
+  { key: 'player.tournaments.cancel_not_found', defaultValue: 'Registration not found, or you can only cancel your own registration.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancel not-found error' },
+  { key: 'player.tournaments.cancel_draw_locked', defaultValue: 'Cancellation is closed because the tournament draw is locked.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancel draw-locked error' },
+  { key: 'player.tournaments.cancel_not_allowed', defaultValue: 'This registration cannot be cancelled.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancel not-allowed error' },
+  { key: 'player.tournaments.cancel_failed', defaultValue: 'Failed to cancel registration.', moduleSlug: 'player', elementType: 'message', elementLabel: 'Cancel generic error' },
+  { key: 'player.tournaments.draw_locked', defaultValue: 'Draw locked', moduleSlug: 'player', elementType: 'text', elementLabel: 'Draw locked badge' },
   { key: 'common.view', defaultValue: 'View', moduleSlug: 'common', elementType: 'button', elementLabel: 'View button' },
 
   // Sprint 9 — profile extras

@@ -329,11 +329,36 @@ class TournamentNotificationService {
     }
   }
 
+  private async handleRegistrationRefunded(ctx: HandleContext): Promise<void> {
+    const { tournamentId, registrationId, userId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'registration-refunded: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    const base: RecipientDispatchContext = {
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament_registration',
+      relatedEntityId: String(registrationId ?? tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    };
+    // 1) The cancelled player receives the refund confirmation.
+    if (userId != null) {
+      await this.dispatchToRecipients([Number(userId)], 'player', base);
+    }
+    // 2) Organisation staff + admins receive the refund notice.
+    await this.dispatchOrgStaffAndAdmins(base);
+  }
+
   async handle(ctx: HandleContext): Promise<void> {
     try {
       switch (ctx.eventName) {
         case 'tournament:withdrawal-resolved':
           await this.handleWithdrawalResolved(ctx);
+          break;
+        case 'tournament:registration-refunded':
+          await this.handleRegistrationRefunded(ctx);
           break;
         case 'tournament:participant-replaced':
           await this.handleParticipantReplaced(ctx);
