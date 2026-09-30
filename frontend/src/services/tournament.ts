@@ -45,6 +45,15 @@ export const tournamentApi = {
   cancelRegistration: (regId: number) => api.post(`/admin/tournaments/registrations/${regId}/cancel`).then(r => r.data),
   confirmRegistration: (regId: number) => api.post(`/admin/tournaments/registrations/${regId}/confirm`).then(r => r.data),
 
+  // G11.5 — prize award management (workbench; org path is org-scoped mirror).
+  // The backend routes are guarded by tournaments.awards.{view,grant,refund}.
+  getAwardablePrizes: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/awards/prizes`).then(r => r.data),
+  getPrizeAwards: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/awards`).then(r => r.data),
+  grantPrizeAward: (tournamentId: number, prizeId: number, winnerUserId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/awards`, { prizeId, winnerUserId }).then(r => r.data),
+  refundPrizeAward: (awardId: number, reason?: string) =>
+    api.post(`/admin/tournaments/awards/${awardId}/refund`, { reason }).then(r => r.data),
+
   // Public
   getPublicTournaments: (params?: Record<string, any>) =>
     api.get<PaginatedResult<any>>('/tournaments', { params }).then(r => r.data),

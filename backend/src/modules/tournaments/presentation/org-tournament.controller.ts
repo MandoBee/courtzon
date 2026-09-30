@@ -147,6 +147,15 @@ export async function getOrgTournamentFinancesHandler(request: FastifyRequest, r
   return reply.send({ data: report });
 }
 
+// G11-Tournament Phase 4 — READ-ONLY org tournament finance AGGREGATE
+// (per-currency P&L buckets across the org's tournaments, ledger-authoritative).
+export async function getOrgTournamentsFinanceAggregateHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { tournamentFinancesService } = await import('../../financial/application/tournament-finances.service.js');
+  const aggregate = await tournamentFinancesService.aggregateForOrganisation(orgId);
+  return reply.send({ data: aggregate });
+}
+
 // ── Lifecycle ──
 
 async function lifecycle(request: FastifyRequest, reply: FastifyReply, action: string) {

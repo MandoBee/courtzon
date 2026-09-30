@@ -38,7 +38,7 @@ export default function TournamentSchedulePage({ mode = 'admin', orgId: orgIdPro
   const detailApi = isOrg && orgId ? orgTournamentApi : tournamentApi;
   const pApi = isOrg && orgId ? orgTournamentParticipantApi : tournamentParticipantApi;
   const wrap = (fn: (...a: any[]) => any, ...a: any[]) => (isOrg && orgId ? fn(orgId, ...a) : fn(...a));
-  const managePerm = isOrg && orgId ? 'org.tournaments.manage' : 'tournaments.manage';
+  const managePerm = isOrg && orgId ? 'org.tournaments.manage' : 'tournament.manage';
 
   const [scheduleTarget, setScheduleTarget] = useState<ScheduleTarget | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);

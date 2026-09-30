@@ -44,6 +44,13 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.create')] },
     ctrl.createOrgTournamentHandler,
   );
+  // G11 Phase 4 — org-level tournament finance aggregate (per-currency P&L).
+  // Registered BEFORE the `/:id` routes so Fastify matches the static suffix.
+  app.get(
+    '/org/:orgId/tournaments/finances',
+    { preHandler: [requireOrgScopedPermission('org.finance.position.view')] },
+    ctrl.getOrgTournamentsFinanceAggregateHandler,
+  );
   app.get(
     '/org/:orgId/tournaments/:id',
     { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },

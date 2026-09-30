@@ -198,7 +198,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   const drawStatus = draw?.status ?? '—';
   const drawEntries = Array.isArray(draw?.entries) ? draw.entries : [];
 
-  const managePerm = isOrg && orgId ? 'org.tournaments.manage' : 'tournaments.manage';
+  const managePerm = isOrg && orgId ? 'org.tournaments.manage' : 'tournament.manage';
 
   const memberList = (p: any): Member[] => (Array.isArray(p?.members) ? p.members.filter((m: any) => m.status === 'active') : []);
 

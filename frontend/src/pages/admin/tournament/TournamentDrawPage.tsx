@@ -42,7 +42,7 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
   const api = isOrg && orgId ? orgTournamentParticipantApi : tournamentParticipantApi;
   const detailApi = isOrg && orgId ? orgTournamentApi : tournamentApi;
   const wrap = (fn: (...a: any[]) => any, ...a: any[]) => (isOrg && orgId ? fn(orgId, ...a) : fn(...a));
-  const managePerm = isOrg && orgId ? 'org.tournaments.manage' : 'tournaments.manage';
+  const managePerm = isOrg && orgId ? 'org.tournaments.manage' : 'tournament.manage';
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 

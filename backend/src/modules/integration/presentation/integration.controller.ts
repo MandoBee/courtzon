@@ -80,14 +80,23 @@ export async function gatewayListOrganisationsHandler(_request: FastifyRequest, 
 
 export async function gatewayListTournamentsHandler(request: FastifyRequest, reply: FastifyReply) {
   const data = await gatewayQuery(request,
-    'SELECT id, name, format, status, start_date, end_date, max_players, registration_fee FROM tournaments WHERE deleted_at IS NULL ORDER BY start_date DESC', []);
+    `SELECT id, name, format, status, start_date, end_date, max_participants, registration_fee,
+            entry_fee, currency_code, price_type, is_public
+     FROM tournaments WHERE deleted_at IS NULL ORDER BY start_date DESC`, []);
   return reply.send({ data, meta: { version: 'v1' } });
 }
 
 export async function gatewayGetTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const pool = getPool();
-  const [rows] = await pool.query<RowData>('SELECT * FROM tournaments WHERE id = ?', [Number(id)]);
+  // Explicit, guarded column list — the internal ledger/financial columns
+  // (organisation_id, commission_rate, tournament_type, branch_id, creator_id)
+  // are deliberately NOT exposed through the integration contract.
+  const [rows] = await pool.query<RowData>(
+    `SELECT id, name, format, status, start_date, end_date, max_participants, max_teams,
+            registration_fee, entry_fee, currency_code, price_type, sport_id,
+            description, is_public, image_url
+     FROM tournaments WHERE id = ? AND deleted_at IS NULL`, [Number(id)]);
   if (!rows.length) return reply.status(404).send({ error: 'NOT_FOUND', message: 'Tournament not found' });
   return reply.send({ data: rows[0], meta: { version: 'v1' } });
 }

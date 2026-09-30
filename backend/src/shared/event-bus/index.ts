@@ -160,6 +160,9 @@ export interface DomainEventMap {
   // G11 Phase 3 — funding is organization-only (the platform never funds a prize).
   'tournament:prize-awarded': BaseEvent & { tournamentId: number; awardId: number; winnerUserId: number; amount: number; currency: string; placement?: number | null; fundingSource: 'organization'; collectionMethod: 'card' | 'cash'; organisationId?: number | null; bindSource: 'standings' | 'manual' };
   'tournament:prize-refunded': BaseEvent & { tournamentId: number; awardId: number; winnerUserId: number; amount: number; currency: string; organisationId?: number | null; reason?: string | null };
+  // G11 Phase 4 — prizes-updated is emitted by the service and routed to the
+  // socket publisher / realtime consumer; it was missing from the typed map.
+  'tournament:prizes-updated': BaseEvent & { tournamentId: number; prizeCount: number; organisationId?: number | null; branchId?: number | null; creatorId?: number; participantUserIds?: number[] };
   'tournament:registration-paid': BaseEvent & { tournamentId: number; registrationId: number; userId?: number; organisationId?: number | null; paymentId?: number | null };
   'tournament:registration-payment-methods-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; methods: string[] };
   'tournament:schedule-updated': BaseEvent & { tournamentId: number; organisationId?: number | null; startDate?: string | null; endDate?: string | null; registrationCloses?: string | null; branchId?: number | null; dailyStartTime?: string | null; dailyEndTime?: string | null; matchId?: number; resourceId?: number; date?: string; startTime?: string; endTime?: string; bookingId?: number; scheduled?: number; skipped?: number };

@@ -318,21 +318,23 @@ export class ReportsRepository {
   // 6. TOURNAMENT REPORTS
   // ========================================================================
 
-  async tournamentOverview(params: DateParams) {
+  /**
+   * G11 Phase 4 — region tournaments used by the LEDGER-BACKED overview.
+   * Monetary values are NOT derived here: the reports service aggregates the
+   * authoritative per-tournament ledger P&L (see reports.service.tournamentOverview),
+   * grouping by currency. This base returns only structure + registration counts.
+   */
+  async tournamentOverviewBase(params: DateParams) {
     const { clause, params: p } = dateClause(params.dateFrom, params.dateTo, 't.created_at');
     const [rows] = await this.pool.query<RowData>(
-      `SELECT COUNT(t.id) as total_tournaments,
-         SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed,
-         SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
-         COUNT(tr.id) as total_registrations,
-         COALESCE(SUM(t.entry_fee), 0) as total_entry_fees,
-         COALESCE(SUM(t.commission_rate * t.entry_fee / 100 * (SELECT COUNT(*) FROM tournament_registrations tr2 WHERE tr2.tournament_id = t.id)), 0) as estimated_commission
+      `SELECT t.id, t.currency_code AS currency, t.status,
+              (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.tournament_id = t.id) AS registrations
        FROM tournaments t
-       LEFT JOIN tournament_registrations tr ON tr.tournament_id = t.id
-       WHERE t.deleted_at IS NULL ${clause}`,
-      [...p]
+       WHERE t.deleted_at IS NULL AND t.organisation_id IS NOT NULL ${clause}
+       ORDER BY t.id`,
+      [...p],
     );
-    return rows[0] || {};
+    return rows as any[];
   }
 
   async tournamentParticipation(params: DateParams) {

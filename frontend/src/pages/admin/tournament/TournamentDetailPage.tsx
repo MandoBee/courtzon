@@ -301,13 +301,19 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                         <div><p className="text-xs text-[var(--color-text-muted)]">Registration revenue</p><p className="font-medium">{finances?.revenue?.registration?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Sponsor cash</p><p className="font-medium">{finances?.revenue?.sponsorCash?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Sponsor cash (ledger)</p><p className="font-medium">{finances?.revenue?.sponsorCash?.toFixed?.(2) ?? '—'}</p></div>
                         <div><p className="text-xs text-[var(--color-text-muted)]">Total revenue</p><p className="font-medium">{finances?.revenue?.total?.toFixed?.(2) ?? '—'}</p></div>
                         <div><p className="text-xs text-[var(--color-text-muted)]">Cash prize expense</p><p className="font-medium">{finances?.expenses?.cashPrizes?.toFixed?.(2) ?? '—'}</p></div>
                         <div><p className="text-xs text-[var(--color-text-muted)]">Net result</p><p className={`font-medium ${Number(finances?.net) >= 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-error)]'}`}>{finances?.net?.toFixed?.(2) ?? '—'}</p></div>
                       </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Commission expense</p><p className="font-medium">{finances?.expenses?.commissionExpense?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Platform commission (4192)</p><p className="font-medium">{finances?.platform?.commissionRevenue?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Merchant payable (2202)</p><p className="font-medium">{finances?.platform?.merchantPayable?.toFixed?.(2) ?? '—'}</p></div>
+                        <div><p className="text-xs text-[var(--color-text-muted)]">Prize liability (2100)</p><p className="font-medium">{finances?.platform?.prizeLiability?.toFixed?.(2) ?? '—'}</p></div>
+                      </div>
                       <p className="text-xs text-[var(--color-text-muted)]">
-                        Court rental, balls, equipment and other expenses are not financially represented and are therefore excluded.
+                        Ledger-authoritative (G11 Phase 4): only posted accounting entries are recognized. Court rental, balls, equipment and other expenses are not financially represented and are therefore excluded. Sponsors are record-only — not recognized as revenue.
                       </p>
                     </>
                   ) : (
