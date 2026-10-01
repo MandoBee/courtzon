@@ -5784,9 +5784,11 @@ CREATE TABLE `tournament_prizes` (
   `amount` decimal(12,2) DEFAULT NULL COMMENT 'Monetary value for cash prizes; NULL for non-cash prizes',
   `currency_code` char(3) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Authoritative Tournament currency for cash prizes; NULL for non-cash prizes',
   `display_order` int unsigned NOT NULL DEFAULT '0',
+  `cash_placement` int unsigned GENERATED ALWAYS AS (IF(`prize_type` = 'cash', `placement`, NULL)) STORED COMMENT 'Placement projected for CASH prizes only (NULL for non-cash / non-ranked) — enables one-cash-prize-per-placement uniqueness',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tprize_cash_placement` (`tournament_id`,`cash_placement`),
   KEY `idx_tprize_tournament` (`tournament_id`),
   KEY `idx_tprize_order` (`tournament_id`, `display_order`),
   CONSTRAINT `fk_tprize_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE

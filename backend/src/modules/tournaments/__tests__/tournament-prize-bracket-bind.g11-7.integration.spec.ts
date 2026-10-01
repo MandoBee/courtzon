@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { ensureOpenPlatformAccountingPeriod, dropCurrentPlatformAccountingPeriods } from './prize-period-fixture.js';
 
 vi.hoisted(() => {
   process.env.NODE_ENV = 'test'; process.env.DB_HOST = '127.0.0.1'; process.env.DB_PORT = '3307';
@@ -166,6 +167,7 @@ let prizeService: any;
 
 beforeAll(async () => {
   pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5 });
+  await ensureOpenPlatformAccountingPeriod(pool as any);
   const { createPool } = await import('../../../database/mysql.js');
   createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3' });
   const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
@@ -184,6 +186,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanup();
+  await dropCurrentPlatformAccountingPeriods(pool as any);
   const { closePool } = await import('../../../database/mysql.js');
   await closePool();
   await pool.end();
@@ -309,21 +312,39 @@ describe('G11.7 B2 — bracket automatic prize binding', () => {
 
   it('6. manualGrant remains idempotent (double grant rejected)', async () => {
     const tid = await createTournament({ org: ORG_CARD });
-    await createRegistration(tid, WINNER);
-    const pid = await createPrize(tid, 2, 'cash', 250);
-    const a = await prizeService.manualGrant(tid, { prizeId: pid, winnerUserId: WINNER, createdBy: ACTOR });
+    const reg = await createRegistration(tid, WINNER);
+    // G11.15 — authoritative placement row required for manual grant.
+    const pid = Number((await pool.execute<RowData>(
+      `INSERT INTO tournament_participants (tournament_id, registration_id, participant_type, status, member_user_ids)
+       VALUES (?, ?, 'individual', 'active', ?)`, [tid, reg, JSON.stringify([WINNER])],
+    ))[0].insertId);
+    await pool.execute<RowData>(
+      `INSERT INTO tournament_placements (tournament_id, placement, participant_id, user_id, source, resolved_at)
+       VALUES (?, 2, ?, ?, 'bracket', NOW())`, [tid, pid, WINNER],
+    );
+    const pidPrize = await createPrize(tid, 2, 'cash', 250);
+    const a = await prizeService.manualGrant(tid, { prizeId: pidPrize, winnerUserId: WINNER, createdBy: ACTOR });
     awardIds.push(a.id);
     await waitFor(() => totalFor(a.id, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'manual grant postings');
-    await expect(prizeService.manualGrant(tid, { prizeId: pid, winnerUserId: WINNER, createdBy: ACTOR })).rejects.toThrow(/already awarded/);
+    await expect(prizeService.manualGrant(tid, { prizeId: pidPrize, winnerUserId: WINNER, createdBy: ACTOR })).rejects.toThrow(/already awarded/);
     expect(await awardCount(tid)).toBe(1);
   });
 
   it('7. manual-grant-then-auto-bind and auto-bind-then-manual-grant never double-award', async () => {
     const tid = await createTournament({ org: ORG_CARD });
-    await createRegistration(tid, WINNER2);
-    const pid = await createPrize(tid, 1, 'cash', 500);
+    const reg = await createRegistration(tid, WINNER2);
+    // G11.15 — authoritative placement row required for manual grant.
+    const pid = Number((await pool.execute<RowData>(
+      `INSERT INTO tournament_participants (tournament_id, registration_id, participant_type, status, member_user_ids)
+       VALUES (?, ?, 'individual', 'active', ?)`, [tid, reg, JSON.stringify([WINNER2])],
+    ))[0].insertId);
+    await pool.execute<RowData>(
+      `INSERT INTO tournament_placements (tournament_id, placement, participant_id, user_id, source, resolved_at)
+       VALUES (?, 1, ?, ?, 'bracket', NOW())`, [tid, pid, WINNER2],
+    );
+    const pidPrize = await createPrize(tid, 1, 'cash', 500);
     // (a) manual first → auto-bind no-op
-    const manual = await prizeService.manualGrant(tid, { prizeId: pid, winnerUserId: WINNER2, createdBy: ACTOR });
+    const manual = await prizeService.manualGrant(tid, { prizeId: pidPrize, winnerUserId: WINNER2, createdBy: ACTOR });
     awardIds.push(manual.id);
     await waitFor(() => totalFor(manual.id, ['tournament_org_prize_award', 'tournament_org_prize_award_book']), (n) => n === 4, 'manual grant postings');
     expect(await prizeService.bindAwardsForBracket(tid, WINNER2)).toHaveLength(0);

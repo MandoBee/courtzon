@@ -206,6 +206,19 @@ export class TournamentService {
    *  * display_order is deterministic (array index) unless explicitly supplied.
    */
   private normalisePrizes(prizes: TournamentPrizeInput[], authoritativeCurrency?: string): TournamentPrizeInput[] {
+    // G11.15 — one CASH prize per ranked placement (mirrors migration 185's
+    // DB-level unique index so the API returns a meaningful validation error
+    // instead of a raw duplicate-key failure). Non-cash prizes and non-ranked
+    // (placement NULL) cash prizes may repeat exactly as before.
+    const cashSeen = new Map<number, void>();
+    for (const p of prizes) {
+      if (p.prize_type === 'cash' && p.placement != null) {
+        if (cashSeen.has(p.placement)) {
+          throw new ConflictError(`Multiple cash prizes configured for placement ${p.placement}`, ErrorCodes.TOURNAMENT_INVALID_PRIZE);
+        }
+        cashSeen.set(p.placement, undefined);
+      }
+    }
     return prizes.map((p, i) => {
       const prizeType = p.prize_type as TournamentPrizeType;
       if (prizeType === 'cash') {

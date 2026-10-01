@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { ensureOpenPlatformAccountingPeriod, dropCurrentPlatformAccountingPeriods } from './prize-period-fixture.js';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -296,6 +297,7 @@ async function registerApp() {
 
 beforeAll(async () => {
   pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5 });
+  await ensureOpenPlatformAccountingPeriod(pool as any);
 
   const [evBase] = await pool.execute<RowData>('SELECT COALESCE(MAX(id), 0) AS m FROM published_events');
   const [prBase] = await pool.execute<RowData>('SELECT COALESCE(MAX(id), 0) AS m FROM processed_events');
@@ -318,6 +320,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanupAll();
+  await dropCurrentPlatformAccountingPeriods(pool as any);
   const { closePool } = await import('../../../database/mysql.js');
   await closePool();
   await pool.end();
@@ -475,6 +478,16 @@ describe('G11.5 — tournament prize payout', () => {
   it('S7 — manual grant for bracket winner runs the identical pipeline (bind_source=manual)', async () => {
     const tid = await createTournament({ bracket: BRACKET, org: ORG });
     const reg = await createRegistration(tid, WIN1);
+    // G11.15 — manual grant now REQUIRES the authoritative tournament_placements
+    // row (placement integrity): seed the individual participant + placement.
+    const pid = Number((await pool.execute<RowData>(
+      `INSERT INTO tournament_participants (tournament_id, registration_id, participant_type, status, member_user_ids)
+       VALUES (?, ?, 'individual', 'active', ?)`, [tid, reg, JSON.stringify([WIN1])],
+    ))[0].insertId);
+    await pool.execute<RowData>(
+      `INSERT INTO tournament_placements (tournament_id, placement, participant_id, user_id, source, resolved_at)
+       VALUES (?, 1, ?, ?, 'bracket', NOW())`, [tid, pid, WIN1],
+    );
     await createPrize(tid, 1, 'cash', 300);
     const [prizes] = await pool.execute<RowData>('SELECT id FROM tournament_prizes WHERE tournament_id = ?', [tid]);
     await upsertStanding(tid, reg, 1); // irrelevant for manual path

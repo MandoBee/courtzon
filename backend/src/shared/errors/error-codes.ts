@@ -203,6 +203,13 @@ export const ErrorCodes = {
   TOURNAMENT_STATUS_CONFLICT: 'TOURNAMENT_STATUS_CONFLICT',
   /** A written tournament/match status value is not supported by the database ENUM. */
   TOURNAMENT_INVALID_STATUS: 'TOURNAMENT_INVALID_STATUS',
+  // ── G11.15 — placement-based prize payout integrity ──
+  /** No authoritative `tournament_placements` row exists for the requested placement. */
+  TOURNAMENT_PLACEMENT_MISSING: 'TOURNAMENT_PLACEMENT_MISSING',
+  /** The requested prize recipient is not the authoritative player of that placement. */
+  TOURNAMENT_PLACEMENT_MISMATCH: 'TOURNAMENT_PLACEMENT_MISMATCH',
+  /** The placed winner has no eligible (registered/confirmed, not refunded) tournament registration. */
+  TOURNAMENT_REGISTRATION_NOT_ELIGIBLE: 'TOURNAMENT_REGISTRATION_NOT_ELIGIBLE',
 
   // ── Shared — court slot availability (used by the booking reservation capability) ──
   COURT_SLOT_UNAVAILABLE: 'COURT_SLOT_UNAVAILABLE',

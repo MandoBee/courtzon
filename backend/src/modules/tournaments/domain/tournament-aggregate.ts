@@ -728,6 +728,24 @@ export function validatePrizeAwardAmount(amount: number): void {
 }
 
 /**
+ * G11.15 — the SINGLE eligibility rule for paying a tournament prize winner.
+ * A placement winner is payable ONLY from a registration that is still valid:
+ *   status   ∈ {registered, confirmed}   (never withdrawn / disqualified / waiting)
+ *   payment  ≠ 'refunded'
+ * Used by BOTH the automatic placement binding and the manual grant so the two
+ * paths can never disagree (single source of truth, no drift).
+ * `status` / `paymentStatus` are the raw `tournament_registrations` columns.
+ */
+export function isEligiblePrizeRegistration(
+  status: string | null | undefined,
+  paymentStatus: string | null | undefined,
+): boolean {
+  const s = String(status ?? '');
+  const ps = String(paymentStatus ?? '');
+  return (s === 'registered' || s === 'confirmed') && ps !== 'refunded';
+}
+
+/**
  * Deterministic PRNG (mulberry32). Seeded draws are reproducible + auditable —
  * the same seed always yields the same bracket. No `Math.random()`.
  */

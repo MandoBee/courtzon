@@ -1,20 +1,23 @@
 import { getPool } from '../../../database/mysql.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { tournamentPrizeAwardRepository } from '../infrastructure/repositories/tournament-prize-award.repository.js';
+import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import type {
   Tournament,
   TournamentPrize,
   TournamentPrizeAward,
+  TournamentPlacement,
   PrizeFundingSource,
   PrizeCollectionMethod,
   PrizeBindSource,
   PrizeAwardStatus,
   TournamentStandingRow,
 } from '../domain/tournament-aggregate.js';
-import { validatePrizeAwardAmount, assertValidPrizeAwardTransition } from '../domain/tournament-aggregate.js';
+import { validatePrizeAwardAmount, assertValidPrizeAwardTransition, isEligiblePrizeRegistration } from '../domain/tournament-aggregate.js';
 import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
 import { financialEntitlementRepository } from '../../financial/infrastructure/repositories/financial-entitlement.repository.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
@@ -178,30 +181,32 @@ class TournamentPrizeAwardService {
   }
 
   /**
-   * G11.7 B2 — Bind the champion's placement-1 cash prize for bracket/knockout
-   * tournaments on `tournament:completed`.
+   * G11.7 B2 / G11.15 — Bind prize awards for bracket/knockout tournaments on
+   * `tournament:completed`.
    *
-   * The bracket engine authoritatively provides ONLY the champion
-   * (`tournament:completed.winnerId` = the winning participant's primary
-   * member user id); runner-up / third-place are NOT produced by the engine,
-   * so ONLY placement 1 is ever bound here — placement-2/3 logic is never
-   * invented.
+   * G11.15 — the AUTHORITATIVE payout identity is `tournament_placements` (the
+   * G11.14 fail-closed placement resolver). When authoritative placements exist
+   * (placement 1..N), every placement with a configured CASH prize is bound
+   * through the SAME pipeline as placement 1 today:
+   *   placement 2 auto-binds when the placements table holds placement=2;
+   *   placement 3 auto-binds ONLY when the placements table holds placement=3
+   *   (standard 8/16/32 brackets typically resolve only 1 and 2 — placement 3
+   *   stays absent and nothing is paid; NEVER guessed).
    *
-   * Reuses the ENTIRE G11.5 pipeline: funding/collection resolvers, platform
-   * CASH eligibility guard, `hasAward` idempotency and the atomic
-   * `createAwardWithCredit` (award → wallet credit → accounting → org
-   * adjustment → audit → `tournament:prize-awarded`). Standings-backed
-   * tournaments are untouched (`bindAwardsForTournament`).
+   * Backward compatibility: when the placements table is EMPTY (a tournament
+   * completed before placement capture, e.g. legacy/G11.5-era data), the pre-G11.15
+   * champion path (`tournament:completed.winnerId` → placement 1) is preserved
+   * exactly, now ALSO guarded by registration eligibility.
+   *
+   * Reuses the ENTIRE financial pipeline: funding/collection resolvers, the
+   * atomic `createAwardWithCredit` (award → wallet credit → accounting → org
+   * adjustment → audit → `tournament:prize-awarded`) and `hasAward` idempotency.
    */
   async bindAwardsForBracket(
     tournamentId: number,
     winnerUserId: number | null | undefined,
     opts: { createdBy?: number | null } = {},
   ): Promise<TournamentPrizeAward[]> {
-    if (!winnerUserId) {
-      log.warn({ tournamentId }, 'Bracket bind skipped — no winnerUserId (missing/invalid champion)');
-      return [];
-    }
     const t = await tournamentRepository.findById(tournamentId);
     if (!t || !t.id) {
       log.warn({ tournamentId }, 'Bracket bind skipped — tournament not found');
@@ -221,22 +226,64 @@ class TournamentPrizeAwardService {
     }
     const fundingSource: PrizeFundingSource = 'organization';
     const collectionMethod = resolveCollectionMethod(t);
+    const prizes = await tournamentRepository.findPrizesByTournament(tournamentId);
 
+    // ── G11.15 authoritative path: consume tournament_placements. ──────────
+    const placements = await tournamentRepository.findPlacements(tournamentId);
+    if (placements.length > 0) {
+      const created: TournamentPrizeAward[] = [];
+      for (const pl of placements) {
+        const prize = this.cashPrizeAtPlacement(prizes, Number(pl.placement));
+        if (!prize || !prize.id) {
+          log.info({ tournamentId, placement: pl.placement }, 'Bracket bind — no cash prize for placement, skipped');
+          continue;
+        }
+        const recipient = await this.resolveEligiblePlacementRecipient(tournamentId, pl);
+        if (!recipient) {
+          log.warn({ tournamentId, placement: pl.placement, participantId: pl.participant_id }, 'Bracket bind — placed winner has no provable eligible registration, skipped (fail-closed)');
+          continue;
+        }
+        const placement = Number(pl.placement);
+        if (await tournamentPrizeAwardRepository.hasAward(tournamentId, placement, recipient.winnerUserId)) {
+          log.info({ tournamentId, placement, winnerUserId: recipient.winnerUserId }, 'Bracket bind — award already exists, skipped (idempotent)');
+          continue;
+        }
+        try {
+          const award = await this.createAwardWithCredit(
+            t, prize, placement, recipient.registrationId, recipient.winnerUserId,
+            fundingSource, collectionMethod, 'bracket', opts.createdBy ?? null,
+          );
+          if (award) created.push(award);
+        } catch (err) {
+          if (isDuplicateKeyError(err)) {
+            log.warn({ tournamentId, placement, winnerUserId: recipient.winnerUserId }, 'Bracket bind — concurrent duplicate award, skipped');
+            continue;
+          }
+          throw err;
+        }
+      }
+      return created;
+    }
+
+    // ── Legacy champion path (placements table empty) — unchanged semantics. ──
+    if (!winnerUserId) {
+      log.warn({ tournamentId }, 'Bracket bind skipped — no winnerUserId (missing/invalid champion) and no authoritative placements');
+      return [];
+    }
     // Champion registration (same lookup manualGrant uses for bracket winners).
     const reg = await tournamentRepository.findRegistrationForTournamentPlayer(tournamentId, winnerUserId);
     if (!reg || !reg.id) {
       log.warn({ tournamentId, winnerUserId }, 'Bracket bind skipped — champion registration not found');
       return [];
     }
+    // G11.15 — eligibility guard also protects the legacy champion path.
+    if (!isEligiblePrizeRegistration(reg.status, reg.payment_status)) {
+      log.warn({ tournamentId, winnerUserId, status: reg.status, paymentStatus: reg.payment_status }, 'Bracket bind skipped — champion registration is not eligible');
+      return [];
+    }
 
     // Placement-1 cash prize, deterministic first by catalog order.
-    const prize = (
-      await tournamentRepository.findPrizesByTournament(tournamentId)
-    ).filter(
-      (p) => p.placement === 1 && p.prize_type === 'cash' && p.amount != null && Number(p.amount) > 0,
-    ).sort(
-      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || (a.id ?? 0) - (b.id ?? 0),
-    )[0];
+    const prize = this.cashPrizeAtPlacement(prizes, 1);
     if (!prize || !prize.id) {
       log.info({ tournamentId, winnerUserId }, 'Bracket bind skipped — no eligible placement-1 cash prize');
       return [];
@@ -283,8 +330,37 @@ class TournamentPrizeAwardService {
     if (prize.prize_type !== 'cash') throw new ConflictError('Only cash prizes can be granted as wallet payouts');
     if (prize.amount == null || Number(prize.amount) <= 0) throw new ConflictError('Prize has no positive cash amount');
 
-    const reg = await tournamentRepository.findRegistrationForTournamentPlayer(tournamentId, input.winnerUserId);
-    if (!reg) throw new NotFoundError('No confirmed registration found for this player in the tournament');
+    // G11.15 — PLACEMENT INTEGRITY: the authoritative `tournament_placements`
+    // table is the ONLY source of payout identity. A manual grant can NEVER pay
+    // an arbitrary registered player, and it can NEVER bypass bracket outcomes.
+    const placement = prize.placement ?? null;
+    if (placement == null) {
+      throw new ConflictError(
+        'Prize has no ranked placement — manual grant requires an authoritative tournament placement',
+        ErrorCodes.TOURNAMENT_PLACEMENT_MISSING,
+      );
+    }
+    const authoritativePlacement = (await tournamentRepository.findPlacements(tournamentId))
+      .find((p) => Number(p.placement) === placement);
+    if (!authoritativePlacement) {
+      throw new ConflictError(
+        `No authoritative tournament placement ${placement} exists — manual grant rejected (placement integrity)`,
+        ErrorCodes.TOURNAMENT_PLACEMENT_MISSING,
+      );
+    }
+    if (Number(authoritativePlacement.user_id) !== Number(input.winnerUserId)) {
+      throw new ConflictError(
+        `Placement ${placement} belongs to a different player — manual grant rejected (placement integrity)`,
+        ErrorCodes.TOURNAMENT_PLACEMENT_MISMATCH,
+      );
+    }
+    const recipient = await this.resolveEligiblePlacementRecipient(tournamentId, authoritativePlacement);
+    if (!recipient) {
+      throw new ConflictError(
+        'The placed winner has no eligible (registered/confirmed, not refunded) registration — manual grant rejected',
+        ErrorCodes.TOURNAMENT_REGISTRATION_NOT_ELIGIBLE,
+      );
+    }
 
     // G11 Phase 3 — prize funding is organization-only, so a tournament with no
     // owning organisation can never have a prize granted (fail-closed).
@@ -294,13 +370,12 @@ class TournamentPrizeAwardService {
     const fundingSource: PrizeFundingSource = 'organization';
     const collectionMethod = resolveCollectionMethod(t);
 
-    const placement = prize.placement ?? null;
-    if (placement != null && await tournamentPrizeAwardRepository.hasAward(tournamentId, placement, input.winnerUserId)) {
+    if (await tournamentPrizeAwardRepository.hasAward(tournamentId, placement, input.winnerUserId)) {
       throw new ConflictError(`Prize placement ${placement} is already awarded to this player`);
     }
 
     const award = await this.createAwardWithCredit(
-      t, prize, prize.placement ?? null, reg.id!, input.winnerUserId,
+      t, prize, placement, recipient.registrationId, input.winnerUserId,
       fundingSource, collectionMethod, 'manual', input.createdBy ?? null,
     );
     if (!award) throw new ConflictError('Failed to create prize award');
@@ -417,6 +492,63 @@ class TournamentPrizeAwardService {
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
+
+  /** The single eligible CASH prize for a placement (deterministic first by catalog order). */
+  private cashPrizeAtPlacement(prizes: TournamentPrize[], placement: number): TournamentPrize | undefined {
+    return prizes.filter(
+      (p) => Number(p.placement) === placement && p.prize_type === 'cash' && p.amount != null && Number(p.amount) > 0,
+    ).sort(
+      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || (a.id ?? 0) - (b.id ?? 0),
+    )[0];
+  }
+
+  /**
+   * G11.15 — resolve the PAYABLE recipient for an authoritative placement row.
+   *
+   * FAIL-CLOSED (returns null on ANY unprovable step — nothing is ever paid on
+   * a guess):
+   *   1. the placed participant must exist and be ACTIVE (never withdrawn /
+   *      disqualified / waiting);
+   *   2. the placement's `user_id` (primary member mirror) must be a member of
+   *      that participant AND its unique ACTIVE participant in the tournament;
+   *   3. the registration resolved from the participant (its own
+   *      `registration_id`, or the user's tournament registration for pair/team
+   *      participants) must be ELIGIBLE: status registered/confirmed, payment
+   *      not refunded (withdrawn -> reject, disqualified -> reject, waiting ->
+   *      reject);
+   *   4. provable identity: the paid `player_id` of the selected registration
+   *      must equal the placement `user_id`.
+   */
+  private async resolveEligiblePlacementRecipient(
+    tournamentId: number,
+    placementRow: TournamentPlacement,
+  ): Promise<{ registrationId: number; winnerUserId: number } | null> {
+    if (placementRow.participant_id == null || placementRow.user_id == null) return null;
+    const participant = await participantDrawRepository.findParticipantById(Number(placementRow.participant_id));
+    if (!participant) return null;
+    if (String(participant.status) !== 'active') return null;
+
+    const payee = Number(placementRow.user_id);
+    const members = Array.isArray(participant.member_user_ids) ? participant.member_user_ids : [];
+    if (!members.some((m) => m != null && Number(m) === payee)) return null;
+
+    // Prove the placed participant is the user's UNIQUE ACTIVE participant in
+    // this tournament (uk_active_user_tournament is the DB backstop).
+    const active = await participantDrawRepository.findActiveParticipantByPlayer(tournamentId, payee);
+    if (!active || Number(active.id) !== Number(participant.id)) return null;
+
+    // Registration: prefer the participant's own registration (individual),
+    // else the user's tournament registration (pair/team participants carry
+    // registration_id NULL and each member registers under their own player row).
+    const reg = participant.registration_id != null
+      ? await tournamentRepository.getRegistrationById(Number(participant.registration_id))
+      : await tournamentRepository.findRegistrationForTournamentPlayer(tournamentId, payee);
+    if (!reg || !reg.id) return null;
+    if (!isEligiblePrizeRegistration(reg.status, reg.payment_status)) return null;
+    if (Number(reg.player_id ?? reg.user_id) !== payee) return null;
+
+    return { registrationId: Number(reg.id), winnerUserId: payee };
+  }
 
   /**
    * Atomic award creation: INSERT award (AWARDED) → wallet credit (idempotent
