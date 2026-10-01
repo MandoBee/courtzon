@@ -5,6 +5,7 @@ import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECU
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
+import { resolveKnockoutPlacements, toKnockoutMatchInput } from '../domain/knockout-placements.js';
 import {
   evaluateKnockoutCorrectionBlockReason,
   throwKnockoutCorrectionBlocked,
@@ -689,6 +690,8 @@ export class TournamentService {
 
   async list(filters: {
     page?: number; limit?: number; search?: string; status?: string; format?: string; category?: string; sport_id?: number;
+    /** G11.14 — optional tenant scope for the platform list (never weakens admin). */
+    organisationId?: number;
   }) {
     return tournamentRepository.list(filters);
   }
@@ -1149,7 +1152,9 @@ export class TournamentService {
   async updateStatus(id: number, status: string): Promise<Tournament> {
     const t = await this.getById(id);
     validateTournamentTransition(t.status, status as any);
-    await tournamentRepository.updateStatus(id, status);
+    // G11.14 — optimistic-concurrency guard: the repository refuses to overwrite
+    // a status that changed between the read above and this write.
+    await tournamentRepository.updateStatus(id, status, undefined, t.status);
     return this.getById(id);
   }
 
@@ -1188,7 +1193,26 @@ export class TournamentService {
     });
     return t;
   }
-  async startTournament(id: number) { return this.updateStatus(id, 'running'); }
+  async startTournament(id: number) {
+    // G11.14 — startTournament now goes through the SAME validated lifecycle
+    // transition as every other status write and emits `tournament:started`
+    // EXACTLY ONCE (updateStatus throws on a concurrent transition, and the
+    // event fires only after the guarded write commits). Audience mirrors the
+    // completed-event model: notification engine → active participants + org
+    // staff + admins (tenant-scoped, deduped).
+    const t = await this.updateStatus(id, 'running');
+    eventBusV2.emit('tournament:started', {
+      tournamentId: id,
+      name: t?.name ?? '',
+      ...this.tournamentRealtimeScope(t),
+    } as Record<string, unknown>, {
+      aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+    });
+    // G11.14 — a started tournament's 24h start reminders are moot; remove them.
+    void this.removeStartRemindersForTournament(t).catch((err: any) =>
+      console.error({ err, tournamentId: id }, 'startTournament: remove start reminders failed'));
+    return t;
+  }
   async complete(id: number): Promise<Tournament> {
     // G8-D — Round Robin completion contract: NO auto-completion; operator-driven
     // ONLY. The operator may complete when all REQUIRED matches are terminal.
@@ -1206,6 +1230,14 @@ export class TournamentService {
       }
     }
     const updated = await this.updateStatus(id, 'completed');
+    // G11.14 — terminal cleanup: a completed tournament must never deliver a
+    // start reminder, and knockout/round-robin outcomes are captured without
+    // operator assertion (fail-closed resolver; zero financial impact).
+    void this.removeStartRemindersForTournament(t).catch((err: any) =>
+      console.error({ err, tournamentId: id }, 'complete: remove start reminders failed'));
+    if (t.format !== 'round_robin') {
+      await this.captureBracketPlacements(id);
+    }
     // G11.5 — standings-finalization signal for standings-backed (round-robin)
     // tournaments: the operator's Complete action locks the final rankings,
     // which is when the prize obligation binds (Q1b). The prize-award listener
@@ -1371,6 +1403,31 @@ export class TournamentService {
     if (String(finalSlot.status) !== 'completed' || String(finalSlot.progression_state) !== 'completed') return null;
     if (finalSlot.winner_id == null) return null;
     return Number(finalSlot.winner_id);
+  }
+
+  /**
+   * G11.14 — capture the authoritative knockout placements from PERSISTED
+   * bracket data ONLY (fail-closed resolver). Idempotent (delete-all + insert).
+   * Ambiguous / incomplete graphs produce NO placements — completion is never
+   * blocked, none is ever fabricated. NOT financial: no ledger, no entitlement.
+   */
+  private async captureBracketPlacements(tournamentId: number): Promise<void> {
+    const matches = await tournamentRepository.findMatches(tournamentId);
+    if (!matches || matches.length === 0) return;
+    const outcome = resolveKnockoutPlacements(matches.map((m) => toKnockoutMatchInput(m)));
+    if (outcome.status !== 'resolved') {
+      console.warn({ tournamentId, status: outcome.status, reason: (outcome as any).reason }, 'captureBracketPlacements: fail-closed (no placements written)');
+      return;
+    }
+    await tournamentRepository.replacePlacements(
+      tournamentId,
+      outcome.placements.map((p) => ({
+        placement: p.placement,
+        participant_id: p.participantId,
+        user_id: p.userId,
+        source: p.source,
+      })),
+    );
   }
 
   async register(
@@ -1929,6 +1986,15 @@ export class TournamentService {
     const winnerIneligible = !isTournamentParticipantProgressionEligible(winnerParticipant.status);
 
     const t = await this.getById(source.tournament_id);
+    // G11.14 — the ACTUAL losing participant of this played slot (only when a
+    // determinable loser exists; a bye/placeholder/unplayed slot yields null).
+    const loserParticipantId = (Number(source.participant1_id) === Number(winnerParticipantId))
+      ? (source.participant2_id != null ? Number(source.participant2_id) : null)
+      : (Number(source.participant2_id) === Number(winnerParticipantId) && source.participant1_id != null
+        ? Number(source.participant1_id) : null);
+    const isTerminalSlot = meta.target_round == null && meta.target_bracket_position == null;
+    const targetRound = meta.target_round ?? null;
+    const targetBracketPosition = meta.target_bracket_position ?? null;
     const conn = await getPool().getConnection();
     let target: TournamentMatch | null = null;
     let stageCompleted = false;
@@ -1937,6 +2003,12 @@ export class TournamentService {
       await conn.beginTransaction();
       await tournamentRepository.updateMatch(source.id!, {
         winner_id: winnerId,
+        // G11.14 — winner_id and winner_participant_id stay consistent going
+        // forward; the real loser is recorded when determinable; the terminal
+        // slot's final_position resolves the champion placement.
+        winner_participant_id: winnerParticipantId,
+        loser_participant_id: loserParticipantId,
+        final_position: isTerminalSlot ? 1 : null,
         status: 'completed',
         progression_state: 'completed',
       }, conn);
@@ -1949,12 +2021,17 @@ export class TournamentService {
         if (meta.target_round != null && meta.target_bracket_position != null) {
           target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
         }
-      } else if (meta.target_round == null || meta.target_bracket_position == null) {
-        // Final round — the tournament is complete.
-        await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn);
+      } else if (isTerminalSlot) {
+        // Final round — the tournament is complete. G11.14: auto-completion goes
+        // through the SAME validated lifecycle transition the operator path uses,
+        // so a cancelled/archived tournament can never be resurrected by a late
+        // result (validateTournamentTransition throws → rollback). The guarded
+        // repository write is the optimistic-concurrency backstop.
+        validateTournamentTransition(t.status, 'completed');
+        await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
         tournamentCompleted = true;
-      } else {
-        target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
+      } else if (targetRound != null && targetBracketPosition != null) {
+        target = await tournamentRepository.findBracketSlot(source.tournament_id, targetRound, targetBracketPosition);
         if (target) {
           const slotSide = meta.target_side === 'player2' ? 'player2' : 'player1';
           const participantField = slotSide === 'player1' ? 'participant1_id' : 'participant2_id';
@@ -1985,7 +2062,9 @@ export class TournamentService {
               const maxOrder = Math.max(...stages.map((s) => s.stage_order));
               const stage = stages.find((s) => s.id === source.stage_id);
               if (stage && stage.stage_order === maxOrder) {
-                await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn);
+                // G11.14 — validated + guarded lifecycle transition (see above).
+                validateTournamentTransition(t.status, 'completed');
+                await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
                 tournamentCompleted = true;
               }
             }
@@ -2037,6 +2116,21 @@ export class TournamentService {
       });
     }
     if (tournamentCompleted) {
+      // G11.14 — capture the placements without operator assertion (fail-closed),
+      // record the system audit, and drop any stale start reminders. The G11.13
+      // winnerId propagation is preserved exactly.
+      await this.captureBracketPlacements(t.id!);
+      await Promise.resolve(
+        recordAudit({
+          actorId: 0,
+          action: 'TOURNAMENT.AUTO_COMPLETED',
+          entityType: 'tournament',
+          entityId: t.id,
+          afterState: { status: 'completed', winnerId: winnerId ?? null },
+        }),
+      ).catch(() => undefined);
+      void this.removeStartRemindersForTournament(t).catch((err: any) =>
+        console.error({ err, tournamentId: t.id }, 'auto-complete: remove start reminders failed'));
       eventBusV2.emit('tournament:completed', { tournamentId: t.id, winnerId, userId: winnerId, name: t.name, ...this.tournamentRealtimeScope(t, [winnerId]) } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
@@ -3041,7 +3135,10 @@ export class TournamentService {
     const id = await tournamentRepository.createStage({ ...data, tournament_id: tournamentId });
     const stage = (await tournamentRepository.findStages(tournamentId)).find((s) => s.id === id);
     if (!stage) throw new NotFoundError('Stage', ErrorCodes.TOURNAMENT_GROUP_NOT_FOUND);
-    eventBusV2.emit('tournament.stage-created', { tournamentId, stageId: id, name: stage.name, progressionFormat: stage.progression_format } as Record<string, unknown>, {
+    // G11.14 — `tournament.stage-created` (dot-form) silently vanished in the
+    // socket mapper (`mapDomainEvent` routes on the colon prefix). The colon
+    // form now maps to `tournament.stage-created` through the standard map.
+    eventBusV2.emit('tournament:stage-created', { tournamentId, stageId: id, name: stage.name, progressionFormat: stage.progression_format } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(tournamentId), aggregateVersion: 1,
     });
     return stage;

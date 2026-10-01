@@ -180,6 +180,55 @@ export async function handleSendScheduledNotification(job: SendScheduledNotifica
   const pool = getPool();
   const eventName = job.payload.eventName || 'system:scheduled';
 
+  // G11.14 — tournament starting-soon reminders go through the CANONICAL
+  // notification dispatcher so they regain the shared delivery guarantees:
+  // rate limiting, category preferences, quiet hours, dead-letter handling,
+  // audit trail, analytics, deduplication, actionPayload/deep-link support,
+  // channel preferences and digest handling. No second worker architecture.
+  // The reminder is suppressed when the tournament is cancelled/archived, when
+  // it has already started, or when the participant is no longer eligible.
+  if (eventName === 'tournament:starting-soon') {
+    const { dispatchToUser } = await import('../application/dispatcher.service.js');
+    const tournamentId = Number(job.payload.tournamentId);
+    if (!Number.isSafeInteger(tournamentId) || tournamentId <= 0) return;
+    const [tRows] = await pool.execute<RowData>(
+      `SELECT status FROM tournaments WHERE id = ?`, [tournamentId],
+    );
+    if (!tRows.length) return;
+    const tStatus = String((tRows[0] as any).status);
+    if (['cancelled', 'archived', 'completed', 'running', 'in_progress'].includes(tStatus)) return;
+    const [pRows] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS c FROM tournament_participants
+       WHERE tournament_id = ? AND status = 'active'
+         AND JSON_CONTAINS(member_user_ids, CAST(? AS JSON)) = 1`,
+      [tournamentId, job.userId],
+    );
+    if (Number((pRows[0] as any).c ?? 0) === 0) return; // withdrew / disqualified / replaced
+    const [localeRows] = await pool.execute<RowData>(
+      `SELECT l.code FROM users u
+       LEFT JOIN languages l ON l.id = u.language_id
+       WHERE u.id = ? LIMIT 1`,
+      [job.userId],
+    );
+    const locale = localeRows.length && String((localeRows[0] as any).code ?? '') !== ''
+      ? String((localeRows[0] as any).code)
+      : 'en';
+    await dispatchToUser({
+      userId: job.userId,
+      eventName: 'tournament:starting-soon',
+      categorySlug: 'tournament', // G11.14 — tournament category, never 'system'
+      locale,
+      data: {
+        ...job.payload,
+        startDate: job.payload.startDate,
+      },
+      relatedEntityType: 'tournament',
+      relatedEntityId: String(tournamentId),
+      action: { route: `/tournaments/${tournamentId}` },
+    });
+    return;
+  }
+
   const ab = await selectVariant(eventName, 'system', job.userId);
 
   const template = ab.templateId

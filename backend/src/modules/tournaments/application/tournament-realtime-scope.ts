@@ -10,7 +10,7 @@ import type { Tournament } from '../domain/tournament-aggregate.js';
  * broadening visibility. Scope is resolved at SOURCE from the authoritative
  * tournament aggregate (no duplicate audience tables, no schema change).
  */
-export type TournamentScopeSource = Pick<Tournament, 'organisation_id' | 'branch_id' | 'creator_id'>;
+export type TournamentScopeSource = Pick<Tournament, 'organisation_id' | 'branch_id' | 'creator_id' | 'is_public'>;
 
 export function tournamentRealtimeScope(
   t: TournamentScopeSource,
@@ -20,6 +20,8 @@ export function tournamentRealtimeScope(
   branchId: number | null;
   creatorId: number;
   participantUserIds: number[];
+  /** G11.14 — public-discovery signal used by the socket mapper for PLAYER_ROOM. */
+  visibility: 'public' | 'private';
 } {
   const participantUserIds = participantIds
     .filter((id): id is number => id != null)
@@ -29,6 +31,7 @@ export function tournamentRealtimeScope(
     branchId: t.branch_id ?? null,
     creatorId: t.creator_id,
     participantUserIds,
+    visibility: Number(t.is_public ?? 1) === 1 ? 'public' : 'private',
   };
 }
 

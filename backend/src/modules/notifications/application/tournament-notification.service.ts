@@ -477,6 +477,31 @@ class TournamentNotificationService {
   }
 
   /**
+   * G11.14 — Tournament STARTED. Audience mirrors the completed-event model:
+   * active participants (rosters) + org staff + admins (tenant-scoped, deduped).
+   */
+  private async handleStarted(ctx: HandleContext): Promise<void> {
+    const { tournamentId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'started: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    const base: RecipientDispatchContext = {
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament',
+      relatedEntityId: String(tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    };
+    const playerUserIds = await this.activeParticipantRosterUserIds(Number(tournamentId));
+    if (playerUserIds.length) {
+      await this.dispatchToRecipients(playerUserIds, 'player', base);
+    }
+    await this.dispatchOrgStaffAndAdmins(base);
+  }
+
+  /**
    * G11.11 X2 — Operator-driven bracket/knockout completion (no winner carried).
    * Audience: active participants + org staff + admins. When a winner IS present
    * the engine dispatched it first with winner semantics; this service path uses
@@ -610,6 +635,9 @@ class TournamentNotificationService {
           break;
         case 'tournament:completed':
           await this.handleCompleted(ctx);
+          break;
+        case 'tournament:started':
+          await this.handleStarted(ctx);
           break;
         case 'tournament:refund-request-updated':
           await this.handleRefundRequestUpdated(ctx);

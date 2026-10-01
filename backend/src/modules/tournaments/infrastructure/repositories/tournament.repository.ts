@@ -3,7 +3,9 @@ import { withTransaction } from '../../../../database/database.transaction.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { normalizeEligibility, buildDiscoveryAudienceSql, resolveDiscoveryAgeFilter, resolveDiscoveryGenderFilter } from '../../domain/tournament-eligibility.js';
 import { computeStandings } from '../../domain/tournament-aggregate.js';
-import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput, TournamentSponsor, TournamentSponsorInput } from '../../domain/tournament-aggregate.js';
+import { ConflictError } from '../../../../shared/errors/app-error.js';
+import { ErrorCodes } from '../../../../shared/errors/error-codes.js';
+import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput, TournamentSponsor, TournamentSponsorInput, TournamentPlacement } from '../../domain/tournament-aggregate.js';
 import type { PoolConnection } from 'mysql2/promise';
 
 type RowData = import('mysql2').RowDataPacket[];
@@ -83,6 +85,8 @@ export class TournamentRepository {
 
   async list(filters: {
     page?: number; limit?: number; search?: string; status?: string; format?: string; category?: string; sport_id?: number;
+    /** G11.14 — tenant scope. When supplied the list is restricted to ONE organisation. */
+    organisationId?: number;
   }): Promise<{ data: Tournament[]; total: number; page: number; limit: number }> {
     const pool = getPool();
     const where: string[] = ['1 = 1'];
@@ -96,6 +100,7 @@ export class TournamentRepository {
     if (filters.format) { where.push('t.format = ?'); params.push(filters.format); }
     if (filters.category) { where.push('t.category = ?'); params.push(filters.category); }
     if (filters.sport_id) { where.push('t.sport_id = ?'); params.push(filters.sport_id); }
+    if (filters.organisationId != null) { where.push('t.organisation_id = ?'); params.push(filters.organisationId); }
 
     const pag = buildPagination(filters.page, filters.limit);
 
@@ -441,12 +446,37 @@ export class TournamentRepository {
     return Number(result.insertId);
   }
 
-  async updateStatus(id: number, status: string, conn?: PoolConnection): Promise<void> {
+  /**
+   * G11.14 — OPTIMISTIC-CONCURRENCY HARDENED status update.
+   *
+   * `expectedCurrentStatus` is mandatory for every LIFECYCLE transition: the
+   * write becomes `... WHERE id = ? AND status = ?`, so two operators racing on
+   * the same tournament can never both apply their transition from the same
+   * stale read. When the row changed between the caller's read and this write,
+   * the update rewrites 0 rows and this method fails safely with
+   * `ConflictError(TOURNAMENT_STATUS_CONFLICT)` — the caller must re-read and
+   * re-validate. Callers WITHOUT a lifecycle context (internal status touches)
+   * may omit the guard and keep the unconditional legacy behavior.
+   */
+  async updateStatus(id: number, status: string, conn?: PoolConnection, expectedCurrentStatus?: string): Promise<void> {
     const db = conn ?? getPool();
     const extras: string[] = ['status = ?'];
     const params: any[] = [status];
     if (status === 'archived') { extras.push('archived_at = NOW()'); }
     params.push(id);
+    if (expectedCurrentStatus != null) {
+      params.push(expectedCurrentStatus);
+      const [res] = await db.query(
+        `UPDATE tournaments SET ${extras.join(', ')}, updated_at = NOW() WHERE id = ? AND status = ?`, params,
+      );
+      if ((res as any).affectedRows !== 1) {
+        throw new ConflictError(
+          `Tournament status changed concurrently (expected '${expectedCurrentStatus}' before '${status}'). Re-read and retry.`,
+          ErrorCodes.TOURNAMENT_STATUS_CONFLICT,
+        );
+      }
+      return;
+    }
     await db.query(
       `UPDATE tournaments SET ${extras.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
@@ -663,13 +693,18 @@ export class TournamentRepository {
       [data.tournament_id],
     );
     const matchNumber = data.match_number ?? existing[0]?.next_num ?? 1;
-    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, participant1_id, participant2_id, winner_id, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, participant1_id, participant2_id, winner_id, winner_participant_id, loser_participant_id, final_position, bracket_depth, is_final, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await db.query<ResultSet>(sql, [
       data.tournament_id, data.match_id ?? null, data.round, matchNumber, data.round_name ?? null,
       data.group_id ?? null, data.stage_id ?? null, data.bracket_position ?? 0,
       data.player1_id ?? null, data.player2_id ?? null, data.participant1_id ?? null, data.participant2_id ?? null,
       data.winner_id ?? null,
+      data.winner_participant_id ?? null,
+      data.loser_participant_id ?? null,
+      data.final_position ?? null,
+      data.bracket_depth ?? null,
+      data.is_final ? 1 : 0,
       data.status ?? 'scheduled', data.progression_state ?? 'pending',
       data.progression_meta ? (typeof data.progression_meta === 'object' ? JSON.stringify(data.progression_meta) : data.progression_meta) : null,
       data.resource_id ?? null, data.referee_id ?? null,
@@ -804,6 +839,7 @@ export class TournamentRepository {
       'player1_id', 'player2_id', 'participant1_id', 'participant2_id', 'winner_id', 'status', 'resource_id',
       'referee_id', 'start_time', 'end_time', 'score_summary',
       'match_id', 'stage_id', 'progression_state',
+      'winner_participant_id', 'loser_participant_id', 'final_position', 'bracket_depth', 'is_final',
     ];
     for (const f of updatable) {
       if (data[f] !== undefined) { fields.push(`${f} = ?`); params.push(data[f]); }
@@ -820,13 +856,43 @@ export class TournamentRepository {
     );
   }
 
-  async updateMatchStatus(id: number, status: string, winnerId?: number, conn?: PoolConnection): Promise<void> {
+  /**
+   * G11.14 — schema-backed match status write. Only statuses supported by the
+   * database ENUM (`scheduled`|`in_progress`|`completed`|`walkover`|`cancelled`|
+   * `forfeit`|`no_show`) are accepted; anything else is rejected with a 409 —
+   * the mocked-repository blind spot cannot recur. `winnerParticipantId` is
+   * written alongside `winner_id` so the authoritative participant mirror stays
+   * consistent with the legacy user mirror.
+   */
+  async updateMatchStatus(
+    id: number,
+    status: string,
+    winnerId?: number,
+    winnerParticipantId?: number,
+    loserParticipantId?: number,
+    finalPosition?: number | null,
+    conn?: PoolConnection,
+  ): Promise<void> {
     const db = conn ?? getPool();
+    const SUPPORTED = 'scheduled,in_progress,completed,walkover,cancelled,forfeit,no_show'.split(',');
+    if (!SUPPORTED.includes(status)) {
+      throw new ConflictError(
+        `Match status '${status}' is not supported by the tournament_matches.status ENUM`,
+        ErrorCodes.TOURNAMENT_INVALID_STATUS,
+      );
+    }
+    const sets: string[] = ['status = ?'];
+    const params: any[] = [status];
+    if (winnerId !== undefined) { sets.push('winner_id = ?'); params.push(winnerId); }
+    if (winnerParticipantId !== undefined) { sets.push('winner_participant_id = ?'); params.push(winnerParticipantId); }
+    if (loserParticipantId !== undefined) { sets.push('loser_participant_id = ?'); params.push(loserParticipantId); }
+    if (finalPosition !== undefined) { sets.push('final_position = ?'); params.push(finalPosition); }
+    sets.push('end_time = IF(? IN (\'completed\',\'walkover\',\'forfeit\'), NOW(), end_time)');
+    params.push(status);
+    params.push(id);
     await db.query(
-      `UPDATE tournament_matches SET status = ?, winner_id = COALESCE(?, winner_id),
-       end_time = IF(? IN ('completed','walkover','forfeit'), NOW(), end_time)
-       WHERE id = ?`,
-      [status, winnerId ?? null, status, id],
+      `UPDATE tournament_matches SET ${sets.join(', ')} WHERE id = ?`,
+      params,
     );
   }
 
@@ -1360,6 +1426,40 @@ export class TournamentRepository {
       [registrationId],
     );
     return rows.length ? rows[0] : null;
+  }
+
+  // ── G11.14 — knockout placements (authoritative competitive outcome) ──
+
+  async findPlacements(tournamentId: number, conn?: PoolConnection): Promise<TournamentPlacement[]> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      'SELECT * FROM tournament_placements WHERE tournament_id = ? ORDER BY placement ASC',
+      [tournamentId],
+    );
+    return rows as TournamentPlacement[];
+  }
+
+  /**
+   * Replace the full placement set of a Tournament in one transaction
+   * (delete-all + insert). UNIQUE(tournament_id, placement) makes re-runs
+   * converge to the submitted set — the same idempotent strategy used for
+   * prizes/sponsors. This is NOT financial data: no ledger, no entitlement.
+   */
+  async replacePlacements(
+    tournamentId: number,
+    placements: Array<{ placement: number; participant_id: number | null; user_id: number | null; source?: string }>,
+    conn?: PoolConnection,
+  ): Promise<void> {
+    const db = conn ?? getPool();
+    if (!placements.length) return;
+    await db.query('DELETE FROM tournament_placements WHERE tournament_id = ?', [tournamentId]);
+    for (const p of placements) {
+      await db.query(
+        `INSERT INTO tournament_placements (tournament_id, placement, participant_id, user_id, source, resolved_at)
+         VALUES (?, ?, ?, ?, ?, NOW())`,
+        [tournamentId, p.placement, p.participant_id, p.user_id, p.source ?? 'bracket'],
+      );
+    }
   }
 }
 

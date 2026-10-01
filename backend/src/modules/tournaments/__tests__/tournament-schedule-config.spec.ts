@@ -339,7 +339,7 @@ describe('G11.10 D4 — registration-closed lifecycle emitter', () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'RR Cup', status: 'registration_open', organisation_id: 1001 }));
     await svc.closeRegistration(10);
 
-    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'registration_closed');
+    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'registration_closed', undefined, 'registration_open');
     expect(bus.emit).toHaveBeenCalledWith(
       'tournament:registration-closed',
       expect.objectContaining({ tournamentId: 10, name: 'RR Cup', organisationId: 1001 }),
@@ -364,7 +364,7 @@ describe('G11.11 — terminal lifecycle emitters (cancel / archive / operator co
     repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'Cup', status: 'running', organisation_id: 1001 }));
     await svc.cancel(10);
 
-    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'cancelled');
+    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'cancelled', undefined, 'running');
     expect(bus.emit).toHaveBeenCalledWith(
       'tournament:cancelled',
       expect.objectContaining({ tournamentId: 10, name: 'Cup', organisationId: 1001 }),
@@ -382,7 +382,7 @@ describe('G11.11 — terminal lifecycle emitters (cancel / archive / operator co
     repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'Cup', status: 'completed', organisation_id: 1001 }));
     await svc.archive(10);
 
-    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'archived');
+    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'archived', undefined, 'completed');
     expect(bus.emit).toHaveBeenCalledWith(
       'tournament:archived',
       expect.objectContaining({ tournamentId: 10, name: 'Cup', organisationId: 1001 }),

@@ -23,6 +23,17 @@ export interface NotificationTemplate {
 const DEFAULT_LOCALE = 'en';
 const templateCache = new Map<string, NotificationTemplate>();
 
+/**
+ * G11.14 — invalidate the in-memory template cache. Admin template updates and
+ * rollbacks MUST become visible without a server restart. The cache is
+ * keyed `eventName:locale`; `clearTemplateCache()` drops the whole map (templates
+ * are small and re-read lazily on the next getTemplate call). This is the ONLY
+ * cache-write entry point beyond getTemplate's own lazy put.
+ */
+export function clearTemplateCache(): void {
+  templateCache.clear();
+}
+
 export async function getTemplate(eventName: string, locale: string = DEFAULT_LOCALE, conn?: mysql.PoolConnection): Promise<NotificationTemplate | null> {
   const cacheKey = `${eventName}:${locale}`;
   const cached = templateCache.get(cacheKey);
@@ -157,6 +168,11 @@ const RECIPIENT_NOTICE_TITLES: Record<string, { en: string; ar: string }> = {
   'tournament:refund-request-updated:player': { en: 'Refund Request Declined', ar: 'تم رفض طلب الاسترداد' },
   'tournament:refund-request-updated:default': { en: 'Refund Request Update', ar: 'تحديث طلب الاسترداد' },
   'tournament:participant-updated:disqualified': { en: 'You Were Disqualified', ar: 'تم استبعادك' },
+  // G11.14 — tournament started (players + org staff + admins).
+  'tournament:started:player': { en: 'The Tournament Has Started', ar: 'بدأت البطولة' },
+  'tournament:started:orgStaff': { en: 'Tournament Started', ar: 'بدأت البطولة' },
+  'tournament:started:admin': { en: 'Tournament Started', ar: 'بدأت البطولة' },
+  'tournament:started:default': { en: 'Tournament Started', ar: 'بدأت البطولة' },
 };
 
 const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
@@ -304,6 +320,23 @@ const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
   'tournament:participant-updated:disqualified': {
     en: 'You have been disqualified from tournament #{{tournamentId}}.',
     ar: 'تم استبعادك من البطولة #{{tournamentId}}.',
+  },
+  // G11.14 — tournament started (players + org staff + admins).
+  'tournament:started:player': {
+    en: 'Tournament #{{tournamentId}} has started — good luck!',
+    ar: 'بدأت البطولة #{{tournamentId}} — حظاً موفقاً!',
+  },
+  'tournament:started:orgStaff': {
+    en: 'Tournament #{{tournamentId}} has started.',
+    ar: 'بدأت البطولة #{{tournamentId}}.',
+  },
+  'tournament:started:admin': {
+    en: 'Tournament #{{tournamentId}} has started.',
+    ar: 'بدأت البطولة #{{tournamentId}}.',
+  },
+  'tournament:started:default': {
+    en: 'Tournament #{{tournamentId}} has started.',
+    ar: 'بدأت البطولة #{{tournamentId}}.',
   },
 
   'tournament:match-created:participant': {
@@ -816,6 +849,20 @@ export async function seedTemplates(): Promise<void> {
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:starting-soon', locale: 'en', categorySlug: 'tournament', type: 'reminder', priority: 'high',
       titleTemplate: 'Tournament Starting Soon', bodyTemplate: '{{name}} starts on {{startDate}}. Get ready!',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // G11.14 — tournament STARTED (players + org staff + admins) and confirmed
+    // registration payment (the paying player).
+    { eventName: 'tournament:started', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'high',
+      titleTemplate: 'Tournament Started', bodyTemplate: '{{name}} has started. Good luck!',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:started', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'high',
+      titleTemplate: 'بدأت البطولة', bodyTemplate: 'بدأت {{name}}. حظاً موفقاً!',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:registration-paid', locale: 'en', categorySlug: 'tournament', type: 'success', priority: 'normal',
+      titleTemplate: 'Registration Confirmed', bodyTemplate: 'Your registration for {{name}} is confirmed.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:registration-paid', locale: 'ar', categorySlug: 'tournament', type: 'success', priority: 'normal',
+      titleTemplate: 'تم تأكيد التسجيل', bodyTemplate: 'تم تأكيد تسجيلك في {{name}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-scheduled', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'Your Match Is Scheduled', bodyTemplate: 'Your match against {{opponent}} is scheduled for {{date}}.',

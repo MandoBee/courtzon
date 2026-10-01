@@ -608,6 +608,30 @@ function roomsForScopedAudience(
   return [...rooms];
 }
 
+/**
+ * G11.14 — tournament events safe for PUBLIC-discovery fan-out (PLAYER_ROOM).
+ * Competitive/lifecycle signals only: the mapper's payload whitelist is the
+ * only data these events can carry. Financial/private events (prize-awarded,
+ * prize-refunded, registration-paid, refund-*, prizes-updated, …) are NEVER
+ * public — a private tenant event must never reach the player room.
+ */
+const TOURNAMENT_PUBLIC_DISCOVERY_EVENTS = new Set([
+  'tournament:created',
+  'tournament:registration-open',
+  'tournament:registration-closed',
+  'tournament:match-scheduled',
+  'tournament:result',
+  'tournament:bracket-generated',
+  'tournament:match-created',
+  'tournament:match-progressed',
+  'tournament:stage-completed',
+  'tournament:completed',
+  'tournament:started',
+  'tournament:cancelled',
+  'tournament:draw-locked',
+  'tournament:matches-generated',
+]);
+
 function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const sub = eventName.split(':')[1] || 'updated';
   return {
@@ -625,6 +649,9 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       tournamentCompleted: p.tournamentCompleted,
       organisationId: p.organisationId,
       branchId: p.branchId,
+      // G11.14 — public-discovery reachability: the same contract used by every
+      // other audience, driven by the authoritative is_public scope signal.
+      visibility: p.visibility,
       // Group 7 — participant/member/replacement state changes.
       participantId: p.participantId,
       participantType: p.participantType,
@@ -651,7 +678,12 @@ function mapTournamentEvent(eventName: string, p: Record<string, any>): MappedSo
       standings: p.standings,
       bracket: p.bracket,
     },
-    rooms: roomsForScopedAudience(p, { includeBookingRoom: true }),
+    rooms: roomsForScopedAudience(p, {
+      includeBookingRoom: true,
+      // G11.14 — PLAYER_ROOM for public tournaments ONLY for the safe set; the
+      // existing roomsForScopedAudience contract re-checks `visibility==='public'`.
+      publicDiscovery: TOURNAMENT_PUBLIC_DISCOVERY_EVENTS.has(eventName),
+    }),
   };
 }
 

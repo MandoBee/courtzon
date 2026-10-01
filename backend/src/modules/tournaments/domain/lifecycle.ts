@@ -4,6 +4,13 @@ import type { TournamentStatus, RegistrationStatus } from './tournament-aggregat
 
 const TOURNAMENT_TRANSITIONS: Record<TournamentStatus, TournamentStatus[]> = {
   draft: ['published'],
+  // G11.14 — legacy/community statuses present in the DB ENUM but absent from
+  // the transition map made such rows PERMANENTLY un-lifecycleable. `open` is
+  // the legacy registration window and `in_progress` the legacy running state;
+  // both now funnel into the same validated lifecycle path so those rows can be
+  // closed/advanced/cancelled like any other.
+  open: ['registration_open', 'registration_closed', 'running', 'completed', 'cancelled'],
+  in_progress: ['completed', 'cancelled'],
   published: ['registration_open'],
   registration_open: ['registration_closed'],
   registration_closed: ['running'],

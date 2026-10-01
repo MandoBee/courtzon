@@ -198,6 +198,11 @@ export const ErrorCodes = {
   // ── Group 8-D — pre-start knockout result correction ──
   /** A knockout result cannot be corrected because a downstream match already crossed the live-play boundary. */
   TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED: 'TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED',
+  // ── G11.14 — lifecycle outcome integrity ──
+  /** Optimistic-concurrency guard: the tournament status changed between read and write. */
+  TOURNAMENT_STATUS_CONFLICT: 'TOURNAMENT_STATUS_CONFLICT',
+  /** A written tournament/match status value is not supported by the database ENUM. */
+  TOURNAMENT_INVALID_STATUS: 'TOURNAMENT_INVALID_STATUS',
 
   // ── Shared — court slot availability (used by the booking reservation capability) ──
   COURT_SLOT_UNAVAILABLE: 'COURT_SLOT_UNAVAILABLE',

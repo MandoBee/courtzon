@@ -5693,10 +5693,15 @@ CREATE TABLE `tournament_matches` (
   `referee_id` int unsigned DEFAULT NULL,
   `start_time` datetime DEFAULT NULL,
   `end_time` datetime DEFAULT NULL,
-  `status` enum('scheduled','in_progress','completed','walkover','cancelled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'scheduled',
+  `status` enum('scheduled','in_progress','completed','walkover','cancelled','forfeit','no_show') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'scheduled',
   `progression_state` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
   `progression_meta` json DEFAULT NULL,
   `winner_id` int unsigned DEFAULT NULL,
+  `winner_participant_id` int unsigned DEFAULT NULL COMMENT 'Authoritative winning tournament_participants id (written together with winner_id going forward)',
+  `loser_participant_id` int unsigned DEFAULT NULL COMMENT 'Actual losing tournament_participants id when a match has a determinable loser (never a bye/placeholder/withdrawn resolution)',
+  `final_position` tinyint unsigned DEFAULT NULL COMMENT 'Terminal slot outcome: 1 = champion, 2 = runner-up (NULL for non-final slots)',
+  `bracket_depth` int unsigned DEFAULT NULL COMMENT 'Round distance from the terminal slot: 0 = final, 1 = penultimate round... (from the bracket graph)',
+  `is_final` tinyint(1) NOT NULL DEFAULT 0 COMMENT '1 when this bracket slot is the unique terminal (final) slot',
   `score_summary` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -5714,6 +5719,9 @@ CREATE TABLE `tournament_matches` (
   KEY `idx_tm_progression` (`tournament_id`, `round`, `bracket_position`),
   KEY `idx_tm_participant1` (`participant1_id`),
   KEY `idx_tm_participant2` (`participant2_id`),
+  KEY `idx_tm_winner_participant` (`winner_participant_id`),
+  KEY `idx_tm_loser_participant` (`loser_participant_id`),
+  KEY `idx_tm_is_final` (`tournament_id`,`is_final`,`progression_state`),
   CONSTRAINT `fk_match_player1` FOREIGN KEY (`player1_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_player2` FOREIGN KEY (`player2_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
@@ -5721,7 +5729,9 @@ CREATE TABLE `tournament_matches` (
   CONSTRAINT `fk_tm_stage` FOREIGN KEY (`stage_id`) REFERENCES `tournament_stages` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_tm_match` FOREIGN KEY (`match_id`) REFERENCES `matches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_tm_participant1` FOREIGN KEY (`participant1_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_tm_participant2` FOREIGN KEY (`participant2_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_tm_participant2` FOREIGN KEY (`participant2_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tm_winner_participant` FOREIGN KEY (`winner_participant_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tm_loser_participant` FOREIGN KEY (`loser_participant_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_prize_awards`;
@@ -5844,7 +5854,7 @@ CREATE TABLE `tournament_participants` (
   `tournament_id` int unsigned NOT NULL,
   `registration_id` int unsigned DEFAULT NULL COMMENT 'Individual participants map 1:1 to a registration; NULL for future pair/team sources',
   `participant_type` enum('individual','pair','team') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'individual',
-  `status` enum('active','withdrawn','waiting','withdrawn_after_start') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active',
+  `status` enum('active','withdrawn','waiting','withdrawn_after_start','disqualified') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active',
   `member_user_ids` json DEFAULT NULL COMMENT 'Member roster (individual = [user_id]); future pairs/teams hold multiple',
   `waiting_order` int unsigned DEFAULT NULL COMMENT 'FIFO waitlist position (unique per tournament, monotonic, stable); NULL when not waiting',
   `name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Participant display name (pair/team); individuals keep the derived user name',
@@ -5858,6 +5868,29 @@ CREATE TABLE `tournament_participants` (
   CONSTRAINT `fk_part_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_part_registration` FOREIGN KEY (`registration_id`) REFERENCES `tournament_registrations` (`id`) ON DELETE SET NULL,
   CONSTRAINT `tournament_participants_chk_1` CHECK (json_valid(`member_user_ids`))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `tournament_placements`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `tournament_placements` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `tournament_id` int unsigned NOT NULL,
+  `placement` int unsigned NOT NULL COMMENT '1 = champion, 2 = runner-up, 3 = third (only when uniquely derivable)',
+  `participant_id` int unsigned DEFAULT NULL COMMENT 'Authoritative placed tournament participant',
+  `user_id` int unsigned DEFAULT NULL COMMENT 'Primary-member user id mirror of the placed participant',
+  `source` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'bracket' COMMENT 'Resolution source: bracket = knock-out graph',
+  `resolved_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tp_tournament_placement` (`tournament_id`,`placement`),
+  KEY `idx_tp_tournament` (`tournament_id`),
+  KEY `idx_tp_participant` (`participant_id`),
+  KEY `idx_tp_user` (`user_id`),
+  CONSTRAINT `fk_tp_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_tp_participant` FOREIGN KEY (`participant_id`) REFERENCES `tournament_participants` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_tp_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `tournament_participant_members`;

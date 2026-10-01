@@ -5,6 +5,7 @@ import { useTranslation } from '../../../i18n';
 import { tournamentApi, tournamentParticipantApi } from '../../../services/tournament';
 import { Button, Card } from '../../../components/ui';
 import { Can } from '../../../permissions/Can';
+import { useCan } from '../../../hooks/useCan';
 import { useToast } from '../../../components/ui/Toast';
 
 interface AwardRow {
@@ -55,9 +56,13 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { showToast } = useToast();
+  const { can } = useCan();
   const params = useParams<{ id: string }>();
   const tid = tournamentId ?? Number(params.id);
   const tournamentIdSafe = Number.isFinite(tid) ? tid : NaN;
+  // G11.14 — page-level RBAC: award FUND data is only fetched/rendered for
+  // holders of tournaments.awards.view (grant/refund stay additionally gated).
+  const canViewAwards = can('tournaments.awards.view');
 
   const { data: tournament } = useQuery({
     queryKey: ['admin-tournament', tournamentIdSafe],
@@ -68,14 +73,14 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
   const { data: awardsData } = useQuery({
     queryKey: ['tournament-awards', tournamentIdSafe],
     queryFn: () => tournamentApi.getPrizeAwards(tournamentIdSafe),
-    enabled: Number.isFinite(tournamentIdSafe),
+    enabled: Number.isFinite(tournamentIdSafe) && canViewAwards,
   });
   const awards: AwardRow[] = Array.isArray(awardsData) ? awardsData : (awardsData?.data ?? []);
 
   const { data: prizesData } = useQuery({
     queryKey: ['tournament-awardable-prizes', tournamentIdSafe],
     queryFn: () => tournamentApi.getAwardablePrizes(tournamentIdSafe),
-    enabled: Number.isFinite(tournamentIdSafe),
+    enabled: Number.isFinite(tournamentIdSafe) && canViewAwards,
   });
   const prizes: AwardablePrizeRow[] = Array.isArray(prizesData) ? prizesData : (prizesData?.data ?? []);
 
@@ -194,7 +199,8 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
         </Card>
       </Can>
 
-      <Card className="overflow-x-auto">
+      <Can permission="tournaments.awards.view">
+        <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)]">
@@ -247,6 +253,7 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
           </tbody>
         </table>
       </Card>
+      </Can>
     </div>
   );
 }

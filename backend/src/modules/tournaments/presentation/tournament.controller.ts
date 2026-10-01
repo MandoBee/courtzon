@@ -29,7 +29,13 @@ export async function getDashboardHandler(_request: FastifyRequest, reply: Fasti
 
 export async function listTournamentsHandler(request: FastifyRequest, reply: FastifyReply) {
   const query = ListTournamentsQuerySchema.parse(request.query);
-  const result = await tournamentService.list(query);
+  // G11.14 — when a tenant scope is supplied, the platform list honours it in
+  // SQL (never a JS filter) so an org-scoped caller can never observe another
+  // tenant's tournaments by accident. Platform admins omit it and see all orgs.
+  const result = await tournamentService.list({
+    ...query,
+    organisationId: query.organisation_id ?? undefined,
+  });
   return reply.send(result);
 }
 

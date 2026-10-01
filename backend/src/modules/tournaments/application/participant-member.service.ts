@@ -666,6 +666,10 @@ export class ParticipantMemberService {
         memberUserIds: activeUserIds,
         organisationId: t.organisation_id ?? null,
       }, t, activeUserIds);
+      // G11.14 — the outgoing member no longer participates: drop their 24h
+      // start reminder (the canonical dispatcher also re-checks eligibility, but
+      // an explicit removal keeps the stale job from even firing).
+      void this.removeStartReminder(Number(request.outgoing_member_user_id), tournamentId).catch(() => undefined);
       const updated = (await participantMemberRepository.findReplacementRequest(requestId))!;
       return { request: updated, drawImpact: impact };
     } catch (err) {
@@ -840,6 +844,12 @@ export class ParticipantMemberService {
     const t = await tournamentRepository.findById(tournamentId);
     if (!t) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
     return t;
+  }
+
+  /** G11.14 — fire-and-forget removal of a member's 24h start reminder. */
+  private async removeStartReminder(userId: number, tournamentId: number): Promise<void> {
+    const { removeTournamentStartReminder } = await import('../../notifications/application/scheduler.service.js');
+    await removeTournamentStartReminder(tournamentId, userId);
   }
 
   private async assertParticipantBelongsToTournament(tournamentId: number, participantId: number): Promise<TournamentParticipant> {

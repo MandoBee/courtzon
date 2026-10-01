@@ -1,6 +1,7 @@
 import { getPool } from '../../../database/mysql.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { clearTemplateCache } from './template.service.js';
 
 const log = createModuleLogger('template-versioning');
 
@@ -72,6 +73,7 @@ export async function rollbackTemplate(
   );
 
   await publishTemplateVersion(templateId, changedBy, `Rollback to version ${targetVersion}`);
+  clearTemplateCache(); // G11.14 — admin rollback visible without a restart
   log.info({ templateId, targetVersion }, 'Template rolled back');
 }
 
@@ -118,6 +120,7 @@ export async function updateTemplate(
   );
 
   await publishTemplateVersion(templateId, changedBy, 'Template updated');
+  clearTemplateCache(); // G11.14 — admin template updates visible without a restart
 }
 
 function camelToSnake(str: string): string {

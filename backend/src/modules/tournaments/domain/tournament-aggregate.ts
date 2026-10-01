@@ -15,7 +15,8 @@ export const ENGINE_EXECUTABLE_FORMATS = ['knockout', 'round_robin'] as const;
 
 export type TournamentStatus =
   | 'draft' | 'published' | 'registration_open' | 'registration_closed'
-  | 'running' | 'completed' | 'cancelled' | 'archived';
+  | 'running' | 'completed' | 'cancelled' | 'archived'
+  | 'open' | 'in_progress';
 
 export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'disqualified' | 'waiting';
 
@@ -27,7 +28,7 @@ export type RegistrationStatus = 'registered' | 'confirmed' | 'withdrawn' | 'dis
  * individual registrations map 1:1 to participants without rewriting history.
  */
 export type TournamentParticipantType = 'individual' | 'pair' | 'team';
-export type TournamentParticipantStatus = 'active' | 'withdrawn' | 'waiting' | 'withdrawn_after_start';
+export type TournamentParticipantStatus = 'active' | 'withdrawn' | 'waiting' | 'withdrawn_after_start' | 'disqualified';
 export type TournamentMemberStatus = 'active' | 'left' | 'replaced';
 export type TournamentReplacementStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
@@ -36,8 +37,9 @@ export type TournamentReplacementStatus = 'pending' | 'approved' | 'rejected' | 
  * participant may be a FUTURE progressing participant or have a future shared
  * Match materialised for its progression.
  *
- * Rule: ACTIVE ONLY. `waiting`, `withdrawn` and `withdrawn_after_start` are all
- * ineligible for future tournament progression / result participation.
+ * Rule: ACTIVE ONLY. `waiting`, `withdrawn`, `withdrawn_after_start` and
+ * `disqualified` are all ineligible for future tournament progression / result
+ * participation.
  *
  * This predicate is strictly tournament-scoped. It is NEVER applied to:
  *   * historical approved Results (a result approved before withdrawal stays
@@ -498,6 +500,24 @@ export interface TournamentMatch {
   participant1_id?: number | null;
   participant2_id?: number | null;
   winner_id?: number | null;
+  /**
+   * G11.14 — authoritative winning participant (tournament_participants.id).
+   * Written together with `winner_id` (the legacy primary-member user mirror)
+   * on every bracket progression going forward.
+   */
+  winner_participant_id?: number | null;
+  /**
+   * G11.14 — the ACTUAL losing participant of a played match. Only set when a
+   * determinable loser exists; never inferred from a bye/placeholder/unplayed
+   * match and never invented for a withdrawn-slot resolution.
+   */
+  loser_participant_id?: number | null;
+  /** G11.14 — terminal slot outcome: 1 = champion, 2 = runner-up (NULL otherwise). */
+  final_position?: number | null;
+  /** G11.14 — round distance from the terminal slot: 0 = final. Populated from the bracket graph. */
+  bracket_depth?: number | null;
+  /** G11.14 — 1 when this bracket slot is the unique terminal (final) slot. */
+  is_final?: number | boolean | null;
   status: MatchStatus;
   /** Group 5B — progression lifecycle: pending | ready | bye | completed | cancelled. */
   progression_state?: string;
@@ -523,6 +543,24 @@ export interface TournamentMatch {
   booking_status?: string | null;
 }
 
+/**
+ * G11.14 — a resolved knockout placement (authoritative competitive outcome).
+ * UNIQUE(tournament_id, placement) guarantees at most one participant per
+ * placement. `user_id` mirrors the placed participant's primary member for
+ * display; the participant remains the authoritative identity.
+ */
+export interface TournamentPlacement {
+  id?: number;
+  tournament_id: number;
+  placement: number;
+  participant_id?: number | null;
+  user_id?: number | null;
+  source?: string;
+  resolved_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /** Group 8 — court/venue schedule candidate for a tournament match. */
 export interface TournamentMatchScheduleInput {
   /** Branch-local booking date (YYYY-MM-DD). */
@@ -544,6 +582,10 @@ export interface BracketSlot {
   player2Id?: number;
   /** Set when a round-1 slot has a bye (no real opponent). */
   bye?: boolean;
+  /** G11.14 — 1 when this slot is the unique terminal (final) slot. */
+  isFinal?: boolean;
+  /** G11.14 — round distance from the terminal slot: 0 = final. */
+  bracketDepth?: number;
   /** Group 5A — the tournament stage this slot belongs to (MIXED tournaments). */
   stageId?: number;
   /** Progression metadata: which earlier Match result feeds this slot. */

@@ -670,6 +670,10 @@ const eventGroups: EventGroupConfig[] = [
       'tournament:cancelled', 'tournament:archived',
       'tournament:refund-request-updated',
       'tournament:participant-updated',
+      // G11.14 — lifecycle START (players + org staff + admins) and a confirmed
+      // registration payment (the paying player only).
+      'tournament:started',
+      'tournament:registration-paid',
     ],
     handler: async (eventName, data, categorySlug) => {
       if (eventName === 'tournament:completed') {
@@ -687,6 +691,27 @@ const eventGroups: EventGroupConfig[] = [
         // winner: notify active participants + org staff + admins (deduped)
         // through the tournament notification service.
         await tournamentNotificationService.handle({ eventName, categorySlug, data });
+        return;
+      }
+      if (eventName === 'tournament:started') {
+        // G11.14 — tournament started: active participants + org staff + admins
+        // (the same audience model as the existing completed-event path).
+        await tournamentNotificationService.handle({ eventName, categorySlug, data });
+        return;
+      }
+      if (eventName === 'tournament:registration-paid') {
+        // G11.14 — a registration payment was confirmed: notify the PAYING
+        // player only (deep-link to the tournament). Never a duplicate.
+        if (data.userId && data.tournamentId) {
+          const existing = await notificationRepository.hasExisting(data.userId, 'tournament:registration-paid', 'tournament', String(data.tournamentId));
+          if (!existing) {
+            await dispatchToUser({
+              userId: data.userId, eventName, categorySlug, data,
+              relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),
+              action: a(`/tournaments/${data.tournamentId}`),
+            });
+          }
+        }
         return;
       }
       if (eventName === 'tournament:prize-awarded' || eventName === 'tournament:prize-refunded') {
@@ -1181,6 +1206,8 @@ class NotificationEngine {
       // handler map but NEVER subscribed (G11.5 latent defect): the engine now
       // actually delivers the winner notification the handler implements.
       'tournament:prize-awarded', 'tournament:prize-refunded',
+      // G11.14 — lifecycle start + confirmed registration payment.
+      'tournament:started', 'tournament:registration-paid',
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',

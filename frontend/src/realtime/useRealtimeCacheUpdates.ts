@@ -219,6 +219,22 @@ export function invalidateTournament(
 }
 
 /**
+ * G11.14 — tournament invalidation that ALSO refreshes the org workbench list
+ * (`org-${orgId}-tournaments` — TournamentListPage.tsx) and the player's own
+ * `my-tournaments` list without hardcoding any org id. Used by lifecycle /
+ * registration-paid / created listeners where the payload carries the owner.
+ */
+export function invalidateTournamentForOrg(
+  qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
+  tournamentId: number | null | undefined,
+  organisationId: number | null | undefined,
+): void {
+  invalidateTournament(qc, tournamentId);
+  qc.invalidateQueries({ queryKey: ['my-tournaments'] });
+  invalidateOrgTournamentList(qc, organisationId);
+}
+
+/**
  * G8-D-MINIMAL — targeted invalidation of the authoritative tournament
  * standings query key. Result correction (and automatic no-result expiry
  * reconciliation) re-emits `tournament.updated` with `standings: true`; that
@@ -1106,8 +1122,31 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   // ── Tournament events ──────────────────────────────────────────
-  useSocketEvent('tournament.created', () => {
+  useSocketEvent('tournament.created', (p: any) => {
+    // G11.14 — a new public tournament also refreshes the player's own list and
+    // the owning org's workbench list (no hardcoded org ID).
     qc.invalidateQueries({ queryKey: ['tournaments'] });
+    qc.invalidateQueries({ queryKey: ['my-tournaments'] });
+    invalidateOrgTournamentList(qc, p?.organisationId);
+  });
+
+  useSocketEvent('tournament.started', (p: any) => {
+    // G11.14 — lifecycle START: refresh the tournament detail + the org list.
+    invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
+  });
+
+  useSocketEvent('tournament.draw-locked', (p: any) => {
+    // G11.14 — the draw is locked: the bracket + my-tournaments + org list
+    // (player-facing state signal; no notification).
+    invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
+  });
+
+  useSocketEvent('tournament.sponsors-updated', (p: any) => {
+    invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
+  });
+
+  useSocketEvent('tournament.stage-created', (p: any) => {
+    invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
   });
 
   // Registration opening is a public-discovery broadcast to interested players:
@@ -1139,7 +1178,7 @@ export function useRealtimeCacheUpdates(): void {
   const tournamentRealtimeEvents = TOURNAMENT_REALTIME_EVENTS;
   for (const eventName of tournamentRealtimeEvents) {
     useSocketEvent(eventName, (p: any) => {
-      invalidateTournament(qc, p?.tournamentId);
+      invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
       const key = eventName === 'tournament.match-progressed' || eventName === 'tournament.completed' ? 'standings' : 'bracket';
       if (key === 'standings') qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'standings'] });
       else qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'bracket'] });
@@ -1190,7 +1229,9 @@ export function useRealtimeCacheUpdates(): void {
   // refresh live. Payment-method configuration changes refresh the tournament
   // detail so the player/admin surfaces never show stale methods.
   useSocketEvent('tournament.registration-paid', (p: any) => {
-    invalidateTournament(qc, p?.tournamentId);
+    // G11.14 — a confirmed registration payment refreshes the player's own
+    // tournament list + the org workbench list (in addition to detail/participants).
+    invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
     if (p?.tournamentId) qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
   });
 

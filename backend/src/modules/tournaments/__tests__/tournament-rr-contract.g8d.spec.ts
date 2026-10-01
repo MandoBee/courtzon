@@ -89,7 +89,7 @@ describe('G8-D-CONTRACT — RR completion guard (operator-only, blocked while un
   it('admin-style complete succeeds when all required matches are terminal', async () => {
     const t = await tournamentService.complete(1);
     expect(tournamentRepo.countUnresolvedRequiredMatches).toHaveBeenCalledWith(1);
-    expect(tournamentRepo.updateStatus).toHaveBeenCalledWith(1, 'completed');
+    expect(tournamentRepo.updateStatus).toHaveBeenCalledWith(1, 'completed', undefined, 'running');
     expect(t).toBeDefined();
   });
 
@@ -124,7 +124,7 @@ describe('G8-D-CONTRACT — RR completion guard (operator-only, blocked while un
     await tournamentService.complete(1);
     // Knockout is out of the approved RR contract — the guard must not run.
     expect(tournamentRepo.countUnresolvedRequiredMatches).not.toHaveBeenCalled();
-    expect(tournamentRepo.updateStatus).toHaveBeenCalledWith(1, 'completed');
+    expect(tournamentRepo.updateStatus).toHaveBeenCalledWith(1, 'completed', undefined, 'running');
   });
 });
 

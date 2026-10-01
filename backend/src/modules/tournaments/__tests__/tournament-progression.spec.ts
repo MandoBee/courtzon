@@ -293,7 +293,7 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
 
     const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
 
-    expect(repo.updateStatus).toHaveBeenCalledWith(1, 'completed', fakeConn);
+    expect(repo.updateStatus).toHaveBeenCalledWith(1, 'completed', fakeConn, 'running');
     expect(bus.emit).toHaveBeenCalledWith('tournament:completed', expect.objectContaining({ tournamentId: 1, winnerId: 10 }), expect.anything());
     expect(out.tournamentCompleted).toBe(true);
   });
@@ -350,7 +350,7 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
     const out = await svc.progressFromApprovedResult({ matchId: 940, resultId: 7 });
 
     expect(repo.updateStageStatus).toHaveBeenCalledWith(3, 'completed', fakeConn);
-    expect(repo.updateStatus).toHaveBeenCalledWith(1, 'completed', fakeConn);
+    expect(repo.updateStatus).toHaveBeenCalledWith(1, 'completed', fakeConn, 'running');
     expect(bus.emit).toHaveBeenCalledWith('tournament:stage-completed', expect.objectContaining({ stageId: 3 }), expect.anything());
     expect(out.stageCompleted).toBe(true);
     expect(out.tournamentCompleted).toBe(true);

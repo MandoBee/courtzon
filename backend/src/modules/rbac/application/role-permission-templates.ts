@@ -504,6 +504,13 @@ const OPERATIONS_MANAGER_PATTERNS = [
 const TOURNAMENT_MANAGER_PATTERNS = [
   /^tournament\./,
   /^tournaments\./,
+  // G11.14 — the org portal's tournament capability is org-scoped; the intended
+  // org tournament manager role must receive the plural `org.tournaments.*`
+  // permission family (incl. `org.tournaments.result.manage`) exactly like
+  // org-admin does — ADMIN_ONLY_PREFIXES only ever blocks the SINGULAR platform
+  // `tournament.*` keys, never the org-scoped family.
+  /^org\.tournaments\./,
+  /^org\.sidebar\.tournaments/,
   /^league\./,
   /^season\./,
   /^sidebar\.(tournaments|leagues|seasons)/,

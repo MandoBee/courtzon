@@ -137,6 +137,13 @@ export interface DomainEventMap {
   'coach:invite-rejected': BaseEvent & { coachId: number; coachUserId: number; organisationId: number; organisationName: string };
   'tournament:created': BaseEvent & { tournamentId: number; userId: number; name: string };
   'tournament:starting-soon': BaseEvent & { tournamentId: number; userId: number; name: string; startDate: Date };
+  // G11.14 — tournament lifecycle START (emitted exactly once on the validated
+  // registration_closed → running transition; audience via the engine).
+  'tournament:started': BaseEvent & { tournamentId: number; name?: string; organisationId?: number | null; branchId?: number | null; creatorId?: number };
+  // G11.14 — the current draw was LOCKED (player-facing realtime state signal).
+  'tournament:draw-locked': BaseEvent & { tournamentId: number; drawId: number };
+  'tournament:sponsors-updated': BaseEvent & { tournamentId: number; sponsorCount: number; organisationId?: number | null; branchId?: number | null; creatorId?: number };
+  'tournament:stage-created': BaseEvent & { tournamentId: number; stageId: number; name?: string; progressionFormat?: string };
   'tournament:registration-open': BaseEvent & { tournamentId: number; name: string };
   'tournament:registration-closed': BaseEvent & { tournamentId: number; name: string };
   'tournament:match-scheduled': BaseEvent & { matchId: number; userId: number; opponent: string; date: Date };

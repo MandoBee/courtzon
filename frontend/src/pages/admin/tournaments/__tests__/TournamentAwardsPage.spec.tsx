@@ -35,6 +35,14 @@ vi.mock('../../../../permissions/Can', () => ({
   },
 }));
 
+// G11.14 — the page gates its award DATA QUERIES with useCan; align the test's
+// permission harness so the mock mirrors the same permission set as <Can>.
+vi.mock('../../../../hooks/useCan', () => ({
+  useCan: () => ({
+    can: (permission: string) => __state.userPermissions.includes('*') || __state.userPermissions.includes(permission),
+  }),
+}));
+
 vi.mock('../../../../components/ui/Toast', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));

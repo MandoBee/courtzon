@@ -180,6 +180,21 @@ export async function scheduleTournamentStartReminder(
   const delay = reminderTime.getTime() - Date.now();
   if (!Number.isFinite(delay) || delay <= 0) return;
 
+  // G11.14 — never hardcode locale: resolve the recipient's preferred locale
+  // (users.language_id → languages.code) so the EN and AR templates are both
+  // reachable at delivery time; 'en' remains the deterministic fallback.
+  let locale = 'en';
+  try {
+    const [rows] = await getPool().execute<RowData>(
+      `SELECT l.code FROM users u
+       LEFT JOIN languages l ON l.id = u.language_id
+       WHERE u.id = ? LIMIT 1`,
+      [userId],
+    );
+    const code = rows.length ? String((rows[0] as any).code ?? '') : '';
+    if (code === 'ar' || code === 'en') locale = code;
+  } catch { /* default to 'en' */ }
+
   await queueService.add('send_scheduled_notification', {
     templateId: 0,
     userId,
@@ -190,10 +205,10 @@ export async function scheduleTournamentStartReminder(
       name: name ?? '',
       startDate: startUtc.toISOString(),
     },
-    locale: 'en',
+    locale,
   }, { jobId: tournamentReminderJobId(tournamentId, userId), delay, attempts: 3 });
 
-  log.info({ tournamentId, userId, reminderTime }, 'Tournament start reminder scheduled');
+  log.info({ tournamentId, userId, reminderTime, locale }, 'Tournament start reminder scheduled');
 }
 
 /** Remove a previously scheduled tournament start reminder (safe when missing). */

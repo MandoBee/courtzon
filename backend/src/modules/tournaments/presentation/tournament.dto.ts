@@ -198,6 +198,8 @@ export const ListTournamentsQuerySchema = z.object({
   format: z.string().optional(),
   category: z.string().optional(),
   sport_id: z.coerce.number().int().positive().optional(),
+  /** G11.14 — optional tenant scope filter on the platform list. */
+  organisation_id: z.coerce.number().int().positive().optional(),
 });
 
 export const RegisterSchema = z.object({

@@ -113,6 +113,8 @@ export class MatchScheduleService {
               participant2_id: p2Id,
               player1_id: this.primaryMember(p1),
               player2_id: this.primaryMember(p2),
+              is_final: slot.isFinal === true ? 1 : 0,
+              bracket_depth: slot.bracketDepth != null ? slot.bracketDepth : null,
               status: 'scheduled',
               progression_state: 'pending',
               progression_meta: meta as unknown as Record<string, unknown>,
@@ -140,6 +142,8 @@ export class MatchScheduleService {
               participant2_id: null,
               player1_id: presentId != null ? this.primaryMember(present!) : null,
               player2_id: null,
+              is_final: slot.isFinal === true ? 1 : 0,
+              bracket_depth: slot.bracketDepth != null ? slot.bracketDepth : null,
               status: 'scheduled',
               progression_state: 'pending',
               progression_meta: slot.bye === true ? { ...meta, bye: true } as unknown as Record<string, unknown> : meta as unknown as Record<string, unknown>,
@@ -182,7 +186,17 @@ export class MatchScheduleService {
       // truth shared with the legacy generateBracket path) so Round-1 slots carry
       // correct target_round / target_bracket_position / target_side for the
       // progression engine.
-      return { slots: normaliseBracketTargets(generateKnockoutBracket(participantIds), participantIds.length), isKnockout: true };
+      const slots = normaliseBracketTargets(generateKnockoutBracket(participantIds), participantIds.length);
+      // G11.14 — annotate the terminal slot + depth from the actual bracket graph
+      // (totalRounds = ceil(log2(count))), so `is_final` and `bracket_depth` are
+      // persisted at generation and never guessed at completion time.
+      const totalRounds = Math.max(1, Math.ceil(Math.log2(Math.max(participantIds.length, 2))));
+      for (const slot of slots) {
+        const fromEnd = totalRounds - slot.round;
+        slot.isFinal = fromEnd === 0;
+        slot.bracketDepth = Math.max(0, fromEnd);
+      }
+      return { slots, isKnockout: true };
     }
     if (format === 'round_robin') {
       const rr = generateRoundRobinMatches(participantIds);
@@ -216,6 +230,9 @@ export class MatchScheduleService {
       target_round: slot.targetRound != null ? slot.targetRound : null,
       target_bracket_position: slot.targetBracketPosition != null ? slot.targetBracketPosition : null,
       target_side: slot.targetSide ?? (((slot.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2'),
+      // G11.14 — bracket-graph annotations persisted with the slot.
+      is_final: slot.isFinal === true ? 1 : 0,
+      bracket_depth: slot.bracketDepth != null ? slot.bracketDepth : null,
     };
   }
 
