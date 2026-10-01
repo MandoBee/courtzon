@@ -351,6 +351,85 @@ class TournamentNotificationService {
     await this.dispatchOrgStaffAndAdmins(base);
   }
 
+  /**
+   * G11.10 D1 — Round-robin standings finalisation. The ranked standings are
+   * now binding (prize obligation). Audience is ORG STAFF + ADMINS ONLY — RR
+   * participants are intentionally NEVER notified here (their course is
+   * surfaced through tournament.completed / results).
+   */
+  private async handleStandingsFinalized(ctx: HandleContext): Promise<void> {
+    const { tournamentId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'standings-finalized: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    await this.dispatchOrgStaffAndAdmins({
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament',
+      relatedEntityId: String(tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    });
+  }
+
+  /**
+   * G11.10 D2 — A player requested a refund for their registration. Org staff
+   * review requests, so the audience is ORG STAFF + ADMINS ONLY (tenant-scoped,
+   * dedup-aware). Unrelated players are never notified.
+   */
+  private async handleRefundRequested(ctx: HandleContext): Promise<void> {
+    const { tournamentId, registrationId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'refund-requested: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    await this.dispatchOrgStaffAndAdmins({
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament_registration',
+      relatedEntityId: String(registrationId ?? tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    });
+  }
+
+  /**
+   * G11.10 D4 — Registration window closed. The relevant players (active
+   * registered participants' rosters) plus org staff + admins are notified.
+   * Related entity is the tournament (one notification per tournament).
+   */
+  private async handleRegistrationClosed(ctx: HandleContext): Promise<void> {
+    const { tournamentId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'registration-closed: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    const base: RecipientDispatchContext = {
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament',
+      relatedEntityId: String(tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    };
+
+    // 1) Active registered participants (individual/pair/team rosters).
+    const participants = await participantDrawRepository.listParticipantsByTournament(Number(tournamentId));
+    const playerUserIds: number[] = [];
+    for (const p of participants) {
+      if (String(p.status) !== 'active') continue;
+      const roster = await this.activeMemberUserIds(Number(p.id));
+      playerUserIds.push(...roster);
+    }
+    if (playerUserIds.length) {
+      await this.dispatchToRecipients(playerUserIds, 'player', base);
+    }
+
+    // 2) Org staff + admins.
+    await this.dispatchOrgStaffAndAdmins(base);
+  }
+
   async handle(ctx: HandleContext): Promise<void> {
     try {
       switch (ctx.eventName) {
@@ -371,6 +450,15 @@ class TournamentNotificationService {
           break;
         case 'tournament:match-progressed':
           await this.handleMatchProgressed(ctx);
+          break;
+        case 'tournament:standings-finalized':
+          await this.handleStandingsFinalized(ctx);
+          break;
+        case 'tournament:refund-requested':
+          await this.handleRefundRequested(ctx);
+          break;
+        case 'tournament:registration-closed':
+          await this.handleRegistrationClosed(ctx);
           break;
         default:
           log.warn({ eventName: ctx.eventName }, 'tournament-notification: unhandled event');

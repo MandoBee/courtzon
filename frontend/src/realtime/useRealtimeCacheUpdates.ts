@@ -106,6 +106,8 @@ export const ORG_ACCOUNTING_ROOTS = [
   ['org-settlements'],
   ['org-settlement-detail'],
   ['org', 'booking-settlements'],
+  // G11.10 G7 — org Tournament P&L (G11.9) refreshes on accounting/tournament signals.
+  ['org-tournament-pnl'],
 ] as const;
 
 export function invalidateOrgAccounting(
@@ -124,6 +126,38 @@ export function invalidateOrgAccounting(
       },
     });
   }
+}
+
+/**
+ * G11.10 G7 — ReportsPage tournament finance blocks (Tournaments tab Overview +
+ * Participation) query under `['reports', <endpoint key>, dateFrom, dateTo]`.
+ * Invalidating the `['reports', 'overview']` / `['reports', 'participation']`
+ * prefixes refreshes exactly those ReportEndpointBlocks (the marketplace tab also
+ * uses an `overview` key; a Tournament-sourced accounting entry refreshing that
+ * admin block is harmless — no finance block mixes currencies).
+ */
+export const TOURNAMENT_FINANCE_REPORT_KEYS = [
+  ['reports', 'overview'],
+  ['reports', 'participation'],
+] as const;
+
+export function invalidateTournamentFinanceReports(qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void }): void {
+  for (const queryKey of TOURNAMENT_FINANCE_REPORT_KEYS) {
+    qc.invalidateQueries({ queryKey });
+  }
+}
+
+/**
+ * G11.10 G1/G2 — the org workbench tournament list is keyed dynamically as
+ * `org-${orgId}-tournaments` (TournamentListPage.tsx). The payload carries the
+ * owning organisationId, so the refresh is scoped to that org only.
+ */
+export function invalidateOrgTournamentList(
+  qc: { invalidateQueries: (opts: { queryKey: readonly string[] }) => void },
+  organisationId: number | null | undefined,
+): void {
+  if (organisationId == null) return;
+  qc.invalidateQueries({ queryKey: [`org-${organisationId}-tournaments`] });
 }
 
 /**
@@ -311,7 +345,7 @@ export function invalidateMatchKeys(qc: QueryClient, p: Record<string, any> | un
  * holding after a socket reconnect, so stale in-memory data cannot survive a
  * dropped connection (minimal, cache-centred reconciliation; no replay).
  */
-export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void }): void {
+export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { queryKey?: readonly (string | number)[]; predicate?: (query: any) => boolean }) => void }): void {
   for (const queryKey of [
     ['public-matches'],
     ['my-matches'],
@@ -331,6 +365,11 @@ export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { qu
     ['tournament-waitlist'],
     ['tournament-matches'],
     ['tournament-schedule'],
+    ['tournament-awards'],
+    // G11.9 finance surfaces (org Tournament P&L + ReportsPage tournament blocks).
+    ['org-tournament-pnl'],
+    ['reports', 'overview'],
+    ['reports', 'participation'],
     ['player-nav-counts'],
     // G4-A — Academy workbench roots that receive realtime updates (recovered
     // on reconnect so stale Academy state cannot survive a dropped connection).
@@ -351,6 +390,18 @@ export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { qu
   ]) {
     qc.invalidateQueries({ queryKey });
   }
+
+  // G11.10 — org tournament workbench lists are keyed dynamically
+  // `org-${orgId}-tournaments`; recover them on reconnect via a predicate.
+  qc.invalidateQueries({
+    predicate: (query: any) => {
+      const key = query?.queryKey;
+      return Array.isArray(key)
+        && typeof key[0] === 'string'
+        && key[0].startsWith('org-')
+        && key[0].endsWith('-tournaments');
+    },
+  });
 }
 
 /**
@@ -1012,8 +1063,14 @@ export function useRealtimeCacheUpdates(): void {
     // Super Admin finance/accounting surfaces + the shared account-ledger modal.
     invalidateFinanceEntries(qc);
     // Organisation portal accounting/finance surfaces (own org only, scoped by
-    // the organisationId carried in the payload).
+    // the organisationId carried in the payload) — incl. the G11.9 org
+    // Tournament P&L root added to ORG_ACCOUNTING_ROOTS.
     invalidateOrgAccounting(qc, p?.organisationId);
+    // G11.10 G7 — tournament-sourced postings refresh the ReportsPage tournament
+    // finance blocks (ledger-authoritative on-the-fly aggregates).
+    if (p?.sourceType === 'tournament') {
+      invalidateTournamentFinanceReports(qc);
+    }
   });
 
   const subscriptionRequestEvents = [
@@ -1138,6 +1195,55 @@ export function useRealtimeCacheUpdates(): void {
 
   useSocketEvent('tournament.registration-payment-methods-updated', (p: any) => {
     invalidateTournament(qc, p?.tournamentId);
+  });
+
+  // ── G11.10 — Tier-B cache refresh for the newly-published socket events ──
+  // G1 — registration refunded (G11.8): refresh the player-facing tournament/
+  // registration caches + the affected org tournament screens + org finance.
+  useSocketEvent('tournament.registration-refunded', (p: any) => {
+    invalidateRegistrationLifecycle(qc, p);
+    invalidateOrgTournamentList(qc, p?.organisationId);
+    if (p?.organisationId) invalidateOrgAccounting(qc, p.organisationId);
+  });
+
+  // G2 — round-robin standings finalised: refresh tournament detail + standings
+  // + participants + the org workbench list.
+  useSocketEvent('tournament.standings-finalized', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'standings'] });
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+    }
+    invalidateOrgTournamentList(qc, p?.organisationId);
+  });
+
+  // G5 — prize payout lifecycle: refresh the winner's tournament detail + the
+  // awards workbench (existing query key). No new wallet behavior — wallet
+  // surfaces refresh via their own wallet/entitlement events.
+  for (const ev of ['tournament.prize-awarded', 'tournament.prize-refunded'] as const) {
+    useSocketEvent(ev, (p: any) => {
+      invalidateTournament(qc, p?.tournamentId);
+      if (p?.tournamentId) {
+        qc.invalidateQueries({ queryKey: ['tournament-awards', String(p.tournamentId)] });
+      }
+      invalidateOrgTournamentList(qc, p?.organisationId);
+    });
+  }
+
+  // D2 — refund request submitted (G11.3 review flow): refresh the org
+  // refund-management screen (existing key) + the tournament detail.
+  useSocketEvent('tournament.refund-requested', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.organisationId) {
+      qc.invalidateQueries({ queryKey: ['tournament-refund-requests', p.organisationId] });
+    }
+  });
+
+  // D4 — registration closed: players/org staff see the lifecycle change via the
+  // registration/participant/list cache refresh.
+  useSocketEvent('tournament.registration-closed', (p: any) => {
+    invalidateRegistrationLifecycle(qc, p);
+    invalidateOrgTournamentList(qc, p?.organisationId);
   });
 
   // Group 4 — mutable schedule configuration (deadline, venue branch, daily

@@ -8,6 +8,7 @@ import {
   MATCH_AND_RESULT_SOCKET_EVENTS,
   SocketPublisher,
 } from '../application/socket-publisher.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 
 describe('SocketPublisher Group 5 subscriptions and delivery', () => {
   it('subscribes to every modern match lifecycle and result event', () => {
@@ -35,6 +36,26 @@ describe('SocketPublisher Group 5 subscriptions and delivery', () => {
 
   it('has no duplicate centralized subscriptions', () => {
     expect(new Set(MATCH_AND_RESULT_SOCKET_EVENTS).size).toBe(MATCH_AND_RESULT_SOCKET_EVENTS.length);
+  });
+
+  it('subscribes to the G11.10 tournament Tier-B events (refund/standings/prize/refund-request/registration-closed)', () => {
+    (eventBusV2.on as any).mockClear();
+
+    const publisher = new SocketPublisher();
+    publisher.setIO({ to: vi.fn(() => ({ emit: vi.fn() })) } as never);
+    publisher.start();
+
+    const subscribed = new Set<string>((eventBusV2.on as any).mock.calls.map((c: any) => c[0]));
+    for (const eventName of [
+      'tournament:registration-refunded',
+      'tournament:standings-finalized',
+      'tournament:prize-awarded',
+      'tournament:prize-refunded',
+      'tournament:refund-requested',
+      'tournament:registration-closed',
+    ]) {
+      expect(subscribed).toContain(eventName);
+    }
   });
 
   it('emits once to the union of all authorized rooms', () => {

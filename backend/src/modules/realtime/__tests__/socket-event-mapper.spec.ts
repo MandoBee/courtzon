@@ -831,4 +831,101 @@ describe('SocketEventMapper', () => {
       expect(coaching!.type).toBe('coaching.session-scheduled');
     });
   });
+
+  describe('G11.10 — tournament Tier-B socket mappings', () => {
+    it('maps tournament:registration-refunded to the refunded player + org/admin rooms', () => {
+      const result = mapDomainEvent('tournament:registration-refunded', {
+        tournamentId: 7,
+        registrationId: 12,
+        paymentId: 300,
+        userId: 42,
+        status: 'refunded',
+        organisationId: 3,
+        branchId: 5,
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('tournament.registration-refunded');
+      // The mapper forwards only its whitelisted fields (privacy-minimal):
+      // tournamentId + userId are present; registrationId/paymentId are NOT
+      // forwarded to sockets (frontend refreshes by tournament + organisation).
+      expect(result!.payload).toMatchObject({ tournamentId: 7, userId: 42 });
+      expect(result!.payload.registrationId).toBeUndefined();
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'user:42', 'organisation:3', 'branch:5']));
+      expect(result!.rooms).not.toContain('player');
+      expect(result!.rooms).not.toContain('organisation:99');
+    });
+
+    it('maps tournament:standings-finalized to org/admin rooms only (no player fan-out)', () => {
+      const result = mapDomainEvent('tournament:standings-finalized', {
+        tournamentId: 7,
+        name: 'RR Cup',
+        organisationId: 3,
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('tournament.standings-finalized');
+      expect(result!.rooms).toContain('admin');
+      expect(result!.rooms).toContain('organisation:3');
+      expect(result!.rooms).not.toContain('player');
+      expect(result!.rooms).not.toContain('user:');
+      expect(result!.rooms.some((room) => room.startsWith('user:'))).toBe(false);
+    });
+
+    it('maps prize-awarded/prize-refunded to the winner user room + org/admin rooms', () => {
+      const awarded = mapDomainEvent('tournament:prize-awarded', {
+        tournamentId: 7,
+        awardId: 1,
+        winnerUserId: 42,
+        amount: 600,
+        currency: 'AED',
+        organisationId: 3,
+        branchId: 5,
+      });
+      expect(awarded!.type).toBe('tournament.prize-awarded');
+      expect(awarded!.rooms).toEqual(expect.arrayContaining(['admin', 'user:42', 'organisation:3', 'branch:5']));
+      expect(awarded!.rooms).not.toContain('player');
+
+      const refunded = mapDomainEvent('tournament:prize-refunded', {
+        tournamentId: 7,
+        awardId: 2,
+        winnerUserId: 42,
+        amount: 600,
+        currency: 'AED',
+        organisationId: 3,
+      });
+      expect(refunded!.type).toBe('tournament.prize-refunded');
+      expect(refunded!.rooms).toEqual(expect.arrayContaining(['admin', 'user:42', 'organisation:3']));
+      expect(refunded!.rooms).not.toContain('player');
+    });
+
+    it('maps tournament:refund-requested to org/admin rooms + the requesting player (tenant-scoped)', () => {
+      const result = mapDomainEvent('tournament:refund-requested', {
+        tournamentId: 7,
+        registrationId: 12,
+        requestId: 55,
+        userId: 42,
+        status: 'pending',
+        organisationId: 3,
+        branchId: 5,
+      });
+      expect(result!.type).toBe('tournament.refund-requested');
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'organisation:3', 'branch:5', 'user:42']));
+      // Notifications are org-staff/admin-only (engine policy); the requester's
+      // own room only refreshes cache — never a notification bell self-ping.
+      expect(result!.rooms).not.toContain('player');
+      expect(result!.rooms).not.toContain('organisation:99');
+    });
+
+    it('maps tournament:registration-closed to org/admin/creator rooms (no player fan-out)', () => {
+      const result = mapDomainEvent('tournament:registration-closed', {
+        tournamentId: 7,
+        name: 'Cup',
+        organisationId: 3,
+        branchId: 5,
+        creatorId: 2,
+      });
+      expect(result!.type).toBe('tournament.registration-closed');
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'user:2', 'organisation:3', 'branch:5']));
+      expect(result!.rooms).not.toContain('player');
+    });
+  });
 });

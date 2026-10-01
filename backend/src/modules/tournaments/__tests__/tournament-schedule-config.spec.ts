@@ -303,3 +303,28 @@ describe('Group 4 — realtime + payment regression', () => {
     await expect(svc.register(1, 5, undefined, 'cash')).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD });
   });
 });
+
+describe('G11.10 D4 — registration-closed lifecycle emitter', () => {
+  it('closeRegistration() emits tournament:registration-closed after a valid transition', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'RR Cup', status: 'registration_open', organisation_id: 1001 }));
+    await svc.closeRegistration(10);
+
+    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'registration_closed');
+    expect(bus.emit).toHaveBeenCalledWith(
+      'tournament:registration-closed',
+      expect.objectContaining({ tournamentId: 10, name: 'RR Cup', organisationId: 1001 }),
+      expect.anything(),
+    );
+    // Tenant scope is resolved from the authoritative aggregate.
+    const emit = bus.emit.mock.calls.find((c: any) => c[0] === 'tournament:registration-closed');
+    expect(emit?.[1]).toMatchObject({ tournamentId: 10, organisationId: 1001, creatorId: 1 });
+  });
+
+  it('closeRegistration() does NOT emit for an invalid transition (lifecycle semantics preserved)', async () => {
+    // e.g. draft → registration_closed is not a listed transition.
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'X', status: 'draft' }));
+    await expect(svc.closeRegistration(10)).rejects.toThrow();
+    expect(bus.emit.mock.calls.some((c: any) => c[0] === 'tournament:registration-closed')).toBe(false);
+    expect(repo.updateStatus).not.toHaveBeenCalled();
+  });
+});

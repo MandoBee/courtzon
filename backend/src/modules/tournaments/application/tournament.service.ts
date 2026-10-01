@@ -1156,7 +1156,21 @@ export class TournamentService {
     await this.emitRegistrationOpenNotifications(t);
     return t;
   }
-  async closeRegistration(id: number) { return this.updateStatus(id, 'registration_closed'); }
+  async closeRegistration(id: number) {
+    // G11.10 D4 — the ONCE-missing lifecycle emitter. `updateStatus` validates
+    // the transition (validateTournamentTransition), so this only fires on a
+    // valid registration-close transition. The notification engine maps this
+    // event to registered players + org staff/admins (already-existing template).
+    const t = await this.updateStatus(id, 'registration_closed');
+    eventBusV2.emit('tournament:registration-closed', {
+      tournamentId: id,
+      name: t?.name ?? '',
+      ...this.tournamentRealtimeScope(t),
+    } as Record<string, unknown>, {
+      aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+    });
+    return t;
+  }
   async startTournament(id: number) { return this.updateStatus(id, 'running'); }
   async complete(id: number): Promise<Tournament> {
     // G8-D — Round Robin completion contract: NO auto-completion; operator-driven

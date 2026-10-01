@@ -661,6 +661,9 @@ const eventGroups: EventGroupConfig[] = [
       'tournament:participant-replaced', 'tournament:withdrawal-resolved',
       // G11.8 — player self-service cancellation refund (player + org notice).
       'tournament:registration-refunded',
+      // G11.10 — standings finalisation + refund-request lifecycle (org + admins).
+      'tournament:standings-finalized',
+      'tournament:refund-requested',
       // G11.5 — prize payout lifecycle events (dispach to the winner).
       'tournament:prize-awarded', 'tournament:prize-refunded',
     ],
@@ -689,10 +692,15 @@ const eventGroups: EventGroupConfig[] = [
       }
       if (eventName === 'tournament:withdrawal-resolved' || eventName === 'tournament:participant-replaced'
           || eventName === 'tournament:stage-completed' || eventName === 'tournament:match-created'
-          || eventName === 'tournament:match-progressed' || eventName === 'tournament:registration-refunded') {
+          || eventName === 'tournament:match-progressed' || eventName === 'tournament:registration-refunded'
+          || eventName === 'tournament:standings-finalized' || eventName === 'tournament:refund-requested'
+          || eventName === 'tournament:registration-closed') {
         // G9-D5-B — recipient resolution performed by the tournament notification
         // service (participants/rosters, referee, org staff, admins) with
         // notification-level idempotency. Realtime delivery is untouched.
+        // G11.10 — standings-finalized / refund-requested / registration-closed
+        // reuse the same recipient resolution + dedup (org staff + admins; and
+        // registered players for registration-closed).
         await tournamentNotificationService.handle({ eventName, categorySlug, data });
         return;
       }
@@ -1142,6 +1150,11 @@ class NotificationEngine {
       'tournament:match-progressed', 'tournament:completed', 'tournament:waitlist-promoted',
       'tournament:participant-replaced', 'tournament:withdrawal-resolved',
       'tournament:registration-refunded',
+      'tournament:standings-finalized', 'tournament:refund-requested',
+      // G11.10 G5 — prize payout winner notifications were registered in the
+      // handler map but NEVER subscribed (G11.5 latent defect): the engine now
+      // actually delivers the winner notification the handler implements.
+      'tournament:prize-awarded', 'tournament:prize-refunded',
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',

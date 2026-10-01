@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment, invalidateAcademySessionCancelled } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, TOURNAMENT_FINANCE_REPORT_KEYS, invalidateTournamentFinanceReports, invalidateOrgTournamentList, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment, invalidateAcademySessionCancelled } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -296,8 +296,8 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     it('refreshes the match detail/result caches in both numeric and string key forms', () => {
       const invalidated: string[][] = [];
       const fakeQc = {
-        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
-          invalidated.push(queryKey.map(String));
+        invalidateQueries: (o: { queryKey?: readonly (string | number)[] }) => {
+          if (o.queryKey) invalidated.push(o.queryKey.map(String));
         },
       };
       invalidateMatchKeys(fakeQc as any, { matchId: 15 });
@@ -310,8 +310,8 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     it('refreshes the applicant roster for a booking-derived payload and stays scoped to its tenant', () => {
       const invalidated: string[][] = [];
       const fakeQc = {
-        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
-          invalidated.push(queryKey.map(String));
+        invalidateQueries: (o: { queryKey?: readonly (string | number)[] }) => {
+          if (o.queryKey) invalidated.push(o.queryKey.map(String));
         },
       };
       invalidateMatchKeys(fakeQc as any, { matchId: 15, bookingId: 22, tournamentId: 8 });
@@ -322,8 +322,8 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     it('reconciles all match/result/tournament roots after a reconnect', () => {
       const invalidated: string[][] = [];
       const fakeQc = {
-        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
-          invalidated.push(queryKey.map(String));
+        invalidateQueries: (o: { queryKey?: readonly (string | number)[] }) => {
+          if (o.queryKey) invalidated.push(o.queryKey.map(String));
         },
       };
       invalidateRealtimeReconcile(fakeQc as any);
@@ -339,8 +339,8 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     it('refreshes detail, participants, waitlist and my-tournaments on registration events', () => {
       const invalidated: string[][] = [];
       const fakeQc = {
-        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
-          invalidated.push(queryKey.map(String));
+        invalidateQueries: (o: { queryKey?: readonly (string | number)[] }) => {
+          if (o.queryKey) invalidated.push(o.queryKey.map(String));
         },
       };
       invalidateRegistrationLifecycle(fakeQc as any, { tournamentId: 7 });
@@ -354,8 +354,8 @@ describe('TOURNAMENT_REALTIME_EVENTS (Group 5B draw/progression realtime strateg
     it('reconnect reconciliation now covers tournament participant/waitlist roots', () => {
       const invalidated: string[][] = [];
       const fakeQc = {
-        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
-          invalidated.push(queryKey.map(String));
+        invalidateQueries: (o: { queryKey?: readonly (string | number)[] }) => {
+          if (o.queryKey) invalidated.push(o.queryKey.map(String));
         },
       };
       invalidateRealtimeReconcile(fakeQc as any);
@@ -371,8 +371,8 @@ describe('G8-D-MINIMAL — result-correction standings invalidation', () => {
     const invalidated: string[][] = [];
     return {
       qc: {
-        invalidateQueries: ({ queryKey }: { queryKey: readonly (string | number)[] }) => {
-          invalidated.push(queryKey.map(String));
+        invalidateQueries: (o: { queryKey?: readonly (string | number)[] }) => {
+          if (o.queryKey) invalidated.push(o.queryKey.map(String));
         },
       },
       invalidated,
@@ -427,7 +427,7 @@ describe('G4-A — academy administrative realtime invalidation helpers', () => 
   function fakeQc() {
     const invalidated: string[][] = [];
     return {
-      qc: { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => { invalidated.push([...queryKey]); } },
+      qc: { invalidateQueries: (o: { queryKey?: readonly string[] }) => { if (o.queryKey) invalidated.push([...o.queryKey]); } },
       invalidated,
     };
   }
@@ -489,7 +489,9 @@ describe('G4-A — academy administrative realtime invalidation helpers', () => 
 
   it('reconnect reconciliation now includes the Academy workbench roots', () => {
     const reconcileKeys: string[][] = [];
-    const fakeQc = { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => reconcileKeys.push([...queryKey]) };
+    const fakeQc = {
+      invalidateQueries: (o: { queryKey?: readonly string[] }) => { if (o.queryKey) reconcileKeys.push([...o.queryKey]); },
+    };
     invalidateRealtimeReconcile(fakeQc as any);
     expect(reconcileKeys).toContainEqual(['admin', 'academy', 'sessions']);
     expect(reconcileKeys).toContainEqual(['admin', 'academy', 'schedules']);
@@ -529,7 +531,7 @@ describe('G3-A — academy enrollment realtime invalidation set', () => {
     expect(academyEnrollmentEvents.length).toBe(7);
     const reconcileKeys: string[] = [];
     const fakeQc = {
-      invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => reconcileKeys.push(queryKey[0]),
+      invalidateQueries: (o: { queryKey?: readonly string[] }) => { if (o.queryKey) reconcileKeys.push(o.queryKey[0]); },
     };
     invalidateRealtimeReconcile(fakeQc as any);
     // G4-A — the Academy workbench roots are now reconciled; enrollment events
@@ -537,5 +539,70 @@ describe('G3-A — academy enrollment realtime invalidation set', () => {
     expect(reconcileKeys).toContain('admin');
     expect(reconcileKeys).toContain('my');
     expect(reconcileKeys).toContain('coach');
+  });
+});
+
+describe('G11.10 — G7 org Tournament P&L + finance-report realtime invalidation', () => {
+  it('ORG_ACCOUNTING_ROOTS includes org-tournament-pnl (G11.9 org P&L refresh)', () => {
+    expect(hasPrefix(ORG_ACCOUNTING_ROOTS, ['org-tournament-pnl'])).toBe(true);
+  });
+
+  it('invalidateOrgAccounting scopes org-tournament-pnl invalidation to the changed organisation only', () => {
+    const invalidated: Array<{ queryKey?: string[]; predicate?: (q: any) => boolean }> = [];
+    const fakeQc = { invalidateQueries: (o: any) => invalidated.push(o) };
+    invalidateOrgAccounting(fakeQc as any, 6);
+
+    const pnl = invalidated.find((o) => o.queryKey?.[0] === 'org-tournament-pnl');
+    expect(pnl).toBeTruthy();
+    expect(pnl!.predicate!({ queryKey: ['org-tournament-pnl', '6'] })).toBe(true);
+    expect(pnl!.predicate!({ queryKey: ['org-tournament-pnl', '7'] })).toBe(false);
+  });
+
+  it('TOURNAMENT_FINANCE_REPORT_KEYS targets the ReportsPage tournament blocks only', () => {
+    expect(hasPrefix(TOURNAMENT_FINANCE_REPORT_KEYS, ['reports', 'overview'])).toBe(true);
+    expect(hasPrefix(TOURNAMENT_FINANCE_REPORT_KEYS, ['reports', 'participation'])).toBe(true);
+  });
+
+  it('invalidateTournamentFinanceReports runs through the client for both blocks', () => {
+    const invalidated: string[][] = [];
+    const fakeQc = { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => invalidated.push([...queryKey]) };
+    invalidateTournamentFinanceReports(fakeQc as any);
+    expect(invalidated).toEqual([['reports', 'overview'], ['reports', 'participation']]);
+  });
+
+  it('invalidateOrgTournamentList invalidates the org-scoped list root (and no-ops without orgId)', () => {
+    const invalidated: string[][] = [];
+    const fakeQc = { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => invalidated.push([...queryKey]) };
+    invalidateOrgTournamentList(fakeQc as any, 6);
+    expect(invalidated).toEqual([['org-6-tournaments']]);
+
+    invalidated.length = 0;
+    invalidateOrgTournamentList(fakeQc as any, null);
+    expect(invalidated).toEqual([]);
+  });
+
+  it('reconnect reconciliation includes org-tournament-pnl, finance reports, awards and the org list predicate', () => {
+    const keys: string[][] = [];
+    const predicates: Array<(q: any) => boolean> = [];
+    const fakeQc = {
+      invalidateQueries: (o: any) => {
+        if (o.queryKey) keys.push([...o.queryKey]);
+        if (o.predicate) predicates.push(o.predicate);
+      },
+    };
+    invalidateRealtimeReconcile(fakeQc as any);
+
+    expect(keys).toContainEqual(['org-tournament-pnl']);
+    expect(keys).toContainEqual(['reports', 'overview']);
+    expect(keys).toContainEqual(['reports', 'participation']);
+    expect(keys).toContainEqual(['tournament-awards']);
+
+    const orgListPredicate = predicates.find((p) => {
+      try { return p({ queryKey: ['org-6-tournaments', {}] }); } catch { return false; }
+    });
+    expect(orgListPredicate).toBeTruthy();
+    expect(orgListPredicate!({ queryKey: ['org-7-tournaments', {}] })).toBe(true);
+    expect(orgListPredicate!({ queryKey: ['admin-tournaments', {}] })).toBe(false);
+    expect(orgListPredicate!({ queryKey: ['tournaments'] })).toBe(false);
   });
 });

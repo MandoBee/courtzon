@@ -581,6 +581,7 @@ function roomsForScopedAudience(
     'approvedBy',
     'disputedBy',
     'winnerId',
+    'winnerUserId',
     'addedUserId',
     'removedUserId',
     'recipientUserId',

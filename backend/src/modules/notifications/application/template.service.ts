@@ -128,6 +128,19 @@ const RECIPIENT_NOTICE_TITLES: Record<string, { en: string; ar: string }> = {
   'tournament:registration-refunded:orgStaff': { en: 'Registration Cancelled & Refunded', ar: 'تم إلغاء تسجيل واسترداد الرسوم' },
   'tournament:registration-refunded:admin': { en: 'Registration Cancelled & Refunded', ar: 'تم إلغاء تسجيل واسترداد الرسوم' },
   'tournament:registration-refunded:default': { en: 'Registration Cancelled', ar: 'تم إلغاء التسجيل' },
+  // G11.10 D1 — round-robin standings finalised (org staff + admins only).
+  'tournament:standings-finalized:orgStaff': { en: 'Standings Finalized', ar: 'تم تثبيت الترتيب النهائي' },
+  'tournament:standings-finalized:admin': { en: 'Standings Finalized', ar: 'تم تثبيت الترتيب النهائي' },
+  'tournament:standings-finalized:default': { en: 'Tournament Standings Finalized', ar: 'تم تثبيت ترتيب البطولة' },
+  // G11.10 D2 — a player requested a refund (org staff + admins only).
+  'tournament:refund-requested:orgStaff': { en: 'Refund Requested', ar: 'تم طلب استرداد' },
+  'tournament:refund-requested:admin': { en: 'Refund Requested', ar: 'تم طلب استرداد' },
+  'tournament:refund-requested:default': { en: 'Refund Request', ar: 'طلب استرداد' },
+  // G11.10 D4 — registration window closed (players + org staff + admins).
+  'tournament:registration-closed:player': { en: 'Registration Closed', ar: 'تم إغلاق التسجيل' },
+  'tournament:registration-closed:orgStaff': { en: 'Registration Closed', ar: 'تم إغلاق التسجيل' },
+  'tournament:registration-closed:admin': { en: 'Registration Closed', ar: 'تم إغلاق التسجيل' },
+  'tournament:registration-closed:default': { en: 'Registration Closed', ar: 'تم إغلاق التسجيل' },
 };
 
 const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
@@ -167,6 +180,52 @@ const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
   'tournament:registration-refunded:default': {
     en: 'A registration in tournament #{{tournamentId}} was cancelled and refunded.',
     ar: 'تم إلغاء تسجيل في البطولة #{{tournamentId}} واسترداد رسومه.',
+  },
+
+  // G11.10 D1 — round-robin standings finalised (org staff + admins only).
+  'tournament:standings-finalized:orgStaff': {
+    en: 'Round-robin standings for tournament #{{tournamentId}} are now final.',
+    ar: 'تم تثبيت الترتيب النهائي لمرحلة الدوري في البطولة #{{tournamentId}}.',
+  },
+  'tournament:standings-finalized:admin': {
+    en: 'Standings were finalized for tournament #{{tournamentId}}.',
+    ar: 'تم تثبيت الترتيب النهائي للبطولة #{{tournamentId}}.',
+  },
+  'tournament:standings-finalized:default': {
+    en: 'Tournament #{{tournamentId}} standings were finalized.',
+    ar: 'تم تثبيت ترتيب البطولة #{{tournamentId}}.',
+  },
+
+  // G11.10 D2 — a player requested a refund (org staff + admins only).
+  'tournament:refund-requested:orgStaff': {
+    en: 'A player requested a refund for a registration in tournament #{{tournamentId}}.',
+    ar: 'طلب لاعب استرداد رسوم تسجيل في البطولة #{{tournamentId}}.',
+  },
+  'tournament:refund-requested:admin': {
+    en: 'A refund request was submitted in tournament #{{tournamentId}}.',
+    ar: 'تم تقديم طلب استرداد في البطولة #{{tournamentId}}.',
+  },
+  'tournament:refund-requested:default': {
+    en: 'A refund was requested in tournament #{{tournamentId}}.',
+    ar: 'تم طلب استرداد في البطولة #{{tournamentId}}.',
+  },
+
+  // G11.10 D4 — registration window closed (players + org staff + admins).
+  'tournament:registration-closed:player': {
+    en: 'Registration for tournament #{{tournamentId}} is now closed.',
+    ar: 'تم إغلاق التسجيل في البطولة #{{tournamentId}}.',
+  },
+  'tournament:registration-closed:orgStaff': {
+    en: 'Registration for tournament #{{tournamentId}} is now closed.',
+    ar: 'تم إغلاق التسجيل في البطولة #{{tournamentId}}.',
+  },
+  'tournament:registration-closed:admin': {
+    en: 'Registration for tournament #{{tournamentId}} is now closed.',
+    ar: 'تم إغلاق التسجيل في البطولة #{{tournamentId}}.',
+  },
+  'tournament:registration-closed:default': {
+    en: 'Registration for tournament #{{tournamentId}} is now closed.',
+    ar: 'تم إغلاق التسجيل في البطولة #{{tournamentId}}.',
   },
 
   'tournament:match-created:participant': {
@@ -701,6 +760,20 @@ export async function seedTemplates(): Promise<void> {
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:registration-refunded', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'تمت معالجة الاسترداد', bodyTemplate: 'تم إلغاء تسجيلك في البطولة #{{tournamentId}} وتم استرداد رسوم الاشتراك بالكامل.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // G11.10 D1 — round-robin standings finalised (org staff + admins).
+    { eventName: 'tournament:standings-finalized', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'high',
+      titleTemplate: 'Standings Finalized', bodyTemplate: 'Round-robin standings for tournament #{{tournamentId}} are now final.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:standings-finalized', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'high',
+      titleTemplate: 'تم تثبيت الترتيب النهائي', bodyTemplate: 'تم تثبيت الترتيب النهائي لمرحلة الدوري في البطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // G11.10 D2 — refund request submitted (org staff + admins).
+    { eventName: 'tournament:refund-requested', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'high',
+      titleTemplate: 'Refund Requested', bodyTemplate: 'A player requested a refund for a registration in tournament #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:refund-requested', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'high',
+      titleTemplate: 'تم طلب استرداد', bodyTemplate: 'طلب لاعب استرداد رسوم تسجيل في البطولة #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-created', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'Match Added', bodyTemplate: 'A new match was added to tournament #{{tournamentId}}.',
