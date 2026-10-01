@@ -717,10 +717,14 @@ export class TournamentService {
     return tournamentRepository.listPublic();
   }
 
-  /** Safe public detail — private tournaments are indistinguishable from 404. */
+  /** Safe public detail — private/non-discoverable tournaments are indistinguishable from 404. */
   async getPublicTournament(id: number): Promise<Record<string, unknown>> {
     const t = await tournamentRepository.findById(id);
-    if (!t || t.deleted_at != null || Number(t.is_public ?? 1) !== 1) {
+    const isDiscoverable = t != null
+      && t.deleted_at == null
+      && Number(t.is_public ?? 1) === 1
+      && !['draft', 'cancelled', 'archived'].includes(String(t.status));
+    if (!isDiscoverable) {
       throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
     }
     const detail = (await tournamentRepository.findByIdDetailed(id)) ?? t;
