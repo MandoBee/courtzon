@@ -130,6 +130,78 @@ export async function scheduleAcademySessionReminder(
   log.info({ sessionId, userId, reminderTime }, 'Academy session reminder scheduled');
 }
 
+// ── G11.12 — Tournament start reminders (reuses the SAME delayed-job pattern
+//    as booking/ academy reminders; no new scheduling architecture). ──
+
+export const TOURNAMENT_START_REMINDER_LEAD_MS = 24 * 60 * 60 * 1000; // 24 hours before start
+
+/** Deterministic job id — remove/add always targets the same job. */
+export function tournamentReminderJobId(tournamentId: number, userId: number): string {
+  return `tournament-reminder-${tournamentId}-${userId}`;
+}
+
+/**
+ * Deterministic UTC start instant for a tournament (R1).
+ * - start_date (date part) + daily_start_time when daily_start_time is present,
+ * - otherwise start_date at 00:00:00Z.
+ * Never uses the server's local timezone. Returns null for an unusable input.
+ */
+export function tournamentStartUtc(
+  startDate: string | Date | null | undefined,
+  dailyStartTime?: string | null | undefined,
+): Date | null {
+  if (startDate == null) return null;
+  const iso = startDate instanceof Date ? startDate.toISOString() : String(startDate);
+  const datePart = iso.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  const daily = dailyStartTime && typeof dailyStartTime === 'string'
+    ? dailyStartTime.trim().slice(0, 8)
+    : '';
+  const template = /^\d{2}:\d{2}:\d{2}$/.test(daily)
+    ? `${datePart}T${daily}Z`
+    : `${datePart}T00:00:00.000Z`;
+  const d = new Date(template);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Schedule a tournament starting-soon reminder for one user (24h before the
+ * UTC start instant). Never schedules when the reminder time is already in the
+ * past (delay <= 0). Deterministic jobId prevents duplicate scheduling.
+ */
+export async function scheduleTournamentStartReminder(
+  tournamentId: number,
+  startUtc: Date,
+  userId: number,
+  name?: string,
+): Promise<void> {
+  if (!(startUtc instanceof Date) || Number.isNaN(startUtc.getTime())) return;
+  const reminderTime = new Date(startUtc.getTime() - TOURNAMENT_START_REMINDER_LEAD_MS);
+  const delay = reminderTime.getTime() - Date.now();
+  if (!Number.isFinite(delay) || delay <= 0) return;
+
+  await queueService.add('send_scheduled_notification', {
+    templateId: 0,
+    userId,
+    scheduledAt: reminderTime,
+    payload: {
+      eventName: 'tournament:starting-soon',
+      tournamentId,
+      name: name ?? '',
+      startDate: startUtc.toISOString(),
+    },
+    locale: 'en',
+  }, { jobId: tournamentReminderJobId(tournamentId, userId), delay, attempts: 3 });
+
+  log.info({ tournamentId, userId, reminderTime }, 'Tournament start reminder scheduled');
+}
+
+/** Remove a previously scheduled tournament start reminder (safe when missing). */
+export async function removeTournamentStartReminder(tournamentId: number, userId: number): Promise<void> {
+  await queueService.removeJob('send_scheduled_notification', tournamentReminderJobId(tournamentId, userId));
+  log.info({ tournamentId, userId }, 'Tournament start reminder removed');
+}
+
 export async function processScheduledBroadcasts(): Promise<void> {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(

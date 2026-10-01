@@ -249,6 +249,22 @@ class QueueService {
     log.info({ type, count: items.length, queue: queueName }, `Bulk jobs added: ${type}`);
   }
 
+  /**
+   * G11.12 — remove a queued job by its deterministic id (e.g. a delayed
+   * tournament start reminder). Safe when the job does not exist: BullMQ's
+   * Queue#remove returns false for an unknown id without throwing. Used for
+   * explicit remove-then-add rescheduling and cancellation/archival cleanup.
+   * Existing queue behavior and job types are untouched.
+   */
+  async removeJob(type: JobType, jobId: string): Promise<void> {
+    const queueName = type.startsWith('process_notification') || type.startsWith('send_notification')
+      || type === 'process_dead_letter' || type === 'retry_failed_deliveries'
+      ? NOTIFICATION_QUEUE_NAME : DEFAULT_QUEUE_NAME;
+    const queue = this.getQueue(queueName);
+    await queue.remove(jobId);
+    log.info({ jobId, type, queue: queueName }, `Job removed: ${type}`);
+  }
+
   async close(): Promise<void> {
     for (const queue of this.queues.values()) {
       await queue.close();

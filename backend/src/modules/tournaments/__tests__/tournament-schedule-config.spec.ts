@@ -50,10 +50,32 @@ const pdRepo = vi.hoisted(() => ({
   getNextWaitingOrderByTournament: vi.fn(),
   createParticipant: vi.fn(),
   findParticipantByRegistration: vi.fn(),
+  listParticipantsByTournament: vi.fn(),
+}));
+
+const queue = vi.hoisted(() => ({
+  add: vi.fn(async () => 'bull-id'),
+  removeJob: vi.fn(async () => undefined),
+}));
+
+// G11.12 — the lifecycle trigger tests assert the scheduler call; the actual
+// BullMQ job/delay/jobId semantics are unit-tested in tournament-start-reminder.spec.ts.
+const reminder = vi.hoisted(() => ({
+  schedule: vi.fn(async () => undefined),
+  remove: vi.fn(async () => undefined),
 }));
 
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdRepo }));
+vi.mock('../../../infrastructure/queue/queue.service.js', () => ({
+  queueService: { add: queue.add, removeJob: queue.removeJob, addBulk: vi.fn() },
+}));
+vi.mock('../../notifications/application/scheduler.service.js', () => ({
+  scheduleTournamentStartReminder: reminder.schedule,
+  removeTournamentStartReminder: reminder.remove,
+  tournamentStartUtc: () => new Date('2026-12-01T00:00:00.000Z'),
+  tournamentReminderJobId: (tournamentId: number, userId: number) => `tournament-reminder-${tournamentId}-${userId}`,
+}));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
@@ -88,6 +110,9 @@ function makeReg(overrides: Record<string, unknown> = {}) {
 
 const svc = new TournamentService();
 
+/** Flush the microtask chain used by fire-and-forget reminder scheduling/removal. */
+const flush = () => new Promise((r) => setTimeout(r, 5));
+
 beforeEach(() => {
   vi.clearAllMocks();
   repo.findByCode.mockResolvedValue(null);
@@ -107,6 +132,7 @@ beforeEach(() => {
   repo.update.mockResolvedValue(undefined);
   repo.updateStatus.mockResolvedValue(undefined);
   repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+  pdRepo.listParticipantsByTournament.mockResolvedValue([]);
   branchRepo.findById.mockResolvedValue({ id: 5, opening_time: '08:00:00', closing_time: '22:00:00' });
   mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
   mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { best_of: 3 }, standingsRules: null });
@@ -385,5 +411,91 @@ describe('G11.11 — terminal lifecycle emitters (cancel / archive / operator co
     expect(bus.emit).toHaveBeenCalledWith('tournament:standings-finalized', expect.objectContaining({ tournamentId: 10 }), expect.anything());
     const completedEmits = bus.emit.mock.calls.filter((c: any) => c[0] === 'tournament:completed');
     expect(completedEmits.some((c: any) => c[1].operatorCompleted === true)).toBe(false);
+  });
+});
+
+describe('G11.12 — tournament start reminder scheduling (lifecycle triggers)', () => {
+  function scheduledPairs(): string[] {
+    return reminder.schedule.mock.calls.map((c: any) => `${c[0]}:${c[2]}`);
+  }
+  function removedPairs(): string[] {
+    return reminder.remove.mock.calls.map((c: any) => `${c[0]}:${c[1]}`);
+  }
+
+  it('A. register() schedules a start reminder for the newly active participant', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, start_date: '2026-12-01' }));
+    await svc.register(10, 5);
+    await flush();
+
+    expect(scheduledPairs()).toContain('10:5');
+    expect(reminder.schedule.mock.calls[0][1]).toBeInstanceOf(Date); // UTC start passed
+    expect(reminder.schedule.mock.calls[0][3]).toBe('T1'); // name passed for template
+  });
+
+  it('B. publish()/openRegistration() schedule every ACTIVE participant member (incl. team multi-member)', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([
+      { id: 1, tournament_id: 10, status: 'active', member_user_ids: [50, 51] },
+      { id: 2, tournament_id: 10, status: 'active', member_user_ids: [52] },
+    ]);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, status: 'draft', start_date: '2026-12-01', name: 'Cup' }));
+    repo.findEligibleDiscoveryAudience.mockResolvedValue([]);
+
+    await svc.publish(10);
+    await flush();
+
+    expect(scheduledPairs()).toEqual(expect.arrayContaining(['10:50', '10:51', '10:52']));
+  });
+
+  it('B2. repeated publish keeps a deterministic job id per user (queue-level dedup covered at unit level)', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([{ id: 1, tournament_id: 10, status: 'active', member_user_ids: [50] }]);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, status: 'draft', start_date: '2026-12-01' }));
+    repo.findEligibleDiscoveryAudience.mockResolvedValue([]);
+
+    await svc.publish(10);
+    await svc.publish(10);
+    await flush();
+
+    expect(scheduledPairs().filter((p) => p === '10:50')).toHaveLength(2); // same deterministic id each time
+  });
+
+  it('C. update() start change removes the old reminder then schedules the new one (same user)', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([{ id: 1, tournament_id: 10, status: 'active', member_user_ids: [5] }]);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, start_date: '2026-12-01' }));
+
+    await svc.update(10, { start_date: '2026-12-20' } as any);
+    await flush();
+
+    expect(removedPairs()).toContain('10:5');
+    expect(scheduledPairs()).toContain('10:5');
+  });
+
+  it('C2. unrelated updates do NOT touch reminders', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, start_date: '2026-12-01' }));
+    await svc.update(10, { name: 'Renamed' } as any);
+    await flush();
+    expect(reminder.remove).not.toHaveBeenCalled();
+    expect(reminder.schedule).not.toHaveBeenCalled();
+  });
+
+  it('D. cancel() removes queued reminders for active participants (G11.11 emit unchanged)', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([{ id: 1, tournament_id: 10, status: 'active', member_user_ids: [5] }]);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, status: 'running', organisation_id: 1001 }));
+
+    await svc.cancel(10);
+    await flush();
+
+    expect(bus.emit).toHaveBeenCalledWith('tournament:cancelled', expect.anything(), expect.anything());
+    expect(removedPairs()).toContain('10:5');
+  });
+
+  it('E. archive() removes queued reminders for active participants (G11.11 emit unchanged)', async () => {
+    pdRepo.listParticipantsByTournament.mockResolvedValue([{ id: 1, tournament_id: 10, status: 'active', member_user_ids: [5] }]);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, status: 'completed', organisation_id: 1001 }));
+
+    await svc.archive(10);
+    await flush();
+
+    expect(bus.emit).toHaveBeenCalledWith('tournament:archived', expect.anything(), expect.anything());
+    expect(removedPairs()).toContain('10:5');
   });
 });

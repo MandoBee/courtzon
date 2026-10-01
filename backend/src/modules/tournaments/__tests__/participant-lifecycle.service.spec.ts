@@ -36,6 +36,7 @@ const tournamentServiceMock = vi.hoisted(() => ({
 }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
+const reminder = vi.hoisted(() => ({ remove: vi.fn(async () => undefined) }));
 const ratingRepo = vi.hoisted(() => ({ getRating: vi.fn() }));
 const ratingSvc = vi.hoisted(() => ({ resolveOverallPercent: vi.fn() }));
 const poolConn = vi.hoisted(() => ({
@@ -57,6 +58,9 @@ vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tour
 vi.mock('../application/tournament.service.js', () => ({ tournamentService: tournamentServiceMock }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => poolMock }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
+vi.mock('../../notifications/application/scheduler.service.js', () => ({
+  removeTournamentStartReminder: reminder.remove,
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../match-result/infrastructure/rating.repository.js', () => ({ ratingRepository: ratingRepo }));
 vi.mock('../../match-result/application/rating/rating.service.js', () => ({ ratingService: ratingSvc }));
@@ -319,5 +323,27 @@ describe('G11.11 X5 — disqualification (participant lifecycle)', () => {
     await expect(svc.disqualifyParticipant(1, 5, 42)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_TRANSITION });
     expect(repo.updateParticipantStatus).not.toHaveBeenCalled();
     expect(bus.emit).not.toHaveBeenCalledWith('tournament:participant-updated', expect.objectContaining({ status: 'disqualified' }), expect.anything());
+  });
+});
+
+describe('G11.12 — start-reminder cleanup on withdrawal / disqualification', () => {
+  it('F1. pre-start withdrawal removes the participant members\' reminders', async () => {
+    repo.findParticipantById.mockResolvedValue(participant(5));
+    const r = await svc.withdrawParticipant(1, 5, 42);
+    expect(r.status).toBe('withdrawn');
+    expect(reminder.remove).toHaveBeenCalledWith(1, 50);
+  });
+
+  it('F2. post-start withdrawal removes the participant members\' reminders', async () => {
+    tRepo.hasAnyStartedMatch.mockResolvedValue(true);
+    repo.findParticipantById.mockResolvedValue(participant(5));
+    await svc.withdrawParticipant(1, 5, 42);
+    expect(reminder.remove).toHaveBeenCalledWith(1, 50);
+  });
+
+  it('F3. disqualification removes the participant members\' reminders', async () => {
+    repo.findParticipantById.mockResolvedValue(participant(5));
+    await svc.disqualifyParticipant(1, 5, 42);
+    expect(reminder.remove).toHaveBeenCalledWith(1, 50);
   });
 });

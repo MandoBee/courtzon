@@ -577,6 +577,7 @@ export class ParticipantDrawService {
       // G9-D2 — resolve affected future/unstarted bracket slots using the existing
       // lone-slot / bye progression semantics (M1). Never creates a Walkover (M2).
       const resolution = await tournamentService.resolveWithdrawnSlots(tournamentId, participantId);
+      await this.removeStartRemindersForParticipant(tournamentId, participant);
       return { status: 'withdrawn_after_start', drawImpact: await this.getDrawImpact(tournamentId, participantId), resolution };
     }
 
@@ -618,6 +619,7 @@ export class ParticipantDrawService {
       releasedCourts: 0,
       organisationId: (await this.getTournament(tournamentId)).organisation_id ?? null,
     });
+    await this.removeStartRemindersForParticipant(tournamentId, participant);
     return { status: 'withdrawn', drawImpact: impact };
   }
 
@@ -916,6 +918,24 @@ export class ParticipantDrawService {
     });
   }
 
+  /**
+   * G11.12 — remove the 24h start reminder for every member of a participant
+   * that is leaving the active set (withdrawal / disqualification). Fire-and-forget
+   * semantics inside the caller; failures never break the lifecycle operation.
+   */
+  private async removeStartRemindersForParticipant(tournamentId: number, participant: TournamentParticipant): Promise<void> {
+    const { removeTournamentStartReminder } = await import('../../notifications/application/scheduler.service.js');
+    const uids = Array.isArray(participant.member_user_ids) ? participant.member_user_ids : [];
+    for (const uid of uids) {
+      if (uid == null) continue;
+      try {
+        await removeTournamentStartReminder(Number(tournamentId), Number(uid));
+      } catch (err: any) {
+        console.error({ err, tournamentId, userId: uid }, 'withdraw/disqualify: remove start reminder failed');
+      }
+    }
+  }
+
   private async getTournament(tournamentId: number): Promise<Tournament> {
     const t = await tournamentRepository.findById(tournamentId);
     if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
@@ -977,6 +997,7 @@ export class ParticipantDrawService {
       participantId,
       status: 'disqualified',
     } as Record<string, unknown>, t as any);
+    await this.removeStartRemindersForParticipant(tournamentId, participant);
     return { status: 'disqualified', drawImpact: impact };
   }
 }

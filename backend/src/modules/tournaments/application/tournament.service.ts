@@ -1040,6 +1040,17 @@ export class TournamentService {
         } as Record<string, unknown>, {
           aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
         });
+        // G11.12 R5 — when the START instant moved (start_date / daily_start_time),
+        // explicitly remove the old reminder and add the new one (same jobId).
+        const startBefore = `${current.start_date ?? ''}|${current.daily_start_time ?? ''}`;
+        const startAfter = `${data.start_date ?? current.start_date ?? ''}|${data.daily_start_time ?? current.daily_start_time ?? ''}`;
+        if (startBefore !== startAfter) {
+          void this.rescheduleStartReminders(current, {
+            start_date: data.start_date ?? current.start_date ?? null,
+            daily_start_time: data.daily_start_time ?? current.daily_start_time ?? null,
+          } as any).catch((err: any) =>
+            console.error({ err, tournamentId: id }, 'update: reschedule start reminders failed'));
+        }
       }
     }
     // Group 1 — whenever the rules-affecting configuration changes (sport_id,
@@ -1147,6 +1158,9 @@ export class TournamentService {
     // Group 4 — notify players whose primary sport / interests match the
     // tournament sport (idempotent via the notification engine dedup).
     await this.emitRegistrationOpenNotifications(t);
+    // G11.12 — (re)arm start reminders for any already-active participants.
+    void this.scheduleStartRemindersForTournament(t).catch((err: any) =>
+      console.error({ err, tournamentId: id }, 'publish: schedule start reminders failed'));
     return t;
   }
   async openRegistration(id: number) {
@@ -1154,6 +1168,9 @@ export class TournamentService {
     // Group 4 — same audience as publish; repeated events are deduped by the
     // notification engine so players never receive duplicates.
     await this.emitRegistrationOpenNotifications(t);
+    // G11.12 — (re)arm start reminders for any already-active participants.
+    void this.scheduleStartRemindersForTournament(t).catch((err: any) =>
+      console.error({ err, tournamentId: id }, 'openRegistration: schedule start reminders failed'));
     return t;
   }
   async closeRegistration(id: number) {
@@ -1234,6 +1251,9 @@ export class TournamentService {
     } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
     });
+    // G11.12 R5 — a cancelled tournament must never deliver a start reminder.
+    void this.removeStartRemindersForTournament(t).catch((err: any) =>
+      console.error({ err, tournamentId: id }, 'cancel: remove start reminders failed'));
     return t;
   }
   async archive(id: number) {
@@ -1247,11 +1267,75 @@ export class TournamentService {
     } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
     });
+    // G11.12 R5 — an archived tournament must never deliver a start reminder.
+    void this.removeStartRemindersForTournament(t).catch((err: any) =>
+      console.error({ err, tournamentId: id }, 'archive: remove start reminders failed'));
     return t;
   }
 
   async getOpenTournaments() {
     return tournamentRepository.findOpen();
+  }
+
+  // ── G11.12 — Tournament start reminders (24h before the UTC start instant). ──
+  // Queue operations are fire-and-forget + caught so they can never break the
+  // authoritative lifecycle transaction; failures only surface in logs.
+
+  private async scheduleStartReminders(participantUserIds: number[], t: Tournament): Promise<void> {
+    const { tournamentStartUtc, scheduleTournamentStartReminder } = await import('../../notifications/application/scheduler.service.js');
+    const startUtc = tournamentStartUtc(t.start_date as any, t.daily_start_time ?? null);
+    if (!startUtc) return;
+    for (const uid of [...new Set(participantUserIds.map((u) => Number(u)).filter((u) => u > 0))]) {
+      try {
+        await scheduleTournamentStartReminder(Number(t.id), startUtc, uid, t.name ?? '');
+      } catch (err: any) {
+        console.error({ err, tournamentId: t.id, userId: uid }, 'Failed to schedule tournament start reminder');
+      }
+    }
+  }
+
+  private async scheduleStartRemindersForTournament(t: Tournament): Promise<void> {
+    await this.scheduleStartReminders(await this.activeParticipantUserIds(Number(t.id)), t);
+  }
+
+  private async removeStartRemindersForTournament(t: Tournament): Promise<void> {
+    const { removeTournamentStartReminder } = await import('../../notifications/application/scheduler.service.js');
+    for (const uid of await this.activeParticipantUserIds(Number(t.id))) {
+      try {
+        await removeTournamentStartReminder(Number(t.id), uid);
+      } catch (err: any) {
+        console.error({ err, tournamentId: t.id, userId: uid }, 'Failed to remove tournament start reminder');
+      }
+    }
+  }
+
+  /** Explicit remove-then-add reschedule on a start-time change (R5). */
+  private async rescheduleStartReminders(
+    current: Tournament,
+    effective: { start_date: any; daily_start_time?: string | null },
+  ): Promise<void> {
+    const scheduler = await import('../../notifications/application/scheduler.service.js');
+    const startUtc = scheduler.tournamentStartUtc(effective.start_date, effective.daily_start_time ?? null);
+    if (!startUtc) return;
+    for (const uid of await this.activeParticipantUserIds(Number(current.id))) {
+      try {
+        await scheduler.removeTournamentStartReminder(Number(current.id), uid);
+        await scheduler.scheduleTournamentStartReminder(Number(current.id), startUtc, uid, current.name ?? '');
+      } catch (err: any) {
+        console.error({ err, tournamentId: current.id, userId: uid }, 'Tournament start reminder reschedule failed');
+      }
+    }
+  }
+
+  /** Authoritative active-participant member user ids (individual/team). */
+  private async activeParticipantUserIds(tournamentId: number): Promise<number[]> {
+    const participants = await participantDrawRepository.listParticipantsByTournament(tournamentId);
+    const ids: number[] = [];
+    for (const p of participants) {
+      const uids = Array.isArray(p.member_user_ids) ? p.member_user_ids : [];
+      for (const uid of uids) if (uid != null) ids.push(Number(uid));
+    }
+    return [...new Set(ids)];
   }
 
   async register(
@@ -1452,6 +1536,11 @@ export class TournamentService {
     });
 
     const created = await tournamentRepository.getRegistrationById(id);
+    // G11.12 — the registering player is now an ACTIVE participant; arm their
+    // 24h start reminder (no-op when the reminder time is already in the past).
+    // Waiting-list registrations return earlier and never reach this point.
+    void this.scheduleStartReminders([userId], t).catch((err: any) =>
+      console.error({ err, tournamentId, userId }, 'register: schedule start reminder failed'));
     return { ...created!, payment };
   }
 
