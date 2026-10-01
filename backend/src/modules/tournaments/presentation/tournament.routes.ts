@@ -125,6 +125,19 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.get('/tournaments/:id/participants', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.getParticipantsHandler);
   app.post('/tournaments/:id/register', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.registerPlayerHandler);
 
+  // G11.17 — Player team self-service (non-financial). Team flows reuse the
+  // existing participant/member pipeline; invitations live in
+  // tournament_team_invitations. Server-side authorization enforces captain,
+  // tenant and invitation ownership rules.
+  app.post('/tournaments/:id/teams', { preHandler: [requirePermission(['player.tournaments.team.create'])] }, ctrl.createTeamHandler);
+  app.get('/tournaments/:id/teams', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listTeamsHandler);
+  app.post('/tournaments/:id/teams/:participantId/join', { preHandler: [requirePermission(['player.tournaments.team.join'])] }, ctrl.joinTeamHandler);
+  app.post('/tournaments/:id/teams/:participantId/invitations', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.createInvitationHandler);
+  app.get('/tournaments/:id/teams/:participantId/invitations', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.listSentInvitationsHandler);
+  app.get('/tournaments/team-invitations/mine', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.listMyInvitationsHandler);
+  app.post('/tournaments/:id/team-invitations/:invitationId/accept', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.acceptInvitationHandler);
+  app.post('/tournaments/:id/team-invitations/:invitationId/reject', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.rejectInvitationHandler);
+
   // G11.3 — player refund request (own registration) + status read.
   app.post('/tournaments/registrations/:regId/refund-request', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.requestRefundHandler);
   app.get('/tournaments/registrations/:regId/refund-request', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.getMyRefundRequestHandler);

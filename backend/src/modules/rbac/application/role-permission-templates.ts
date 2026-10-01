@@ -220,6 +220,7 @@ const PLAYER_PATTERNS = [
   /^tournament\.view$/,
   /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
   /^player\.tournaments\.register/,
+  /^player\.tournaments\.team\.(create|join|invite)/,
   /^tournaments\.view/,
   // G11.8 — player self-service cancellation of their OWN registration.
   /^tournaments\.registration\.cancel$/,

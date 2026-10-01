@@ -78,6 +78,7 @@ const SellerDashboardPage = lazy(() => import('./pages/marketplace/SellerDashboa
 const WishlistPage = lazy(() => import('./pages/marketplace/WishlistPage'));
 const TournamentListPage = lazy(() => import('./pages/tournaments/TournamentListPage'));
 const TournamentDetailPage = lazy(() => import('./pages/tournaments/TournamentDetailPage'));
+const PlayerTeamPage = lazy(() => import('./pages/player/PlayerTeamPage'));
 const TournamentCreatePage = lazy(() => import('./pages/tournaments/TournamentCreatePage'));
 const PlayerDashboardPage = lazy(() => import('./pages/player/DashboardPage'));
 const PlayerSearchPage = lazy(() => import('./pages/players/PlayerSearchPage'));
@@ -659,6 +660,7 @@ function AppContent() {
           <Route path="/marketplace/wishlist" element={<WishlistPage />} />
           <Route path="/tournaments" element={<TournamentListPage />} />
           <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
+          <Route path="/tournaments/:id/team" element={<PlayerTeamPage />} />
           {/* Legacy Academy routes → redirect to the new Academy experience (PHASE 0 / GROUP 2) */}
           <Route path="/academies" element={<Navigate to="/academy" replace />} />
           <Route path="/academies/:id" element={<LegacyAcademyDetailRedirect />} />

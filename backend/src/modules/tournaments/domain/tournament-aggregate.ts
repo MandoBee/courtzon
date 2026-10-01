@@ -668,6 +668,27 @@ export type PrizeFundingSource = 'organization';
 export type PrizeCollectionMethod = 'card' | 'cash';
 export type PrizeBindSource = 'standings' | 'manual' | 'bracket';
 
+// ── G11.17 — Player team invitation lifecycle ───────────────────────────
+// Pending team invitations live EXCLUSIVELY in `tournament_team_invitations`
+// (migration 186). `tournament_participant_members.status` is NEVER extended:
+// an invited user is NOT a member until accepted.
+export type TeamInvitationStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+
+export interface TournamentTeamInvitation {
+  id: number;
+  tournament_id: number;
+  participant_id: number;
+  inviter_user_id: number;
+  invitee_user_id: number;
+  status: TeamInvitationStatus;
+  expires_at?: string | null;
+  accepted_at?: string | null;
+  rejected_at?: string | null;
+  expired_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface TournamentPrizeAward {
   id: number;
   public_id?: string | null;

@@ -38,6 +38,7 @@ export default defineConfig({
         '**/notifications/*.spec.ts',
         '**/match/*.spec.ts',
         '**/wallet/*.spec.ts',
+        '**/tournament/*.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['smoke'],

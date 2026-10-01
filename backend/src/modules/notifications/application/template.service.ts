@@ -864,6 +864,13 @@ export async function seedTemplates(): Promise<void> {
     { eventName: 'tournament:registration-paid', locale: 'ar', categorySlug: 'tournament', type: 'success', priority: 'normal',
       titleTemplate: 'تم تأكيد التسجيل', bodyTemplate: 'تم تأكيد تسجيلك في {{name}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // G11.17 — player team invitation.
+    { eventName: 'tournament:team-invitation', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'Team Invitation', bodyTemplate: 'You were invited to join a team in tournament #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:team-invitation', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'دعوة فريق', bodyTemplate: 'تمت دعوتك للانضمام إلى فريق في البطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:match-scheduled', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'Your Match Is Scheduled', bodyTemplate: 'Your match against {{opponent}} is scheduled for {{date}}.',
       actionKey: 'view_match', routePattern: '/matches/{{matchId}}' },

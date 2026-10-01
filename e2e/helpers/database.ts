@@ -118,12 +118,12 @@ export async function insertUser(data: InsertUserData): Promise<number> {
 
   const [result] = await query<mysql.ResultSetHeader>(
     `INSERT INTO users (
-      phone_number, password_hash, full_name, email, gender,
-      timezone, country_id, birth_date, main_sport_id,
-      main_level_id, language_id, is_active, is_verified,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      public_id, phone_number, full_phone, password_hash, full_name, email, gender,
+      timezone, country_id, birth_date,
+      language_id, account_status
+    ) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
     [
+      phoneNumber,
       phoneNumber,
       hashedPassword,
       fullName,
@@ -132,11 +132,7 @@ export async function insertUser(data: InsertUserData): Promise<number> {
       timezone,
       countryId,
       birthDate || null,
-      mainSportId || null,
-      mainLevelId || null,
       languageId || null,
-      isActive,
-      isVerified,
     ],
   );
   return result.insertId;
@@ -168,17 +164,14 @@ export async function insertOrganisation(
     isVerified = true,
     isActive = true,
     countryId = 1,
-    cityId = 1,
   } = data;
 
   const [result] = await query<mysql.ResultSetHeader>(
     `INSERT INTO organisations (
-      owner_id, name, org_type_id, email, phone, website,
-      is_verified, is_active, country_id, city_id,
-      created_at, updated_at, public_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(),
-      UUID())`,
-    [ownerId, name, orgTypeId, email, phone, website, isVerified, isActive, countryId, cityId],
+      public_id, owner_id, name, slug, org_type_id, email, phone, website,
+      is_verified, is_active, country_id
+    ) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [ownerId, name, `org-${name}-${Math.random().toString(36).slice(2, 10)}`, orgTypeId, email, phone, website, isVerified, isActive, countryId],
   );
   return result.insertId;
 }

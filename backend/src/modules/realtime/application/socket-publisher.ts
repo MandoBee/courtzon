@@ -102,6 +102,8 @@ export class SocketPublisher {
       'tournament:cancelled', 'tournament:archived', 'tournament:refund-request-updated',
       // G11.14 — started lifecycle + draw-lock + sponsors + stage-created (previously silent).
       'tournament:started', 'tournament:draw-locked', 'tournament:sponsors-updated', 'tournament:stage-created',
+      // G11.17 — player team invitations.
+      'tournament:team-invitation',
       'registration.received',
       'tournament:prizes-updated',
       'tournament:schedule-updated',

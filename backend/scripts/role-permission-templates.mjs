@@ -232,6 +232,7 @@ const PLAYER_PATTERNS = [
   /^tournament\.view$/,
   /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
   /^player\.tournaments\.register/,
+  /^player\.tournaments\.team\.(create|join|invite)/,
   /^tournaments\.view/,
   // G11.3 — the player's own registration full-refund request action.
   /^tournaments\.registration\.refund-request$/,

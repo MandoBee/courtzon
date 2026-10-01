@@ -283,7 +283,7 @@ export class ParticipantMemberService {
         participant_type: input.participantType,
         status: 'active',
         member_user_ids: members,
-      });
+      }, conn);
 
       let order = 0;
       for (const userId of members) {
@@ -366,34 +366,12 @@ export class ParticipantMemberService {
     if (await this.hasTournamentStarted(tournamentId)) {
       throw new ConflictError('Tournament has started — members cannot be added', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
     }
-    const fmt = await this.resolveFormatConfig(t);
-    const requiredCount = this.requiredMemberCount(fmt.formatType, participant.participant_type, fmt.rosterSize);
 
     const conn = await getPool().getConnection();
     try {
       await conn.beginTransaction();
       await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
-      await this.assertMemberEligible(t, tournamentId, userId, { excludeParticipantId: participantId, conn });
-      const existing = await participantMemberRepository.findMember(participantId, userId, conn);
-      if (existing) {
-        throw new ConflictError('Player is already a member of this participant', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_DUPLICATE);
-      }
-      const activeCount = await participantMemberRepository.countActiveMembers(participantId, conn);
-      if (activeCount + 1 > requiredCount) {
-        throw new ConflictError(
-          `This ${participant.participant_type} participant is already at its roster size (${requiredCount})`,
-          ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID,
-          { max: requiredCount, actual: activeCount + 1 },
-        );
-      }
-      await participantMemberRepository.addMember({
-        tournament_id: tournamentId,
-        participant_id: participantId,
-        user_id: userId,
-        member_order: activeCount,
-        conn,
-      });
-      await this.syncMemberCache(participantId, conn);
+      await this.addMemberTransactional(tournamentId, participantId, userId, conn);
       await conn.commit();
     } catch (err) {
       await conn.rollback();
@@ -419,6 +397,69 @@ export class ParticipantMemberService {
       ...(Array.isArray(participant.member_user_ids) ? participant.member_user_ids : []),
     ]);
     return participantMemberRepository.listMembersByParticipant(participantId);
+  }
+
+  /**
+   * G11.17 — ATOMIC member-add that MUST run inside the CALLER's transaction
+   * (join flow and invitation-accepting both reuse it so the membership insert
+   * and the surrounding state change commit together). Validates, on the
+   * supplied connection:
+   *   - participant belongs to tournament and is not individual;
+   *   - the tournament has NOT started;
+   *   - eligibility, active-member uniqueness (uk_active_user_tournament), and
+   *     the format's roster capacity.
+   * It does NOT begin/commit (the caller owns the transaction boundary) and does
+   * NOT emit/audit (the caller owns those side effects).
+   */
+  async addMemberTransactional(
+    tournamentId: number,
+    participantId: number,
+    userId: number,
+    conn: import('mysql2/promise').PoolConnection,
+  ): Promise<Array<TournamentParticipantMember & { full_name?: string | null }>> {
+    const t = await this.getTournament(tournamentId);
+    const participant = await this.assertParticipantBelongsToTournament(tournamentId, participantId);
+    if (participant.participant_type === 'individual') {
+      throw new ConflictError('Individual participants have exactly one member', ErrorCodes.TOURNAMENT_PARTICIPANT_TYPE_INVALID);
+    }
+    if (await this.hasTournamentStarted(tournamentId)) {
+      throw new ConflictError('Tournament has started — members cannot be added', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
+    }
+    await this.addMemberValidated(t, tournamentId, participant, Number(userId), conn);
+    return participantMemberRepository.listMembersByParticipant(participantId, conn);
+  }
+
+  /** Shared validation + insert + cache sync (must run inside a caller transaction). */
+  private async addMemberValidated(
+    t: Tournament,
+    tournamentId: number,
+    participant: TournamentParticipant,
+    userId: number,
+    conn: import('mysql2/promise').PoolConnection,
+  ): Promise<void> {
+    const fmt = await this.resolveFormatConfig(t);
+    const requiredCount = this.requiredMemberCount(fmt.formatType, participant.participant_type, fmt.rosterSize);
+    await this.assertMemberEligible(t, tournamentId, userId, { excludeParticipantId: participant.id!, conn });
+    const existing = await participantMemberRepository.findMember(participant.id!, userId, conn);
+    if (existing) {
+      throw new ConflictError('Player is already a member of this participant', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_DUPLICATE);
+    }
+    const activeCount = await participantMemberRepository.countActiveMembers(participant.id!, conn);
+    if (activeCount + 1 > requiredCount) {
+      throw new ConflictError(
+        `This ${participant.participant_type} participant is already at its roster size (${requiredCount})`,
+        ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID,
+        { max: requiredCount, actual: activeCount + 1 },
+      );
+    }
+    await participantMemberRepository.addMember({
+      tournament_id: tournamentId,
+      participant_id: participant.id!,
+      user_id: userId,
+      member_order: activeCount,
+      conn,
+    });
+    await this.syncMemberCache(participant.id!, conn);
   }
 
   /**

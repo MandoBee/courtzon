@@ -148,7 +148,9 @@ describe('Group 7 — PARTICIPANT TYPES (format authoritative)', () => {
     pmRepo.findEligiblePlayer.mockImplementation(async (u: number) => ({ id: u, full_name: `Player ${u}` }));
     const r = await svc.createPairParticipant(1, { name: 'Pair A', memberUserIds: [10, 20] }, 1);
     expect(r.participant_type).toBe('pair');
-    expect(pdRepo.createParticipant).toHaveBeenCalledWith(expect.objectContaining({ participant_type: 'pair', member_user_ids: [10, 20] }));
+    // The participant insert runs on the SAME tx connection as the row lock (the
+    // whole pair/team creation is atomic — the conn is the 2nd argument).
+    expect(pdRepo.createParticipant).toHaveBeenCalledWith(expect.objectContaining({ participant_type: 'pair', member_user_ids: [10, 20] }), expect.anything());
   });
 
   it('3. team format requires team participant', async () => {

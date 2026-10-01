@@ -674,6 +674,8 @@ const eventGroups: EventGroupConfig[] = [
       // registration payment (the paying player only).
       'tournament:started',
       'tournament:registration-paid',
+      // G11.17 — player team invitations (sent → invitee; accepted/rejected → captain).
+      'tournament:team-invitation',
     ],
     handler: async (eventName, data, categorySlug) => {
       if (eventName === 'tournament:completed') {
@@ -711,6 +713,23 @@ const eventGroups: EventGroupConfig[] = [
               action: a(`/tournaments/${data.tournamentId}`),
             });
           }
+        }
+        return;
+      }
+      if (eventName === 'tournament:team-invitation') {
+        // G11.17 — sent → the INVITEE; accepted/rejected → the captain/inviter.
+        if (data.status === 'sent' && data.inviteeUserId && data.tournamentId) {
+          await dispatchToUser({
+            userId: data.inviteeUserId, eventName, categorySlug, data,
+            relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),
+            action: a(`/tournaments/${data.tournamentId}`),
+          });
+        } else if ((data.status === 'accepted' || data.status === 'rejected') && data.inviterUserId && data.tournamentId) {
+          await dispatchToUser({
+            userId: data.inviterUserId, eventName, categorySlug, data,
+            relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),
+            action: a(`/tournaments/${data.tournamentId}`),
+          });
         }
         return;
       }
@@ -1208,6 +1227,8 @@ class NotificationEngine {
       'tournament:prize-awarded', 'tournament:prize-refunded',
       // G11.14 — lifecycle start + confirmed registration payment.
       'tournament:started', 'tournament:registration-paid',
+      // G11.17 — player team invitations.
+      'tournament:team-invitation',
       'community:mention', 'community:reply', 'community:like',
       'friend:request', 'friend:accepted', 'friend:blocked',
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',

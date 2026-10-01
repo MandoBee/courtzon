@@ -78,6 +78,26 @@ export const publicTournamentApi = {
     api.get<{ data: any }>(`/public/tournaments/${id}`).then((r) => r.data?.data || r.data),
 };
 
+// ── G11.17 — player team self-service (non-financial) ──
+export const tournamentTeamApi = {
+  createTeam: (tournamentId: number, data: { name?: string; memberUserIds?: number[] }) =>
+    api.post(`/tournaments/${tournamentId}/teams`, data).then((r) => r.data),
+  listTeams: (tournamentId: number) =>
+    api.get<{ data: any }>(`/tournaments/${tournamentId}/teams`).then((r) => r.data?.data),
+  joinTeam: (tournamentId: number, participantId: number) =>
+    api.post(`/tournaments/${tournamentId}/teams/${participantId}/join`).then((r) => r.data),
+  invite: (tournamentId: number, participantId: number, inviteeUserId: number) =>
+    api.post(`/tournaments/${tournamentId}/teams/${participantId}/invitations`, { inviteeUserId }).then((r) => r.data),
+  listSent: (tournamentId: number, participantId: number) =>
+    api.get<{ data: any }>(`/tournaments/${tournamentId}/teams/${participantId}/invitations`).then((r) => r.data?.data),
+  listMine: () =>
+    api.get<{ data: any }>('/tournaments/team-invitations/mine').then((r) => r.data?.data),
+  accept: (tournamentId: number, invitationId: number) =>
+    api.post(`/tournaments/${tournamentId}/team-invitations/${invitationId}/accept`).then((r) => r.data),
+  reject: (tournamentId: number, invitationId: number) =>
+    api.post(`/tournaments/${tournamentId}/team-invitations/${invitationId}/reject`).then((r) => r.data),
+};
+
 // Organisation-scoped tournament API — mirrors the admin workbench methods but
 // routes through the tenant-scoped `/org/:orgId/tournaments` endpoints. Both
 // contexts share the same authoritative tournamentService on the backend.

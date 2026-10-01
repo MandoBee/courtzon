@@ -1050,6 +1050,10 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'player.notifications.view', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Notifications', componentPath: 'pages/player/DashboardPage.tsx' },
   { permissionKey: 'player.rank.history', moduleSlug: 'player', elementType: 'page', elementLabel: 'View Rank History', componentPath: 'pages/player/DashboardPage.tsx' },
   { permissionKey: 'player.tournaments.register', moduleSlug: 'player', elementType: 'action', elementLabel: 'Register in Tournaments', componentPath: 'pages/player/DashboardPage.tsx' },
+  // G11.17 — player team self-service (non-financial; invitations, join, captain).
+  { permissionKey: 'player.tournaments.team.create', moduleSlug: 'player', elementType: 'action', elementLabel: 'Create a Tournament Team', componentPath: 'pages/player/PlayerTeamPage.tsx' },
+  { permissionKey: 'player.tournaments.team.join', moduleSlug: 'player', elementType: 'action', elementLabel: 'Join a Tournament Team', componentPath: 'pages/player/PlayerTeamPage.tsx' },
+  { permissionKey: 'player.tournaments.team.invite', moduleSlug: 'player', elementType: 'action', elementLabel: 'Send/Accept/Reject Team Invitations', componentPath: 'pages/player/PlayerTeamPage.tsx' },
   { permissionKey: 'academy.self_enroll', moduleSlug: 'academy', elementType: 'action', elementLabel: 'Self-enroll in Academy', componentPath: 'pages/academies/AcademyDetailPage.tsx' },
   { permissionKey: 'academy.payment.view', moduleSlug: 'academy', elementType: 'page', elementLabel: 'View own Academy payment state', componentPath: 'pages/player/academy/AcademyProgramDetailPage.tsx' },
   { permissionKey: 'academy.payment.charge', moduleSlug: 'academy', elementType: 'button', elementLabel: 'Pay own Academy enrollment (Pay Now)', componentPath: 'pages/player/academy/AcademyProgramDetailPage.tsx' },

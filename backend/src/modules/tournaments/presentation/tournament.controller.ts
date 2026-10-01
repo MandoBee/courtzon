@@ -54,6 +54,81 @@ export async function getPublicTournamentHandler(request: FastifyRequest, reply:
   return reply.send({ data });
 }
 
+// ── G11.17 — Player team self-service (non-financial) ──
+// Reuses teamInvitationService + participantMemberService. All operations are
+// scoped to the tournament/participant and are server-authoritative.
+
+export async function createTeamHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = (request.body ?? {}) as { name?: string; memberUserIds?: number[] };
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const team = await teamInvitationService.createTeamForPlayer(Number(id), userId, body);
+  return reply.status(201).send(team);
+}
+
+export async function listTeamsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const [mine, joinable] = await Promise.all([
+    teamInvitationService.listMyTeams(Number(id), userId),
+    teamInvitationService.listTeamsForJoin(Number(id)),
+  ]);
+  return reply.send({ data: { mine, joinable } });
+}
+
+export async function joinTeamHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  await teamInvitationService.joinTeam(Number(id), Number(participantId), userId);
+  return reply.send({ ok: true });
+}
+
+export async function createInvitationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const body = (request.body ?? {}) as { inviteeUserId?: number };
+  if (!body.inviteeUserId) {
+    return reply.status(400).send({ message: 'inviteeUserId is required', code: 'VALIDATION_ERROR' });
+  }
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const invitation = await teamInvitationService.invitePlayer(Number(id), Number(participantId), Number(body.inviteeUserId), userId);
+  return reply.status(201).send(invitation);
+}
+
+export async function listSentInvitationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const invitations = await teamInvitationService.listSentInvitations(Number(id), Number(participantId), userId);
+  return reply.send({ data: invitations });
+}
+
+export async function listMyInvitationsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const invitations = await teamInvitationService.listMyInvitations(userId);
+  return reply.send({ data: invitations });
+}
+
+export async function acceptInvitationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, invitationId } = request.params as any;
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const invitation = await teamInvitationService.acceptInvitation(Number(id), Number(invitationId), userId);
+  return reply.send(invitation);
+}
+
+export async function rejectInvitationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, invitationId } = request.params as any;
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const invitation = await teamInvitationService.rejectInvitation(Number(id), Number(invitationId), userId);
+  return reply.send(invitation);
+}
+
 export async function getTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   // Shared Admin/Org management detail shape (raw row + sport_name/organisation_name/max_players/type).
