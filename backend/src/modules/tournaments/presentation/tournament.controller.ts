@@ -39,6 +39,21 @@ export async function listTournamentsHandler(request: FastifyRequest, reply: Fas
   return reply.send(result);
 }
 
+// ── G11.16 — Public / anonymous tournament discovery (NON-FINANCIAL) ──
+// Paths are under /public/ so the GLOBAL auth middleware skips them (no token
+// is required). Read-only; is_public=1 only; private tournaments 404.
+
+export async function listPublicTournamentsHandler(_request: FastifyRequest, reply: FastifyReply) {
+  const data = await tournamentService.listPublic();
+  return reply.send({ data });
+}
+
+export async function getPublicTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const data = await tournamentService.getPublicTournament(Number(id));
+  return reply.send({ data });
+}
+
 export async function getTournamentHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   // Shared Admin/Org management detail shape (raw row + sport_name/organisation_name/max_players/type).

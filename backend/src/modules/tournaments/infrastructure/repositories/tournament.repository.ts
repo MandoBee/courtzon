@@ -171,6 +171,37 @@ export class TournamentRepository {
     return { data: rows as Tournament[], total, page: pag.page, limit: pag.limit };
   }
 
+  /**
+   * G11.16 — anonymous PUBLIC discovery list. Returns ONLY tournaments with
+   * is_public = 1 (never draft/cancelled/archived, never soft-deleted) and ONLY
+   * safe public summary columns: no prizes, fees, payment methods, commission,
+   * eligibility internals, creator, or org/branch private metadata. Org NAME +
+   * branch NAME are public branding (the org intends the tournament public).
+   */
+  async listPublic(limit = 100): Promise<Array<Record<string, unknown>>> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT t.id, t.public_id, t.name, t.code, t.description,
+              t.format, t.tournament_type, t.category, t.season,
+              t.status, t.is_public,
+              t.sport_id, s.name AS sport_name, s.icon AS sport_icon,
+              bt.name AS bracket_type_name,
+              t.organisation_id, o.name AS organisation_name,
+              t.start_date, t.end_date, t.daily_start_time, t.daily_end_time,
+              t.registration_opens, t.registration_closes,
+              t.max_participants, t.min_participants, t.max_teams
+       FROM tournaments t
+       LEFT JOIN sports s ON s.id = t.sport_id
+       LEFT JOIN tournament_bracket_types bt ON bt.id = t.bracket_type_id
+       LEFT JOIN organisations o ON o.id = t.organisation_id
+       WHERE t.is_public = 1 AND t.deleted_at IS NULL
+         AND t.status NOT IN ('draft','cancelled','archived')
+       ORDER BY t.created_at DESC
+       LIMIT ?`,
+      [Math.max(1, Math.min(Number(limit) || 100, 200))],
+    );
+    return rows as Array<Record<string, unknown>>;
+  }
+
   /** Tenant owner of a tournament (null when platform-owned). */
   async getOrganisationId(tournamentId: number): Promise<number | null> {
     const [rows] = await getPool().query<RowData>(

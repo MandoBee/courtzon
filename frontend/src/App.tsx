@@ -91,6 +91,8 @@ const PlayerWalletPage = lazy(() => import('./pages/player/WalletPage'));
 const PlayerPaymentsPage = lazy(() => import('./pages/player/PaymentsPage'));
 const PlayerRankHistoryPage = lazy(() => import('./pages/player/RankHistoryPage'));
 const PlayerTournamentsPage = lazy(() => import('./pages/player/TournamentsPage'));
+const PublicTournamentsPage = lazy(() => import('./pages/player/PublicTournamentsPage'));
+const PublicTournamentDetailPage = lazy(() => import('./pages/player/PublicTournamentDetailPage'));
 const CoachDirectoryPage = lazy(() => import('./pages/coaches/CoachDirectoryPage'));
 const CoachProfilePage = lazy(() => import('./pages/coaches/CoachProfilePage'));
 const CoachDetailPage = lazy(() => import('./pages/coaches/CoachDetailPage'));
@@ -625,6 +627,10 @@ function AppContent() {
           Must NOT be inside ProtectedRoute/LandingRoute/PublicRoute (they redirect away);
           the page itself routes to the correct workspace home or /login. */}
       <Route path="/payments/return" element={<PaymentReturnPage />} />
+      {/* G11.16 — public/anonymous tournament discovery (no auth; is_public=1 only).
+          Top-level so BOTH guests and authenticated users can view. */}
+      <Route path="/tournaments/public" element={<PublicTournamentsPage />} />
+      <Route path="/tournaments/public/:id" element={<PublicTournamentDetailPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/app" element={<PlayerDashboardPage />} />

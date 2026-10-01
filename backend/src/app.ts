@@ -26,6 +26,7 @@ import { pricingRoutes } from "./modules/pricing/presentation/pricing.routes.js"
 import { ledgerRoutes } from "./modules/financial/presentation/ledger.routes.js";
 import { membershipRoutes } from "./modules/membership/presentation/membership.routes.js";
 import { tournamentRoutes } from "./modules/tournaments/presentation/tournament.routes.js";
+import { publicTournamentRoutes } from "./modules/tournaments/presentation/public-tournament.routes.js";
 import { orgTournamentRoutes } from "./modules/tournaments/presentation/org-tournament.routes.js";
 import { cmsRoutes } from "./modules/cms/presentation/cms.routes.js";
 import { translationsRoutes } from "./modules/translations/presentation/translations.routes.js";
@@ -532,6 +533,8 @@ app.register(pricingRoutes);
 app.register(ledgerRoutes);
 app.register(membershipRoutes);
 app.register(tournamentRoutes);
+  // G11.16 — public/anonymous tournament discovery (read-only, no auth, is_public=1 only).
+  app.register(publicTournamentRoutes);
 app.register(orgTournamentRoutes);
 app.register(auditLogRoutes);
 app.register(amenitiesRoutes);

@@ -70,6 +70,14 @@ export const tournamentApi = {
   getFinances: (id: number) => api.get<any>(`/admin/tournaments/${id}/finances`).then(r => r.data?.data || r.data),
 };
 
+// ── G11.16 — public / anonymous tournament discovery (no auth, is_public=1 only) ──
+export const publicTournamentApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<{ data: any[] }>('/public/tournaments', { params }).then((r) => r.data?.data || []),
+  get: (id: number) =>
+    api.get<{ data: any }>(`/public/tournaments/${id}`).then((r) => r.data?.data || r.data),
+};
+
 // Organisation-scoped tournament API — mirrors the admin workbench methods but
 // routes through the tenant-scoped `/org/:orgId/tournaments` endpoints. Both
 // contexts share the same authoritative tournamentService on the backend.

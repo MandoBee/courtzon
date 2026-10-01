@@ -709,6 +709,82 @@ export class TournamentService {
     return tournamentRepository.list(filters);
   }
 
+  // ── G11.16 — Public / anonymous tournament discovery (NON-FINANCIAL) ───────
+  // Read-only surface for is_public=1 tournaments. No auth, no money. Projects
+  // ONLY safe discovery fields; private tournaments behave as not-found.
+
+  async listPublic(): Promise<Array<Record<string, unknown>>> {
+    return tournamentRepository.listPublic();
+  }
+
+  /** Safe public detail — private tournaments are indistinguishable from 404. */
+  async getPublicTournament(id: number): Promise<Record<string, unknown>> {
+    const t = await tournamentRepository.findById(id);
+    if (!t || t.deleted_at != null || Number(t.is_public ?? 1) !== 1) {
+      throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    }
+    const detail = (await tournamentRepository.findByIdDetailed(id)) ?? t;
+    const d: Record<string, unknown> = {
+      id: detail.id,
+      public_id: detail.public_id,
+      name: detail.name,
+      code: detail.code,
+      description: detail.description,
+      format: detail.format,
+      tournament_type: detail.tournament_type,
+      category: detail.category,
+      season: detail.season,
+      status: detail.status,
+      is_public: 1,
+      sport: detail.sport_id != null ? { id: detail.sport_id, name: detail.sport_name ?? null, icon: detail.sport_icon ?? null } : null,
+      bracket_type: detail.bracket_type_name ?? null,
+      organisation: detail.organisation_name ?? null,
+      venue: this.buildVenue(detail),
+      start_date: detail.start_date,
+      end_date: detail.end_date,
+      daily_start_time: detail.daily_start_time,
+      daily_end_time: detail.daily_end_time,
+      registration_opens: detail.registration_opens,
+      registration_closes: detail.registration_closes,
+      max_participants: detail.max_participants,
+      min_participants: detail.min_participants,
+      max_teams: detail.max_teams,
+    };
+
+    // Public bracket + standings ONLY when legitimately available (never forced).
+    const matches = await tournamentRepository.findMatchesDetailed(id);
+    if (matches && matches.length) {
+      d.bracket = matches.map((m) => ({
+        round: m.round,
+        round_name: m.round_name ?? null,
+        match_number: m.match_number,
+        bracket_position: m.bracket_position ?? null,
+        participant1_name: m.participant1_name ?? null,
+        participant2_name: m.participant2_name ?? null,
+        status: m.status,
+        progression_state: m.progression_state ?? null,
+        score_summary: m.score_summary ?? null,
+        start_time: m.start_time ?? null,
+      }));
+    }
+    const standings = await tournamentRepository.getStandings(id);
+    if (standings && standings.length) {
+      d.standings = standings.map((s) => ({
+        rank_position: s.rank_position,
+        player_name: (s as any).player_name ?? null,
+        points: s.points,
+        wins: s.wins,
+        losses: s.losses,
+        draws: s.draws,
+        games_won: s.games_won,
+        games_lost: s.games_lost,
+        sets_won: s.sets_won,
+        sets_lost: s.sets_lost,
+      }));
+    }
+    return d;
+  }
+
   async getById(id: number): Promise<Tournament> {
     const t = await tournamentRepository.findById(id);
     if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
