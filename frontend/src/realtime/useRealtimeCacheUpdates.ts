@@ -366,6 +366,7 @@ export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { qu
     ['tournament-matches'],
     ['tournament-schedule'],
     ['tournament-awards'],
+    ['tournament-refund-requests'],
     // G11.9 finance surfaces (org Tournament P&L + ReportsPage tournament blocks).
     ['org-tournament-pnl'],
     ['reports', 'overview'],
@@ -1245,6 +1246,33 @@ export function useRealtimeCacheUpdates(): void {
     invalidateRegistrationLifecycle(qc, p);
     invalidateOrgTournamentList(qc, p?.organisationId);
   });
+
+  // ── G11.11 — terminal lifecycle + refund verdict + disqualification ──
+  // Cancelled tournament: players/org staff see their tournament + registrations
+  // + my-tournaments + the org workbench list refresh live.
+  useSocketEvent('tournament.cancelled', (p: any) => {
+    invalidateRegistrationLifecycle(qc, p);
+    invalidateOrgTournamentList(qc, p?.organisationId);
+  });
+
+  // Archived tournament: administrative — refresh tournament detail + the org
+  // workbench list + my-tournaments.
+  useSocketEvent('tournament.archived', (p: any) => {
+    invalidateRegistrationLifecycle(qc, p);
+    invalidateOrgTournamentList(qc, p?.organisationId);
+  });
+
+  // Refund-request verdict (rejected → player; executed → org review screen):
+  // refresh the org refund-management surface + the tournament detail.
+  useSocketEvent('tournament.refund-request-updated', (p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.organisationId) {
+      qc.invalidateQueries({ queryKey: ['tournament-refund-requests', p.organisationId] });
+    }
+  });
+  // tournament.completed (operator bracket path) and tournament.participant-updated
+  // (disqualified) are already wired by TOURNAMENT_REALTIME_EVENTS and the
+  // participant-updated handler below — no duplicate invalidation added.
 
   // Group 4 — mutable schedule configuration (deadline, venue branch, daily
   // playing window, dates) refreshed live without a manual reload.

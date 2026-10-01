@@ -430,6 +430,148 @@ class TournamentNotificationService {
     await this.dispatchOrgStaffAndAdmins(base);
   }
 
+  /**
+   * G11.11 — Tournament CANCELLED. Audience: active participants (rosters) +
+   * org staff + admins. The cancelled tournament's registered players must
+   * never be left silently stranded.
+   */
+  private async handleCancelled(ctx: HandleContext): Promise<void> {
+    const { tournamentId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'cancelled: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    const base: RecipientDispatchContext = {
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament',
+      relatedEntityId: String(tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    };
+    const playerUserIds = await this.activeParticipantRosterUserIds(Number(tournamentId));
+    if (playerUserIds.length) {
+      await this.dispatchToRecipients(playerUserIds, 'player', base);
+    }
+    await this.dispatchOrgStaffAndAdmins(base);
+  }
+
+  /**
+   * G11.11 X1 — Tournament ARCHIVED. Administrative archival: org staff +
+   * admins ONLY — players are intentionally never notified.
+   */
+  private async handleArchived(ctx: HandleContext): Promise<void> {
+    const { tournamentId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'archived: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    await this.dispatchOrgStaffAndAdmins({
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament',
+      relatedEntityId: String(tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    });
+  }
+
+  /**
+   * G11.11 X2 — Operator-driven bracket/knockout completion (no winner carried).
+   * Audience: active participants + org staff + admins. When a winner IS present
+   * the engine dispatched it first with winner semantics; this service path uses
+   * the same (user, tournament:completed, tournament) dedup key so the winner is
+   * never notified twice. Re-runs are no-ops thanks to hasExisting().
+   */
+  private async handleCompleted(ctx: HandleContext): Promise<void> {
+    const { tournamentId, userId } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'completed: missing tournamentId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    const base: RecipientDispatchContext = {
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament',
+      relatedEntityId: String(tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    };
+    // Defensive: if a winner is carried, ensure the winner notice uses the same
+    // dedup key — the participant pass below skips them via hasExisting().
+    if (userId != null) {
+      await this.dispatchToRecipients([Number(userId)], 'winner', base);
+    }
+    const playerUserIds = await this.activeParticipantRosterUserIds(Number(tournamentId));
+    if (playerUserIds.length) {
+      await this.dispatchToRecipients(playerUserIds, 'participant', base);
+    }
+    await this.dispatchOrgStaffAndAdmins(base);
+  }
+
+  /**
+   * G11.11 X3 — refund-request verdict transparency. Only status 'rejected' is
+   * player-facing here: approval is executed immediately and the existing
+   * G11.8 registration-refunded flow already notifies the player; never send a
+   * duplicate.
+   */
+  private async handleRefundRequestUpdated(ctx: HandleContext): Promise<void> {
+    const { tournamentId, registrationId, status } = ctx.data;
+    if (tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'refund-request-updated: missing tournamentId — skipped');
+      return;
+    }
+    if (status !== 'rejected') return; // executed/approved → covered by G11.8 flow.
+    const userId = ctx.data.userId != null ? Number(ctx.data.userId) : null;
+    if (userId == null) {
+      log.warn({ eventName: ctx.eventName }, 'refund-request-updated rejected without userId — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    await this.dispatchToRecipients([userId], 'player', {
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament_registration',
+      relatedEntityId: String(registrationId ?? tournamentId),
+      route: `/tournaments/${tournamentId}`,
+    });
+  }
+
+  /**
+   * G11.11 X5 — a participant was DISQUALIFIED. Only the affected participant's
+   * active roster members receive the player-facing notice; other tournament
+   * participants are never notified about another participant's disqualification.
+   */
+  private async handleParticipantDisqualified(ctx: HandleContext): Promise<void> {
+    const { tournamentId, participantId } = ctx.data;
+    if (participantId == null || tournamentId == null) {
+      log.warn({ eventName: ctx.eventName }, 'participant disqualified: missing ids — skipped');
+      return;
+    }
+    const organisationId = ctx.data.organisationId ?? await tournamentRepository.getOrganisationId(Number(tournamentId));
+    const roster = await this.activeMemberUserIds(Number(participantId));
+    if (!roster.length) return;
+    await this.dispatchToRecipients(roster, 'disqualified', {
+      ...ctx,
+      organisationId,
+      relatedEntityType: 'tournament_participant',
+      relatedEntityId: String(participantId),
+      route: `/tournaments/${tournamentId}`,
+    });
+  }
+
+  /** Active roster user ids across every ACTIVE participant of a tournament. */
+  private async activeParticipantRosterUserIds(tournamentId: number): Promise<number[]> {
+    const participants = await participantDrawRepository.listParticipantsByTournament(tournamentId);
+    const userActorIds: number[] = [];
+    for (const p of participants) {
+      if (String(p.status) !== 'active') continue;
+      const roster = await this.activeMemberUserIds(Number(p.id));
+      userActorIds.push(...roster);
+    }
+    return userActorIds;
+  }
+
   async handle(ctx: HandleContext): Promise<void> {
     try {
       switch (ctx.eventName) {
@@ -459,6 +601,21 @@ class TournamentNotificationService {
           break;
         case 'tournament:registration-closed':
           await this.handleRegistrationClosed(ctx);
+          break;
+        case 'tournament:cancelled':
+          await this.handleCancelled(ctx);
+          break;
+        case 'tournament:archived':
+          await this.handleArchived(ctx);
+          break;
+        case 'tournament:completed':
+          await this.handleCompleted(ctx);
+          break;
+        case 'tournament:refund-request-updated':
+          await this.handleRefundRequestUpdated(ctx);
+          break;
+        case 'tournament:participant-updated':
+          await this.handleParticipantDisqualified(ctx);
           break;
         default:
           log.warn({ eventName: ctx.eventName }, 'tournament-notification: unhandled event');

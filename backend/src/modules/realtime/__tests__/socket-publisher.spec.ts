@@ -47,12 +47,17 @@ describe('SocketPublisher Group 5 subscriptions and delivery', () => {
 
     const subscribed = new Set<string>((eventBusV2.on as any).mock.calls.map((c: any) => c[0]));
     for (const eventName of [
+      // G11.10
       'tournament:registration-refunded',
       'tournament:standings-finalized',
       'tournament:prize-awarded',
       'tournament:prize-refunded',
       'tournament:refund-requested',
       'tournament:registration-closed',
+      // G11.11
+      'tournament:cancelled',
+      'tournament:archived',
+      'tournament:refund-request-updated',
     ]) {
       expect(subscribed).toContain(eventName);
     }

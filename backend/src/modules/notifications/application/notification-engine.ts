@@ -666,16 +666,27 @@ const eventGroups: EventGroupConfig[] = [
       'tournament:refund-requested',
       // G11.5 — prize payout lifecycle events (dispach to the winner).
       'tournament:prize-awarded', 'tournament:prize-refunded',
+      // G11.11 — terminal lifecycle + refund verdict + disqualification.
+      'tournament:cancelled', 'tournament:archived',
+      'tournament:refund-request-updated',
+      'tournament:participant-updated',
     ],
     handler: async (eventName, data, categorySlug) => {
       if (eventName === 'tournament:completed') {
         if (data.userId) {
+          // Engine auto-completion (or completion with a known winner): the
+          // existing winner-specific notification semantics are preserved.
           await dispatchToUser({
             userId: data.userId, eventName, categorySlug, data,
             relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),
             action: a(`/tournaments/${data.tournamentId}`),
           });
+          return;
         }
+        // G11.11 X2 — operator-driven bracket/knockout completion carries NO
+        // winner: notify active participants + org staff + admins (deduped)
+        // through the tournament notification service.
+        await tournamentNotificationService.handle({ eventName, categorySlug, data });
         return;
       }
       if (eventName === 'tournament:prize-awarded' || eventName === 'tournament:prize-refunded') {
@@ -690,17 +701,29 @@ const eventGroups: EventGroupConfig[] = [
         }
         return;
       }
+      if (eventName === 'tournament:participant-updated' && data.status !== 'disqualified') {
+        // G11.11 X5 — only the disqualified transition is player-facing; every
+        // other participant-updated status (withdrawn/active/…) is a realtime
+        // state signal with no notification today.
+        return;
+      }
       if (eventName === 'tournament:withdrawal-resolved' || eventName === 'tournament:participant-replaced'
           || eventName === 'tournament:stage-completed' || eventName === 'tournament:match-created'
           || eventName === 'tournament:match-progressed' || eventName === 'tournament:registration-refunded'
           || eventName === 'tournament:standings-finalized' || eventName === 'tournament:refund-requested'
-          || eventName === 'tournament:registration-closed') {
+          || eventName === 'tournament:registration-closed'
+          || eventName === 'tournament:cancelled' || eventName === 'tournament:archived'
+          || eventName === 'tournament:refund-request-updated'
+          || eventName === 'tournament:participant-updated') {
         // G9-D5-B — recipient resolution performed by the tournament notification
         // service (participants/rosters, referee, org staff, admins) with
         // notification-level idempotency. Realtime delivery is untouched.
         // G11.10 — standings-finalized / refund-requested / registration-closed
         // reuse the same recipient resolution + dedup (org staff + admins; and
         // registered players for registration-closed).
+        // G11.11 — cancelled (players+org+admins), archived (org+admins),
+        // refund-request-updated (rejected → requester), participant-updated
+        // (disqualified → affected roster only).
         await tournamentNotificationService.handle({ eventName, categorySlug, data });
         return;
       }
@@ -1151,6 +1174,9 @@ class NotificationEngine {
       'tournament:participant-replaced', 'tournament:withdrawal-resolved',
       'tournament:registration-refunded',
       'tournament:standings-finalized', 'tournament:refund-requested',
+      // G11.11 — terminal lifecycle + refund verdict + disqualification.
+      'tournament:cancelled', 'tournament:archived', 'tournament:refund-request-updated',
+      'tournament:participant-updated',
       // G11.10 G5 — prize payout winner notifications were registered in the
       // handler map but NEVER subscribed (G11.5 latent defect): the engine now
       // actually delivers the winner notification the handler implements.

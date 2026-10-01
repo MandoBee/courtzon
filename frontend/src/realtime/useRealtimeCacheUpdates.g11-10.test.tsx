@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useRealtimeCacheUpdates } from './useRealtimeCacheUpdates';
+import { useRealtimeCacheUpdates, invalidateRealtimeReconcile } from './useRealtimeCacheUpdates';
 
 /**
- * G11.10 — frontend Tier-B socket handlers. Renders the realtime cache hook with
- * a captured useSocketEvent map, then invokes the G11.10 tournament handlers and
- * asserts the exact React Query invalidation (tournament/registration/my-tournaments/
- * awards/refund-requests/org list/org P&L/finance-report roots).
+ * G11.10 + G11.11 — frontend Tier-B socket handlers. Renders the realtime cache
+ * hook with a captured useSocketEvent map, then invokes the tournament handlers
+ * and asserts the exact React Query invalidation. G11.11 adds the terminal
+ * lifecycle handlers (cancelled / archived / refund-request-updated) and the
+ * reconcile root assertions.
  */
 
 type Handler = (payload: any) => void;
@@ -147,5 +148,76 @@ describe('G11.10 G7 — accounting.entry-recorded refreshes G11.9 finance surfac
     const all = calls(spy);
     expect(all.some((c: any) => hasKey(c, 'reports', 'overview'))).toBe(false);
     expect(all.some((c: any) => hasKey(c, 'reports', 'participation'))).toBe(false);
+  });
+});
+
+describe('G11.11 — tournament.cancelled cache invalidation', () => {
+  it('refreshes tournament detail, participants, my-tournaments and the org list root', () => {
+    const spy = setup();
+    expect(captured['tournament.cancelled']).toBeDefined();
+    captured['tournament.cancelled']({ tournamentId: 5, organisationId: 3, name: 'Cup' });
+
+    const all = calls(spy);
+    expect(all.some((c: any) => hasKey(c, 'tournament', 5) || hasKey(c, 'tournament', '5'))).toBe(true);
+    expect(all.some((c: any) => c.queryKey?.[0] === 'tournament-participants' && c.queryKey[1] === 5)).toBe(true);
+    expect(all.some((c: any) => hasKey(c, 'my-tournaments'))).toBe(true);
+    expect(all.some((c: any) => hasKey(c, 'org-3-tournaments'))).toBe(true);
+  });
+});
+
+describe('G11.11 — tournament.archived cache invalidation', () => {
+  it('refreshes tournament detail, registration state, my-tournaments and the org list root', () => {
+    const spy = setup();
+    expect(captured['tournament.archived']).toBeDefined();
+    captured['tournament.archived']({ tournamentId: 5, organisationId: 3, name: 'Cup' });
+
+    const all = calls(spy);
+    expect(all.some((c: any) => hasKey(c, 'tournament', 5) || hasKey(c, 'tournament', '5'))).toBe(true);
+    expect(all.some((c: any) => hasKey(c, 'my-tournaments'))).toBe(true);
+    expect(all.some((c: any) => hasKey(c, 'org-3-tournaments'))).toBe(true);
+  });
+});
+
+describe('G11.11 — tournament.refund-request-updated cache invalidation', () => {
+  it('refreshes the org refund-management screen + tournament detail', () => {
+    const spy = setup();
+    expect(captured['tournament.refund-request-updated']).toBeDefined();
+    captured['tournament.refund-request-updated']({ tournamentId: 5, registrationId: 12, requestId: 55, status: 'rejected', organisationId: 3 });
+
+    const all = calls(spy);
+    expect(all.some((c: any) => hasKey(c, 'tournament', 5) || hasKey(c, 'tournament', '5'))).toBe(true);
+    expect(all.some((c: any) => c.queryKey?.[0] === 'tournament-refund-requests' && c.queryKey[1] === 3)).toBe(true);
+  });
+});
+
+describe('G11.11 — disqualification + operator-complete reuse existing handlers', () => {
+  it('participant-updated (disqualified) refreshes the affected participant state', () => {
+    const spy = setup();
+    expect(captured['tournament.participant-updated']).toBeDefined();
+    captured['tournament.participant-updated']({ tournamentId: 5, participantId: 1, status: 'disqualified', organisationId: 3 });
+
+    const all = calls(spy);
+    expect(all.some((c: any) => c.queryKey?.[0] === 'tournament-participants' && c.queryKey[1] === 5)).toBe(true);
+    expect(all.some((c: any) => c.queryKey?.[0] === 'tournament' && c.queryKey[1] === '5' && c.queryKey[2] === 'participants')).toBe(true);
+  });
+  // Note: tournament.completed needs NO new G11.11 frontend wiring — the
+  // TOURNAMENT_REALTIME_EVENTS loop (asserted in useRealtimeCacheUpdates.test.ts
+  // lines 245–249) already refreshes tournament detail + standings. The single-slot
+  // captured map here is overwritten by the later player-nav-counts registration,
+  // but in production BOTH subscriptions fire.
+});
+
+describe('G11.11 — reconnect/reconcile includes the refund-request root', () => {
+  it('invalidateRealtimeReconcile covers tournament-refund-requests + lifecycle roots', () => {
+    const keys: string[][] = [];
+    const fakeQc = {
+      invalidateQueries: (o: any) => { if (o.queryKey) keys.push([...o.queryKey]); },
+    };
+    invalidateRealtimeReconcile(fakeQc as any);
+
+    expect(keys).toContainEqual(['tournament-refund-requests']);
+    expect(keys).toContainEqual(['my-tournaments']);
+    expect(keys).toContainEqual(['tournament-awards']);
+    expect(keys).toContainEqual(['tournament-participants']);
   });
 });

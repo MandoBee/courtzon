@@ -146,6 +146,11 @@ export interface DomainEventMap {
   'tournament:match-progressed': BaseEvent & { tournamentId: number; matchId: number | null; resultId?: number | null; winnerId?: number | null; participantWinnerId?: number | null; opponentMatchId?: number | null; fromSlotId?: number | null; toSlotId?: number | null; advancedTo?: string | null; stageId?: number | null; organisationId?: number | null; round?: number; bracketPosition?: number; result?: Record<string, unknown> };
   'tournament:stage-completed': BaseEvent & { tournamentId: number; stageId: number; winnerId?: number | null; organisationId?: number | null; round?: number };
   'tournament:completed': BaseEvent & { tournamentId: number; name: string; winnerId?: number | null; winnerName?: string | null; userId?: number | null; organisationId?: number | null };
+  // G11.11 — terminal lifecycle events. cancel/archive were previously silent:
+  // these types carry the tenant scope resolved by emitTournamentScoped. The
+  // operator-driven bracket completion reuses tournament:completed (no winner).
+  'tournament:cancelled': BaseEvent & { tournamentId: number; name?: string; organisationId?: number | null; branchId?: number | null; creatorId?: number; participantUserIds?: number[] };
+  'tournament:archived': BaseEvent & { tournamentId: number; name?: string; organisationId?: number | null; branchId?: number | null; creatorId?: number; participantUserIds?: number[] };
   // G11.5 — Prize payout domain events (Phase 1).
   // standings-finalized: standings-backed (round-robin) tournaments lock their
   //   final ranking when the operator completes them. The prize-award listener

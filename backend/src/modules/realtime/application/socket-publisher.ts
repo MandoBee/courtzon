@@ -98,6 +98,8 @@ export class SocketPublisher {
       'tournament:standings-finalized',
       'tournament:prize-awarded', 'tournament:prize-refunded',
       'tournament:refund-requested',
+      // G11.11 — terminal lifecycle + refund verdict + disqualification (Tier-B).
+      'tournament:cancelled', 'tournament:archived', 'tournament:refund-request-updated',
       'registration.received',
       'tournament:prizes-updated',
       'tournament:schedule-updated',

@@ -37,6 +37,15 @@ export async function withdrawParticipantHandler(request: FastifyRequest, reply:
   return reply.send(result);
 }
 
+// G11.11 X5 — admin disqualification of an active participant (additive).
+export async function disqualifyParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, participantId } = request.params as any;
+  const body = WithdrawParticipantSchema.parse(request.body);
+  const result = await participantDrawService.disqualifyParticipant(Number(id), Number(participantId), userId, body.reason);
+  return reply.send(result);
+}
+
 export async function promoteNextWaitlistedHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;

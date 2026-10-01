@@ -141,6 +141,22 @@ const RECIPIENT_NOTICE_TITLES: Record<string, { en: string; ar: string }> = {
   'tournament:registration-closed:orgStaff': { en: 'Registration Closed', ar: 'تم إغلاق التسجيل' },
   'tournament:registration-closed:admin': { en: 'Registration Closed', ar: 'تم إغلاق التسجيل' },
   'tournament:registration-closed:default': { en: 'Registration Closed', ar: 'تم إغلاق التسجيل' },
+  // G11.11 — terminal lifecycle + refund verdict + disqualification.
+  'tournament:cancelled:player': { en: 'Tournament Cancelled', ar: 'تم إلغاء البطولة' },
+  'tournament:cancelled:orgStaff': { en: 'Tournament Cancelled', ar: 'تم إلغاء البطولة' },
+  'tournament:cancelled:admin': { en: 'Tournament Cancelled', ar: 'تم إلغاء البطولة' },
+  'tournament:cancelled:default': { en: 'Tournament Cancelled', ar: 'تم إلغاء البطولة' },
+  'tournament:archived:orgStaff': { en: 'Tournament Archived', ar: 'تم حفظ البطولة' },
+  'tournament:archived:admin': { en: 'Tournament Archived', ar: 'تم حفظ البطولة' },
+  'tournament:archived:default': { en: 'Tournament Archived', ar: 'تم حفظ البطولة' },
+  'tournament:completed:winner': { en: 'You Won the Tournament', ar: 'فزت بالبطولة' },
+  'tournament:completed:participant': { en: 'Tournament Completed', ar: 'اكتملت البطولة' },
+  'tournament:completed:orgStaff': { en: 'Tournament Completed', ar: 'اكتملت البطولة' },
+  'tournament:completed:admin': { en: 'Tournament Completed', ar: 'اكتملت البطولة' },
+  'tournament:completed:default': { en: 'Tournament Completed', ar: 'اكتملت البطولة' },
+  'tournament:refund-request-updated:player': { en: 'Refund Request Declined', ar: 'تم رفض طلب الاسترداد' },
+  'tournament:refund-request-updated:default': { en: 'Refund Request Update', ar: 'تحديث طلب الاسترداد' },
+  'tournament:participant-updated:disqualified': { en: 'You Were Disqualified', ar: 'تم استبعادك' },
 };
 
 const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
@@ -226,6 +242,68 @@ const RECIPIENT_NOTICE_BODIES: Record<string, { en: string; ar: string }> = {
   'tournament:registration-closed:default': {
     en: 'Registration for tournament #{{tournamentId}} is now closed.',
     ar: 'تم إغلاق التسجيل في البطولة #{{tournamentId}}.',
+  },
+
+  // G11.11 — terminal lifecycle + refund verdict + disqualification.
+  'tournament:cancelled:player': {
+    en: 'Tournament #{{tournamentId}} has been cancelled. Your registration is no longer active.',
+    ar: 'تم إلغاء البطولة #{{tournamentId}}. لم يعد تسجيلك نشطاً.',
+  },
+  'tournament:cancelled:orgStaff': {
+    en: 'Tournament #{{tournamentId}} has been cancelled.',
+    ar: 'تم إلغاء البطولة #{{tournamentId}}.',
+  },
+  'tournament:cancelled:admin': {
+    en: 'Tournament #{{tournamentId}} has been cancelled.',
+    ar: 'تم إلغاء البطولة #{{tournamentId}}.',
+  },
+  'tournament:cancelled:default': {
+    en: 'Tournament #{{tournamentId}} has been cancelled.',
+    ar: 'تم إلغاء البطولة #{{tournamentId}}.',
+  },
+  'tournament:archived:orgStaff': {
+    en: 'Tournament #{{tournamentId}} has been archived.',
+    ar: 'تم حفظ البطولة #{{tournamentId}}.',
+  },
+  'tournament:archived:admin': {
+    en: 'Tournament #{{tournamentId}} has been archived.',
+    ar: 'تم حفظ البطولة #{{tournamentId}}.',
+  },
+  'tournament:archived:default': {
+    en: 'Tournament #{{tournamentId}} has been archived.',
+    ar: 'تم حفظ البطولة #{{tournamentId}}.',
+  },
+  'tournament:completed:winner': {
+    en: 'Congratulations — you won tournament #{{tournamentId}}!',
+    ar: 'مبروك — فزت بالبطولة #{{tournamentId}}!',
+  },
+  'tournament:completed:participant': {
+    en: 'Tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت البطولة #{{tournamentId}}.',
+  },
+  'tournament:completed:orgStaff': {
+    en: 'Tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت البطولة #{{tournamentId}}.',
+  },
+  'tournament:completed:admin': {
+    en: 'Tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت البطولة #{{tournamentId}}.',
+  },
+  'tournament:completed:default': {
+    en: 'Tournament #{{tournamentId}} has been completed.',
+    ar: 'اكتملت البطولة #{{tournamentId}}.',
+  },
+  'tournament:refund-request-updated:player': {
+    en: 'Your refund request for tournament #{{tournamentId}} was declined.',
+    ar: 'تم رفض طلب استرداد رسومك في البطولة #{{tournamentId}}.',
+  },
+  'tournament:refund-request-updated:default': {
+    en: 'Your refund request for tournament #{{tournamentId}} has an update.',
+    ar: 'يوجد تحديث لطلب استرداد رسومك في البطولة #{{tournamentId}}.',
+  },
+  'tournament:participant-updated:disqualified': {
+    en: 'You have been disqualified from tournament #{{tournamentId}}.',
+    ar: 'تم استبعادك من البطولة #{{tournamentId}}.',
   },
 
   'tournament:match-created:participant': {
@@ -1222,6 +1300,31 @@ export async function seedTemplates(): Promise<void> {
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:registration-closed', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
       titleTemplate: 'أُغلق التسجيل', bodyTemplate: 'أُغلق التسجيل في {{name}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    // G11.11 — terminal lifecycle + refund verdict + disqualification default rows.
+    { eventName: 'tournament:cancelled', locale: 'en', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'Tournament Cancelled', bodyTemplate: 'Tournament #{{tournamentId}} has been cancelled.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:cancelled', locale: 'ar', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'تم إلغاء البطولة', bodyTemplate: 'تم إلغاء البطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:archived', locale: 'en', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'Tournament Archived', bodyTemplate: 'Tournament #{{tournamentId}} has been archived.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:archived', locale: 'ar', categorySlug: 'tournament', type: 'info', priority: 'normal',
+      titleTemplate: 'تم حفظ البطولة', bodyTemplate: 'تم حفظ البطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:refund-request-updated', locale: 'en', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'Refund Request Declined', bodyTemplate: 'Your refund request for tournament #{{tournamentId}} was declined.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:refund-request-updated', locale: 'ar', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'تم رفض طلب الاسترداد', bodyTemplate: 'تم رفض طلب استرداد رسومك في البطولة #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:participant-updated', locale: 'en', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'You Were Disqualified', bodyTemplate: 'You have been disqualified from tournament #{{tournamentId}}.',
+      actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
+    { eventName: 'tournament:participant-updated', locale: 'ar', categorySlug: 'tournament', type: 'warning', priority: 'high',
+      titleTemplate: 'تم استبعادك', bodyTemplate: 'تم استبعادك من البطولة #{{tournamentId}}.',
       actionKey: 'view_tournament', routePattern: '/tournaments/{{tournamentId}}' },
     { eventName: 'tournament:starting-soon', locale: 'ar', categorySlug: 'tournament', type: 'reminder', priority: 'high',
       titleTemplate: 'البطولة على وشك البدء', bodyTemplate: 'ستبدأ {{name}} في {{startDate}}. استعد!',

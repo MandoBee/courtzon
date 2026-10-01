@@ -929,6 +929,56 @@ export class ParticipantDrawService {
     }
     return participant;
   }
+
+  /**
+   * G11.11 X5 — Disqualify an ACTIVE participant (tenant-scoped, additive).
+   * Encodes the disposition through the EXISTING tournament:participant-updated
+   * lifecycle event (status 'disqualified') so the notification engine reaches
+   * ONLY the affected participant's roster (never the whole tournament).
+   * Registration + seed + draw history are preserved; the draw is flagged for
+   * revalidation (mirrors the withdraw path). No refund/payment/prize logic is
+   * touched.
+   */
+  async disqualifyParticipant(
+    tournamentId: number,
+    participantId: number,
+    actorId: number,
+    reason?: string,
+  ): Promise<{ status: string; drawImpact: DrawImpact }> {
+    const participant = await this.assertParticipantBelongsToTournament(tournamentId, participantId);
+    if (participant.status !== 'active') {
+      throw new ConflictError('Only an active participant can be disqualified', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
+    }
+    await participantDrawRepository.updateParticipantStatus(participantId, 'disqualified');
+    if (participant.registration_id != null) {
+      await tournamentRepository.updateRegistrationStatus(participant.registration_id, 'disqualified');
+    }
+    const impact = await this.getDrawImpact(tournamentId, participantId);
+    if (impact.drawAffected && impact.drawId != null) {
+      const draw = await participantDrawRepository.findDrawById(impact.drawId);
+      if (draw?.status === 'draft') {
+        await participantDrawRepository.deleteDrawEntryByParticipant(impact.drawId, participantId);
+        await participantDrawRepository.updateDraw(impact.drawId, { validation_status: 'manually_modified' });
+      } else {
+        await participantDrawRepository.markDrawRequiresRedraw(impact.drawId);
+      }
+    }
+    await recordAudit({
+      actorId,
+      action: 'TOURNAMENT.PARTICIPANT_DISQUALIFIED',
+      entityType: 'tournament_participant',
+      entityId: participantId,
+      beforeState: { status: 'active' },
+      afterState: { status: 'disqualified', reason: reason ?? null, registration_id: participant.registration_id ?? null },
+    });
+    const t = await this.getTournament(tournamentId);
+    await emitTournamentScoped('tournament:participant-updated', {
+      tournamentId,
+      participantId,
+      status: 'disqualified',
+    } as Record<string, unknown>, t as any);
+    return { status: 'disqualified', drawImpact: impact };
+  }
 }
 
 export const participantDrawService = new ParticipantDrawService();

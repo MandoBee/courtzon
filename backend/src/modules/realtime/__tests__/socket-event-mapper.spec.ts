@@ -927,5 +927,49 @@ describe('SocketEventMapper', () => {
       expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'user:2', 'organisation:3', 'branch:5']));
       expect(result!.rooms).not.toContain('player');
     });
+
+    it('maps tournament:cancelled to org/branch/creator/admin rooms (players via notification)', () => {
+      const result = mapDomainEvent('tournament:cancelled', {
+        tournamentId: 7,
+        name: 'Cup',
+        organisationId: 3,
+        branchId: 5,
+        creatorId: 2,
+      });
+      expect(result).not.toBeNull();
+      expect(result!.type).toBe('tournament.cancelled');
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'user:2', 'organisation:3', 'branch:5']));
+      expect(result!.rooms).not.toContain('player');
+      expect(result!.rooms).not.toContain('organisation:99');
+    });
+
+    it('maps tournament:archived to org/branch/creator/admin rooms (no player fan-out)', () => {
+      const result = mapDomainEvent('tournament:archived', {
+        tournamentId: 7,
+        name: 'Cup',
+        organisationId: 3,
+        branchId: 5,
+        creatorId: 2,
+      });
+      expect(result!.type).toBe('tournament.archived');
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'user:2', 'organisation:3', 'branch:5']));
+      expect(result!.rooms).not.toContain('player');
+    });
+
+    it('maps tournament:refund-request-updated to org/admin + the requesting player (tenant-scoped)', () => {
+      const result = mapDomainEvent('tournament:refund-request-updated', {
+        tournamentId: 7,
+        registrationId: 12,
+        requestId: 55,
+        status: 'rejected',
+        userId: 42,
+        organisationId: 3,
+        branchId: 5,
+      });
+      expect(result!.type).toBe('tournament.refund-request-updated');
+      expect(result!.rooms).toEqual(expect.arrayContaining(['admin', 'organisation:3', 'branch:5', 'user:42']));
+      expect(result!.rooms).not.toContain('player');
+      expect(result!.rooms).not.toContain('organisation:99');
+    });
   });
 });

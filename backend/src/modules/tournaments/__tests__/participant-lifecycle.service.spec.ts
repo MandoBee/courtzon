@@ -302,3 +302,22 @@ describe('Group 6 — NOTIFICATIONS + REALTIME', () => {
     expect(promotedEmits[0][1]).toEqual(expect.objectContaining({ tournamentId: 1, participantId: 2, userId: 20 }));
   });
 });
+
+describe('G11.11 X5 — disqualification (participant lifecycle)', () => {
+  it('27. an active participant can be disqualified; participant-updated carries status disqualified', async () => {
+    repo.findParticipantById.mockResolvedValue(participant(5));
+    const r = await svc.disqualifyParticipant(1, 5, 42, 'code of conduct');
+    expect(r.status).toBe('disqualified');
+    expect(repo.updateParticipantStatus).toHaveBeenCalledWith(5, 'disqualified');
+    expect(tRepo.updateRegistrationStatus).toHaveBeenCalledWith(5, 'disqualified');
+    expect(audit.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'TOURNAMENT.PARTICIPANT_DISQUALIFIED' }));
+    expect(bus.emit).toHaveBeenCalledWith('tournament:participant-updated', expect.objectContaining({ tournamentId: 1, participantId: 5, status: 'disqualified' }), expect.anything());
+  });
+
+  it('28. only an ACTIVE participant can be disqualified (no event on invalid state)', async () => {
+    repo.findParticipantById.mockResolvedValue(participant(5, { status: 'withdrawn' }));
+    await expect(svc.disqualifyParticipant(1, 5, 42)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_TRANSITION });
+    expect(repo.updateParticipantStatus).not.toHaveBeenCalled();
+    expect(bus.emit).not.toHaveBeenCalledWith('tournament:participant-updated', expect.objectContaining({ status: 'disqualified' }), expect.anything());
+  });
+});

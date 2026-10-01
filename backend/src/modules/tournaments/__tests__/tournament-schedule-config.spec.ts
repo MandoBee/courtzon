@@ -16,6 +16,7 @@ const repo = vi.hoisted(() => ({
   getRegistrationById: vi.fn(),
   createCashPaymentTransaction: vi.fn(),
   updateRegistrationPaymentStatus: vi.fn(),
+  countUnresolvedRequiredMatches: vi.fn(),
   getOrgActivePaymentMethodSlugs: vi.fn(),
   findPlayerIdsForSport: vi.fn(),
   findEligibleDiscoveryAudience: vi.fn(),
@@ -105,6 +106,7 @@ beforeEach(() => {
   repo.findEligibleDiscoveryAudience.mockResolvedValue([]);
   repo.update.mockResolvedValue(undefined);
   repo.updateStatus.mockResolvedValue(undefined);
+  repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
   branchRepo.findById.mockResolvedValue({ id: 5, opening_time: '08:00:00', closing_time: '22:00:00' });
   mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
   mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { best_of: 3 }, standingsRules: null });
@@ -326,5 +328,62 @@ describe('G11.10 D4 — registration-closed lifecycle emitter', () => {
     await expect(svc.closeRegistration(10)).rejects.toThrow();
     expect(bus.emit.mock.calls.some((c: any) => c[0] === 'tournament:registration-closed')).toBe(false);
     expect(repo.updateStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('G11.11 — terminal lifecycle emitters (cancel / archive / operator complete)', () => {
+  it('cancel() emits tournament:cancelled after a valid running → cancelled transition', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'Cup', status: 'running', organisation_id: 1001 }));
+    await svc.cancel(10);
+
+    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'cancelled');
+    expect(bus.emit).toHaveBeenCalledWith(
+      'tournament:cancelled',
+      expect.objectContaining({ tournamentId: 10, name: 'Cup', organisationId: 1001 }),
+      expect.anything(),
+    );
+  });
+
+  it('cancel() does NOT emit for an invalid transition (silent close preserved)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'X', status: 'draft' }));
+    await expect(svc.cancel(10)).rejects.toThrow();
+    expect(bus.emit.mock.calls.some((c: any) => c[0] === 'tournament:cancelled')).toBe(false);
+  });
+
+  it('archive() emits tournament:archived after a valid completed → archived transition', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'Cup', status: 'completed', organisation_id: 1001 }));
+    await svc.archive(10);
+
+    expect(repo.updateStatus).toHaveBeenCalledWith(10, 'archived');
+    expect(bus.emit).toHaveBeenCalledWith(
+      'tournament:archived',
+      expect.objectContaining({ tournamentId: 10, name: 'Cup', organisationId: 1001 }),
+      expect.anything(),
+    );
+  });
+
+  it('archive() does NOT emit for an invalid transition', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'X', status: 'registration_open' }));
+    await expect(svc.archive(10)).rejects.toThrow();
+    expect(bus.emit.mock.calls.some((c: any) => c[0] === 'tournament:archived')).toBe(false);
+  });
+
+  it('operator complete() of a bracket/knockout tournament emits tournament:completed (no winner, operator marker)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'KO Cup', status: 'running', format: 'knockout', organisation_id: 1001 }));
+    await svc.complete(10);
+
+    const emit = bus.emit.mock.calls.find((c: any) => c[0] === 'tournament:completed');
+    expect(emit).toBeTruthy();
+    expect(emit[1]).toMatchObject({ tournamentId: 10, name: 'KO Cup', operatorCompleted: true, organisationId: 1001 });
+    expect(emit[1].userId).toBeUndefined();
+  });
+
+  it('round-robin complete() behavior is UNCHANGED (standings-finalized, no operator completed)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'RR Cup', status: 'running', format: 'round_robin', organisation_id: 1001 }));
+    await svc.complete(10);
+
+    expect(bus.emit).toHaveBeenCalledWith('tournament:standings-finalized', expect.objectContaining({ tournamentId: 10 }), expect.anything());
+    const completedEmits = bus.emit.mock.calls.filter((c: any) => c[0] === 'tournament:completed');
+    expect(completedEmits.some((c: any) => c[1].operatorCompleted === true)).toBe(false);
   });
 });

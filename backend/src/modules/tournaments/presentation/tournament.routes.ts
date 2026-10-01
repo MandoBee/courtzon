@@ -10,6 +10,8 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/admin/tournaments/:id/waitlist', { preHandler: [requirePermission(['tournament.view'])] }, pdCtrl.listWaitlistHandler);
   app.post('/admin/tournaments/:id/participants/:participantId/withdraw', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.withdrawParticipantHandler);
+  // G11.11 X5 — disqualification (additive; same guard as withdraw).
+  app.post('/admin/tournaments/:id/participants/:participantId/disqualify', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.disqualifyParticipantHandler);
   app.post('/admin/tournaments/:id/waitlist/promote', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.promoteNextWaitlistedHandler);
   app.post('/admin/tournaments/:id/participants/:participantId/replace', { preHandler: [requirePermission(['tournament.manage'])] }, pdCtrl.replaceParticipantHandler);
 

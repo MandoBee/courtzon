@@ -1204,11 +1204,51 @@ export class TournamentService {
       } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
       });
+    } else {
+      // G11.11 X2 — operator-driven completion of bracket/knockout tournaments
+      // previously emitted NOTHING (only the progression engine auto-path did).
+      // Emit tournament:completed with the realtime scope and NO winner: the
+      // notification engine notifies participants + org staff + admins (deduped)
+      // and keeps the existing winner-specific path for engine completions.
+      eventBusV2.emit('tournament:completed', {
+        tournamentId: id,
+        name: t.name,
+        operatorCompleted: true,
+        ...this.tournamentRealtimeScope(t),
+      } as Record<string, unknown>, {
+        aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+      });
     }
     return updated;
   }
-  async cancel(id: number) { return this.updateStatus(id, 'cancelled'); }
-  async archive(id: number) { return this.updateStatus(id, 'archived'); }
+  async cancel(id: number) {
+    // G11.11 — terminal lifecycle emission. updateStatus validates the
+    // transition (running → cancelled per lifecycle.ts) — this only fires on a
+    // valid cancellation. The notification engine reaches active participants,
+    // org staff and admins (tenant-scoped, deduped).
+    const t = await this.updateStatus(id, 'cancelled');
+    eventBusV2.emit('tournament:cancelled', {
+      tournamentId: id,
+      name: t?.name ?? '',
+      ...this.tournamentRealtimeScope(t),
+    } as Record<string, unknown>, {
+      aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+    });
+    return t;
+  }
+  async archive(id: number) {
+    // G11.11 X1 — archival is administrative: notification audience is org
+    // staff + admins only (the engine handler never notifies players).
+    const t = await this.updateStatus(id, 'archived');
+    eventBusV2.emit('tournament:archived', {
+      tournamentId: id,
+      name: t?.name ?? '',
+      ...this.tournamentRealtimeScope(t),
+    } as Record<string, unknown>, {
+      aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
+    });
+    return t;
+  }
 
   async getOpenTournaments() {
     return tournamentRepository.findOpen();

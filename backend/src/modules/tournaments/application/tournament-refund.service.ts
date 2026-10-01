@@ -385,6 +385,7 @@ class TournamentRefundService {
         tournamentId,
         registrationId: Number(registration.id),
         paymentId: outcome.paymentId,
+        userId: registration.player_id ?? registration.user_id ?? null,
         status: 'executed',
       } as Record<string, unknown>, tournament as any);
     }
@@ -560,6 +561,10 @@ class TournamentRefundService {
         registrationId: req.registrationId,
         requestId: req.id,
         status: 'rejected',
+        // G11.11 X3 — additive userId so the rejected request reaches the
+        // requesting player (rejection is otherwise silent today).
+        userId: (await tournamentRepository.getRegistrationById(req.registrationId))?.player_id
+          ?? null,
       } as Record<string, unknown>, tournament as any);
     });
     return { success: true, status: 'rejected' };
