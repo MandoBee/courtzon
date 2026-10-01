@@ -3,12 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import api from '../../../services/api';
 import { Spinner } from '../../../components/ui';
+import { ExportButton } from '../../../components/ui/ExportButton';
+import { formatPrice } from '../../../utils/currency';
 import DateRangePicker from '../../../components/reports/DateRangePicker';
 import { getChartPalette } from '../../../theme/chart-colors';
 
+type ReportEndpointType = 'kpi' | 'chart' | 'table' | 'bar' | 'pie' | 'tournament-finance';
 type ReportTab = {
   key: string; label: string; icon: string;
-  endpoints: { key: string; label: string; endpoint: string; type: 'kpi' | 'chart' | 'table' | 'bar' | 'pie' }[];
+  endpoints: { key: string; label: string; endpoint: string; type: ReportEndpointType }[];
 };
 
 const tabs: ReportTab[] = [
@@ -61,7 +64,7 @@ const tabs: ReportTab[] = [
   {
     key: 'tournaments', label: 'Tournaments', icon: '🏆',
     endpoints: [
-      { key: 'overview', label: 'Overview', endpoint: '/reports/tournaments/overview', type: 'kpi' },
+      { key: 'overview', label: 'Overview', endpoint: '/reports/tournaments/overview', type: 'tournament-finance' },
       { key: 'participation', label: 'Participation', endpoint: '/reports/tournaments/participation', type: 'table' },
     ],
   },
@@ -178,6 +181,96 @@ function ChartBlock({ data, type, label, dataKey, xKey }: { data: any[]; type: s
   );
 }
 
+/**
+ * G11.9 — Build client-side CSV rows from the authoritative `/reports/tournaments/overview`
+ * JSON payload. One row per currency (buckets are NEVER numerically mixed). Columns mirror
+ * the fields the API actually returns — no invented financial fields.
+ */
+export function tournamentFinanceCsvRows(data: any): Record<string, string>[] {
+  const currencies = data?.currencies ?? {};
+  return Object.keys(currencies).map((code) => {
+    const b = currencies[code] ?? {};
+    return {
+      currency: code,
+      tournaments: String(b.tournaments ?? 0),
+      revenue: Number(b.revenue ?? 0).toFixed(2),
+      prize_expense: Number(b.prizeExpense ?? 0).toFixed(2),
+      commission_expense: Number(b.commissionExpense ?? 0).toFixed(2),
+      platform_commission: Number(b.platformCommission ?? 0).toFixed(2),
+      net: Number(b.net ?? 0).toFixed(2),
+    };
+  });
+}
+
+/**
+ * G11.9 — Tournament finance overview (admin reports, read-only).
+ * Renders the authoritative ledger-backed `/reports/tournaments/overview`
+ * payload with one independent card per currency (never mixed), a clear
+ * zero-ledger state, and a CLIENT-SIDE CSV export built from the same JSON
+ * response (no backend export endpoint).
+ */
+function TournamentFinanceOverview({ data }: { data: any }) {
+  const currencies = data?.currencies ?? {};
+  const codes = Object.keys(currencies);
+  const noData = !data || (data.total_tournaments ?? 0) === 0;
+  const zeroLedger = !noData && codes.length === 0;
+  const counts = {
+    total_tournaments: data?.total_tournaments ?? 0,
+    completed: data?.completed ?? 0,
+    in_progress: data?.in_progress ?? 0,
+    total_registrations: data?.total_registrations ?? 0,
+  };
+
+  const csvRows = tournamentFinanceCsvRows(data);
+
+  return (
+    <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="font-medium text-[var(--color-text)]">Tournament Finances (ledger-authoritative)</p>
+        <ExportButton data={csvRows} filename="tournament_finances" label="Export" />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
+        <div><p className="text-[var(--color-text-muted)]">Total tournaments</p><p className="font-bold">{counts.total_tournaments}</p></div>
+        <div><p className="text-[var(--color-text-muted)]">Completed</p><p className="font-bold">{counts.completed}</p></div>
+        <div><p className="text-[var(--color-text-muted)]">In progress</p><p className="font-bold">{counts.in_progress}</p></div>
+        <div><p className="text-[var(--color-text-muted)]">Total registrations</p><p className="font-bold">{counts.total_registrations}</p></div>
+      </div>
+
+      {(noData || zeroLedger) && (
+        <p className="text-sm text-[var(--color-text-muted)] py-4 text-center">
+          {noData
+            ? 'No tournament data for the selected period.'
+            : 'No posted tournament accounting for the selected period — recognised revenue/expense are zero until ledger postings exist.'}
+        </p>
+      )}
+
+      {!noData && !zeroLedger && (
+        <div className="space-y-3">
+          {codes.map((code) => {
+            const b = currencies[code] ?? {};
+            return (
+              <div key={code} className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-semibold text-[var(--color-text)]">{code} bucket</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{b.tournaments ?? 0} tournament(s)</p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div><p className="text-[var(--color-text-muted)]">Revenue</p><p className="font-medium">{formatPrice(Number(b.revenue ?? 0), code)}</p></div>
+                  <div><p className="text-[var(--color-text-muted)]">Prize expense</p><p className="font-medium">{formatPrice(Number(b.prizeExpense ?? 0), code)}</p></div>
+                  <div><p className="text-[var(--color-text-muted)]">Commission expense</p><p className="font-medium">{formatPrice(Number(b.commissionExpense ?? 0), code)}</p></div>
+                  <div><p className="text-[var(--color-text-muted)]">Platform commission</p><p className="font-medium">{formatPrice(Number(b.platformCommission ?? 0), code)}</p></div>
+                  <div><p className="text-[var(--color-text-muted)]">Net</p><p className={`font-medium ${Number(b.net ?? 0) >= 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-error)]'}`}>{formatPrice(Number(b.net ?? 0), code)}</p></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('financial');
   const [dateFrom, setDateFrom] = useState('');
@@ -231,6 +324,7 @@ function ReportEndpointBlock({ ep, dateFrom, dateTo }: { ep: any; dateFrom: stri
   const result = data;
 
   if (ep.type === 'kpi') return <KpiCard label={ep.label} data={result} />;
+  if (ep.type === 'tournament-finance') return <TournamentFinanceOverview data={result} />;
   if (ep.type === 'table') return <DataTable data={Array.isArray(result) ? result : []} label={ep.label} />;
   if (ep.type === 'chart' || ep.type === 'bar' || ep.type === 'pie')
     return <ChartBlock data={Array.isArray(result) ? result : []} type={ep.type} label={ep.label} />;

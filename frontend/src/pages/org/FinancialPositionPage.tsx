@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import api from '../../services/api';
+import { orgTournamentApi } from '../../services/tournament';
 import { Spinner } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useTranslation } from '../../i18n';
@@ -116,6 +117,128 @@ export function CollectorInfoSection({ position, t }: { position: PositionSummar
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface TournamentAggregateCurrency {
+  registrationRevenue: number;
+  prizeExpense: number;
+  commissionExpense: number;
+  sponsorCash: number;
+  revenue: number;
+  expenses: number;
+  net: number;
+  tournaments: number;
+  postings: number;
+}
+
+interface TournamentFinanceAggregate {
+  organisationId: number;
+  totalTournaments: number;
+  currencies: Record<string, TournamentAggregateCurrency>;
+}
+
+/**
+ * G11.9 — Org tournament P&L aggregate (read-only, ledger-authoritative).
+ * Consumes GET /org/:orgId/tournaments/finances (single source of truth). Each
+ * currency is an independent bucket — currencies are NEVER combined numerically.
+ */
+export function TournamentPnlSection({ orgId, t }: { orgId: string; t: (k: string, d?: string, p?: Record<string, string | number>) => string }) {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['org-tournament-pnl', orgId],
+    queryFn: () => orgTournamentApi.getFinanceAggregate(orgId),
+    enabled: !!orgId,
+  });
+  const agg = data as TournamentFinanceAggregate | undefined;
+  const codes = Object.keys(agg?.currencies ?? {});
+  const zeroLedger = (agg?.totalTournaments ?? 0) === 0 || codes.length === 0;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide mb-1">
+        {t('financial_position.tournament_pnl.title', 'Tournament P&L')}
+      </p>
+
+      {isLoading && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-8 text-center">
+          <Spinner />
+        </div>
+      )}
+
+      {!isLoading && isError && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-8 text-center">
+          <p className="text-[var(--color-error)] mb-2 font-medium">
+            {t('financial_position.tournament_pnl.error', 'Failed to load tournament P&L')}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="mt-2 px-4 py-2 text-sm font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white hover:opacity-90"
+          >
+            {t('financial_position.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !isError && zeroLedger && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-8 text-center">
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {t('financial_position.tournament_pnl.zero_ledger', 'No posted tournament accounting yet — the P&L is recognised only from posted ledger entries and currently shows zero.')}
+          </p>
+        </div>
+      )}
+
+      {!isLoading && !isError && !zeroLedger && (
+        <div className="space-y-3">
+          <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+            {t('financial_position.tournament_pnl.explanation', 'Ledger-authoritative, grouped into one independent bucket per currency. Values are never combined across currencies.')}
+          </p>
+          {codes.map((code) => {
+            const b = agg!.currencies[code];
+            return (
+              <div
+                key={code}
+                className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-4"
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <p className="font-semibold text-[var(--color-text)]">
+                    {t('financial_position.tournament_pnl.currency', '{{currency}} bucket', { currency: code })}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    {t('financial_position.tournament_pnl.tournaments', '{{count}} tournament(s)', { count: b.tournaments })}
+                    {' · '}
+                    {t('financial_position.tournament_pnl.postings', '{{count}} posting(s)', { count: b.postings })}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">{t('financial_position.tournament_pnl.revenue', 'Revenue')}</p>
+                    <p className="font-medium text-[var(--color-text)]">{formatPrice(b.revenue, code)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">{t('financial_position.tournament_pnl.commission_expense', 'Commission expense')}</p>
+                    <p className="font-medium text-[var(--color-text)]">{formatPrice(b.commissionExpense, code)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">{t('financial_position.tournament_pnl.prize_expense', 'Prize expense')}</p>
+                    <p className="font-medium text-[var(--color-text)]">{formatPrice(b.prizeExpense, code)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">{t('financial_position.tournament_pnl.expenses', 'Expenses')}</p>
+                    <p className="font-medium text-[var(--color-text)]">{formatPrice(b.expenses, code)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">{t('financial_position.tournament_pnl.net', 'Net')}</p>
+                    <p className={`font-medium ${Number(b.net) >= 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-error)]'}`}>
+                      {formatPrice(b.net, code)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -280,6 +403,9 @@ export default function FinancialPositionPage() {
             </div>
           </div>
         )}
+
+        {/* G11.9 — Org Tournament P&L (read-only, ledger-authoritative) */}
+        <TournamentPnlSection orgId={orgId} t={t} />
       </div>
     </Can>
   );

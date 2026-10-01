@@ -2568,6 +2568,20 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'financial_position.available_for_settlement', defaultValue: 'Available for settlement', moduleSlug: 'org', elementType: 'label', elementLabel: 'Available for settlement label' },
   { key: 'financial_position.frozen_by_disputes', defaultValue: 'Frozen by disputes', moduleSlug: 'org', elementType: 'label', elementLabel: 'Frozen by disputes label' },
   { key: 'financial_position.already_settled', defaultValue: 'Already settled (lifetime)', moduleSlug: 'org', elementType: 'label', elementLabel: 'Already settled label' },
+
+  // ── Org Tournament P&L (G11.9 — read-only, ledger-authoritative) ──
+  { key: 'financial_position.tournament_pnl.title', defaultValue: 'Tournament P&L', moduleSlug: 'org', elementType: 'heading', elementLabel: 'Org tournament P&L section heading' },
+  { key: 'financial_position.tournament_pnl.explanation', defaultValue: 'Ledger-authoritative, grouped into one independent bucket per currency. Values are never combined across currencies.', moduleSlug: 'org', elementType: 'text', elementLabel: 'Org tournament P&L currency explanation' },
+  { key: 'financial_position.tournament_pnl.zero_ledger', defaultValue: 'No posted tournament accounting yet — the P&L is recognised only from posted ledger entries and currently shows zero.', moduleSlug: 'org', elementType: 'text', elementLabel: 'Org tournament P&L zero-ledger empty state' },
+  { key: 'financial_position.tournament_pnl.error', defaultValue: 'Failed to load tournament P&L', moduleSlug: 'org', elementType: 'message', elementLabel: 'Org tournament P&L error message' },
+  { key: 'financial_position.tournament_pnl.currency', defaultValue: '{currency} bucket', moduleSlug: 'org', elementType: 'heading', elementLabel: 'Org tournament P&L per-currency bucket heading' },
+  { key: 'financial_position.tournament_pnl.tournaments', defaultValue: '{count} tournament(s)', moduleSlug: 'org', elementType: 'text', elementLabel: 'Org tournament P&L tournament count' },
+  { key: 'financial_position.tournament_pnl.postings', defaultValue: '{count} posting(s)', moduleSlug: 'org', elementType: 'text', elementLabel: 'Org tournament P&L posting count' },
+  { key: 'financial_position.tournament_pnl.revenue', defaultValue: 'Revenue', moduleSlug: 'org', elementType: 'label', elementLabel: 'Org tournament P&L revenue label' },
+  { key: 'financial_position.tournament_pnl.commission_expense', defaultValue: 'Commission expense', moduleSlug: 'org', elementType: 'label', elementLabel: 'Org tournament P&L commission expense label' },
+  { key: 'financial_position.tournament_pnl.prize_expense', defaultValue: 'Prize expense', moduleSlug: 'org', elementType: 'label', elementLabel: 'Org tournament P&L prize expense label' },
+  { key: 'financial_position.tournament_pnl.expenses', defaultValue: 'Expenses', moduleSlug: 'org', elementType: 'label', elementLabel: 'Org tournament P&L total expenses label' },
+  { key: 'financial_position.tournament_pnl.net', defaultValue: 'Net', moduleSlug: 'org', elementType: 'label', elementLabel: 'Org tournament P&L net label' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */

@@ -80,6 +80,8 @@ export const orgTournamentApi = {
   createTournament: (orgId: number | string, data: any) => api.post<any>(`/org/${orgId}/tournaments`, data).then(r => r.data),
   // Phase 2 — READ-ONLY org tournament finances (org financial users).
   getFinances: (orgId: number | string, id: number) => api.get<any>(`/org/${orgId}/tournaments/${id}/finances`).then(r => r.data?.data || r.data),
+  // G11.9 — READ-ONLY org tournament finance AGGREGATE (per-currency buckets).
+  getFinanceAggregate: (orgId: number | string) => api.get<any>(`/org/${orgId}/tournaments/finances`).then(r => r.data?.data || r.data),
   updateTournament: (orgId: number | string, id: number, data: any) => api.put<any>(`/org/${orgId}/tournaments/${id}`, data).then(r => r.data),
   publish: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/publish`).then(r => r.data),
   openRegistration: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/open-reg`).then(r => r.data),

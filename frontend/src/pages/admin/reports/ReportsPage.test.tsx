@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import ReportsPage from './ReportsPage';
+import ReportsPage, { tournamentFinanceCsvRows } from './ReportsPage';
 
 const mockGet = vi.fn();
 
@@ -79,5 +79,76 @@ describe('F-16 — ReportsPage export CSV no-op removed', () => {
     fireEvent.click(screen.getByTestId('date-range'));
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
     expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/financial/'))).toBe(true);
+  });
+});
+
+describe('G11.9 — Tournament finance overview block & client-side CSV', () => {
+  const overview = {
+    total_tournaments: 2,
+    completed: 1,
+    in_progress: 1,
+    total_registrations: 40,
+    currencies: {
+      AED: { revenue: 1000, prizeExpense: 300, commissionExpense: 100, platformCommission: 25, net: 600, tournaments: 1 },
+      EGP: { revenue: 800, prizeExpense: 500, commissionExpense: 50, platformCommission: 20, net: -50, tournaments: 1 },
+    },
+  };
+
+  beforeEach(() => {
+    mockGet.mockReset();
+    mockGet.mockImplementation((url: string) => {
+      if (String(url).includes('/reports/tournaments/overview')) return Promise.resolve({ data: { data: overview } } as any);
+      return Promise.resolve({ data: { data: [] } } as any);
+    });
+  });
+
+  async function openTournamentFinance() {
+    renderPage();
+    fireEvent.click(screen.getAllByRole('button').find((b) => b.textContent?.includes('Tournaments'))!);
+    fireEvent.click(screen.getByTestId('date-range'));
+    await screen.findByText('Tournament Finances (ledger-authoritative)');
+  }
+
+  it('renders the ledger-authoritative tournament finance overview with separate currency buckets', async () => {
+    await openTournamentFinance();
+
+    expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/tournaments/overview'))).toBe(true);
+
+    // Independent per-currency buckets — values are never combined.
+    expect(screen.getByText('AED bucket')).toBeTruthy();
+    expect(screen.getByText('EGP bucket')).toBeTruthy();
+    expect((await screen.findByText((c) => c.includes('600.00')))).toBeTruthy();
+    expect((await screen.findByText((c) => c.includes('-50.00')))).toBeTruthy();
+
+    // Client-side Export control is present on the same JSON report.
+    expect(screen.getByText(/^Export/)).toBeTruthy();
+  });
+
+  it('distinguishes zero-ledger from missing data (no inferred values)', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (String(url).includes('/reports/tournaments/overview'))
+        return Promise.resolve({ data: { data: { total_tournaments: 2, completed: 0, in_progress: 2, total_registrations: 10, currencies: {} } } } as any);
+      return Promise.resolve({ data: { data: [] } } as any);
+    });
+    await openTournamentFinance();
+
+    expect(await screen.findByText(/No posted tournament accounting for the selected period/)).toBeTruthy();
+    expect(screen.queryByText('AED bucket')).toBeNull();
+  });
+
+  it('builds client-side CSV rows from the exact fields returned by the API (never mixes currencies)', () => {
+    const rows = tournamentFinanceCsvRows(overview);
+    expect(rows).toEqual([
+      { currency: 'AED', tournaments: '1', revenue: '1000.00', prize_expense: '300.00', commission_expense: '100.00', platform_commission: '25.00', net: '600.00' },
+      { currency: 'EGP', tournaments: '1', revenue: '800.00', prize_expense: '500.00', commission_expense: '50.00', platform_commission: '20.00', net: '-50.00' },
+    ]);
+    // No synthetic cross-currency totals.
+    const currencies = rows.map((r) => r.currency);
+    expect(currencies).toEqual(['AED', 'EGP']);
+  });
+
+  it('returns an empty row set for a zero-ledger payload', () => {
+    expect(tournamentFinanceCsvRows({ total_tournaments: 2, currencies: {} })).toEqual([]);
+    expect(tournamentFinanceCsvRows(null)).toEqual([]);
   });
 });
