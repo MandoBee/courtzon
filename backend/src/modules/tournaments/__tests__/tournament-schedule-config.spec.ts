@@ -17,6 +17,7 @@ const repo = vi.hoisted(() => ({
   createCashPaymentTransaction: vi.fn(),
   updateRegistrationPaymentStatus: vi.fn(),
   countUnresolvedRequiredMatches: vi.fn(),
+  findMatches: vi.fn(),
   getOrgActivePaymentMethodSlugs: vi.fn(),
   findPlayerIdsForSport: vi.fn(),
   findEligibleDiscoveryAudience: vi.fn(),
@@ -132,6 +133,7 @@ beforeEach(() => {
   repo.update.mockResolvedValue(undefined);
   repo.updateStatus.mockResolvedValue(undefined);
   repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+  repo.findMatches.mockResolvedValue([]);
   pdRepo.listParticipantsByTournament.mockResolvedValue([]);
   branchRepo.findById.mockResolvedValue({ id: 5, opening_time: '08:00:00', closing_time: '22:00:00' });
   mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
@@ -497,5 +499,93 @@ describe('G11.12 — tournament start reminder scheduling (lifecycle triggers)',
 
     expect(bus.emit).toHaveBeenCalledWith('tournament:archived', expect.anything(), expect.anything());
     expect(removedPairs()).toContain('10:5');
+  });
+});
+
+describe('G11.13 — operator bracket champion resolution on manual complete()', () => {
+  function finalSlot(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 9, tournament_id: 10, round: 3, status: 'completed', progression_state: 'completed', winner_id: 77,
+      progression_meta: JSON.stringify({ is_bracket: true }),
+      ...overrides,
+    };
+  }
+  function completedEmits() {
+    return bus.emit.mock.calls.filter((c: any) => c[0] === 'tournament:completed');
+  }
+
+  it('1. resolves the champion from the persisted final bracket slot and includes winnerId on the event', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'KO Cup', status: 'running', format: 'knockout', organisation_id: 1001 }));
+    repo.findMatches.mockResolvedValue([finalSlot()]);
+
+    await svc.complete(10);
+
+    const emit = completedEmits().find((c: any) => c[1].operatorCompleted === true);
+    expect(emit).toBeTruthy();
+    expect(emit[1]).toMatchObject({ tournamentId: 10, operatorCompleted: true, winnerId: 77 });
+    // No user-keyed winner-dispatch duplication — the prize listener reads winnerId.
+    expect(emit[1].userId).toBeUndefined();
+  });
+
+  it('2. team/legacy winner_id (the PRIMARY MEMBER USER id) is forwarded verbatim', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'KO Cup', status: 'running', format: 'knockout', organisation_id: 1001 }));
+    repo.findMatches.mockResolvedValue([finalSlot({ winner_id: 777 })]);
+
+    await svc.complete(10);
+
+    const emit = completedEmits().find((c: any) => c[1].operatorCompleted === true);
+    expect(emit[1].winnerId).toBe(777);
+  });
+
+  it('3. no matches at all → complete() succeeds WITHOUT winnerId (never fabricate)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'KO Cup', status: 'running', format: 'knockout', organisation_id: 1001 }));
+    repo.findMatches.mockResolvedValue([]);
+
+    await svc.complete(10);
+
+    const emit = completedEmits().find((c: any) => c[1].operatorCompleted === true);
+    expect(emit).toBeTruthy();
+    expect(emit[1].operatorCompleted).toBe(true);
+    expect(emit[1].winnerId).toBeUndefined();
+  });
+
+  it('4. final slot still scheduled/incomplete → no winnerId', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'KO Cup', status: 'running', format: 'knockout', organisation_id: 1001 }));
+    repo.findMatches.mockResolvedValue([finalSlot({ status: 'scheduled', progression_state: 'scheduled' })]);
+
+    await svc.complete(10);
+
+    const emit = completedEmits().find((c: any) => c[1].operatorCompleted === true);
+    expect(emit[1].winnerId).toBeUndefined();
+  });
+
+  it('5. ambiguous finals (two final slots) → no winnerId (fail closed)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'KO Cup', status: 'running', format: 'knockout', organisation_id: 1001 }));
+    repo.findMatches.mockResolvedValue([finalSlot({ id: 9 }), finalSlot({ id: 10 })]);
+
+    await svc.complete(10);
+
+    const emit = completedEmits().find((c: any) => c[1].operatorCompleted === true);
+    expect(emit[1].winnerId).toBeUndefined();
+  });
+
+  it('6. bye-only final slot is excluded → no winnerId', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'KO Cup', status: 'running', format: 'knockout', organisation_id: 1001 }));
+    repo.findMatches.mockResolvedValue([finalSlot({ progression_meta: JSON.stringify({ is_bracket: true, bye: true }) })]);
+
+    await svc.complete(10);
+
+    const emit = completedEmits().find((c: any) => c[1].operatorCompleted === true);
+    expect(emit[1].winnerId).toBeUndefined();
+  });
+
+  it('7. round-robin operator complete() remains UNCHANGED (no operator tournament:completed)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ id: 10, name: 'RR Cup', status: 'running', format: 'round_robin', organisation_id: 1001 }));
+    repo.findMatches.mockResolvedValue([finalSlot()]); // noise — RR must not use the bracket resolver
+
+    await svc.complete(10);
+
+    expect(bus.emit).toHaveBeenCalledWith('tournament:standings-finalized', expect.objectContaining({ tournamentId: 10 }), expect.anything());
+    expect(completedEmits().some((c: any) => c[1].operatorCompleted === true)).toBe(false);
   });
 });

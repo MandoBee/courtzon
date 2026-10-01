@@ -35,6 +35,7 @@ const tournamentRepo = vi.hoisted(() => ({
   findMatchBySharedMatchId: vi.fn(),
   updateMatch: vi.fn(),
   recalculateStandings: vi.fn(),
+  findMatches: vi.fn(),
 }));
 const matchResultRepo = vi.hoisted(() => ({ findById: vi.fn() }));
 const pool = vi.hoisted(() => ({

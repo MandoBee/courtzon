@@ -1224,13 +1224,19 @@ export class TournamentService {
     } else {
       // G11.11 X2 — operator-driven completion of bracket/knockout tournaments
       // previously emitted NOTHING (only the progression engine auto-path did).
-      // Emit tournament:completed with the realtime scope and NO winner: the
-      // notification engine notifies participants + org staff + admins (deduped)
-      // and keeps the existing winner-specific path for engine completions.
+      // Emit tournament:completed with the realtime scope. G11.13 X2 — resolve
+      // the ACTUAL champion from the persisted final bracket slot (same
+      // progression_meta semantics as the engine) and pass winnerId through the
+      // EXISTING event so the existing prize-award listener binds the placement-1
+      // prize. If the champion cannot be uniquely determined, the operator
+      // completion still succeeds WITHOUT winnerId (behavior B: never fabricate,
+      // never block a legitimate force-completion) → the listener fail-closes.
+      const championUserId = await this.resolveBracketChampionUserId(id);
       eventBusV2.emit('tournament:completed', {
         tournamentId: id,
         name: t.name,
         operatorCompleted: true,
+        ...(championUserId != null ? { winnerId: championUserId } : {}),
         ...this.tournamentRealtimeScope(t),
       } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
@@ -1336,6 +1342,35 @@ export class TournamentService {
       for (const uid of uids) if (uid != null) ids.push(Number(uid));
     }
     return [...new Set(ids)];
+  }
+
+  /**
+   * G11.13 — Resolve the CHAMPION (primary member user id) of an operator-completed
+   * bracket/knockout tournament from PERSISTED match data only. Reuses the engine's
+   * own progression semantics: a bracket slot with NO `target_round`/`target_bracket_position`
+   * in its progression_meta IS the final round (`progressFromApprovedResult`, tournament.service).
+   * Fail-closed — returns null unless exactly one non-bye final slot exists AND it is
+   * terminally resolved (`status='completed'`, `progression_state='completed'`) with a
+   * winner recorded (the winning participant's primary member user id, the SAME contract
+   * `bindAwardsForBracket` expects). No side effects; idempotent; never guesses.
+   */
+  private async resolveBracketChampionUserId(tournamentId: number): Promise<number | null> {
+    const matches = await tournamentRepository.findMatches(tournamentId);
+    if (!matches || matches.length === 0) return null;
+
+    const finalSlots: TournamentMatch[] = [];
+    for (const m of matches) {
+      const meta = this.parseProgressionMeta(m);
+      if (!meta || meta.is_bracket !== true || meta.bye === true) continue;
+      if (meta.target_round == null && meta.target_bracket_position == null) {
+        finalSlots.push(m);
+      }
+    }
+    if (finalSlots.length !== 1) return null; // 0 or ambiguous → fail closed
+    const finalSlot = finalSlots[0];
+    if (String(finalSlot.status) !== 'completed' || String(finalSlot.progression_state) !== 'completed') return null;
+    if (finalSlot.winner_id == null) return null;
+    return Number(finalSlot.winner_id);
   }
 
   async register(
