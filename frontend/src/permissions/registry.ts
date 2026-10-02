@@ -737,6 +737,13 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'tournament.publish', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Publish Tournament', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
   { permissionKey: 'tournament.register', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Register Player', componentPath: 'pages/admin/tournament/TournamentDetailPage.tsx' },
   { permissionKey: 'tournament.manage', moduleSlug: 'tournament', elementType: 'action', elementLabel: 'Manage Groups/Fixtures/Bracket', componentPath: 'pages/admin/tournament/TournamentDetailPage.tsx' },
+  // G11.20 — Competition Category Management (organisation-scoped management UI).
+  // The list/read surface reuses the EXISTING `org.tournaments.view` key so the
+  // frontend gate matches the backend `requireOrgScopedPermission('org.tournaments.view')`
+  // guard exactly; only the three state-changing actions need new keys.
+  { permissionKey: 'tournament.competition.create', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Create Competition Category', componentPath: 'components/tournaments/CompetitionManager.tsx' },
+  { permissionKey: 'tournament.competition.update', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Edit Competition Category', componentPath: 'components/tournaments/CompetitionManager.tsx' },
+  { permissionKey: 'tournament.competition.deactivate', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Deactivate Competition Category', componentPath: 'components/tournaments/CompetitionManager.tsx' },
   { permissionKey: 'tournament.result.manage', moduleSlug: 'tournament', elementType: 'action', elementLabel: 'Manage Match Results', componentPath: 'pages/admin/tournament/TournamentMatchesPage.tsx' },
   { permissionKey: 'tournament.dashboard.view', moduleSlug: 'tournament', elementType: 'page', elementLabel: 'Tournament Dashboard', componentPath: 'pages/admin/tournament/TournamentDashboardPage.tsx' },
   { permissionKey: 'sidebar.tournament', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Section', componentPath: 'components/layout/AdminSidebar.tsx' },

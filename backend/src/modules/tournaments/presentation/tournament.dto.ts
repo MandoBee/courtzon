@@ -303,6 +303,46 @@ export const CompetitionVenueSchema = z.object({
   venue_override: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
+// ── G11.20 — Competition Category Management ────────────────────────────────
+// A competition category owns its own fee, currency, capacity, eligibility and
+// bracket configuration. `match_format_id` / `rule_set_id` are validated against
+// the real configuration tables in CompetitionService (never trusted raw), and
+// the sport + bracket type are inherited from the tournament when omitted so a
+// new category is always internally consistent with its parent tournament.
+
+const competitionCategoryEnum = z.enum(['singles', 'doubles', 'team']);
+const competitionPriceTypeEnum = z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']);
+const competitionAgeModeEnum = z.enum(['open', 'categories']);
+
+export const CreateCompetitionSchema = z.object({
+  competition_type: competitionCategoryEnum,
+  name: z.string().min(1).max(200),
+  match_format_id: z.coerce.number().int().positive().nullable().optional(),
+  rule_set_id: z.coerce.number().int().positive().nullable().optional(),
+  bracket_type_id: z.coerce.number().int().positive().nullable().optional(),
+  sport_id: z.coerce.number().int().positive().nullable().optional(),
+  entry_fee: z.coerce.number().min(0).max(9999999).optional(),
+  registration_fee: z.coerce.number().min(0).max(9999999).optional(),
+  currency_code: z.string().length(3).toUpperCase().optional(),
+  price_type: competitionPriceTypeEnum.optional(),
+  max_participants: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  min_participants: z.coerce.number().int().min(2).max(100000).optional(),
+  registration_payment_methods: z.array(z.string().min(1).max(40)).max(10).nullable().optional(),
+  waitlist_enabled: z.boolean().optional(),
+  age_mode: competitionAgeModeEnum.nullable().optional(),
+  age_category_ids: z.array(z.coerce.number().int().positive()).max(100).nullable().optional(),
+  gender_categories: z.array(z.string().min(1).max(40)).max(20).nullable().optional(),
+  level_ids: z.array(z.coerce.number().int().positive()).max(100).nullable().optional(),
+});
+
+/** PATCH semantics: every field optional, but `name` / `competition_type` cannot be blanked. */
+export const UpdateCompetitionSchema = CreateCompetitionSchema.partial();
+
+export const DeactivateCompetitionSchema = z.object({
+  /** Explicit acknowledgement is required — the operation cascades, so it is guarded server-side too. */
+  confirm: z.boolean().optional().default(false),
+});
+
 /** Group 5 — manual placement (swap). `override` confirms a seeding-rule violation explicitly. */
 export const MoveParticipantSchema = z.object({
   participant_id: z.number().int().positive(),
@@ -318,12 +358,25 @@ export const WithdrawParticipantSchema = z.object({
 /** Group 6 — promote the next waitlisted participant (payment follows Group 3). */
 export const PromoteWaitlistSchema = z.object({
   payment_method: z.enum(['cash', 'card']).optional(),
+  /**
+   * G11.20 — the competition to promote INTO. Required as soon as the tournament
+   * owns more than one competition; the server always re-validates that it
+   * belongs to this tournament and that the participant's own competition
+   * matches (a client id is never trusted on its own).
+   */
+  competition_id: z.coerce.number().int().positive().optional(),
 });
 
 /** Group 6 — pre-start replacement of a withdrawn participant by a waitlisted one. */
 export const ReplaceParticipantSchema = z.object({
   replacement_participant_id: z.number().int().positive(),
   payment_method: z.enum(['cash', 'card']).optional(),
+  /**
+   * G11.20 — the withdrawn participant's competition. The replacement must come
+   * from the SAME competition, so the two ids can never be mixed across
+   * categories (validated server-side against both participants).
+   */
+  competition_id: z.coerce.number().int().positive().optional(),
 });
 
 // ── Group 7 — pair/team participants, members & player replacement requests ──

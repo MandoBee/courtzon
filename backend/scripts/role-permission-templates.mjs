@@ -152,6 +152,19 @@ function canManageTournaments(templateSlug, permissionKey) {
     && (permissionKey === 'tournaments.create' || permissionKey.startsWith('tournaments.create.'));
 }
 
+// ── G11.20 — Competition Category Management ──────────────────────────────
+// `tournament.competition.*` sits inside the ADMIN_ONLY_PREFIXES `tournament.`
+// family, so without an explicit grant NO role would ever receive it and the
+// management routes would 403 for everyone. The grant is deliberately scoped to
+// the same tournament-admin roles that already hold `org.tournaments.manage`
+// (the capability these routes extend) — never opened to players, sellers or
+// operational roles.
+const TOURNAMENT_COMPETITION_MANAGE_ROLES = new Set(['org-admin', 'master-admin']);
+function canManageTournamentCompetitions(templateSlug, permissionKey) {
+  return TOURNAMENT_COMPETITION_MANAGE_ROLES.has(templateSlug)
+    && permissionKey.startsWith('tournament.competition.');
+}
+
 // ── Group 1C — platform Tournament Admin Workbench (master-admin navigation) ──
 // master-admin is a genuine platform ADMIN; it must be able to REACH the existing
 // Tournament Admin Workbench screens (dashboard / list / matches / bracket-types)
@@ -691,6 +704,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
     if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (canManageTournaments(templateSlug, permissionKey)) return true;
+    if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -772,6 +786,9 @@ if (templateSlug === 'master-admin') {
     // Group 5B UAT — master-admin is a genuine ADMIN role that manages org
     // tournaments; it receives the shared create-screen field permissions.
     if (canManageTournaments(templateSlug, permissionKey)) return true;
+    // G11.20 — competition category management extends the org.tournaments.manage
+    // capability, so the same tournament-admin roles receive the keys.
+    if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
     // Group 1C — master-admin reaches the existing Tournament Admin Workbench
     // through normal navigation (sidebar keys) and passes its route guards
     // (tournament.* + admin-tournaments.view). Explicit grant BEFORE the

@@ -5,7 +5,7 @@ import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../../permissions/Can';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
-import { tournamentParticipantApi, orgTournamentParticipantApi } from '../../../services/tournament';
+import { tournamentApi, tournamentParticipantApi, orgTournamentParticipantApi } from '../../../services/tournament';
 import { getErrorMessage } from '../../../utils/errors';
 
 export type TournamentParticipantsContextMode = 'admin' | 'org';
@@ -47,7 +47,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   const wrap = (fn: (...a: any[]) => any, ...a: any[]) => (isOrg && orgId ? fn(orgId, ...a) : fn(...a));
 
   const [seedTarget, setSeedTarget] = useState<{ participantId: number; seedNumber: string; source: 'rating' | 'manual'; reason: string } | null>(null);
-  const [replaceTarget, setReplaceTarget] = useState<{ withdrawnId: number; replacementId: number } | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<{ withdrawnId: number; replacementId: number; competitionId?: number | null } | null>(null);
   // Group 7 state
   const [createTarget, setCreateTarget] = useState<{ type: 'pair' | 'team' } | null>(null);
   const [addMemberTarget, setAddMemberTarget] = useState<{ participantId: number } | null>(null);
@@ -71,11 +71,28 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
     qc.invalidateQueries({ queryKey: ['tournament-replacement-requests', tournamentId] });
   };
 
+  // G11.20 — the waitlist is competition-scoped: each entry carries its category,
+  // the operator can filter to one competition, and "Promote Next" always targets
+  // the selected competition explicitly (never an arbitrary one).
+  const [waitlistCompetition, setWaitlistCompetition] = useState<number | ''>('');
+
   const { data: waitlistData } = useQuery({
-    queryKey: ['tournament-waitlist', tournamentId],
-    queryFn: () => wrap(api.getWaitlist, tournamentId),
+    queryKey: ['tournament-waitlist', tournamentId, waitlistCompetition],
+    queryFn: () => wrap(api.getWaitlist, tournamentId, waitlistCompetition === '' ? null : waitlistCompetition),
   });
   const waitlist = Array.isArray(waitlistData) ? waitlistData : [];
+
+  // The competition the "Promote Next" action will target. When the tournament
+  // owns more than one competition the operator MUST choose — the server rejects
+  // an ambiguous promotion rather than filling an arbitrary category.
+  const [promoteCompetition, setPromoteCompetition] = useState<number | ''>('');
+  const competitions = useQuery({
+    queryKey: ['tournament-competitions', tournamentId],
+    queryFn: () => tournamentApi.listCompetitions(tournamentId),
+    enabled: isOrg ? Boolean(orgId) : true,
+  });
+  const competitionList: any[] = Array.isArray(competitions.data) ? competitions.data : [];
+  const needsCompetitionChoice = competitionList.length > 1;
 
   const { data: replacementData } = useQuery({
     queryKey: ['tournament-replacement-requests', tournamentId],
@@ -90,13 +107,13 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   });
 
   const promote = useMutation({
-    mutationFn: () => wrap(api.promoteNextWaitlisted, tournamentId),
+    mutationFn: () => wrap(api.promoteNextWaitlisted, tournamentId, undefined, promoteCompetition === '' ? null : promoteCompetition),
     onSuccess: () => { showToast(t('tournaments.waitlist_promoted', 'Waitlisted participant promoted'), 'success'); invalidate(); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const replace = useMutation({
-    mutationFn: () => wrap(api.replaceParticipant, tournamentId, replaceTarget!.withdrawnId, replaceTarget!.replacementId),
+    mutationFn: () => wrap(api.replaceParticipant, tournamentId, replaceTarget!.withdrawnId, replaceTarget!.replacementId, undefined, replaceTarget!.competitionId ?? null),
     onSuccess: () => { showToast(t('tournaments.participant_replaced', 'Participant replaced'), 'success'); setReplaceTarget(null); invalidate(); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
@@ -317,12 +334,21 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
                           Withdraw
                         </button>
                       )}
-                      {p.status === 'withdrawn' && waitlist.length > 0 && (
-                        <button onClick={() => setReplaceTarget({ withdrawnId: p.id, replacementId: waitlist[0].id })}
-                          className="text-xs text-[var(--color-primary)] hover:underline">
-                          Replace
-                        </button>
-                      )}
+                      {/* G11.20 — the replacement must come from the SAME competition as the withdrawn
+                          participant, so the candidate list is filtered to that competition
+                          (the server enforces this too and never trusts the client id). */}
+                      {p.status === 'withdrawn' && (() => {
+                        const candidates = waitlist.filter((w: any) =>
+                          competitionList.length <= 1 || w.competition_id == null || p.competition_id == null
+                            ? true
+                            : Number(w.competition_id) === Number(p.competition_id));
+                        return candidates.length > 0 ? (
+                          <button onClick={() => setReplaceTarget({ withdrawnId: p.id, replacementId: candidates[0].id, competitionId: candidates[0].competition_id ?? p.competition_id ?? null })}
+                            className="text-xs text-[var(--color-primary)] hover:underline">
+                            Replace
+                          </button>
+                        ) : null;
+                      })()}
                     </Can>
                   </td>
                 </tr>
@@ -395,29 +421,81 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
         )}
       </div>
 
-      {/* Group 6 — FIFO waitlist */}
+      {/* Group 6 — FIFO waitlist (G11.20: competition-scoped) */}
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-hidden">
-        <div className="flex items-center justify-between p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4">
           <h2 className="text-sm font-semibold">{t('tournaments.waitlist', 'Waitlist')} ({waitlist.length})</h2>
-          <Can permission={managePerm}>
-            <button onClick={() => promote.mutate()} disabled={promote.isPending || waitlist.length === 0}
-              className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white disabled:opacity-50">
-              {t('tournaments.promote_next', 'Promote Next')}
-            </button>
-          </Can>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Filter the waitlist to a single competition category. */}
+            {competitionList.length > 1 && (
+              <select
+                aria-label={t('tournaments.competition.filter', 'Filter by competition')}
+                className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs text-[var(--color-text)]"
+                value={waitlistCompetition}
+                onChange={(e) => setWaitlistCompetition(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <option value="">{t('tournaments.competition.all', 'All competitions')}</option>
+                {competitionList.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+            <Can permission={managePerm}>
+              <button
+                onClick={() => promote.mutate()}
+                // G11.20 — with several categories the operator must pick the target
+                // competition first; the server would reject an ambiguous promotion.
+                disabled={promote.isPending || waitlist.length === 0 || (needsCompetitionChoice && promoteCompetition === '')}
+                title={needsCompetitionChoice && promoteCompetition === ''
+                  ? t('tournaments.competition.pick_first', 'Select the competition to promote into')
+                  : undefined}
+                className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white disabled:opacity-50">
+                {t('tournaments.promote_next', 'Promote Next')}
+              </button>
+            </Can>
+          </div>
         </div>
+        {/* Explicit competition target for the promotion. */}
+        {needsCompetitionChoice && (
+          <div className="px-4 pb-3">
+            <label className="text-[11px] text-[var(--color-text-muted)] mr-2" htmlFor="promote-competition">
+              {t('tournaments.competition.promote_into', 'Promote into')}
+            </label>
+            <select
+              id="promote-competition"
+              className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs text-[var(--color-text)]"
+              value={promoteCompetition}
+              onChange={(e) => setPromoteCompetition(e.target.value === '' ? '' : Number(e.target.value))}
+            >
+              <option value="">{t('tournaments.competition.select', 'Select competition…')}</option>
+              {competitionList.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {waitlist.length === 0 ? (
           <p className="px-4 pb-4 text-xs text-[var(--color-text-muted)]">{t('tournaments.waitlist_empty', 'The waitlist is empty.')}</p>
         ) : (
           <table className="w-full text-sm">
             <thead><tr className="border-b text-xs text-[var(--color-text-muted)]">
-              <th className="text-left px-4 py-3">Order</th><th className="text-left px-4 py-3">Participant</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th>
+              <th className="text-left px-4 py-3">Order</th><th className="text-left px-4 py-3">Participant</th>
+              {/* G11.20 — competition context per waiting entry */}
+              {competitionList.length > 1 && <th className="text-left px-4 py-3">{t('tournaments.competition.column', 'Competition')}</th>}
+              <th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th>
             </tr></thead>
             <tbody>
               {waitlist.map((w: any) => (
                 <tr key={w.id} className="border-b last:border-0">
                   <td className="px-4 py-2 font-bold">#{w.waiting_order ?? w.id}</td>
                   <td className="px-4 py-2">{w.display_name || `Player #${w.player_id}`}</td>
+                  {competitionList.length > 1 && (
+                    <td className="px-4 py-2">
+                      <span className="rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--color-text-muted)]">
+                        {w.competition_name ?? (w.competition_id != null ? `#${w.competition_id}` : '—')}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-4 py-2 capitalize">{w.status}</td>
                   <td className="px-4 py-2">unpaid</td>
                 </tr>

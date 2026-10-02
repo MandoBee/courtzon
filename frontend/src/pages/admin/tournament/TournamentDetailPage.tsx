@@ -10,6 +10,7 @@ import { Modal } from '../../../components/ui/Modal';
 import { GeneratedRules } from '../../../components/tournaments/GeneratedRules';
 import { PrizeList } from '../../../components/tournaments/PrizeList';
 import SponsorList from '../../../components/tournaments/SponsorList';
+import CompetitionManager from '../../../components/tournaments/CompetitionManager';
 import { tournamentApi, orgTournamentApi, tournamentRefundApi } from '../../../services/tournament';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -214,6 +215,16 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
             </button>
           ))}
         </div>
+
+        {/* G11.20 — Competition Category Management. Org-scoped only: the management
+            routes are organisation-scoped and fail closed on the tournament's owning org,
+            so the panel is rendered only when that org is known. Each action inside is
+            individually permission-gated (create/update/deactivate). */}
+        {isOrg && orgId && (
+          <Can permission="org.tournaments.view">
+            <CompetitionManager orgId={orgId} tournamentId={tournamentId} />
+          </Can>
+        )}
 
         {/* G11.3 — org official: pending refund requests (financial.reconcile) */}
         {isOrg && (

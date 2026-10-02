@@ -432,8 +432,9 @@ export async function listOrgWaitlistHandler(request: FastifyRequest, reply: Fas
   const orgId = getOrgId(request);
   const { id } = request.params as any;
   await assertOrgOwnsTournament(orgId, Number(id));
+  const { competition_id } = request.query as any;
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send({ data: await participantDrawService.listWaitingParticipants(Number(id)) });
+  return reply.send({ data: await participantDrawService.listWaitingParticipants(Number(id), competition_id != null && competition_id !== '' ? Number(competition_id) : null) });
 }
 
 export async function withdrawOrgParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -455,7 +456,7 @@ export async function promoteOrgWaitlistHandler(request: FastifyRequest, reply: 
   const { PromoteWaitlistSchema } = await import('./tournament.dto.js');
   const body = PromoteWaitlistSchema.parse(request.body);
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send(await participantDrawService.promoteNextWaitlisted(Number(id), userId, body.payment_method));
+  return reply.send(await participantDrawService.promoteNextWaitlisted(Number(id), userId, body.payment_method, body.competition_id));
 }
 
 export async function replaceOrgParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -466,7 +467,7 @@ export async function replaceOrgParticipantHandler(request: FastifyRequest, repl
   const { ReplaceParticipantSchema } = await import('./tournament.dto.js');
   const body = ReplaceParticipantSchema.parse(request.body);
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send(await participantDrawService.replaceParticipant(Number(id), Number(participantId), body.replacement_participant_id, userId, body.payment_method));
+  return reply.send(await participantDrawService.replaceParticipant(Number(id), Number(participantId), body.replacement_participant_id, userId, body.payment_method, body.competition_id));
 }
 
 // ── Group 7 — org-scoped pair/team participants, members & replacement requests ──
@@ -516,6 +517,86 @@ export async function updateOrgCompetitionVenueHandler(request: FastifyRequest, 
     afterState: { tournament_id: Number(id), venue_override: override == null ? null : { ...override } },
   });
   return reply.send({ ok: true, venue_override: override });
+}
+
+// ── G11.20 — Competition Category Management (org-scoped) ──────────────────
+// Tenancy shape is deliberately STRICTER than the public
+// `GET /tournaments/:id/competitions` read route: every handler below
+// (a) asserts the tournament belongs to THIS organisation, then
+// (b) re-resolves the competition with `resolveCompetition(..., { organisationId })`
+//     so a competition id from another tournament or another organisation fails
+//     closed with NotFound. The client-supplied id is never trusted alone.
+
+/** G11.20 — list every competition category of a tournament with management metadata. */
+export async function listOrgCompetitionsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { competitionService } = await import('../application/competition.service.js');
+  const competitions = await competitionService.listCompetitions(Number(id));
+  const data = [];
+  for (const c of competitions) {
+    data.push(await competitionService.describeForManagement(Number(id), Number(c.id), orgId));
+  }
+  return reply.send({ data });
+}
+
+/** G11.20 — create an additional competition category (never the default). */
+export async function createOrgCompetitionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { CreateCompetitionSchema } = await import('./tournament.dto.js');
+  const body = CreateCompetitionSchema.parse(request.body);
+  const { competitionService } = await import('../application/competition.service.js');
+  const created = await competitionService.createCompetition(Number(id), orgId, userId, {
+    competition_type: body.competition_type,
+    name: body.name,
+    match_format_id: body.match_format_id,
+    rule_set_id: body.rule_set_id,
+    bracket_type_id: body.bracket_type_id,
+    sport_id: body.sport_id,
+    entry_fee: body.entry_fee,
+    registration_fee: body.registration_fee,
+    currency_code: body.currency_code,
+    price_type: body.price_type,
+    max_participants: body.max_participants,
+    min_participants: body.min_participants,
+    registration_payment_methods: body.registration_payment_methods,
+    waitlist_enabled: body.waitlist_enabled,
+    age_mode: body.age_mode,
+    age_category_ids: body.age_category_ids,
+    gender_categories: body.gender_categories,
+    level_ids: body.level_ids,
+  });
+  return reply.status(201).send(await competitionService.describeForManagement(Number(id), Number(created.id), orgId));
+}
+
+/** G11.20 — update a competition category's configuration. */
+export async function updateOrgCompetitionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, competitionId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { UpdateCompetitionSchema } = await import('./tournament.dto.js');
+  const body = UpdateCompetitionSchema.parse(request.body);
+  const { competitionService } = await import('../application/competition.service.js');
+  await competitionService.updateCompetition(Number(id), Number(competitionId), orgId, userId, body as any);
+  return reply.send(await competitionService.describeForManagement(Number(id), Number(competitionId), orgId));
+}
+
+/** G11.20 — deactivate (guarded removal of) a competition category. */
+export async function deactivateOrgCompetitionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, competitionId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { DeactivateCompetitionSchema } = await import('./tournament.dto.js');
+  DeactivateCompetitionSchema.parse(request.body ?? {});
+  const { competitionService } = await import('../application/competition.service.js');
+  const result = await competitionService.deactivateCompetition(Number(id), Number(competitionId), orgId, userId);
+  return reply.send(result);
 }
 
 export async function listOrgParticipantMembersHandler(request: FastifyRequest, reply: FastifyReply) {

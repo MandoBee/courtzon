@@ -179,7 +179,7 @@ describe('Group 6 — WAITLIST PROMOTION (FIFO)', () => {
   it('3/6. promotion selects the earliest eligible waiting participant (FIFO head)', async () => {
     repo.findWaitlistHead.mockResolvedValue(participant(2, { status: 'waiting', waiting_order: 1, registration_id: 2 }));
     const p = await svc.promoteNextWaitlisted(1, 42);
-    expect(repo.findWaitlistHead).toHaveBeenCalledWith(1, expect.anything());
+    expect(repo.findWaitlistHead).toHaveBeenCalledWith(1, null, expect.anything());
     expect(repo.updateParticipantStatus).toHaveBeenCalledWith(2, 'active', expect.anything());
     expect(repo.updateParticipantWaitingOrder).toHaveBeenCalledWith(2, null, expect.anything());
     expect(tRepo.updateRegistrationStatus).toHaveBeenCalledWith(2, 'registered', undefined, expect.anything());

@@ -163,33 +163,86 @@ export class ParticipantDrawRepository {
     return Number(rows[0]?.next_order ?? 1);
   }
 
-  /** Earliest eligible waiting participant (FIFO head). */
-  async findWaitlistHead(tournamentId: number, conn?: import('mysql2/promise').PoolConnection): Promise<TournamentParticipant | null> {
+  /**
+   * Earliest eligible waiting participant (FIFO head).
+   *
+   * G11.20 — `competitionId` scopes the head to ONE competition. Passing `null`
+   * keeps the pre-G11.20 tournament-wide behaviour (correct for a single
+   * competition, and for legacy rows that carry no competition id). Scoping is
+   * what prevents a promotion from filling a DIFFERENT competition than the one
+   * the operator targeted — the latent overfill defect discovered in G11.20
+   * discovery. FIFO order is still strictly ascending, so per-competition FIFO is
+   * preserved (the global monotonic `waiting_order` counter orders consistently
+   * inside every competition subset).
+   */
+  async findWaitlistHead(
+    tournamentId: number,
+    competitionId?: number | null,
+    conn?: import('mysql2/promise').PoolConnection,
+  ): Promise<TournamentParticipant | null> {
     const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const scoped = competitionId != null;
     const [rows] = await db.query<RowData>(
-      "SELECT * FROM tournament_participants WHERE tournament_id = ? AND status = 'waiting' ORDER BY waiting_order ASC, id ASC LIMIT 1",
-      [tournamentId],
+      `SELECT * FROM tournament_participants
+       WHERE tournament_id = ? AND status = 'waiting'
+         ${scoped ? 'AND competition_id = ?' : ''}
+       ORDER BY waiting_order ASC, id ASC LIMIT 1`,
+      scoped ? [tournamentId, competitionId] : [tournamentId],
     );
     return rows.length ? (rows[0] as TournamentParticipant) : null;
   }
 
-  async listWaitingParticipants(tournamentId: number): Promise<Array<TournamentParticipant & { display_name?: string | null }>> {
+  /**
+   * G11.20 — the FIFO waitlist WITH its competition context, optionally filtered
+   * to one competition. Returns the category name/type alongside each entry so
+   * the UI can group by competition without a second round-trip and the operator
+   * can see which category each promotion will fill.
+   */
+  async listWaitingParticipants(
+    tournamentId: number,
+    competitionId?: number | null,
+  ): Promise<Array<TournamentParticipant & {
+    display_name?: string | null;
+    competition_name?: string | null;
+    competition_type?: string | null;
+  }>> {
+    const scoped = competitionId != null;
     const [rows] = await getPool().query<RowData>(
       `SELECT p.*,
               (SELECT u.full_name FROM users u
-                WHERE u.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(p.member_user_ids, '$[0]')) AS UNSIGNED)) AS display_name
+                WHERE u.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(p.member_user_ids, '$[0]')) AS UNSIGNED)) AS display_name,
+              c.name AS competition_name,
+              c.competition_type AS competition_type
        FROM tournament_participants p
+       LEFT JOIN tournament_competitions c ON c.id = p.competition_id
        WHERE p.tournament_id = ? AND p.status = 'waiting'
+         ${scoped ? 'AND p.competition_id = ?' : ''}
        ORDER BY p.waiting_order ASC, p.id ASC`,
-      [tournamentId],
+      scoped ? [tournamentId, competitionId] : [tournamentId],
     );
-    return rows as Array<TournamentParticipant & { display_name?: string | null }>;
+    return rows as Array<TournamentParticipant & {
+      display_name?: string | null; competition_name?: string | null; competition_type?: string | null;
+    }>;
   }
 
   async countWaitingParticipants(tournamentId: number): Promise<number> {
     const [rows] = await getPool().query<RowData>(
       "SELECT COUNT(*) AS c FROM tournament_participants WHERE tournament_id = ? AND status = 'waiting'",
       [tournamentId],
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  /** G11.20 — waiting count within ONE competition (waitlist capacity is competition-scoped). */
+  async countWaitingParticipantsByCompetition(
+    tournamentId: number,
+    competitionId: number,
+    conn?: import('mysql2/promise').PoolConnection,
+  ): Promise<number> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      "SELECT COUNT(*) AS c FROM tournament_participants WHERE tournament_id = ? AND competition_id = ? AND status = 'waiting'",
+      [tournamentId, competitionId],
     );
     return Number(rows[0]?.c ?? 0);
   }

@@ -8,6 +8,7 @@ import type {
   TournamentSeed,
   TournamentDraw,
   TournamentDrawEntry,
+  TournamentCompetition,
   DrawImpact,
 } from '../domain/tournament-aggregate.js';
 import { seededShuffle } from '../domain/tournament-aggregate.js';
@@ -580,10 +581,21 @@ export class ParticipantDrawService {
 
   // ── Group 6 — Participant lifecycle: withdrawal / waitlist / promotion / replacement ──
 
-  /** List the FIFO waitlist (earliest first). */
-  async listWaitingParticipants(tournamentId: number): Promise<Array<TournamentParticipant & { display_name?: string | null }>> {
+  /**
+   * G11.20 — the FIFO waitlist WITH competition context.
+   * `competitionId` filters to a single category; omitting it returns the whole
+   * tournament waitlist (unchanged pre-G11.20 behavior for single-competition
+   * tournaments) with each entry's competition name/type attached so the UI can
+   * group without a second request.
+   */
+  async listWaitingParticipants(
+    tournamentId: number,
+    competitionId?: number | null,
+  ): Promise<Array<TournamentParticipant & {
+    display_name?: string | null; competition_name?: string | null; competition_type?: string | null;
+  }>> {
     await this.syncParticipants(tournamentId);
-    return participantDrawRepository.listWaitingParticipants(tournamentId);
+    return participantDrawRepository.listWaitingParticipants(tournamentId, competitionId);
   }
 
   /**
@@ -673,23 +685,63 @@ export class ParticipantDrawService {
   }
 
   /**
+   * Resolve the competition a waitlist promotion targets, ALWAYS server-side.
+ *
+   * A client-supplied `competition_id` is never trusted on its own: it must belong
+   * to THIS tournament (`resolveCompetition` fails closed with NotFound). When it
+   * is omitted, `resolveRegistrationCompetition` supplies backward compatibility
+   * — a single-competition tournament still promotes into its only competition,
+   * while a multi-competition tournament fails clearly ("select one") instead of
+   * silently filling an arbitrary category.
+   */
+  private async resolvePromotionCompetition(
+    tournamentId: number,
+    competitionId?: number | null,
+  ): Promise<TournamentCompetition | null> {
+    if (competitionId != null) {
+      return competitionService.resolveCompetition(tournamentId, Number(competitionId));
+    }
+    return competitionService.resolveRegistrationCompetition(tournamentId, undefined);
+  }
+
+  /**
    * Promote the earliest eligible waitlisted participant (FIFO). ATOMIC: the
    * tournament row is locked FOR UPDATE so two administrators can never promote
    * the same slot. Promotion produces an ACTIVE participant with a pending
    * (unpaid) registration; payment follows the existing Group 3 policy when a
    * payment method is supplied.
+   *
+   * G11.20 — the promotion is COMPETITION-SCOPED on three axes:
+   *   1. the FIFO head is drawn from the target competition only, so a promotion
+   *      can never fill a different category than the operator targeted;
+   *   2. capacity is RE-CHECKED inside the same FOR UPDATE transaction, so a
+   *      competition that filled up since the operator last looked is never
+   *      overfilled (the transaction rolls back and no state changes);
+   *   3. the entry fee and currency come from the promoted participant's OWN
+   *      resolved competition — never the tournament-level fallback — so a
+   *      competition with its own price is charged correctly.
    */
   async promoteNextWaitlisted(
     tournamentId: number,
     actorId: number,
     paymentMethod?: string,
+    competitionId?: number | null,
   ): Promise<(TournamentParticipant & { payment?: Record<string, unknown> | null }) | null> {
     const t = await this.getTournament(tournamentId);
     if (await this.hasTournamentStarted(tournamentId)) {
       throw new ConflictError('Tournament has started — waitlist promotion is not allowed', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
     }
+    // G11.20 — resolve + validate the target competition BEFORE any write, and
+    // validate the payment method against the COMPETITION's allowed methods
+    // (competition-first, tournament fallback — same policy as registration).
+    const targetCompetition = await this.resolvePromotionCompetition(tournamentId, competitionId);
     if (paymentMethod) {
-      const effective = await tournamentService.resolveEffectiveRegistrationPaymentMethods(t);
+      const effective = await tournamentService.resolveEffectiveRegistrationPaymentMethods({
+        organisation_id: t.organisation_id,
+        registration_payment_methods: targetCompetition
+          ? competitionService.registrationPaymentMethods(targetCompetition, t)
+          : t.registration_payment_methods,
+      });
       if (!effective.includes(paymentMethod)) {
         throw new ConflictError(`Payment method "${paymentMethod}" is not accepted`, ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD);
       }
@@ -699,10 +751,18 @@ export class ParticipantDrawService {
     let headId: number | null = null;
     let registrationId: number | null = null;
     let priorOrder: number | null = null;
+    // G11.20 — the participant's AUTHORITATIVE competition (its own row value,
+    // falling back to the resolved target for legacy rows with no competition id).
+    // Every fee/currency decision below uses this, not the raw client input.
+    let promotedCompetitionId: number | null = null;
     try {
       await conn.beginTransaction();
       await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
-      const head = await participantDrawRepository.findWaitlistHead(tournamentId, conn);
+      const head = await participantDrawRepository.findWaitlistHead(
+        tournamentId,
+        targetCompetition?.id ?? null,
+        conn,
+      );
       if (!head) {
         await conn.rollback();
         return null;
@@ -729,6 +789,26 @@ export class ParticipantDrawService {
           );
         }
       }
+      // G11.20 — CAPACITY RE-CHECK inside the existing FOR UPDATE transaction.
+      // Reading the active count under the same row lock that serialises
+      // promotions is what makes "never promote into a full competition" true
+      // even under concurrent administrator requests.
+      const headCompetitionId = head.competition_id != null ? Number(head.competition_id) : (targetCompetition?.id ?? null);
+      promotedCompetitionId = headCompetitionId;
+      if (headCompetitionId != null) {
+        const headCompetition = await competitionService.resolveCompetition(tournamentId, headCompetitionId);
+        const cap = competitionService.maxParticipants(headCompetition, t);
+        if (cap > 0) {
+          const activeNow = await participantDrawRepository.countParticipantsByCompetition(tournamentId, headCompetitionId, conn);
+          if (activeNow >= cap) {
+            throw new ConflictError(
+              `This competition is already at capacity (${activeNow}/${cap}) — a participant cannot be promoted into it`,
+              ErrorCodes.TOURNAMENT_CAPACITY_FULL,
+              { competition_id: headCompetitionId, active: activeNow, capacity: cap },
+            );
+          }
+        }
+      }
       await participantDrawRepository.updateParticipantStatus(head.id!, 'active', conn);
       await participantDrawRepository.updateParticipantWaitingOrder(head.id!, null, conn);
       if (head.registration_id != null) {
@@ -747,9 +827,30 @@ export class ParticipantDrawService {
     }
 
     if (headId == null) return null;
-    const paymentRequired = Number(t.entry_fee ?? 0) > 0;
+
+    // G11.20 — F3: the entry fee and currency come from the participant's OWN
+    // resolved competition. The head was SELECTed scoped to `targetCompetition`,
+    // so the resolved target IS the head's competition on the normal path (no
+    // second read, and no chance of a spurious fail-closed). The tournament-level
+    // `t.entry_fee` fallback applies ONLY when no competition could be resolved
+    // (legacy rows), which reproduces the exact pre-G11.20 amount in that case.
+    const promotedCompetition = (targetCompetition != null && Number(targetCompetition.id) === promotedCompetitionId)
+      ? targetCompetition
+      : (promotedCompetitionId != null
+        ? await competitionService.resolveCompetition(tournamentId, promotedCompetitionId)
+        : null);
+    const entryFeeForPayment = promotedCompetition
+      ? competitionService.entryFee(promotedCompetition, t)
+      : Number(t.entry_fee ?? 0);
+    const currencyForPayment = promotedCompetition
+      ? competitionService.currency(promotedCompetition, t)
+      : (t.currency_code ?? 'EGP');
+    const paymentRequired = entryFeeForPayment > 0;
     const payment = paymentRequired && paymentMethod && registrationId != null
-      ? await this.settleRegistrationPayment(registrationId, headId, t, paymentMethod)
+      ? await this.settleRegistrationPayment(registrationId, headId, t, paymentMethod, {
+        amount: entryFeeForPayment,
+        currency: currencyForPayment,
+      })
       : null;
 
     await recordAudit({
@@ -758,11 +859,17 @@ export class ParticipantDrawService {
       entityType: 'tournament_participant',
       entityId: headId,
       beforeState: { status: 'waiting', waiting_order: priorOrder },
-      afterState: { status: 'active', registration_id: registrationId },
+      afterState: {
+        status: 'active',
+        registration_id: registrationId,
+        competition_id: promotedCompetitionId,
+        entry_fee: entryFeeForPayment,
+        currency: currencyForPayment,
+      },
     });
-    await this.emitLifecycle('tournament:waitlist-updated', { tournamentId });
+    await this.emitLifecycle('tournament:waitlist-updated', { tournamentId, competitionId: promotedCompetitionId });
     await this.emitLifecycle('tournament:participant-updated', { tournamentId, participantId: headId, status: 'active' });
-    await this.emitLifecycle('tournament:waitlist-promoted', { tournamentId, userId: (await this.participantUserId(headId)), participantId: headId, name: t.name });
+    await this.emitLifecycle('tournament:waitlist-promoted', { tournamentId, userId: (await this.participantUserId(headId)), participantId: headId, name: t.name, competitionId: promotedCompetitionId });
     const promoted = await participantDrawRepository.findParticipantById(headId);
     return { ...promoted!, payment };
   }
@@ -772,6 +879,11 @@ export class ParticipantDrawService {
    * participant B. B keeps its OWN participant identity (A's ID is never reused);
    * A's registration/seed/draw history is preserved; A's seed is NOT transferred.
    * Atomic promotion of B + draw impact reported.
+   *
+   * G11.20 — the replacement is COMPETITION-SCOPED. B must belong to the SAME
+   * competition as A (a replacement may never move a slot across categories), and
+   * B's own competition supplies the entry fee and currency for the payment (F3)
+   * instead of the tournament-level fallback.
    */
   async replaceParticipant(
     tournamentId: number,
@@ -779,6 +891,7 @@ export class ParticipantDrawService {
     replacementParticipantId: number,
     actorId: number,
     paymentMethod?: string,
+    competitionId?: number | null,
   ): Promise<{ replacement: TournamentParticipant; payment?: Record<string, unknown> | null; drawImpact: DrawImpact }> {
     const t = await this.getTournament(tournamentId);
     if (await this.hasTournamentStarted(tournamentId)) {
@@ -792,15 +905,50 @@ export class ParticipantDrawService {
     if (replacement.status !== 'waiting') {
       throw new ConflictError('The replacement participant must be on the waitlist', ErrorCodes.TOURNAMENT_INVALID_TRANSITION);
     }
+    // G11.20 — the replacement's target competition is DERIVED from the two
+    // participants, never from the client. A client-supplied `competition_id`,
+    // when present, is only ever VALIDATED against the tournament — it can never
+    // override the derived value, and its absence is NOT an error here (unlike
+    // `promoteNextWaitlisted`, where a head has no competition to derive from).
+    const requested = competitionId != null
+      ? await competitionService.resolveCompetition(tournamentId, Number(competitionId))
+      : null;
+    const withdrawnCompetitionId = withdrawn.competition_id != null ? Number(withdrawn.competition_id) : null;
+    const replacementCompetitionId = replacement.competition_id != null ? Number(replacement.competition_id) : null;
+    if (
+      withdrawnCompetitionId != null
+      && replacementCompetitionId != null
+      && withdrawnCompetitionId !== replacementCompetitionId
+    ) {
+      throw new ConflictError(
+        'The replacement participant must belong to the same competition as the withdrawn participant',
+        ErrorCodes.TOURNAMENT_COMPETITION_TYPE_INVALID,
+        { withdrawn_competition_id: withdrawnCompetitionId, replacement_competition_id: replacementCompetitionId },
+      );
+    }
+    const effectiveCompetitionId = replacementCompetitionId ?? withdrawnCompetitionId ?? requested?.id ?? null;
+    if (requested?.id != null && effectiveCompetitionId != null && requested.id !== effectiveCompetitionId) {
+      throw new NotFoundError('Competition', ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND);
+    }
+    const effectiveCompetition = effectiveCompetitionId != null
+      ? await competitionService.resolveCompetition(tournamentId, effectiveCompetitionId)
+      : null;
     const userId = this.primaryUserId(replacement);
     if (userId != null) {
-      const dup = await participantDrawRepository.findActiveParticipantByPlayer(tournamentId, userId);
+      const dup = effectiveCompetitionId != null
+        ? await participantDrawRepository.findActiveParticipantByPlayerInCompetition(tournamentId, effectiveCompetitionId, userId)
+        : await participantDrawRepository.findActiveParticipantByPlayer(tournamentId, userId);
       if (dup && Number(dup.id) !== Number(replacement.id)) {
         throw new ConflictError('The replacement participant is already active in this tournament', ErrorCodes.TOURNAMENT_REGISTRATION_EXISTS);
       }
     }
     if (paymentMethod) {
-      const effective = await tournamentService.resolveEffectiveRegistrationPaymentMethods(t);
+      const effective = await tournamentService.resolveEffectiveRegistrationPaymentMethods({
+        organisation_id: t.organisation_id,
+        registration_payment_methods: effectiveCompetition
+          ? competitionService.registrationPaymentMethods(effectiveCompetition, t)
+          : t.registration_payment_methods,
+      });
       if (!effective.includes(paymentMethod)) {
         throw new ConflictError(`Payment method "${paymentMethod}" is not accepted`, ErrorCodes.TOURNAMENT_INVALID_PAYMENT_METHOD);
       }
@@ -812,6 +960,21 @@ export class ParticipantDrawService {
     try {
       await conn.beginTransaction();
       await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+      // G11.20 — capacity re-check under the same FOR UPDATE lock, so a
+      // replacement can never push a competition past its maximum.
+      if (effectiveCompetitionId != null && effectiveCompetition != null) {
+        const cap = competitionService.maxParticipants(effectiveCompetition, t);
+        if (cap > 0) {
+          const activeNow = await participantDrawRepository.countParticipantsByCompetition(tournamentId, effectiveCompetitionId, conn);
+          if (activeNow >= cap) {
+            throw new ConflictError(
+              `This competition is already at capacity (${activeNow}/${cap}) — the replacement cannot be admitted`,
+              ErrorCodes.TOURNAMENT_CAPACITY_FULL,
+              { competition_id: effectiveCompetitionId, active: activeNow, capacity: cap },
+            );
+          }
+        }
+      }
       await participantDrawRepository.updateParticipantStatus(replacement.id!, 'active', conn);
       await participantDrawRepository.updateParticipantWaitingOrder(replacement.id!, null, conn);
       if (replacement.registration_id != null) {
@@ -839,9 +1002,22 @@ export class ParticipantDrawService {
       }
     }
 
-    const paymentRequired = Number(t.entry_fee ?? 0) > 0;
+    // G11.20 — F3: the entry fee and currency come from the REPLACEMENT's resolved
+    // competition. The tournament-level value is used ONLY when no competition
+    // could be resolved (legacy rows), which reproduces the exact pre-G11.20
+    // amount in that case.
+    const entryFeeForPayment = effectiveCompetition
+      ? competitionService.entryFee(effectiveCompetition, t)
+      : Number(t.entry_fee ?? 0);
+    const currencyForPayment = effectiveCompetition
+      ? competitionService.currency(effectiveCompetition, t)
+      : (t.currency_code ?? 'EGP');
+    const paymentRequired = entryFeeForPayment > 0;
     const payment = paymentRequired && paymentMethod && registrationId != null
-      ? await this.settleRegistrationPayment(registrationId, replacement.id!, t, paymentMethod)
+      ? await this.settleRegistrationPayment(registrationId, replacement.id!, t, paymentMethod, {
+        amount: entryFeeForPayment,
+        currency: currencyForPayment,
+      })
       : null;
 
     await recordAudit({
@@ -850,7 +1026,7 @@ export class ParticipantDrawService {
       entityType: 'tournament_participant',
       entityId: replacement.id,
       beforeState: { withdrawn_participant_id: withdrawnParticipantId, status: 'waiting' },
-      afterState: { replacement_participant_id: replacement.id, status: 'active', registration_id: registrationId },
+      afterState: { replacement_participant_id: replacement.id, status: 'active', registration_id: registrationId, competition_id: effectiveCompetitionId },
     });
     await this.emitLifecycle('tournament:participant-replaced', { tournamentId, withdrawnParticipantId, replacementParticipantId: replacement.id });
     await this.emitLifecycle('tournament:waitlist-updated', { tournamentId });

@@ -307,6 +307,31 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
     ctrl.updateOrgCompetitionVenueHandler,
   );
+
+  // ── G11.20 — Competition Category Management ────────────────────────────
+  // Fail-closed tenancy shape (assertOrgOwnsTournament + resolveCompetition with
+  // organisationId). These are MANAGEMENT routes and deliberately do NOT mirror
+  // the public `GET /tournaments/:id/competitions` read shape.
+  app.get(
+    '/org/:orgId/tournaments/:id/competitions',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },
+    ctrl.listOrgCompetitionsHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/competitions',
+    { preHandler: [requireOrgScopedPermission('tournament.competition.create')] },
+    ctrl.createOrgCompetitionHandler,
+  );
+  app.patch(
+    '/org/:orgId/tournaments/:id/competitions/:competitionId',
+    { preHandler: [requireOrgScopedPermission('tournament.competition.update')] },
+    ctrl.updateOrgCompetitionHandler,
+  );
+  app.delete(
+    '/org/:orgId/tournaments/:id/competitions/:competitionId',
+    { preHandler: [requireOrgScopedPermission('tournament.competition.deactivate')] },
+    ctrl.deactivateOrgCompetitionHandler,
+  );
   app.post(
     '/org/:orgId/tournaments/:id/matches/:matchId/release-court',
     { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },

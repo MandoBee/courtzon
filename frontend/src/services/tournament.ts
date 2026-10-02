@@ -150,6 +150,19 @@ export const orgTournamentApi = {
   getCommissionConfig: (orgId: number | string) => api.get(`/org/${orgId}/tournaments/commission-config`).then(r => r.data),
   getSportFormats: (orgId: number | string, sportId: number | string, bracketTypeId?: number | string) =>
     api.get(`/org/${orgId}/tournaments/sports/${sportId}/formats`, { params: bracketTypeId ? { bracket_type_id: bracketTypeId } : undefined }).then(r => r.data),
+  // G11.20 — Competition Category Management (org-scoped, fail-closed tenancy).
+  // These are deliberately NOT the public `/tournaments/:id/competitions` read
+  // shape: management needs the raw rows plus tenancy-guarded writes.
+  listCompetitions: (orgId: number | string, tournamentId: number) =>
+    api.get<{ data: any[] }>(`/org/${orgId}/tournaments/${tournamentId}/competitions`).then(r => r.data?.data || []),
+  createCompetition: (orgId: number | string, tournamentId: number, data: any) =>
+    api.post<any>(`/org/${orgId}/tournaments/${tournamentId}/competitions`, data).then(r => r.data),
+  updateCompetition: (orgId: number | string, tournamentId: number, competitionId: number, data: any) =>
+    api.patch<any>(`/org/${orgId}/tournaments/${tournamentId}/competitions/${competitionId}`, data).then(r => r.data),
+  // Deactivation is a guarded removal — the server refuses it while any
+  // registrations/participants/seeds/matches still reference the category.
+  deactivateCompetition: (orgId: number | string, tournamentId: number, competitionId: number) =>
+    api.delete<any>(`/org/${orgId}/tournaments/${tournamentId}/competitions/${competitionId}`).then(r => r.data),
 };
 
 // Group 5B-SR — bracket type configuration (Super Admin management + shared create form)
@@ -191,13 +204,24 @@ export const tournamentParticipantApi = {
   approveDraw: (tournamentId: number) => api.post(`/admin/tournaments/${tournamentId}/draw/approve`).then(r => r.data),
   lockDraw: (tournamentId: number) => api.post(`/admin/tournaments/${tournamentId}/draw/lock`).then(r => r.data),
   // Group 6 — participant lifecycle
-  getWaitlist: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/waitlist`).then(r => r.data),
+  getWaitlist: (tournamentId: number, competitionId?: number | null) =>
+    api.get(`/admin/tournaments/${tournamentId}/waitlist`, {
+      params: competitionId != null ? { competition_id: competitionId } : undefined,
+    }).then(r => r.data),
   withdrawParticipant: (tournamentId: number, participantId: number, reason?: string) =>
     api.post(`/admin/tournaments/${tournamentId}/participants/${participantId}/withdraw`, { reason }).then(r => r.data),
-  promoteNextWaitlisted: (tournamentId: number, paymentMethod?: 'cash' | 'card') =>
-    api.post(`/admin/tournaments/${tournamentId}/waitlist/promote`, paymentMethod ? { payment_method: paymentMethod } : {}).then(r => r.data),
-  replaceParticipant: (tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card') =>
-    api.post(`/admin/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, { replacement_participant_id: replacementParticipantId, payment_method: paymentMethod }).then(r => r.data),
+  // G11.20 — competition-scoped promotion (see the org variant for the rationale).
+  promoteNextWaitlisted: (tournamentId: number, paymentMethod?: 'cash' | 'card', competitionId?: number | null) =>
+    api.post(`/admin/tournaments/${tournamentId}/waitlist/promote`, {
+      payment_method: paymentMethod,
+      competition_id: competitionId ?? undefined,
+    }).then(r => r.data),
+  replaceParticipant: (tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card', competitionId?: number | null) =>
+    api.post(`/admin/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, {
+      replacement_participant_id: replacementParticipantId,
+      payment_method: paymentMethod,
+      competition_id: competitionId ?? undefined,
+    }).then(r => r.data),
   // Group 7 — pair/team participants, members & player replacement requests
   createPairParticipant: (tournamentId: number, data: { name?: string; member_user_ids: number[]; payment_method?: 'cash' | 'card' }) =>
     api.post(`/admin/tournaments/${tournamentId}/participants/pairs`, data).then(r => r.data),
@@ -245,13 +269,26 @@ export const orgTournamentParticipantApi = {
   approveDraw: (orgId: number | string, tournamentId: number) => api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/approve`).then(r => r.data),
   lockDraw: (orgId: number | string, tournamentId: number) => api.post(`/org/${orgId}/tournaments/${tournamentId}/draw/lock`).then(r => r.data),
   // Group 6 — participant lifecycle (org)
-  getWaitlist: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/waitlist`).then(r => r.data),
+  getWaitlist: (orgId: number | string, tournamentId: number, competitionId?: number | null) =>
+    api.get(`/org/${orgId}/tournaments/${tournamentId}/waitlist`, {
+      params: competitionId != null ? { competition_id: competitionId } : undefined,
+    }).then(r => r.data),
   withdrawParticipant: (orgId: number | string, tournamentId: number, participantId: number, reason?: string) =>
     api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${participantId}/withdraw`, { reason }).then(r => r.data),
-  promoteNextWaitlisted: (orgId: number | string, tournamentId: number, paymentMethod?: 'cash' | 'card') =>
-    api.post(`/org/${orgId}/tournaments/${tournamentId}/waitlist/promote`, paymentMethod ? { payment_method: paymentMethod } : {}).then(r => r.data),
-  replaceParticipant: (orgId: number | string, tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card') =>
-    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, { replacement_participant_id: replacementParticipantId, payment_method: paymentMethod }).then(r => r.data),
+  // G11.20 — `competitionId` scopes the FIFO head to ONE competition. Omit it
+  // only for a single-competition tournament; the server rejects the ambiguous
+  // case rather than filling an arbitrary category.
+  promoteNextWaitlisted: (orgId: number | string, tournamentId: number, paymentMethod?: 'cash' | 'card', competitionId?: number | null) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/waitlist/promote`, {
+      payment_method: paymentMethod,
+      competition_id: competitionId ?? undefined,
+    }).then(r => r.data),
+  replaceParticipant: (orgId: number | string, tournamentId: number, withdrawnParticipantId: number, replacementParticipantId: number, paymentMethod?: 'cash' | 'card', competitionId?: number | null) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/${withdrawnParticipantId}/replace`, {
+      replacement_participant_id: replacementParticipantId,
+      payment_method: paymentMethod,
+      competition_id: competitionId ?? undefined,
+    }).then(r => r.data),
   // Group 7 — pair/team participants, members & player replacement requests (org)
   createPairParticipant: (orgId: number | string, tournamentId: number, data: { name?: string; member_user_ids: number[]; payment_method?: 'cash' | 'card' }) =>
     api.post(`/org/${orgId}/tournaments/${tournamentId}/participants/pairs`, data).then(r => r.data),

@@ -25,7 +25,13 @@ export async function listParticipantsHandler(request: FastifyRequest, reply: Fa
 
 export async function listWaitlistHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const data = await participantDrawService.listWaitingParticipants(Number(id));
+  // G11.20 — optional `?competition_id=` filter; omitted returns the whole
+  // tournament waitlist with each entry's competition context attached.
+  const { competition_id } = request.query as any;
+  const data = await participantDrawService.listWaitingParticipants(
+    Number(id),
+    competition_id != null && competition_id !== '' ? Number(competition_id) : null,
+  );
   return reply.send({ data });
 }
 
@@ -50,7 +56,7 @@ export async function promoteNextWaitlistedHandler(request: FastifyRequest, repl
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = PromoteWaitlistSchema.parse(request.body);
-  const result = await participantDrawService.promoteNextWaitlisted(Number(id), userId, body.payment_method);
+  const result = await participantDrawService.promoteNextWaitlisted(Number(id), userId, body.payment_method, body.competition_id);
   return reply.send(result);
 }
 
@@ -58,7 +64,7 @@ export async function replaceParticipantHandler(request: FastifyRequest, reply: 
   const userId = getUserId(request);
   const { id, participantId } = request.params as any;
   const body = ReplaceParticipantSchema.parse(request.body);
-  const result = await participantDrawService.replaceParticipant(Number(id), Number(participantId), body.replacement_participant_id, userId, body.payment_method);
+  const result = await participantDrawService.replaceParticipant(Number(id), Number(participantId), body.replacement_participant_id, userId, body.payment_method, body.competition_id);
   return reply.send(result);
 }
 
