@@ -54,6 +54,7 @@ export class ParticipantDrawService {
       if (existing) continue;
       const participantId = await participantDrawRepository.createParticipant({
         tournament_id: tournamentId,
+        competition_id: reg.competition_id ?? null,
         registration_id: reg.id,
         participant_type: 'individual',
         status: 'active',
@@ -69,10 +70,12 @@ export class ParticipantDrawService {
         member_order: 0,
       });
       // Legacy compatibility: the registration seed (seed_rank) becomes an
-      // authoritative manual seed — never recalculated by a draw.
+      // authoritative manual seed — never recalculated by a draw. Scoped to the
+      // registration's OWN competition (G11.19).
       if (reg.seed != null && !(await participantDrawRepository.findSeedByParticipant(participantId))) {
         await participantDrawRepository.createSeed({
           tournament_id: tournamentId,
+          competition_id: reg.competition_id ?? null,
           participant_id: participantId,
           seed_number: Number(reg.seed),
           source: 'manual',
@@ -167,11 +170,20 @@ export class ParticipantDrawService {
     const t = await this.getTournament(tournamentId);
     const participant = await this.assertParticipantBelongsToTournament(tournamentId, participantId);
 
+    // G11.19 — the seed namespace is PER COMPETITION. The authoritative
+    // competition comes from the PARTICIPANT (never a client-supplied id): a
+    // participant can only be seeded within its own competition, seed #1 in
+    // Competition A and seed #1 in Competition B are both valid, and duplicates
+    // are only rejected WITHIN the same competition.
+    const competitionId = participant.competition_id != null ? Number(participant.competition_id) : null;
+
     const seedNumber = Number(input.seedNumber);
     if (!Number.isInteger(seedNumber) || seedNumber < 1) {
       throw new ConflictError('Seed number must be a positive integer', ErrorCodes.TOURNAMENT_INVALID_SEED);
     }
-    const participantCount = await participantDrawRepository.countParticipantsByTournament(tournamentId);
+    const participantCount = competitionId != null
+      ? await participantDrawRepository.countParticipantsByCompetition(tournamentId, competitionId)
+      : await participantDrawRepository.countParticipantsByTournament(tournamentId);
     if (seedNumber > participantCount) {
       throw new ConflictError(
         `Seed number ${seedNumber} is outside the valid range 1..${participantCount}`,
@@ -179,11 +191,11 @@ export class ParticipantDrawService {
       );
     }
 
-    // Duplicate seed number (another participant already holds it) → reject.
-    const existingForNumber = await participantDrawRepository.findSeedByNumber(tournamentId, seedNumber);
+    // Duplicate seed number WITHIN THE SAME COMPETITION → reject.
+    const existingForNumber = await participantDrawRepository.findSeedByNumber(tournamentId, competitionId, seedNumber);
     if (existingForNumber && Number(existingForNumber.participant_id) !== participantId) {
       throw new ConflictError(
-        `Seed #${seedNumber} is already assigned to another participant`,
+        `Seed #${seedNumber} is already assigned to another participant in this competition`,
         ErrorCodes.TOURNAMENT_SEED_DUPLICATE,
       );
     }
@@ -228,6 +240,7 @@ export class ParticipantDrawService {
     } else {
       const id = await participantDrawRepository.createSeed({
         tournament_id: tournamentId,
+        competition_id: competitionId,
         participant_id: participantId,
         seed_number: seedNumber,
         source: input.source,

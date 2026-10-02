@@ -153,6 +153,8 @@ export type TournamentSeedSource = 'rating' | 'manual';
 export interface TournamentSeed {
   id?: number;
   tournament_id: number;
+  /** G11.19 — competition category scope (NOT NULL; the per-competition seed namespace). */
+  competition_id?: number | null;
   participant_id: number;
   seed_number: number;
   source: TournamentSeedSource;

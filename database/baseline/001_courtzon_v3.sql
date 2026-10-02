@@ -6039,6 +6039,7 @@ DROP TABLE IF EXISTS `tournament_seeds`;
 CREATE TABLE `tournament_seeds` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `tournament_id` int unsigned NOT NULL,
+  `competition_id` int unsigned NOT NULL COMMENT 'Competition category scope; = default competition for legacy rows',
   `participant_id` int unsigned NOT NULL,
   `seed_number` int unsigned NOT NULL,
   `source` enum('rating','manual') COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -6049,10 +6050,12 @@ CREATE TABLE `tournament_seeds` (
   `reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_seed_tournament_number` (`tournament_id`,`seed_number`),
+  UNIQUE KEY `uk_seed_tournament_competition_number` (`tournament_id`,`competition_id`,`seed_number`),
   UNIQUE KEY `uk_seed_participant` (`participant_id`),
   KEY `idx_seed_tournament` (`tournament_id`),
+  KEY `idx_seed_competition` (`competition_id`),
   CONSTRAINT `fk_seed_tournament` FOREIGN KEY (`tournament_id`) REFERENCES `tournaments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_seed_competition` FOREIGN KEY (`competition_id`) REFERENCES `tournament_competitions` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_seed_participant` FOREIGN KEY (`participant_id`) REFERENCES `tournament_participants` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_seed_assigner` FOREIGN KEY (`assigned_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

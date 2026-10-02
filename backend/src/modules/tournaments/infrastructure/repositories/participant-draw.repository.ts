@@ -232,6 +232,7 @@ export class ParticipantDrawRepository {
 
   async createSeed(data: {
     tournament_id: number;
+    competition_id?: number | null;
     participant_id: number;
     seed_number: number;
     source: string;
@@ -241,10 +242,10 @@ export class ParticipantDrawRepository {
     reason?: string | null;
   }): Promise<number> {
     const [result] = await getPool().query<ResultSet>(
-      `INSERT INTO tournament_seeds (tournament_id, participant_id, seed_number, source, assigned_by, rating_snapshot, rating_matches_played, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tournament_seeds (tournament_id, competition_id, participant_id, seed_number, source, assigned_by, rating_snapshot, rating_matches_played, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        data.tournament_id, data.participant_id, data.seed_number, data.source,
+        data.tournament_id, data.competition_id ?? null, data.participant_id, data.seed_number, data.source,
         data.assigned_by ?? null, data.rating_snapshot ?? null, data.rating_matches_played ?? null,
         data.reason ?? null,
       ],
@@ -257,10 +258,13 @@ export class ParticipantDrawRepository {
     return rows.length ? (rows[0] as TournamentSeed) : null;
   }
 
-  async findSeedByNumber(tournamentId: number, seedNumber: number): Promise<TournamentSeed | null> {
+  /** G11.19 — seed-number lookup is COMPETITION-scoped (legacy tournament-wide when competition is null). */
+  async findSeedByNumber(tournamentId: number, competitionId: number | null, seedNumber: number): Promise<TournamentSeed | null> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_seeds WHERE tournament_id = ? AND seed_number = ? LIMIT 1',
-      [tournamentId, seedNumber],
+      competitionId != null
+        ? 'SELECT * FROM tournament_seeds WHERE tournament_id = ? AND competition_id = ? AND seed_number = ? LIMIT 1'
+        : 'SELECT * FROM tournament_seeds WHERE tournament_id = ? AND seed_number = ? LIMIT 1',
+      competitionId != null ? [tournamentId, competitionId, seedNumber] : [tournamentId, seedNumber],
     );
     return rows.length ? (rows[0] as TournamentSeed) : null;
   }
