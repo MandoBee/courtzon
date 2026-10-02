@@ -13,6 +13,7 @@ import { useToast } from '../../components/ui/Toast';
 import { PrizeEditor, type PrizeEditorRow } from '../../components/tournaments/PrizeEditor';
 import SponsorEditor, { type SponsorEditorRow } from '../../components/tournaments/SponsorEditor';
 import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFormValue } from '../../components/tournaments/EligibilityFormSection';
+import MapLocationPicker, { type PickedLocation } from '../../components/map/MapLocationPicker';
 
 type TournamentForm = {
   /**
@@ -104,6 +105,11 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { showToast } = useToast();
+
+  // G11.18 Phase 3 — venue handling (location auto-captured by the map picker).
+  const [venueMode, setVenueMode] = useState<'ORGANISATION_COURTS' | 'EXTERNAL_VENUE'>('ORGANISATION_COURTS');
+  const [externalVenue, setExternalVenue] = useState<PickedLocation | null>(null);
+  const [showVenuePicker, setShowVenuePicker] = useState(false);
 
   const isOrg = mode === 'org';
 
@@ -354,6 +360,17 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       branch_id: data.branchId ? Number(data.branchId) : undefined,
       daily_start_time: data.dailyStartTime ? `${data.dailyStartTime}:00` : undefined,
       daily_end_time: data.dailyEndTime ? `${data.dailyEndTime}:00` : undefined,
+      // G11.18 Phase 3 — venue handling. The map picker auto-captures the
+      // external location; the user never types coordinates. maps_url is always
+      // derived server-side.
+      venue_type: venueMode,
+      venue_name: externalVenue?.venueName ?? undefined,
+      venue_address: externalVenue?.address ?? undefined,
+      venue_city: externalVenue?.city ?? undefined,
+      venue_country: externalVenue?.country ?? undefined,
+      latitude: externalVenue?.latitude ?? undefined,
+      longitude: externalVenue?.longitude ?? undefined,
+      place_id: externalVenue?.placeId ?? undefined,
       // G7-D — structured eligibility (age mode/categories, gender, level). The
       // backend re-validates every value; open selections are sent as open.
       age_mode: eligibility.ageMode,
@@ -594,9 +611,25 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
             </Can>
           </div>
 
-          {/* Group 4 — venue (owning organisation's branch) + daily playing window. */}
-          <Can permission="tournaments.create.prize">
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30 space-y-3">
+          {/* G11.18 Phase 3 — Venue / Courts (map-first, no manual coordinates). */}
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30 space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-2">Venue / Courts</label>
+              <div className="flex gap-4 text-sm">
+                <label className="flex items-center gap-2 text-[var(--color-text)]">
+                  <input type="radio" name="venueMode" value="ORGANISATION_COURTS"
+                    checked={venueMode === 'ORGANISATION_COURTS'} onChange={() => setVenueMode('ORGANISATION_COURTS')} />
+                  Organisation Courts
+                </label>
+                <label className="flex items-center gap-2 text-[var(--color-text)]">
+                  <input type="radio" name="venueMode" value="EXTERNAL_VENUE"
+                    checked={venueMode === 'EXTERNAL_VENUE'} onChange={() => setVenueMode('EXTERNAL_VENUE')} />
+                  External Venue
+                </label>
+              </div>
+            </div>
+
+            {venueMode === 'ORGANISATION_COURTS' ? (
               <div>
                 <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.venue')}</label>
                 <select {...register('branchId')} disabled={!hasOwningOrg}
@@ -607,6 +640,32 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
                   ))}
                 </select>
               </div>
+            ) : (
+              <div className="space-y-2">
+                <button type="button" onClick={() => setShowVenuePicker(true)}
+                  className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-primary)] text-[var(--color-primary)] text-sm font-medium">
+                  Select Location on Map
+                </button>
+                {externalVenue ? (
+                  <div className="text-sm text-[var(--color-text-muted)] space-y-0.5">
+                    <p className="font-medium text-[var(--color-text)]">{externalVenue.venueName ?? 'Selected location'}</p>
+                    {externalVenue.address && <p>{externalVenue.address}</p>}
+                    {(externalVenue.city || externalVenue.country) && <p>{[externalVenue.city, externalVenue.country].filter(Boolean).join(', ')}</p>}
+                    {externalVenue.mapsUrl && (
+                      <a href={externalVenue.mapsUrl} target="_blank" rel="noreferrer" className="text-[var(--color-primary)] underline">Open in Maps</a>
+                    )}
+                    <button type="button" onClick={() => setExternalVenue(null)} className="block text-xs text-[var(--color-error)]">Change location</button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--color-text-muted)]">No external venue selected yet.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Group 4 — daily playing window (venue-local time). */}
+          <Can permission="tournaments.create.prize">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 bg-[var(--color-bg)]/30 space-y-3">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-[var(--color-text)] mb-2">{t('tournaments.create.daily_start')}</label>
@@ -680,6 +739,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
           )}
         </form>
       </Card>
+
+      <MapLocationPicker
+        open={showVenuePicker}
+        onClose={() => setShowVenuePicker(false)}
+        onConfirm={(loc) => { setExternalVenue(loc); setShowVenuePicker(false); }}
+      />
     </div>
   );
 }

@@ -48,6 +48,9 @@ async function createTournament(name: string, opts: { isPublic?: number; status?
   );
   const tid = Number((res as any).insertId);
   tournamentIds.push(tid);
+  await exec(
+    `INSERT INTO tournament_competitions (public_id, tournament_id, competition_type, name, currency_code, is_default)
+     VALUES (UUID(), ?, 'singles', 'Default', 'EGP', 1)`, [tid]);
   return tid;
 }
 

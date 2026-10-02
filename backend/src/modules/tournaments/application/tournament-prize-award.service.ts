@@ -157,14 +157,22 @@ class TournamentPrizeAwardService {
         continue;
       }
 
-      if (await tournamentPrizeAwardRepository.hasAward(tournamentId, placement, winnerUserId)) {
-        log.info({ tournamentId, placement, winnerUserId }, 'Award bind — award already exists, skipped (idempotent)');
+      // G11.18 C1 — standings binding is competition-scoped too: the prize's
+      // competition must match the winning registration's competition.
+      const competitionId = prize.competition_id != null ? Number(prize.competition_id) : null;
+      if (competitionId != null && reg.competition_id != null && Number(reg.competition_id) !== competitionId) {
+        log.warn({ tournamentId, placement, competitionId, regCompetitionId: reg.competition_id }, 'Award bind — registration belongs to a different competition, skipped');
+        continue;
+      }
+
+      if (await tournamentPrizeAwardRepository.hasAward(tournamentId, competitionId, placement, winnerUserId)) {
+        log.info({ tournamentId, placement, competitionId, winnerUserId }, 'Award bind — award already exists in this competition, skipped (idempotent)');
         continue;
       }
 
       try {
         const award = await this.createAwardWithCredit(
-          t, prize, placement, row.registration_id, winnerUserId,
+          t, prize, placement, competitionId, row.registration_id, winnerUserId,
           fundingSource, collectionMethod, bindSource, opts.createdBy ?? null,
         );
         if (award) created.push(award);
@@ -233,30 +241,34 @@ class TournamentPrizeAwardService {
     if (placements.length > 0) {
       const created: TournamentPrizeAward[] = [];
       for (const pl of placements) {
-        const prize = this.cashPrizeAtPlacement(prizes, Number(pl.placement));
+        // G11.18 C1 — the competition comes from the AUTHORITATIVE placement row.
+        // A cash prize for the placement is only eligible within that competition
+        // (Singles 1st never selects the Teams 1st prize and vice versa).
+        const competitionId = pl.competition_id != null ? Number(pl.competition_id) : null;
+        const prize = this.cashPrizeAtPlacement(prizes, Number(pl.placement), competitionId);
         if (!prize || !prize.id) {
-          log.info({ tournamentId, placement: pl.placement }, 'Bracket bind — no cash prize for placement, skipped');
+          log.info({ tournamentId, placement: pl.placement, competitionId }, 'Bracket bind — no cash prize for placement in this competition, skipped');
           continue;
         }
         const recipient = await this.resolveEligiblePlacementRecipient(tournamentId, pl);
         if (!recipient) {
-          log.warn({ tournamentId, placement: pl.placement, participantId: pl.participant_id }, 'Bracket bind — placed winner has no provable eligible registration, skipped (fail-closed)');
+          log.warn({ tournamentId, placement: pl.placement, competitionId, participantId: pl.participant_id }, 'Bracket bind — placed winner has no provable eligible registration, skipped (fail-closed)');
           continue;
         }
         const placement = Number(pl.placement);
-        if (await tournamentPrizeAwardRepository.hasAward(tournamentId, placement, recipient.winnerUserId)) {
-          log.info({ tournamentId, placement, winnerUserId: recipient.winnerUserId }, 'Bracket bind — award already exists, skipped (idempotent)');
+        if (await tournamentPrizeAwardRepository.hasAward(tournamentId, competitionId, placement, recipient.winnerUserId)) {
+          log.info({ tournamentId, placement, competitionId, winnerUserId: recipient.winnerUserId }, 'Bracket bind — award already exists for this competition, skipped (idempotent)');
           continue;
         }
         try {
           const award = await this.createAwardWithCredit(
-            t, prize, placement, recipient.registrationId, recipient.winnerUserId,
+            t, prize, placement, competitionId, recipient.registrationId, recipient.winnerUserId,
             fundingSource, collectionMethod, 'bracket', opts.createdBy ?? null,
           );
           if (award) created.push(award);
         } catch (err) {
           if (isDuplicateKeyError(err)) {
-            log.warn({ tournamentId, placement, winnerUserId: recipient.winnerUserId }, 'Bracket bind — concurrent duplicate award, skipped');
+            log.warn({ tournamentId, placement, competitionId, winnerUserId: recipient.winnerUserId }, 'Bracket bind — concurrent duplicate award, skipped');
             continue;
           }
           throw err;
@@ -282,27 +294,29 @@ class TournamentPrizeAwardService {
       return [];
     }
 
-    // Placement-1 cash prize, deterministic first by catalog order.
-    const prize = this.cashPrizeAtPlacement(prizes, 1);
+    // Placement-1 cash prize, deterministic first by catalog order, scoped to the
+    // champion registration's COMPETITION (G11.18 C1 — never guesses another comp).
+    const competitionId = reg.competition_id != null ? Number(reg.competition_id) : null;
+    const prize = this.cashPrizeAtPlacement(prizes, 1, competitionId);
     if (!prize || !prize.id) {
-      log.info({ tournamentId, winnerUserId }, 'Bracket bind skipped — no eligible placement-1 cash prize');
+      log.info({ tournamentId, winnerUserId, competitionId }, 'Bracket bind skipped — no eligible placement-1 cash prize in this competition');
       return [];
     }
 
-    if (await tournamentPrizeAwardRepository.hasAward(tournamentId, 1, winnerUserId)) {
-      log.info({ tournamentId, winnerUserId }, 'Bracket bind skipped — placement-1 award already exists (idempotent/manual-granted)');
+    if (await tournamentPrizeAwardRepository.hasAward(tournamentId, competitionId, 1, winnerUserId)) {
+      log.info({ tournamentId, winnerUserId, competitionId }, 'Bracket bind skipped — placement-1 award already exists in this competition (idempotent/manual-granted)');
       return [];
     }
 
     try {
       const award = await this.createAwardWithCredit(
-        t, prize, 1, reg.id, winnerUserId,
+        t, prize, 1, competitionId, reg.id, winnerUserId,
         fundingSource, collectionMethod, 'bracket', opts.createdBy ?? null,
       );
       return award ? [award] : [];
     } catch (err) {
       if (isDuplicateKeyError(err)) {
-        log.warn({ tournamentId, winnerUserId }, 'Bracket bind — concurrent duplicate award, skipped');
+        log.warn({ tournamentId, winnerUserId, competitionId }, 'Bracket bind — concurrent duplicate award, skipped');
         return [];
       }
       throw err;
@@ -341,10 +355,11 @@ class TournamentPrizeAwardService {
       );
     }
     const authoritativePlacement = (await tournamentRepository.findPlacements(tournamentId))
-      .find((p) => Number(p.placement) === placement);
+      .find((p) => Number(p.placement) === placement
+        && (prize.competition_id == null || Number(p.competition_id) === Number(prize.competition_id)));
     if (!authoritativePlacement) {
       throw new ConflictError(
-        `No authoritative tournament placement ${placement} exists — manual grant rejected (placement integrity)`,
+        `No authoritative placement ${placement} in this competition exists — manual grant rejected (placement integrity)`,
         ErrorCodes.TOURNAMENT_PLACEMENT_MISSING,
       );
     }
@@ -370,12 +385,19 @@ class TournamentPrizeAwardService {
     const fundingSource: PrizeFundingSource = 'organization';
     const collectionMethod = resolveCollectionMethod(t);
 
-    if (await tournamentPrizeAwardRepository.hasAward(tournamentId, placement, input.winnerUserId)) {
-      throw new ConflictError(`Prize placement ${placement} is already awarded to this player`);
+    // G11.18 C1 — the competition comes from the AUTHORITATIVE placement row (or
+    // the selected prize's own competition); a grant in Competition A never
+    // blocks the same player in Competition B.
+    const competitionId = authoritativePlacement.competition_id != null
+      ? Number(authoritativePlacement.competition_id)
+      : (prize.competition_id != null ? Number(prize.competition_id) : null);
+
+    if (await tournamentPrizeAwardRepository.hasAward(tournamentId, competitionId, placement, input.winnerUserId)) {
+      throw new ConflictError(`Prize placement ${placement} is already awarded to this player in this competition`);
     }
 
     const award = await this.createAwardWithCredit(
-      t, prize, placement, recipient.registrationId, input.winnerUserId,
+      t, prize, placement, competitionId, recipient.registrationId, input.winnerUserId,
       fundingSource, collectionMethod, 'manual', input.createdBy ?? null,
     );
     if (!award) throw new ConflictError('Failed to create prize award');
@@ -493,10 +515,13 @@ class TournamentPrizeAwardService {
 
   // ── internals ──────────────────────────────────────────────────────────────
 
-  /** The single eligible CASH prize for a placement (deterministic first by catalog order). */
-  private cashPrizeAtPlacement(prizes: TournamentPrize[], placement: number): TournamentPrize | undefined {
+  /** The single eligible CASH prize for a placement WITHIN ONE COMPETITION (G11.18 C1 — competition-scoped; ambiguous/missing context fails closed). */
+  private cashPrizeAtPlacement(prizes: TournamentPrize[], placement: number, competitionId: number | null | undefined): TournamentPrize | undefined {
     return prizes.filter(
-      (p) => Number(p.placement) === placement && p.prize_type === 'cash' && p.amount != null && Number(p.amount) > 0,
+      (p) => Number(p.placement) === placement
+        && p.prize_type === 'cash'
+        && p.amount != null && Number(p.amount) > 0
+        && (competitionId == null || Number(p.competition_id) === Number(competitionId)),
     ).sort(
       (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || (a.id ?? 0) - (b.id ?? 0),
     )[0];
@@ -532,9 +557,14 @@ class TournamentPrizeAwardService {
     const members = Array.isArray(participant.member_user_ids) ? participant.member_user_ids : [];
     if (!members.some((m) => m != null && Number(m) === payee)) return null;
 
-    // Prove the placed participant is the user's UNIQUE ACTIVE participant in
-    // this tournament (uk_active_user_tournament is the DB backstop).
-    const active = await participantDrawRepository.findActiveParticipantByPlayer(tournamentId, payee);
+    // Prove the placed participant is the user's UNIQUE ACTIVE participant IN THE
+    // PLACEMENT'S COMPETITION (uk_active_user_competition is the DB backstop;
+    // G11.18 C1 — a user active in two competitions of one tournament resolves
+    // independently in each; tournament-wide uniqueness falls back for legacy).
+    const competitionId = placementRow.competition_id != null ? Number(placementRow.competition_id) : null;
+    const active = competitionId != null
+      ? await participantDrawRepository.findActiveParticipantByPlayerInCompetition(tournamentId, competitionId, payee)
+      : await participantDrawRepository.findActiveParticipantByPlayer(tournamentId, payee);
     if (!active || Number(active.id) !== Number(participant.id)) return null;
 
     // Registration: prefer the participant's own registration (individual),
@@ -561,6 +591,7 @@ class TournamentPrizeAwardService {
     t: Tournament,
     prize: TournamentPrize,
     placement: number | null,
+    competitionId: number | null,
     registrationId: number,
     winnerUserId: number,
     fundingSource: PrizeFundingSource,
@@ -580,6 +611,7 @@ class TournamentPrizeAwardService {
 
       awardId = await tournamentPrizeAwardRepository.create({
         tournamentId: t.id!,
+        competitionId,
         prizeId: prize.id!,
         placement,
         registrationId,

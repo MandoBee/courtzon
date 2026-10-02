@@ -58,10 +58,18 @@ export default function TournamentDetailPage() {
   const [tab, setTab] = useState<Tab>('overview');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerMethod, setRegisterMethod] = useState<'cash' | 'card' | ''>('');
+  // G11.18 Phase 2 — the player selects a competition category when the
+  // tournament hosts multiple ones; single/default tournaments need no click.
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState<number | undefined>(undefined);
 
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', id],
     queryFn: () => api.get(`/tournaments/${id}`).then(r => r.data.data || r.data),
+  });
+
+  const { data: competitions } = useQuery({
+    queryKey: ['tournament', id, 'competitions'],
+    queryFn: () => api.get(`/tournaments/${id}/competitions`).then(r => r.data?.data ?? []),
   });
 
   const { data: matches } = useQuery({
@@ -81,13 +89,18 @@ export default function TournamentDetailPage() {
 
   // Group 3 — player registration with the tournament's effective allowed
   // payment methods (Cash / Card). Free tournaments register without a method.
+  // G11.18 Phase 2 — the selected competitionId is sent to the registration API.
   const registerMutation = useMutation({
     mutationFn: (method: 'cash' | 'card' | '') =>
-      api.post(`/tournaments/${id}/register`, { payment_method: method || undefined }).then(r => r.data),
+      api.post(`/tournaments/${id}/register`, {
+        payment_method: method || undefined,
+        competition_id: selectedCompetitionId,
+      }).then(r => r.data),
     onSuccess: () => {
       showToast('Registered successfully!', 'success');
       setShowRegisterModal(false);
       setRegisterMethod('');
+      setSelectedCompetitionId(undefined);
       qc.invalidateQueries({ queryKey: ['tournament', id] });
       qc.invalidateQueries({ queryKey: ['tournament', id, 'participants'] });
       qc.invalidateQueries({ queryKey: ['my-tournaments'] });
@@ -124,6 +137,12 @@ export default function TournamentDetailPage() {
   const registerPaymentMethods = Array.isArray(tournament?.effective_registration_payment_methods)
     ? (tournament.effective_registration_payment_methods as string[])
     : [];
+  // G11.18 Phase 2 — competition categories exposed to the registration flow.
+  const compList = Array.isArray(competitions) ? (competitions as any[]) : [];
+  const multiple = compList.length > 1;
+  const selectedComp = compList.find((c) => Number(c.id) === Number(selectedCompetitionId));
+  const displayFee = selectedComp ? Number(selectedComp.entry_fee ?? tournament.entry_fee ?? 0) : Number(tournament.entry_fee ?? 0);
+  const displayCurrency = selectedComp?.currency_code ?? tournament?.currency_code ?? 'EGP';
   const venue = tournament?.venue || null;
   const venueAddress = [venue?.addressLine1, venue?.addressLine2, venue?.city].filter(Boolean).join(', ');
   const dailyWindow = tournament?.daily_start_time && tournament?.daily_end_time
@@ -154,7 +173,11 @@ export default function TournamentDetailPage() {
         {tournament.description && <p className="text-sm text-[var(--color-text-muted)]">{tournament.description}</p>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div><span className="text-[var(--color-text-muted)]">Organisation:</span> <span className="font-medium">{tournament.organisation_name || '—'}</span></div>
-          <div><span className="text-[var(--color-text-muted)]">Venue:</span> <span className="font-medium">{venue ? venue.name : '—'}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Venue:</span> <span className="font-medium">{venue ? venue.name : '—'}</span>
+            {venue?.mapsUrl && (
+              <a href={venue.mapsUrl} target="_blank" rel="noreferrer" className="block text-xs text-[var(--color-primary)] underline">Open in Maps</a>
+            )}
+          </div>
           <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{participantList.length}/{tournament.max_participants}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Fee:</span> <span className="font-medium">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Payment:</span> <span className="font-medium">{paymentMethodsLabel(registerPaymentMethods, Number(tournament.entry_fee ?? 0))}</span></div>
@@ -360,10 +383,28 @@ export default function TournamentDetailPage() {
       <Modal open={showRegisterModal} onClose={() => setShowRegisterModal(false)}
         title="Register for Tournament" size="sm">
         <div className="space-y-4">
+          {multiple && (
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Competition Category</label>
+              <div className="space-y-2">
+                {compList.map((c) => (
+                  <label key={c.id} className="flex items-center justify-between gap-2 text-sm text-[var(--color-text)] border border-[var(--color-border)] rounded px-3 py-2">
+                    <span className="flex items-center gap-2">
+                      <input type="radio" name="regComp" value={c.id}
+                        checked={Number(selectedCompetitionId) === Number(c.id)}
+                        onChange={() => setSelectedCompetitionId(Number(c.id))} />
+                      <span>{c.name} <span className="text-xs text-[var(--color-text-muted)]">({String(c.competition_type || '').toUpperCase()})</span></span>
+                    </span>
+                    <span className="font-medium">{formatPrice(Number(c.entry_fee ?? 0), c.currency_code ?? 'EGP')}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="text-sm text-[var(--color-text-muted)]">
-            Entry fee: <span className="font-semibold text-[var(--color-text)]">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span>
+            Entry fee: <span className="font-semibold text-[var(--color-text)]">{formatPrice(displayFee, displayCurrency)}</span>
           </div>
-          {Number(tournament.entry_fee ?? 0) > 0 ? (
+          {displayFee > 0 ? (
             <>
               <div>
                 <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Payment Method</label>
@@ -388,14 +429,14 @@ export default function TournamentDetailPage() {
                 )}
               </div>
               <button onClick={() => registerMutation.mutate(registerMethod)}
-                disabled={!registerMethod || registerMutation.isPending}
+                disabled={!registerMethod || registerMutation.isPending || (multiple && !selectedCompetitionId)}
                 className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
                 {registerMutation.isPending ? 'Registering...' : 'Register & Pay'}
               </button>
             </>
           ) : (
             <button onClick={() => registerMutation.mutate('')}
-              disabled={registerMutation.isPending}
+              disabled={registerMutation.isPending || (multiple && !selectedCompetitionId)}
               className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
               {registerMutation.isPending ? 'Registering...' : 'Register'}
             </button>

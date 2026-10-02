@@ -1,6 +1,8 @@
 import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
+import { competitionRepository } from '../infrastructure/repositories/competition.repository.js';
+import { competitionService } from './competition.service.js';
 import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType } from '../domain/tournament-aggregate.js';
@@ -161,6 +163,10 @@ export class TournamentService {
     // deadline before start date, daily playing window + branch operating
     // hours) BEFORE persisting anything.
     await this.normaliseSchedule(effectiveData);
+    // G11.18 Phase 3 — venue handling: org-court ownership + external venue
+    // validation (location data auto-captured by the map picker; map URL always
+    // derived server-side; an external venue never uses an org branch).
+    Object.assign(effectiveData, await this.normaliseVenueContext(effectiveData, owningOrgId));
     // Deterministic draw seed: default to creation timestamp (stable, not random).
     const drawSeed = data.draw_seed ?? Date.now();
     // Group 1 — the human-readable Tournament Rules snapshot is ALWAYS derived
@@ -173,6 +179,34 @@ export class TournamentService {
       ...effectiveData, creator_id: creatorId, draw_seed: drawSeed, commission_rate: commissionRate,
       tournament_type: effectiveType,
       rules: rulesSnapshot ?? undefined,
+    });
+    // G11.18 Phase 1 — every tournament automatically receives ONE default
+    // competition that mirrors its configuration (format, fee, currency,
+    // capacity, eligibility, bracket). The BEFORE-INSERT triggers scope all
+    // legacy descendant writes (registrations/participants/matches/prizes) to
+    // this competition, preserving current single-competition behavior.
+    const defaultFormat = effectiveData.match_format_id != null
+      ? await matchResultRepository.findFormatById(effectiveData.match_format_id)
+      : (effectiveData.sport_id != null ? await matchResultRepository.resolveDefaultFormatForSport(effectiveData.sport_id) : null);
+    await competitionRepository.createDefault({
+      tournament_id: id,
+      competition_type: defaultFormat?.formatType === 'team' ? 'team' : defaultFormat?.formatType === 'doubles' ? 'doubles' : 'singles',
+      match_format_id: effectiveData.match_format_id ?? null,
+      rule_set_id: effectiveData.rule_set_id ?? null,
+      bracket_type_id: effectiveData.bracket_type_id ?? null,
+      sport_id: effectiveData.sport_id ?? null,
+      entry_fee: effectiveData.entry_fee ?? 0,
+      registration_fee: effectiveData.registration_fee ?? 0,
+      currency_code: effectiveData.currency_code ?? 'EGP',
+      price_type: effectiveData.price_type ?? null,
+      max_participants: effectiveData.max_participants ?? null,
+      min_participants: effectiveData.min_participants ?? 2,
+      registration_payment_methods: effectiveData.registration_payment_methods,
+      waitlist_enabled: effectiveData.waitlist_enabled ?? false,
+      age_mode: effectiveData.age_mode ?? null,
+      age_category_ids: effectiveData.age_category_ids,
+      gender_categories: effectiveData.gender_categories,
+      level_ids: effectiveData.level_ids,
     });
     if (prizes.length > 0) {
       await tournamentRepository.replacePrizes(id, prizes);
@@ -440,7 +474,7 @@ export class TournamentService {
    * A Tournament configuration can NEVER activate a method the global policy
    * (or the org) does not support. Empty org config = no org-level restriction.
    */
-  async resolveEffectiveRegistrationPaymentMethods(tournament: Pick<Tournament, 'organisation_id' | 'registration_payment_methods'>): Promise<string[]> {
+  async resolveEffectiveRegistrationPaymentMethods(tournament: Pick<Tournament, 'organisation_id'> & { registration_payment_methods?: string[] | string | null }): Promise<string[]> {
     const configured = this.readRegistrationPaymentMethods(tournament.registration_payment_methods);
     // Global policy — the shared single source of truth for active methods.
     const globallyAllowed = configured.filter((m) => isPaymentMethodAllowedInContext(m, 'checkout'));
@@ -456,6 +490,58 @@ export class TournamentService {
     } catch {
       return globallyAllowed;
     }
+  }
+
+  /**
+   * G11.18 Phase 3 — server-authoritative venue normalization for create/update.
+   *   ORGANISATION_COURTS: cross-org branch/resources fail closed; external
+   *                        venue fields are never persisted.
+   *   EXTERNAL_VENUE:      validated location data (auto-captured by the map
+   *                        picker); maps_url is derived server-side only.
+   */
+  private async normaliseVenueContext(
+    data: Partial<Tournament>,
+    owningOrgId: number | null,
+    current?: Tournament,
+  ): Promise<Partial<Tournament>> {
+    const mode = data.venue_type ?? current?.venue_type ?? 'ORGANISATION_COURTS';
+    if (mode === 'EXTERNAL_VENUE') {
+      competitionService.validateExternalVenue({
+        venueName: data.venue_name,
+        address: data.venue_address,
+        city: data.venue_city,
+        country: data.venue_country,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        placeId: data.place_id,
+        venueContact: data.venue_contact,
+      });
+      return {
+        ...data,
+        venue_type: 'EXTERNAL_VENUE',
+        maps_url: competitionService.mapsUrlFrom(data.latitude ?? null, data.longitude ?? null),
+        branch_id: undefined,
+      };
+    }
+    // ORGANISATION_COURTS (default) — strip any external venue data.
+    const stripped: Partial<Tournament> = {
+      ...data,
+      venue_type: 'ORGANISATION_COURTS',
+      venue_name: null, venue_address: null, venue_city: null, venue_country: null,
+      latitude: null, longitude: null, place_id: null, venue_contact: null, maps_url: null,
+    };
+    if (stripped.branch_id != null && owningOrgId != null) {
+      const branch = await branchRepository.findById(Number(stripped.branch_id)).catch(() => null);
+      // Fail closed ONLY on a PROVEN cross-organisation mismatch. A branch without
+      // an organisation (legacy/unit row) is not treated as belonging elsewhere.
+      if (branch != null && branch.organisation_id != null && Number(branch.organisation_id) !== Number(owningOrgId)) {
+        throw new ForbiddenError(
+          'Selected branch does not belong to the tournament organisation',
+          ErrorCodes.TOURNAMENT_COURT_NOT_ELIGIBLE,
+        );
+      }
+    }
+    return stripped;
   }
 
   /**
@@ -565,6 +651,28 @@ export class TournamentService {
    * null when neither exists — coordinates/addresses are never invented.
    */
   private buildVenue(row: any): TournamentVenue | null {
+    const mode = row?.venue_type ?? 'ORGANISATION_COURTS';
+    // G11.18 Phase 3 — EXTERNAL_VENUE: informational location data captured by
+    // the map picker (branches never used; maps_url derived server-side).
+    if (mode === 'EXTERNAL_VENUE') {
+      const extLat = row.latitude != null ? Number(row.latitude) : null;
+      const extLng = row.longitude != null ? Number(row.longitude) : null;
+      return {
+        venueMode: 'EXTERNAL_VENUE',
+        branchId: null,
+        name: row.venue_name ?? 'External Venue',
+        addressLine1: row.venue_address ?? null,
+        city: row.venue_city ?? null,
+        country: row.venue_country ?? null,
+        latitude: extLat,
+        longitude: extLng,
+        placeId: row.place_id ?? null,
+        venueContact: row.venue_contact ?? null,
+        mapsUrl: row.maps_url ?? (extLat != null && extLng != null
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${extLat},${extLng}`)}`
+          : null),
+      };
+    }
     const branchId = Number(row?.branch_id);
     if (!branchId || row?.branch_name == null) return null;
     const lat = row.branch_latitude != null ? Number(row.branch_latitude) : null;
@@ -579,6 +687,7 @@ export class TournamentService {
       if (query) mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
     }
     return {
+      venueMode: 'ORGANISATION_COURTS',
       branchId,
       name: row.branch_name,
       addressLine1,
@@ -1058,6 +1167,9 @@ export class TournamentService {
       data = safeUpdate;
     }
     const effectiveOrgId = current.organisation_id ?? undefined;
+    // G11.18 Phase 3 — venue normalization on update (org-court ownership +
+    // external venue validation; N/A for the fixed org).
+    data = await this.normaliseVenueContext(data, effectiveOrgId ?? null, current);
     // Group 1A — authoritative currency for organisation tournaments. When the
     // branch changes (or a client supplies a currency), re-resolve server-side
     // from the effective org/branch. A client-supplied currency_code is never
@@ -1528,7 +1640,7 @@ export class TournamentService {
     userId: number,
     teamId?: number,
     paymentMethod?: string,
-    options?: { operatorBypass?: boolean },
+    options?: { operatorBypass?: boolean; competitionId?: number | null },
   ): Promise<TournamentRegistration & { payment?: Record<string, unknown> | null }> {
     const t = await this.getById(tournamentId);
     if (t.status !== 'registration_open' && t.status !== 'published') {
@@ -1548,26 +1660,45 @@ export class TournamentService {
       }
     }
 
+    // G11.18 Phase 2 — resolve the competition for THIS registration.
+    //   * explicit competitionId must belong to the tournament (fail closed);
+    //   * omitted → the single/default competition (backward compatibility);
+    //   * multiple competitions + omitted id → clear validation error;
+    //   * null = legacy fallback (a row without competitions — the DB trigger
+    //     assigns the default competition on insert and every value stays at
+    //     tournament scope, identical to pre-Phase-2 behavior).
+    const competition = await competitionService.resolveRegistrationCompetition(tournamentId, options?.competitionId ?? null);
+    const inCompetition = (r: TournamentRegistration): boolean =>
+      competition == null || Number(r.competition_id) === Number(competition.id);
+
     const existing = await tournamentRepository.findRegistrationsByTournament(tournamentId);
-    if (existing.some((r) => r.player_id === userId)) {
-      throw new ConflictError('Already registered in this tournament', ErrorCodes.TOURNAMENT_REGISTRATION_EXISTS);
+    if (existing.some((r) => inCompetition(r) && r.player_id === userId)) {
+      throw new ConflictError(
+        competition ? 'Already registered in this competition' : 'Already registered in this tournament',
+        ErrorCodes.TOURNAMENT_REGISTRATION_EXISTS,
+      );
     }
 
     // Group 7-B — server-authoritative eligibility BEFORE capacity/waitlist/
     // payment/participant materialisation. An ineligible registration never
     // consumes a slot, never enters the waitlist and never starts a payment.
+    // Eligibility is competition-scoped (the default competition mirrors the
+    // tournament, so legacy behavior is byte-identical).
     // Operator/admin bypass is ONLY possible when the caller holds the
     // privileged registration permission (resolved by the controller).
     const bypass = options?.operatorBypass === true;
-    const eligibility = await tournamentEligibilityService.assertCanRegister(t, [userId], {
+    const eligibilityView = competition ? competitionService.eligibilityView(t, competition) : t;
+    const eligibility = await tournamentEligibilityService.assertCanRegister(eligibilityView, [userId], {
       allowBypass: bypass,
       ...(bypass ? { bypassReason: 'operator registration' } : {}),
     });
 
-    const cap = t.max_participants || 0;
-    const confirmedCount = existing.filter((r) => r.status === 'confirmed').length;
+    const cap = competition ? competitionService.maxParticipants(competition, t) : (t.max_participants || 0);
+    const confirmedCount = existing.filter((r) => (competition == null ? true : Number(r.competition_id) === Number(competition.id)) && r.status === 'confirmed').length;
     const isFull = cap > 0 && confirmedCount >= cap;
-    const waitlistEnabled = Boolean(Number((t as any).waitlist_enabled ?? 0));
+    const waitlistEnabled = competition
+      ? competitionService.waitlistEnabled(competition, t)
+      : Boolean(Number((t as any).waitlist_enabled ?? 0));
     if (isFull) {
       // Group 6 — real FIFO waitlist: when enabled, the registration enters the
       // waiting state (NO payment, NO entitlement) instead of erroring. Only
@@ -1582,6 +1713,7 @@ export class TournamentService {
         await runProvidedTransaction(conn, async () => {
           id = await tournamentRepository.createRegistration({
             tournament_id: tournamentId,
+            competition_id: competition?.id ?? null,
             user_id: userId,
             player_id: userId,
             team_id: teamId,
@@ -1592,6 +1724,7 @@ export class TournamentService {
           }, conn);
           await participantDrawRepository.createParticipant({
             tournament_id: tournamentId,
+            competition_id: competition?.id ?? null,
             registration_id: id,
             participant_type: 'individual',
             status: 'waiting',
@@ -1617,9 +1750,19 @@ export class TournamentService {
     // can never be offered or accepted. When no method is supplied (legacy
     // callers) the registration is created 'registered'/'unpaid' exactly as
     // before — backward compatible.
-    const paymentRequired = Number(t.entry_fee ?? 0) > 0;
+    // G11.18 Phase 2 — the registration amount, currency and allowed methods
+    // come from the RESOLVED COMPETITION (competition-first, tournament
+    // fallback). The shared payment topology is untouched.
+    const entryFeeForPayment = competition ? competitionService.entryFee(competition, t) : Number(t.entry_fee ?? 0);
+    const currencyForPayment = competition ? competitionService.currency(competition, t) : (t.currency_code ?? 'EGP');
+    const paymentRequired = entryFeeForPayment > 0;
     if (paymentMethod) {
-      const effective = await this.resolveEffectiveRegistrationPaymentMethods(t);
+      const effective = await this.resolveEffectiveRegistrationPaymentMethods({
+        organisation_id: t.organisation_id,
+        registration_payment_methods: competition
+          ? competitionService.registrationPaymentMethods(competition, t)
+          : t.registration_payment_methods,
+      });
       if (!effective.includes(paymentMethod)) {
         throw new ConflictError(
           `Payment method "${paymentMethod}" is not accepted for this tournament`,
@@ -1639,6 +1782,7 @@ export class TournamentService {
       await runProvidedTransaction(conn, async () => {
         id = await tournamentRepository.createRegistration({
           tournament_id: tournamentId,
+          competition_id: competition?.id ?? null,
           user_id: userId,
           player_id: userId,
           team_id: teamId,
@@ -1649,6 +1793,7 @@ export class TournamentService {
         }, conn);
         await participantDrawRepository.createParticipant({
           tournament_id: tournamentId,
+          competition_id: competition?.id ?? null,
           registration_id: id,
           participant_type: 'individual',
           status: 'active',
@@ -1670,12 +1815,12 @@ export class TournamentService {
       // idempotency key) and mark the registration paid durably. The
       // payment:succeeded event runs the shared pipeline (listener re-marks
       // idempotently; tournament accounting is intentionally not posted yet).
-      const amount = Math.round(Number(t.entry_fee) * 100) / 100;
+      const amount = Math.round(entryFeeForPayment * 100) / 100;
       const paymentId = await tournamentRepository.createCashPaymentTransaction({
         userId,
         registrationId: id,
         amount,
-        currency: t.currency_code,
+        currency: currencyForPayment,
       });
       await tournamentRepository.updateRegistrationPaymentStatus(id, 'paid');
       eventBusV2.emit('payment:succeeded', {
@@ -1683,7 +1828,7 @@ export class TournamentService {
         referenceType: 'tournament',
         referenceId: id,
         amount,
-        metadata: { paymentMethod: 'cash', currency: t.currency_code, userId },
+        metadata: { paymentMethod: 'cash', currency: currencyForPayment, userId },
       } as Record<string, unknown>);
       payment = { method: 'cash', status: 'paid', paymentId };
     } else if (paymentRequired && paymentMethod === 'card') {
@@ -1696,8 +1841,8 @@ export class TournamentService {
       const gwResult: any = await paymentService.charge(userId, {
         referenceType: 'tournament' as any,
         referenceId: id,
-        amount: Math.round(Number(t.entry_fee) * 100) / 100,
-        currency: t.currency_code,
+        amount: Math.round(entryFeeForPayment * 100) / 100,
+        currency: currencyForPayment,
         paymentMethod: 'card',
       });
       if (!gwResult?.success) {
@@ -1771,11 +1916,17 @@ export class TournamentService {
     });
   }
 
-  async generateGroups(tournamentId: number, groupSize: number, advanceCount: number): Promise<void> {
+  async generateGroups(tournamentId: number, groupSize: number, advanceCount: number, competitionId?: number | null): Promise<void> {
     const t = await this.getById(tournamentId);
+    // G11.18 Phase 3 — groups are COMPETITION-scoped: confirmed registrations are
+    // filtered to the selected competition so Singles/Doubles/Teams never share a
+    // group namespace.
+    const competition = await competitionService.resolveRegistrationCompetition(tournamentId, competitionId ?? null);
     const registrations = await tournamentRepository.findRegistrationsByTournament(tournamentId);
-    const confirmed = registrations.filter((r) => r.status === 'confirmed');
-    if (confirmed.length === 0) throw new ConflictError('No confirmed registrations', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
+    const confirmed = registrations.filter(
+      (r) => (competition == null || Number(r.competition_id) === Number(competition.id)) && r.status === 'confirmed',
+    );
+    if (confirmed.length === 0) throw new ConflictError('No confirmed registrations in this competition', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
 
     const numGroups = Math.ceil(confirmed.length / groupSize);
     // Group 5A — deterministic seeded shuffle (draw_seed), not Math.random().
@@ -1786,6 +1937,7 @@ export class TournamentService {
       const groupName = String.fromCharCode(65 + g);
       const groupId = await tournamentRepository.createGroup({
         tournament_id: tournamentId,
+        competition_id: competition?.id ?? null,
         name: groupName,
         advance_count: advanceCount,
       });
@@ -3225,7 +3377,9 @@ export class TournamentService {
     if (data.match_format_id != null && data.rule_set_id == null) {
       throw new ConflictError('A stage with a Match Format must also configure a Rule Set', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
     }
-    const id = await tournamentRepository.createStage({ ...data, tournament_id: tournamentId });
+    // G11.18 Phase 3 — a stage belongs to ONE competition (default when omitted).
+    const competition = await competitionService.resolveRegistrationCompetition(tournamentId, data.competition_id ?? null);
+    const id = await tournamentRepository.createStage({ ...data, tournament_id: tournamentId, competition_id: competition?.id ?? null });
     const stage = (await tournamentRepository.findStages(tournamentId)).find((s) => s.id === id);
     if (!stage) throw new NotFoundError('Stage', ErrorCodes.TOURNAMENT_GROUP_NOT_FOUND);
     // G11.14 — `tournament.stage-created` (dot-form) silently vanished in the

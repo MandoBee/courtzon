@@ -74,7 +74,7 @@ export async function generateDrawHandler(request: FastifyRequest, reply: Fastif
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = GenerateDrawSchema.parse(request.body);
-  const draw = await participantDrawService.generateDraw(Number(id), userId, body.draw_seed);
+  const draw = await participantDrawService.generateDraw(Number(id), userId, body.draw_seed, body.competition_id);
   return reply.send(draw);
 }
 
@@ -124,7 +124,7 @@ export async function createPairParticipantHandler(request: FastifyRequest, repl
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = CreatePairParticipantSchema.parse(request.body);
-  const result = await participantMemberService.createPairParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId);
+  const result = await participantMemberService.createPairParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method, competitionId: body.competition_id }, userId);
   return reply.status(201).send(result);
 }
 
@@ -132,7 +132,7 @@ export async function createTeamParticipantHandler(request: FastifyRequest, repl
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = CreateTeamParticipantSchema.parse(request.body);
-  const result = await participantMemberService.createTeamParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId);
+  const result = await participantMemberService.createTeamParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method, competitionId: body.competition_id }, userId);
   return reply.status(201).send(result);
 }
 

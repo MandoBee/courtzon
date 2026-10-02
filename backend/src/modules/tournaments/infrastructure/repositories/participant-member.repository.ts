@@ -60,6 +60,16 @@ export class ParticipantMemberRepository {
     return rows.length ? (rows[0] as TournamentParticipantMember) : null;
   }
 
+  /** G11.18 Phase 2 — any ACTIVE member row for a user WITHIN ONE competition (competition-scoped uniqueness). */
+  async findActiveMemberByCompetition(activeCompetitionId: number, userId: number, conn?: import('mysql2/promise').PoolConnection): Promise<TournamentParticipantMember | null> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      "SELECT * FROM tournament_participant_members WHERE active_competition_id = ? AND user_id = ? AND status = 'active' LIMIT 1",
+      [activeCompetitionId, userId],
+    );
+    return rows.length ? (rows[0] as TournamentParticipantMember) : null;
+  }
+
   /**
    * G9-B — the ACTIVE member rows for a set of users within a tournament.
    * Used to resolve the winning TOURNAMENT PARTICIPANT (never a single user)

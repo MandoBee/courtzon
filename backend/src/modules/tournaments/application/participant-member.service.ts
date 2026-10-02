@@ -6,11 +6,14 @@ import { getPool } from '../../../database/mysql.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { tournamentRealtimeScope } from './tournament-realtime-scope.js';
 import { tournamentEligibilityService } from './tournament-eligibility.service.js';
+import { competitionService } from './competition.service.js';
+import { competitionRepository } from '../infrastructure/repositories/competition.repository.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import type {
   Tournament,
+  TournamentCompetition,
   TournamentParticipant,
   TournamentParticipantMember,
   TournamentReplacementRequest,
@@ -57,10 +60,13 @@ export class ParticipantMemberService {
    * NEVER invented. rosterSize distinguishes the active side size
    * (players_per_side) from the roster size (roster_size; NULL = players_per_side).
    */
-  async resolveFormatConfig(t: Tournament): Promise<{ formatType: 'singles' | 'doubles' | 'team'; rosterSize: number | null; formatId: number | null }> {
+  async resolveFormatConfig(t: Tournament, competition?: TournamentCompetition | null): Promise<{ formatType: 'singles' | 'doubles' | 'team'; rosterSize: number | null; formatId: number | null }> {
     let format: { formatType: 'singles' | 'doubles' | 'team'; playersPerSide: number | null; rosterSize: number | null } | null = null;
-    if (t.match_format_id != null) {
-      const fmt = await matchResultRepository.findFormatById(t.match_format_id);
+    // G11.18 Phase 2 — the competition's format wins when configured (it mirrors
+    // the tournament for the default competition → identical behavior).
+    const formatId = competition?.match_format_id ?? t.match_format_id;
+    if (formatId != null) {
+      const fmt = await matchResultRepository.findFormatById(formatId);
       if (fmt) format = { formatType: fmt.formatType, playersPerSide: fmt.playersPerSide, rosterSize: fmt.rosterSize };
     }
     if (!format && t.sport_id != null) {
@@ -73,7 +79,7 @@ export class ParticipantMemberService {
     return {
       formatType: format.formatType,
       rosterSize: format.rosterSize ?? format.playersPerSide,
-      formatId: t.match_format_id ?? null,
+      formatId: formatId ?? null,
     };
   }
 
@@ -115,7 +121,7 @@ export class ParticipantMemberService {
     t: Tournament,
     tournamentId: number,
     userId: number,
-    opts: { excludeParticipantId?: number; conn?: import('mysql2/promise').PoolConnection } = {},
+    opts: { excludeParticipantId?: number; conn?: import('mysql2/promise').PoolConnection; competition?: TournamentCompetition | null } = {},
   ): Promise<{ id: number; full_name: string | null }> {
     const player = await participantMemberRepository.findEligiblePlayer(userId, opts.conn);
     if (!player) {
@@ -124,20 +130,32 @@ export class ParticipantMemberService {
         ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_NOT_ELIGIBLE,
       );
     }
-    const active = await participantMemberRepository.findActiveMemberByUser(tournamentId, userId, opts.conn);
+    // G11.18 Phase 2 — active-membership uniqueness is COMPETITION-scoped: the
+    // same player MAY be active in different competitions of one tournament but
+    // never twice within the same competition.
+    const active = opts.competition
+      ? await participantMemberRepository.findActiveMemberByCompetition(Number(opts.competition.id), userId, opts.conn)
+      : await participantMemberRepository.findActiveMemberByUser(tournamentId, userId, opts.conn);
     if (active && (opts.excludeParticipantId == null || Number(active.participant_id) !== opts.excludeParticipantId)) {
       throw new ConflictError(
-        `Player #${userId} is already an active member of another participant in this tournament`,
+        opts.competition
+          ? `Player #${userId} is already an active member of another participant in this competition`
+          : `Player #${userId} is already an active member of another participant in this tournament`,
         ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_ACTIVE_DUPLICATE,
       );
     }
     // Group 7-B — server-authoritative AGE/GENDER/LEVEL eligibility through the
     // central TournamentEligibilityService (no bypass on the participant path).
-    const evaluation = await tournamentEligibilityService.evaluatePlayers(t, [userId], { conn: opts.conn });
+    // Competition eligibility fields win (default competition === tournament).
+    const evaluation = await tournamentEligibilityService.evaluatePlayers(
+      opts.competition ? competitionService.eligibilityView(t, opts.competition) : t,
+      [userId],
+      { conn: opts.conn },
+    );
     const member = evaluation.members[0];
     if (member && member.reasons.length > 0) {
       throw new AppError(
-        'Player is not eligible for this tournament',
+        'Player is not eligible for this competition',
         422,
         member.reasons[0].code,
         { details: { userId, reasons: member.reasons } },
@@ -176,7 +194,7 @@ export class ParticipantMemberService {
   /** Create a PAIR participant (exactly the configured pair size of active members). */
   async createPairParticipant(
     tournamentId: number,
-    input: { name?: string; memberUserIds: number[]; paymentMethod?: string },
+    input: { name?: string; memberUserIds: number[]; paymentMethod?: string; competitionId?: number | null },
     actorId: number,
   ): Promise<TournamentParticipant & { payment?: Record<string, unknown> | null }> {
     return this.createParticipant(tournamentId, { ...input, participantType: 'pair' }, actorId);
@@ -185,7 +203,7 @@ export class ParticipantMemberService {
   /** Create a TEAM participant (roster from the sport format config; 2..rosterSize active members). */
   async createTeamParticipant(
     tournamentId: number,
-    input: { name?: string; memberUserIds: number[]; paymentMethod?: string },
+    input: { name?: string; memberUserIds: number[]; paymentMethod?: string; competitionId?: number | null },
     actorId: number,
   ): Promise<TournamentParticipant & { payment?: Record<string, unknown> | null }> {
     return this.createParticipant(tournamentId, { ...input, participantType: 'team' }, actorId);
@@ -200,7 +218,7 @@ export class ParticipantMemberService {
    */
   async createParticipant(
     tournamentId: number,
-    input: { participantType: 'pair' | 'team'; name?: string; memberUserIds: number[]; paymentMethod?: string },
+    input: { participantType: 'pair' | 'team'; name?: string; memberUserIds: number[]; paymentMethod?: string; competitionId?: number | null },
     actorId: number,
   ): Promise<TournamentParticipant & { payment?: Record<string, unknown> | null }> {
     const t = await this.getTournament(tournamentId);
@@ -213,8 +231,11 @@ export class ParticipantMemberService {
         throw new ConflictError('Registration has closed for this tournament', ErrorCodes.TOURNAMENT_REGISTRATION_CLOSED);
       }
     }
-    // Resolve the authoritative format config (async DB lookups).
-    const fmt = await this.resolveFormatConfig(t);
+    // G11.18 Phase 2 — the competition scope for this pair/team: explicit id must
+    // belong to the tournament; omitted → single/default competition (legacy).
+    const competition = await competitionService.resolveRegistrationCompetition(tournamentId, input.competitionId ?? null);
+    // Resolve the authoritative format config (competition-first).
+    const fmt = await this.resolveFormatConfig(t, competition);
     this.assertParticipantTypeMatchesFormat(fmt, input.participantType);
 
     const members = Array.from(new Set(input.memberUserIds.map((id) => Number(id))));
@@ -228,7 +249,12 @@ export class ParticipantMemberService {
 
     // Group 7-B — batch eligibility for EVERY member BEFORE any write. A single
     // ineligible member rejects the whole pair/team (combined structured error).
-    const eligibilityEvaluation = await tournamentEligibilityService.evaluatePlayers(t, members, {});
+    // Eligibility is competition-scoped (default competition === tournament).
+    const eligibilityEvaluation = await tournamentEligibilityService.evaluatePlayers(
+      competition ? competitionService.eligibilityView(t, competition) : t,
+      members,
+      {},
+    );
     if (!eligibilityEvaluation.eligible) {
       const failing = eligibilityEvaluation.members.filter((m) => !m.eligible);
       const first = failing[0]?.reasons[0]?.code ?? 'LEVEL_NOT_ELIGIBLE';
@@ -253,15 +279,18 @@ export class ParticipantMemberService {
       await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
 
       // Capacity checked INSIDE the tournament row lock (no race on the slot).
-      const activeCount = await participantDrawRepository.countParticipantsByTournament(tournamentId, conn);
-      const cap = Number(t.max_participants ?? 0);
+      // G11.18 Phase 2 — capacity is COMPETITION-scoped.
+      const activeCount = competition
+        ? await participantDrawRepository.countParticipantsByCompetition(tournamentId, Number(competition.id), conn)
+        : await participantDrawRepository.countParticipantsByTournament(tournamentId, conn);
+      const cap = competition ? competitionService.maxParticipants(competition, t) : Number(t.max_participants ?? 0);
       if (cap > 0 && activeCount + 1 > cap) {
-        throw new ConflictError('Tournament is at full capacity', ErrorCodes.TOURNAMENT_CAPACITY_FULL);
+        throw new ConflictError('Competition is at full capacity', ErrorCodes.TOURNAMENT_CAPACITY_FULL);
       }
 
       // Eligibility + uniqueness for EVERY member (single source of truth).
       for (const userId of members) {
-        await this.assertMemberEligible(t, tournamentId, userId, { conn });
+        await this.assertMemberEligible(t, tournamentId, userId, { conn, competition });
       }
 
       // One authoritative registration (the participant entry). Payment stays
@@ -269,6 +298,7 @@ export class ParticipantMemberService {
       const primaryUserId = members[0];
       registrationId = await tournamentRepository.createRegistration({
         tournament_id: tournamentId,
+        competition_id: competition?.id ?? null,
         user_id: primaryUserId,
         player_id: primaryUserId,
         seed: activeCount + 1,
@@ -279,6 +309,7 @@ export class ParticipantMemberService {
 
       participantId = await participantDrawRepository.createParticipant({
         tournament_id: tournamentId,
+        competition_id: competition?.id ?? null,
         registration_id: registrationId,
         participant_type: input.participantType,
         status: 'active',
@@ -306,10 +337,14 @@ export class ParticipantMemberService {
       conn.release();
     }
 
-    // Payment follows the EXISTING Group 3 policy (single entry fee).
-    const paymentRequired = Number(t.entry_fee ?? 0) > 0;
+    // Payment follows the EXISTING Group 3 policy. G11.18 Phase 2 — the amount
+    // and currency come from the RESOLVED COMPETITION (competition-first,
+    // tournament fallback); the shared payment topology is untouched.
+    const entryFeeForPayment = competition ? competitionService.entryFee(competition, t) : Number(t.entry_fee ?? 0);
+    const currencyForPayment = competition ? competitionService.currency(competition, t) : (t.currency_code ?? 'EGP');
+    const paymentRequired = entryFeeForPayment > 0;
     const payment = paymentRequired && input.paymentMethod && registrationId != null
-      ? await this.settlePayment(registrationId, participantId, t, input.paymentMethod)
+      ? await this.settlePayment(registrationId, participantId, t, input.paymentMethod, { amount: entryFeeForPayment, currency: currencyForPayment })
       : null;
 
     await recordAudit({
@@ -437,9 +472,15 @@ export class ParticipantMemberService {
     userId: number,
     conn: import('mysql2/promise').PoolConnection,
   ): Promise<void> {
-    const fmt = await this.resolveFormatConfig(t);
+    // G11.18 Phase 2 — the member join resolves the PARTICIPANT's competition so
+    // eligibility, the active-uniqueness check and the roster format are all
+    // competition-scoped (a team in one competition is never mixed with another).
+    const competition = participant.competition_id != null
+      ? await competitionRepository.findById(Number(participant.competition_id), conn).catch(() => null)
+      : null;
+    const fmt = await this.resolveFormatConfig(t, competition);
     const requiredCount = this.requiredMemberCount(fmt.formatType, participant.participant_type, fmt.rosterSize);
-    await this.assertMemberEligible(t, tournamentId, userId, { excludeParticipantId: participant.id!, conn });
+    await this.assertMemberEligible(t, tournamentId, userId, { excludeParticipantId: participant.id!, conn, competition });
     const existing = await participantMemberRepository.findMember(participant.id!, userId, conn);
     if (existing) {
       throw new ConflictError('Player is already a member of this participant', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_DUPLICATE);
@@ -862,9 +903,10 @@ export class ParticipantMemberService {
     participantId: number,
     t: Tournament,
     paymentMethod: string,
+    opts?: { amount?: number; currency?: string },
   ): Promise<Record<string, unknown> | null> {
     const { participantDrawService } = await import('./participant-draw.service.js');
-    return participantDrawService.settleRegistrationPayment(registrationId, participantId, t, paymentMethod);
+    return participantDrawService.settleRegistrationPayment(registrationId, participantId, t, paymentMethod, opts);
   }
 
   private async emit(

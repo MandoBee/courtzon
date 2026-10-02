@@ -112,6 +112,17 @@ export const CreateTournamentSchema = z.object({
   image_url: z.string().optional(),
   ...TournamentEligibilityInputSchema.shape,
   branch_id: z.number().int().positive().optional(),
+  // G11.18 Phase 3 — venue handling (map picker captures location data; the user
+  // never types coordinates). maps_url is always derived server-side.
+  venue_type: z.enum(['ORGANISATION_COURTS', 'EXTERNAL_VENUE']).optional(),
+  venue_name: z.string().max(200).optional(),
+  venue_address: z.string().max(500).optional(),
+  venue_city: z.string().max(120).optional(),
+  venue_country: z.string().max(80).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  place_id: z.string().max(200).optional(),
+  venue_contact: z.string().max(120).optional(),
   // G11 Phase 3 — `organisation_id` and `tournament_type` are NOT client-settable.
   //   * organisation_id is injected server-side by the organisation-scoped
   //     controller (`POST /org/:orgId/tournaments` forces it from `:orgId`), so no
@@ -162,6 +173,16 @@ export const UpdateTournamentSchema = z.object({
   end_date: z.string().optional(),
   daily_start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format').optional(),
   daily_end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM time format').optional(),
+  // G11.18 Phase 3 — venue handling (server-validated; maps_url always derived server-side).
+  venue_type: z.enum(['ORGANISATION_COURTS', 'EXTERNAL_VENUE']).optional(),
+  venue_name: z.string().max(200).optional(),
+  venue_address: z.string().max(500).optional(),
+  venue_city: z.string().max(120).optional(),
+  venue_country: z.string().max(80).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  place_id: z.string().max(200).optional(),
+  venue_contact: z.string().max(120).optional(),
   rules: z.string().optional(),
   is_featured: z.boolean().optional(),
   image_url: z.string().optional(),
@@ -211,6 +232,12 @@ export const RegisterSchema = z.object({
   tournament_id: z.number().int().positive().optional(),
   team_id: z.number().int().positive().optional(),
   /**
+   * G11.18 Phase 2 — the competition category. Optional ONLY when the tournament
+   * has exactly one (default) competition; REQUIRED when multiple competitions
+   * exist (the service fails clearly otherwise).
+   */
+  competition_id: z.coerce.number().int().positive().optional(),
+  /**
    * Group 3 — the payment method the player will use for the entry fee. Must
    * be one of the tournament's EFFECTIVE allowed methods (config ∩ global
    * policy ∩ org policy). `cash` → offline paid on registration; `card` →
@@ -223,6 +250,8 @@ export const RegisterSchema = z.object({
 export const GenerateGroupsSchema = z.object({
   group_size: z.number().int().min(2).default(4),
   advance_count: z.number().int().min(1).default(2),
+  /** G11.18 Phase 3 — competition category (default/single when omitted). */
+  competition_id: z.coerce.number().int().positive().optional(),
 });
 
 export const RecordResultSchema = z.object({
@@ -265,6 +294,13 @@ export const AssignSeedSchema = z.object({
 /** Group 5 — generate / re-generate the draw (placement only; seeds preserved). */
 export const GenerateDrawSchema = z.object({
   draw_seed: z.number().int().positive().optional(),
+  /** G11.18 Phase 3 — competition category (default/single when omitted). */
+  competition_id: z.coerce.number().int().positive().optional(),
+});
+
+/** G11.18 Phase 3 — competition venue override (validated server-side; null clears to inherit). */
+export const CompetitionVenueSchema = z.object({
+  venue_override: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 /** Group 5 — manual placement (swap). `override` confirms a seeding-rule violation explicitly. */
@@ -298,6 +334,8 @@ export const CreatePairParticipantSchema = z.object({
   member_user_ids: z.array(z.number().int().positive()).min(2).max(20),
   /** Group 3 — single entry-fee payment method (cash|card); one per participant entry. */
   payment_method: z.enum(['cash', 'card']).optional(),
+  /** G11.18 Phase 2 — competition category (default when omitted and single). */
+  competition_id: z.coerce.number().int().positive().optional(),
 });
 
 /** Create a TEAM participant (roster size comes from the sport/format config). */
@@ -305,6 +343,8 @@ export const CreateTeamParticipantSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   member_user_ids: z.array(z.number().int().positive()).min(2).max(50),
   payment_method: z.enum(['cash', 'card']).optional(),
+  /** G11.18 Phase 2 — competition category (default when omitted and single). */
+  competition_id: z.coerce.number().int().positive().optional(),
 });
 
 /** Add / remove a member of an existing pair/team participant. */

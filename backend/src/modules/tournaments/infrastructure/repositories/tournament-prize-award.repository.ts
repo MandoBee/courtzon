@@ -22,12 +22,13 @@ export class TournamentPrizeAwardRepository {
     const db = conn ?? getPool();
     const [result] = await db.execute<ResultSet>(
       `INSERT INTO tournament_prize_awards
-        (public_id, tournament_id, prize_id, placement, registration_id, winner_user_id,
+        (public_id, tournament_id, competition_id, prize_id, placement, registration_id, winner_user_id,
          amount, currency_code, funding_source, collection_method, status, bind_source, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awarded', ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awarded', ?, ?)`,
       [
         generateUUID(),
         input.tournamentId,
+        input.competitionId ?? null,
         input.prizeId,
         input.placement ?? null,
         input.registrationId,
@@ -82,12 +83,21 @@ export class TournamentPrizeAwardRepository {
     return rows as TournamentPrizeAward[];
   }
 
-  /** Idempotency check — has this exact (tournament, placement, winner) award been bound? */
-  async hasAward(tournamentId: number, placement: number | null, winnerUserId: number): Promise<boolean> {
+  /**
+   * G11.18 C1 — competition-scoped idempotency check. An award in Competition A
+   * never blocks an award for the SAME player in Competition B. A null
+   * competition falls back to tournament-wide (legacy single-competition rows).
+   */
+  async hasAward(tournamentId: number, competitionId: number | null, placement: number | null, winnerUserId: number): Promise<boolean> {
     const [rows] = await getPool().execute<RowData>(
-      `SELECT id FROM tournament_prize_awards
-       WHERE tournament_id = ? AND placement <=> ? AND winner_user_id = ? LIMIT 1`,
-      [tournamentId, placement ?? null, winnerUserId],
+      competitionId != null
+        ? `SELECT id FROM tournament_prize_awards
+           WHERE tournament_id = ? AND competition_id = ? AND placement <=> ? AND winner_user_id = ? LIMIT 1`
+        : `SELECT id FROM tournament_prize_awards
+           WHERE tournament_id = ? AND placement <=> ? AND winner_user_id = ? LIMIT 1`,
+      competitionId != null
+        ? [tournamentId, competitionId, placement ?? null, winnerUserId]
+        : [tournamentId, placement ?? null, winnerUserId],
     );
     return (rows as any[]).length > 0;
   }

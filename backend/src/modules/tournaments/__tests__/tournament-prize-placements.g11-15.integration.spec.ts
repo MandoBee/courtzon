@@ -67,6 +67,9 @@ async function createTournament(status = 'completed'): Promise<number> {
   );
   const tid = Number((res as any).insertId);
   tournamentIds.push(tid);
+  await pool.execute(
+    `INSERT INTO tournament_competitions (public_id, tournament_id, competition_type, name, currency_code, is_default)
+     VALUES (UUID(), ?, 'singles', 'Default', 'EGP', 1)`, [tid]);
   return tid;
 }
 

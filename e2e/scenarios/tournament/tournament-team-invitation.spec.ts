@@ -64,7 +64,11 @@ async function seedTeamTournament(creatorUserId: number): Promise<number> {
         'community', 0, 'published', 1, '2026-12-01', '2026-12-31', '2026-11-01', '2026-11-30')`,
     [creatorUserId, orgId, bracketId, formatId, sportId],
   );
-  return Number((t as any).insertId);
+  const tid = Number((t as any).insertId);
+  await query(
+    `INSERT INTO tournament_competitions (public_id, tournament_id, competition_type, name, currency_code, is_default)
+     VALUES (UUID(), ?, 'team', 'Default', 'EGP', 1)`, [tid]);
+  return tid;
 }
 
 /** Create a player with a player_profiles row (eligibility). idx must be 1-99. */

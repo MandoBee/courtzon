@@ -301,6 +301,12 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
     ctrl.autoScheduleOrgHandler,
   );
+  // G11.18 Phase 3 — optional competition venue override (NULL = inherit the tournament venue).
+  app.put(
+    '/org/:orgId/tournaments/:id/competitions/:competitionId/venue',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.updateOrgCompetitionVenueHandler,
+  );
   app.post(
     '/org/:orgId/tournaments/:id/matches/:matchId/release-court',
     { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },

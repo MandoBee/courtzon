@@ -131,6 +131,8 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   // tenant and invitation ownership rules.
   app.post('/tournaments/:id/teams', { preHandler: [requirePermission(['player.tournaments.team.create'])] }, ctrl.createTeamHandler);
   app.get('/tournaments/:id/teams', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listTeamsHandler);
+  // G11.18 Phase 2 — competition categories surfaced to the player registration UI.
+  app.get('/tournaments/:id/competitions', { preHandler: [requirePermission(['tournament.view'])] }, ctrl.listTournamentCompetitionsHandler);
   app.post('/tournaments/:id/teams/:participantId/join', { preHandler: [requirePermission(['player.tournaments.team.join'])] }, ctrl.joinTeamHandler);
   app.post('/tournaments/:id/teams/:participantId/invitations', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.createInvitationHandler);
   app.get('/tournaments/:id/teams/:participantId/invitations', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.listSentInvitationsHandler);

@@ -16,6 +16,7 @@ import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { emitTournamentScoped } from './tournament-realtime-scope.js';
 import { tournamentEligibilityService } from './tournament-eligibility.service.js';
+import { competitionService } from './competition.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ratingRepository } from '../../match-result/infrastructure/rating.repository.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
@@ -263,18 +264,24 @@ export class ParticipantDrawService {
    * seeds are NEVER regenerated. Each attempt is a new, auditable draw row.
    * Deterministic for the same participants + seeds + draw_seed.
    */
-  async generateDraw(tournamentId: number, actorId: number, drawSeed?: number): Promise<TournamentDraw> {
+  async generateDraw(tournamentId: number, actorId: number, drawSeed?: number, competitionId?: number | null): Promise<TournamentDraw> {
+    // G11.18 Phase 3 — a draw belongs to ONE competition. Singles/Doubles/Teams
+    // each own an independent draw/attempt/seed namespace (never mixed).
+    const competition = await competitionService.resolveRegistrationCompetition(tournamentId, competitionId ?? null);
+    const scopedCompetitionId = competition?.id ?? null;
     await this.syncParticipants(tournamentId);
-    const current = await participantDrawRepository.findCurrentDraw(tournamentId);
+    const current = await participantDrawRepository.findCurrentDraw(tournamentId, scopedCompetitionId);
     if (current && current.status === 'locked') {
       throw new ConflictError('The draw is locked and cannot be regenerated', ErrorCodes.TOURNAMENT_DRAW_LOCKED);
     }
-    const participants = await participantDrawRepository.listParticipantsByTournament(tournamentId);
+    const participants = competition
+      ? await participantDrawRepository.listParticipantsByCompetition(tournamentId, Number(competition.id))
+      : await participantDrawRepository.listParticipantsByTournament(tournamentId);
     if (participants.length < 2) {
       throw new ConflictError('At least 2 participants are required to generate a draw', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
     }
 
-    const attempt = await participantDrawRepository.getNextDrawAttempt(tournamentId);
+    const attempt = await participantDrawRepository.getNextDrawAttempt(tournamentId, scopedCompetitionId);
     const seed = drawSeed ?? Date.now();
 
     // Placement rule (foundation): seeded participants hold the protected top
@@ -288,9 +295,10 @@ export class ParticipantDrawService {
     const shuffledUnseeded = seededShuffle(unseeded, seed);
     const order = [...seeded, ...shuffledUnseeded];
 
-    await participantDrawRepository.clearCurrentDraws(tournamentId);
+    await participantDrawRepository.clearCurrentDraws(tournamentId, scopedCompetitionId);
     const drawId = await participantDrawRepository.createDraw({
       tournament_id: tournamentId,
+      competition_id: scopedCompetitionId,
       attempt_number: attempt,
       draw_seed: seed,
       generated_by: actorId,
@@ -309,7 +317,7 @@ export class ParticipantDrawService {
       action: attempt > 1 ? 'TOURNAMENT.DRAW_REGENERATED' : 'TOURNAMENT.DRAW_GENERATED',
       entityType: 'tournament_draw',
       entityId: drawId,
-      afterState: { attempt_number: attempt, draw_seed: seed, participants: order.length },
+      afterState: { attempt_number: attempt, draw_seed: seed, competition_id: scopedCompetitionId, participants: order.length },
     });
 
     const draw = await this.getDrawWithEntries(drawId);
@@ -320,6 +328,7 @@ export class ParticipantDrawService {
     ]);
     await emitTournamentScoped('tournament:draw-generated', {
       tournamentId,
+      competitionId: scopedCompetitionId,
       attemptNumber: attempt,
       drawSeed: seed,
       status: 'draft',
@@ -327,13 +336,15 @@ export class ParticipantDrawService {
     return draw;
   }
 
-  async listDraws(tournamentId: number): Promise<TournamentDraw[]> {
-    const draws = await participantDrawRepository.listDrawsByTournament(tournamentId);
+  async listDraws(tournamentId: number, competitionId?: number | null): Promise<TournamentDraw[]> {
+    const scopedCompetitionId = competitionId ?? (await competitionService.resolveRegistrationCompetition(tournamentId, null))?.id ?? null;
+    const draws = await participantDrawRepository.listDrawsByTournament(tournamentId, scopedCompetitionId);
     return Promise.all(draws.map((d) => this.getDrawWithEntries(d.id!)));
   }
 
-  async getCurrentDraw(tournamentId: number): Promise<TournamentDraw | null> {
-    const draw = await participantDrawRepository.findCurrentDraw(tournamentId);
+  async getCurrentDraw(tournamentId: number, competitionId?: number | null): Promise<TournamentDraw | null> {
+    const scopedCompetitionId = competitionId ?? (await competitionService.resolveRegistrationCompetition(tournamentId, null))?.id ?? null;
+    const draw = await participantDrawRepository.findCurrentDraw(tournamentId, scopedCompetitionId);
     if (!draw) return null;
     return this.getDrawWithEntries(draw.id!);
   }
@@ -350,11 +361,14 @@ export class ParticipantDrawService {
    * structured result the UI can show as a warning — never silently accepts a
    * violation.
    */
-  async validateDraw(tournamentId: number): Promise<{ valid: boolean; reason?: string; seed?: number; message?: string }> {
-    const draw = await participantDrawRepository.findCurrentDraw(tournamentId);
+  async validateDraw(tournamentId: number, competitionId?: number | null): Promise<{ valid: boolean; reason?: string; seed?: number; message?: string }> {
+    const scopedCompetitionId = competitionId ?? (await competitionService.resolveRegistrationCompetition(tournamentId, null))?.id ?? null;
+    const draw = await participantDrawRepository.findCurrentDraw(tournamentId, scopedCompetitionId);
     if (!draw) return { valid: true };
     const entries = await participantDrawRepository.findDrawEntries(draw.id!);
-    const participants = await participantDrawRepository.listParticipantsByTournament(tournamentId);
+    const participants = scopedCompetitionId != null
+      ? await participantDrawRepository.listParticipantsByCompetition(tournamentId, scopedCompetitionId)
+      : await participantDrawRepository.listParticipantsByTournament(tournamentId);
     return this.evaluateSeedingRule(entries, participants);
   }
 
@@ -372,16 +386,25 @@ export class ParticipantDrawService {
     opts: { override?: boolean } = {},
   ): Promise<{ valid: boolean; reason?: string; seed?: number; message?: string; draw?: TournamentDraw }> {
     await this.syncParticipants(tournamentId);
-    const draw = await participantDrawRepository.findCurrentDraw(tournamentId);
+    // G11.18 Phase 3 — the authoritative competition comes from the PARTICIPANT
+    // (never a client-supplied id). The move operates on THAT competition's
+    // current draw and its OWN participant list, so a participant can never be
+    // moved out of its competition and positions can never span competitions.
+    const participant = await this.assertParticipantBelongsToTournament(tournamentId, participantId);
+    const competitionId = participant.competition_id != null ? Number(participant.competition_id) : null;
+    const draw = competitionId != null
+      ? await participantDrawRepository.findCurrentDraw(tournamentId, competitionId)
+      : await participantDrawRepository.findCurrentDraw(tournamentId);
     if (!draw) throw new ConflictError('No draw has been generated yet', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
     if (draw.status === 'locked') throw new ConflictError('The draw is locked', ErrorCodes.TOURNAMENT_DRAW_LOCKED);
 
-    const participants = await participantDrawRepository.listParticipantsByTournament(tournamentId);
+    const participants = competitionId != null
+      ? await participantDrawRepository.listParticipantsByCompetition(tournamentId, competitionId)
+      : await participantDrawRepository.listParticipantsByTournament(tournamentId);
     const target = Number(position);
     if (!Number.isInteger(target) || target < 0 || target >= participants.length) {
       throw new ConflictError(`Position ${position} is outside the valid range`, ErrorCodes.TOURNAMENT_INVALID_SEED);
     }
-    await this.assertParticipantBelongsToTournament(tournamentId, participantId);
 
     const mover = await participantDrawRepository.findEntryByParticipant(draw.id!, participantId);
     if (!mover) throw new ConflictError('Participant is not placed in the current draw', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
@@ -399,8 +422,19 @@ export class ParticipantDrawService {
       return violation;
     }
 
-    // Commit the swap.
+    // Commit the swap (transient-collision-free: the occupant is parked at a
+    // position outside the live range before the two final writes).
     const occupant = await participantDrawRepository.findEntryByPosition(draw.id!, target);
+    const oldMoverPosition = Number(mover.position);
+    const tempPosition = participants.length; // outside 0..len-1, never used by a live entry
+    if (occupant && Number(occupant.id) !== Number(mover.id)) {
+      await participantDrawRepository.updateDrawEntry(occupant.id!, {
+        position: tempPosition,
+        placement_source: 'manual',
+        overridden: Number(occupant.overridden) === 1,
+        moved_by: actorId,
+      });
+    }
     await participantDrawRepository.updateDrawEntry(mover.id!, {
       position: target,
       placement_source: 'manual',
@@ -409,7 +443,7 @@ export class ParticipantDrawService {
     });
     if (occupant && Number(occupant.id) !== Number(mover.id)) {
       await participantDrawRepository.updateDrawEntry(occupant.id!, {
-        position: Number(mover.position),
+        position: oldMoverPosition,
         placement_source: 'manual',
         overridden: Number(occupant.overridden) === 1,
         moved_by: actorId,
@@ -439,11 +473,12 @@ export class ParticipantDrawService {
     return { valid: true, draw: await this.getDrawWithEntries(draw.id!) };
   }
 
-  async approveDraw(tournamentId: number, actorId: number): Promise<TournamentDraw> {
-    const draw = await participantDrawRepository.findCurrentDraw(tournamentId);
+  async approveDraw(tournamentId: number, actorId: number, competitionId?: number | null): Promise<TournamentDraw> {
+    const scopedCompetitionId = competitionId ?? (await competitionService.resolveRegistrationCompetition(tournamentId, null))?.id ?? null;
+    const draw = await participantDrawRepository.findCurrentDraw(tournamentId, scopedCompetitionId);
     if (!draw) throw new ConflictError('No draw has been generated yet', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
     if (draw.status === 'locked') throw new ConflictError('The draw is already locked', ErrorCodes.TOURNAMENT_DRAW_LOCKED);
-    const validation = await this.validateDraw(tournamentId);
+    const validation = await this.validateDraw(tournamentId, scopedCompetitionId);
     if (!validation.valid) {
       throw new ConflictError(
         validation.message ?? 'The draw has unresolved seeding-rule violations',
@@ -453,18 +488,19 @@ export class ParticipantDrawService {
     await participantDrawRepository.updateDraw(draw.id!, { status: 'approved' });
     await recordAudit({ actorId, action: 'TOURNAMENT.DRAW_APPROVED', entityType: 'tournament_draw', entityId: draw.id });
     const tApproved = await this.getTournament(tournamentId);
-    await emitTournamentScoped('tournament:draw-updated', { tournamentId, drawId: draw.id, status: 'approved' } as Record<string, unknown>, tApproved);
+    await emitTournamentScoped('tournament:draw-updated', { tournamentId, competitionId: scopedCompetitionId, drawId: draw.id, status: 'approved' } as Record<string, unknown>, tApproved);
     return this.getDrawWithEntries(draw.id!);
   }
 
-  async lockDraw(tournamentId: number, actorId: number): Promise<TournamentDraw> {
-    const draw = await participantDrawRepository.findCurrentDraw(tournamentId);
+  async lockDraw(tournamentId: number, actorId: number, competitionId?: number | null): Promise<TournamentDraw> {
+    const scopedCompetitionId = competitionId ?? (await competitionService.resolveRegistrationCompetition(tournamentId, null))?.id ?? null;
+    const draw = await participantDrawRepository.findCurrentDraw(tournamentId, scopedCompetitionId);
     if (!draw) throw new ConflictError('No draw has been generated yet', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
     if (draw.status !== 'approved') throw new ConflictError('The draw must be approved before it can be locked', ErrorCodes.TOURNAMENT_DRAW_INVALID);
     await participantDrawRepository.updateDraw(draw.id!, { status: 'locked' });
     await recordAudit({ actorId, action: 'TOURNAMENT.DRAW_LOCKED', entityType: 'tournament_draw', entityId: draw.id });
     const tLocked = await this.getTournament(tournamentId);
-    await emitTournamentScoped('tournament:draw-updated', { tournamentId, drawId: draw.id, status: 'locked' } as Record<string, unknown>, tLocked);
+    await emitTournamentScoped('tournament:draw-updated', { tournamentId, competitionId: scopedCompetitionId, drawId: draw.id, status: 'locked' } as Record<string, unknown>, tLocked);
     return this.getDrawWithEntries(draw.id!);
   }
 
@@ -855,19 +891,26 @@ export class ParticipantDrawService {
     participantId: number,
     t: Tournament,
     paymentMethod: string,
+    opts?: { amount?: number; currency?: string },
   ): Promise<Record<string, unknown> | null> {
     const memberUserIds = (await this.participantUserId(participantId));
     const userId = memberUserIds ?? 0;
-    const amount = Math.round(Number(t.entry_fee ?? 0) * 100) / 100;
+    // G11.18 Phase 2 — the amount/currency are supplied by the caller from the
+    // RESOLVED COMPETITION when provided; otherwise the tournament's own
+    // config is used (unchanged legacy behavior).
+    const amount = opts?.amount != null
+      ? Math.round(Number(opts.amount) * 100) / 100
+      : Math.round(Number(t.entry_fee ?? 0) * 100) / 100;
+    const currency = opts?.currency ?? t.currency_code;
     if (paymentMethod === 'cash') {
-      const paymentId = await tournamentRepository.createCashPaymentTransaction({ userId, registrationId, amount, currency: t.currency_code });
+      const paymentId = await tournamentRepository.createCashPaymentTransaction({ userId, registrationId, amount, currency });
       await tournamentRepository.updateRegistrationPaymentStatus(registrationId, 'paid');
       eventBusV2.emit('payment:succeeded', {
         paymentId,
         referenceType: 'tournament',
         referenceId: registrationId,
         amount,
-        metadata: { paymentMethod: 'cash', currency: t.currency_code, userId },
+        metadata: { paymentMethod: 'cash', currency, userId },
       } as Record<string, unknown>);
       return { method: 'cash', status: 'paid', paymentId };
     }
@@ -877,7 +920,7 @@ export class ParticipantDrawService {
         referenceType: 'tournament' as any,
         referenceId: registrationId,
         amount,
-        currency: t.currency_code,
+        currency,
         paymentMethod: 'card',
       });
       if (!gwResult?.success) {

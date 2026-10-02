@@ -64,8 +64,15 @@ export const tournamentApi = {
   getPublicParticipants: (id: number) => api.get(`/tournaments/${id}/participants`).then(r => r.data),
   // Group 3 — the player declares the entry-fee payment method (cash|card). The
   // backend validates it against the tournament's effective allowed methods.
-  publicRegister: (tournamentId: number, paymentMethod?: 'cash' | 'card') =>
-    api.post(`/tournaments/${tournamentId}/register`, { payment_method: paymentMethod }).then(r => r.data),
+  // G11.18 Phase 2 — the player may also select the competition category.
+  publicRegister: (tournamentId: number, paymentMethod?: 'cash' | 'card', competitionId?: number) =>
+    api.post(`/tournaments/${tournamentId}/register`, {
+      payment_method: paymentMethod,
+      competition_id: competitionId,
+    }).then(r => r.data),
+  // G11.18 Phase 2 — competition categories for the registration UI.
+  listCompetitions: (tournamentId: number) =>
+    api.get<{ data: any[] }>(`/tournaments/${tournamentId}/competitions`).then((r) => r.data?.data || []),
   // Phase 2 — READ-ONLY tournament finances (admin, financial.reconcile).
   getFinances: (id: number) => api.get<any>(`/admin/tournaments/${id}/finances`).then(r => r.data?.data || r.data),
 };
@@ -80,7 +87,7 @@ export const publicTournamentApi = {
 
 // ── G11.17 — player team self-service (non-financial) ──
 export const tournamentTeamApi = {
-  createTeam: (tournamentId: number, data: { name?: string; memberUserIds?: number[] }) =>
+  createTeam: (tournamentId: number, data: { name?: string; memberUserIds?: number[]; competitionId?: number }) =>
     api.post(`/tournaments/${tournamentId}/teams`, data).then((r) => r.data),
   listTeams: (tournamentId: number) =>
     api.get<{ data: any }>(`/tournaments/${tournamentId}/teams`).then((r) => r.data?.data),

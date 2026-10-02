@@ -11,6 +11,8 @@ import { RawMatchResultBodySchema } from '../../match-result/presentation/match-
 
 const OrgRegisterSchema = z.object({
   team_id: z.coerce.number().int().positive().optional(),
+  /** G11.18 Phase 2 — competition category (default when omitted and single). */
+  competition_id: z.coerce.number().int().positive().optional(),
   /**
    * Group 3 — payment method for the entry fee (cash|card). Validated against
    * the tournament's effective allowed methods server-side; wallet never valid.
@@ -192,9 +194,9 @@ export async function registerOrgPlayerHandler(request: FastifyRequest, reply: F
   const body = OrgRegisterSchema.parse(request.body);
   await assertOrgOwnsTournament(orgId, Number(id));
   const registration = body.payment_method
-    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: true })
-    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: true });
-  recordAudit({ actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration', entityId: Number(id), afterState: { orgId, payment_method: body.payment_method ?? null } });
+    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: true, competitionId: body.competition_id })
+    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: true, competitionId: body.competition_id });
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration', entityId: Number(id), afterState: { orgId, competition_id: body.competition_id ?? null, payment_method: body.payment_method ?? null } });
   return reply.status(201).send(registration);
 }
 
@@ -228,7 +230,7 @@ export async function generateOrgGroupsHandler(request: FastifyRequest, reply: F
   const { id } = request.params as any;
   const body = GenerateGroupsSchema.parse(request.body);
   await assertOrgOwnsTournament(orgId, Number(id));
-  await tournamentService.generateGroups(Number(id), body.group_size, body.advance_count);
+  await tournamentService.generateGroups(Number(id), body.group_size, body.advance_count, body.competition_id);
   recordAudit({ actorId: userId, action: 'TOURNAMENT.GENERATE_GROUPS', entityType: 'tournament', entityId: Number(id), afterState: { orgId } });
   return reply.send({ ok: true });
 }
@@ -479,7 +481,7 @@ export async function createOrgPairParticipantHandler(request: FastifyRequest, r
   const { CreatePairParticipantSchema } = await import('./tournament.dto.js');
   const body = CreatePairParticipantSchema.parse(request.body);
   const { participantMemberService } = await import('../application/participant-member.service.js');
-  return reply.status(201).send(await participantMemberService.createPairParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId));
+  return reply.status(201).send(await participantMemberService.createPairParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method, competitionId: body.competition_id }, userId));
 }
 
 export async function createOrgTeamParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -490,7 +492,30 @@ export async function createOrgTeamParticipantHandler(request: FastifyRequest, r
   const { CreateTeamParticipantSchema } = await import('./tournament.dto.js');
   const body = CreateTeamParticipantSchema.parse(request.body);
   const { participantMemberService } = await import('../application/participant-member.service.js');
-  return reply.status(201).send(await participantMemberService.createTeamParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method }, userId));
+  return reply.status(201).send(await participantMemberService.createTeamParticipant(Number(id), { name: body.name, memberUserIds: body.member_user_ids, paymentMethod: body.payment_method, competitionId: body.competition_id }, userId));
+}
+
+export async function updateOrgCompetitionVenueHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id, competitionId } = request.params as any;
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { CompetitionVenueSchema } = await import('./tournament.dto.js');
+  const body = CompetitionVenueSchema.parse(request.body);
+  const { competitionService } = await import('../application/competition.service.js');
+  const { competitionRepository } = await import('../infrastructure/repositories/competition.repository.js');
+  // Tenant + ownership: the competition must belong to THIS tournament of THIS org.
+  await competitionService.resolveCompetition(Number(id), Number(competitionId), { organisationId: orgId });
+  const override = body.venue_override == null ? null : competitionService.validateVenueOverride(body.venue_override);
+  await competitionRepository.setVenueOverride(Number(competitionId), override);
+  recordAudit({
+    actorId: userId,
+    action: 'TOURNAMENT.COMPETITION_VENUE_UPDATED',
+    entityType: 'tournament_competition',
+    entityId: Number(competitionId),
+    afterState: { tournament_id: Number(id), venue_override: override == null ? null : { ...override } },
+  });
+  return reply.send({ ok: true, venue_override: override });
 }
 
 export async function listOrgParticipantMembersHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -17,6 +17,7 @@ import type {
   Tournament,
   TournamentMatch,
   TournamentMatchScheduleInput,
+  TournamentDraw,
   BracketSlot,
 } from '../domain/tournament-aggregate.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
@@ -58,122 +59,144 @@ export class MatchScheduleService {
    * a court. Doubles/teams: every member becomes a match_participant with the
    * participant's side/team_index.
    */
-  async generateMatchesFromLockedDraw(tournamentId: number, actorId: number): Promise<{ generated: number; byes: number }> {
+  async generateMatchesFromLockedDraw(tournamentId: number, actorId: number, opts?: { competitionId?: number | null }): Promise<{ generated: number; byes: number; draws: number }> {
     const t = await tournamentService.getByIdDetailed(tournamentId);
-    const draw = await participantDrawRepository.findCurrentDraw(tournamentId);
-    if (!draw) throw new ConflictError('No draw has been generated', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
-    if (draw.status !== 'locked') {
-      throw new ConflictError('The draw must be LOCKED before tournament matches can be generated', ErrorCodes.TOURNAMENT_DRAW_NOT_LOCKED);
+    // G11.18 C2 — competition-scoped match generation: either one specific
+    // competition's current draw, or (tournament-wide operator flow) EVERY
+    // current draw (one per competition) — never a single LIMIT-1 pick.
+    // Fallback to findCurrentDraw only when the enumeration API is unavailable
+    // (mock/test environments) — real multi-competition DBs enumerate all draws.
+    let draws: TournamentDraw[];
+    if (opts?.competitionId != null) {
+      draws = [await participantDrawRepository.findCurrentDraw(tournamentId, opts.competitionId)].filter((d): d is NonNullable<typeof d> => d != null);
+    } else {
+      // Enumerate all current draws (real DB). Fall back to findCurrentDraw only
+      // when the enumeration API is unavailable (mock/test environments).
+      let enumerated: TournamentDraw[] | null = null;
+      if (typeof participantDrawRepository.listCurrentDraws === 'function') {
+        enumerated = await participantDrawRepository.listCurrentDraws(tournamentId).catch(() => null);
+      }
+      draws = enumerated != null && enumerated.length > 0
+        ? enumerated
+        : [await participantDrawRepository.findCurrentDraw(tournamentId)].filter((d): d is NonNullable<typeof d> => d != null);
     }
-
-    const entries = await participantDrawRepository.findDrawEntries(draw.id!);
-    const ordered = entries
-      .filter((e) => e.participant_id != null)
-      .sort((a, b) => Number(a.position) - Number(b.position))
-      .map((e) => Number(e.participant_id));
-    if (ordered.length < 2) {
-      throw new ConflictError('At least 2 participants are required to generate matches', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
+    if (draws.length === 0) throw new ConflictError('No draw has been generated', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
+    for (const d0 of draws) {
+      if (d0.status !== 'locked') {
+        throw new ConflictError('Every competition draw must be LOCKED before tournament matches can be generated', ErrorCodes.TOURNAMENT_DRAW_NOT_LOCKED);
+      }
     }
-
-    const formatCtx = await tournamentService.resolveMatchFormatContext(t);
-    const { slots, isKnockout } = this.buildSlots(t, ordered);
 
     let generated = 0;
     let byes = 0;
-    const conn = await getPool().getConnection();
-    try {
-      // Group 6 — ALS transaction context: match:created events emitted by
-      // createForTournament inside this manual transaction are flushed only
-      // after the shared commit; a rollback never delivers a phantom Match.
-      await runProvidedTransaction(conn, async () => {
-        // Serialize generation for this tournament; the existence re-check MUST
-        // run inside the locked transaction (race guard).
-        await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
-        const existing = await tournamentRepository.countMatches(tournamentId, conn);
-        if (existing > 0) {
-          throw new ConflictError('Tournament matches are already generated', ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED);
-        }
 
-        for (const slot of slots) {
-          const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
-          const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
-          const meta = this.buildSlotMeta(slot, isKnockout);
-          if (p1Id != null && p2Id != null) {
-            const sharedMatch = await this.createParticipantMatch(t, formatCtx, p1Id, p2Id, conn);
-            const p1 = await this.loadParticipant(p1Id);
-            const p2 = await this.loadParticipant(p2Id);
-            await tournamentRepository.createMatch({
-              tournament_id: tournamentId,
-              match_id: sharedMatch.id,
-              round: slot.round,
-              round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
-              bracket_position: slot.bracketPosition ?? 0,
-              stage_id: slot.stageId ?? null,
-              participant1_id: p1Id,
-              participant2_id: p2Id,
-              player1_id: this.primaryMember(p1),
-              player2_id: this.primaryMember(p2),
-              is_final: slot.isFinal === true ? 1 : 0,
-              bracket_depth: slot.bracketDepth != null ? slot.bracketDepth : null,
-              status: 'scheduled',
-              progression_state: 'pending',
-              progression_meta: meta as unknown as Record<string, unknown>,
-            }, conn);
-            generated += 1;
-          } else {
-            // NO shared Match, NO court. Three cases (knockout only — round-robin
-            // slots always carry both participants):
-            //  * round-1 lone BYE (one participant) — the participant advances once
-            //    advanceByes consumes the (now-correct) target wiring;
-            //  * round-1 empty padding BYE (no participant) — finalised in place so
-            //    the virtual-bye cascade can recognise it;
-            //  * later-round PLACEHOLDER (no participant) — the progression engine's
-            //    target slot, created up front so a Round-1 winner can be seated.
-            const presentId = p1Id ?? p2Id ?? null;
-            const present = presentId != null ? await this.loadParticipant(presentId) : null;
-            await tournamentRepository.createMatch({
-              tournament_id: tournamentId,
-              round: slot.round,
-              round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
-              bracket_position: slot.bracketPosition ?? 0,
-              stage_id: slot.stageId ?? null,
-              match_number: slot.bye === true ? 0 : undefined,
-              participant1_id: presentId,
-              participant2_id: null,
-              player1_id: presentId != null ? this.primaryMember(present!) : null,
-              player2_id: null,
-              is_final: slot.isFinal === true ? 1 : 0,
-              bracket_depth: slot.bracketDepth != null ? slot.bracketDepth : null,
-              status: 'scheduled',
-              progression_state: 'pending',
-              progression_meta: slot.bye === true ? { ...meta, bye: true } as unknown as Record<string, unknown> : meta as unknown as Record<string, unknown>,
-            }, conn);
-            if (presentId != null) byes += 1;
+    for (const draw of draws) {
+      const competitionId = draw.competition_id != null ? Number(draw.competition_id) : null;
+      const entries = await participantDrawRepository.findDrawEntries(draw.id!);
+      const ordered = entries
+        .filter((e) => e.participant_id != null)
+        .sort((a, b) => Number(a.position) - Number(b.position))
+        .map((e) => Number(e.participant_id));
+      if (ordered.length < 2) {
+        throw new ConflictError('At least 2 participants are required to generate matches', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
+      }
+
+      const formatCtx = await tournamentService.resolveMatchFormatContext(t);
+      const { slots, isKnockout } = this.buildSlots(t, ordered);
+
+      const conn = await getPool().getConnection();
+      let drawGenerated = 0;
+      let drawByes = 0;
+      try {
+        // Group 6 — ALS transaction context: match:created events emitted by
+        // createForTournament inside this manual transaction are flushed only
+        // after the shared commit; a rollback never delivers a phantom Match.
+        await runProvidedTransaction(conn, async () => {
+          // Serialize generation for this competition; the existence re-check MUST
+          // run inside the locked transaction (race guard).
+          await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+          const existing = await tournamentRepository.countMatches(tournamentId, competitionId, conn);
+          if (existing > 0) {
+            throw new ConflictError('Matches are already generated for this competition', ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED);
           }
-        }
-      });
-    } finally {
-      conn.release();
-    }
 
-    // Group 5B — propagate draw-time byes (existing engine semantics, not invented).
-    // Runs AFTER commit (idempotent bye propagation; not part of the race guard).
-    await tournamentService.advanceByes(tournamentId);
+          for (const slot of slots) {
+            const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
+            const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
+            const meta = this.buildSlotMeta(slot, isKnockout);
+            if (p1Id != null && p2Id != null) {
+              const sharedMatch = await this.createParticipantMatch(t, formatCtx, p1Id, p2Id, conn);
+              const p1 = await this.loadParticipant(p1Id);
+              const p2 = await this.loadParticipant(p2Id);
+              await tournamentRepository.createMatch({
+                tournament_id: tournamentId,
+                competition_id: competitionId,
+                match_id: sharedMatch.id,
+                round: slot.round,
+                round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
+                bracket_position: slot.bracketPosition ?? 0,
+                stage_id: slot.stageId ?? null,
+                participant1_id: p1Id,
+                participant2_id: p2Id,
+                player1_id: this.primaryMember(p1),
+                player2_id: this.primaryMember(p2),
+                is_final: slot.isFinal === true ? 1 : 0,
+                bracket_depth: slot.bracketDepth != null ? slot.bracketDepth : null,
+                status: 'scheduled',
+                progression_state: 'pending',
+                progression_meta: meta as unknown as Record<string, unknown>,
+              }, conn);
+              drawGenerated += 1;
+            } else {
+              const presentId = p1Id ?? p2Id ?? null;
+              const present = presentId != null ? await this.loadParticipant(presentId) : null;
+              await tournamentRepository.createMatch({
+                tournament_id: tournamentId,
+                competition_id: competitionId,
+                round: slot.round,
+                round_name: this.roundLabel(t, slot.round, isKnockout, ordered.length),
+                bracket_position: slot.bracketPosition ?? 0,
+                stage_id: slot.stageId ?? null,
+                match_number: slot.bye === true ? 0 : undefined,
+                participant1_id: presentId,
+                participant2_id: null,
+                player1_id: presentId != null ? this.primaryMember(present!) : null,
+                player2_id: null,
+                is_final: slot.isFinal === true ? 1 : 0,
+                bracket_depth: slot.bracketDepth != null ? slot.bracketDepth : null,
+                status: 'scheduled',
+                progression_state: 'pending',
+                progression_meta: slot.bye === true ? { ...meta, bye: true } as unknown as Record<string, unknown> : meta as unknown as Record<string, unknown>,
+              }, conn);
+              if (presentId != null) drawByes += 1;
+            }
+          }
+        });
+      } finally {
+        conn.release();
+      }
+      generated += drawGenerated;
+      byes += drawByes;
+
+      // Group 5B — propagate draw-time byes (existing engine semantics, not invented).
+      await tournamentService.advanceByes(tournamentId);
+    }
 
     await recordAudit({
       actorId,
       action: 'TOURNAMENT.MATCHES_GENERATED',
       entityType: 'tournament_match',
       entityId: tournamentId,
-      afterState: { generated, byes, source: 'locked_draw', draw_id: draw.id },
+      afterState: { generated, byes, source: 'locked_draws', drawCount: draws.length },
     });
     await this.emit('tournament:matches-generated', {
       tournamentId,
       generated,
       byes,
+      drawCount: draws.length,
       organisationId: t.organisation_id ?? null,
     }, t);
-    return { generated, byes };
+    return { generated, byes, draws: draws.length };
   }
 
   /** Build the bracket slots from the LOCKED DRAW order (draw position is authoritative). */

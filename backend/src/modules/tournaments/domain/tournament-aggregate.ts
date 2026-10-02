@@ -115,6 +115,8 @@ export interface ReplacementDrawImpact {
 export interface TournamentParticipant {
   id?: number;
   tournament_id: number;
+  /** G11.18 — competition category scope (NOT NULL; auto-set by the DB trigger for legacy writers). */
+  competition_id?: number;
   /** Individual participants map 1:1 to a registration; NULL for future pair/team. */
   registration_id?: number | null;
   participant_type: TournamentParticipantType;
@@ -173,6 +175,8 @@ export type TournamentDrawValidationStatus = 'valid' | 'seeding_violation' | 'ma
 export interface TournamentDraw {
   id?: number;
   tournament_id: number;
+  /** G11.18 Phase 3 — competition category scope (NOT NULL; one draw namespace per competition). */
+  competition_id?: number | null;
   attempt_number: number;
   draw_seed: number;
   generated_by?: number | null;
@@ -285,6 +289,8 @@ export type TournamentPrizeType =
 export interface TournamentPrize {
   id?: number;
   tournament_id: number;
+  /** G11.18 — competition category scope (NOT NULL). */
+  competition_id?: number | null;
   placement?: number | null;
   prize_type: TournamentPrizeType;
   description?: string | null;
@@ -338,6 +344,17 @@ export interface Tournament {
   creator_id: number;
   organisation_id?: number;
   branch_id?: number;
+  /** G11.18 Phase 3 — venue handling mode (existing tournaments = ORGANISATION_COURTS). */
+  venue_type?: TournamentVenueMode | null;
+  venue_name?: string | null;
+  venue_address?: string | null;
+  venue_city?: string | null;
+  venue_country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  place_id?: string | null;
+  venue_contact?: string | null;
+  maps_url?: string | null;
   bracket_type_id: number;
   format?: TournamentFormat;
   /** Group 5A — the Match Format generated Matches must use (FK sport_formats). */
@@ -425,22 +442,51 @@ registration_payment_methods?: string[];
  * address / lat-lng data and is null when no reliable destination exists.
  */
 export interface TournamentVenue {
-  branchId: number;
+  /** G11.18 Phase 3 — how courts/venue are handled. */
+  venueMode: TournamentVenueMode | 'ORGANISATION_COURTS' | 'EXTERNAL_VENUE';
+  branchId?: number | null;
+  /** Display name — branch name (ORGANISATION_COURTS) or external venue_name. */
   name: string;
   addressLine1?: string | null;
   addressLine2?: string | null;
   city?: string | null;
   state?: string | null;
   postalCode?: string | null;
+  country?: string | null;
   countryId?: number | null;
   latitude?: number | null;
   longitude?: number | null;
+  /** G11.18 Phase 3 — optional provider place identifier (never a secret). */
+  placeId?: string | null;
+  /** G11.18 Phase 3 — optional contact information for an external venue. */
+  venueContact?: string | null;
   /** Branch timezone — authoritative for the daily playing window. */
   timezone?: string | null;
   /** Branch operating hours (used to validate the daily playing window). */
   openingTime?: string | null;
   closingTime?: string | null;
-  /** Google Maps destination, built from real address/lat-lng; null if unavailable. */
+  /** Safe key-less map/navigation destination; null if unavailable. */
+  mapsUrl?: string | null;
+}
+
+/** G11.18 Phase 3 — venue handling modes. */
+export type TournamentVenueMode = 'ORGANISATION_COURTS' | 'EXTERNAL_VENUE';
+
+/**
+ * G11.18 Phase 3 — an optional competition-level venue override.
+ * Stored as validated JSON on `tournament_competitions.venue_override`.
+ * Effective venue = competition.venue_override ?? tournament.venue.
+ * The map picker NEVER asks the user to type coordinates.
+ */
+export interface CompetitionVenueOverride {
+  venueName?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  placeId?: string | null;
+  venueContact?: string | null;
   mapsUrl?: string | null;
 }
 
@@ -452,6 +498,8 @@ export interface TournamentVenue {
 export interface TournamentStage {
   id?: number;
   tournament_id: number;
+  /** G11.18 Phase 3 — competition category scope (NOT NULL; each competition owns its stage chain). */
+  competition_id?: number | null;
   stage_order: number;
   name?: string;
   progression_format: TournamentFormat;
@@ -463,9 +511,43 @@ export interface TournamentStage {
   updated_at?: string;
 }
 
+// ── G11.18 — Competition categories (Phase 1 foundation) ───────────────────
+export type TournamentCompetitionCategory = 'singles' | 'doubles' | 'team';
+
+export interface TournamentCompetition {
+  id: number;
+  public_id: string;
+  tournament_id: number;
+  competition_type: TournamentCompetitionCategory;
+  name: string;
+  match_format_id?: number | null;
+  rule_set_id?: number | null;
+  bracket_type_id?: number | null;
+  sport_id?: number | null;
+  /** G11.18 Phase 3 — optional venue override (validated JSON). NULL = inherit tournament venue. */
+  venue_override?: Record<string, unknown> | null;
+  entry_fee?: number | null;
+  registration_fee?: number | null;
+  currency_code?: string;
+  price_type?: 'FREE' | 'FIXED' | 'MEMBERS_ONLY' | null;
+  max_participants?: number | null;
+  min_participants?: number;
+  registration_payment_methods?: string[] | string | null;
+  waitlist_enabled?: boolean | number;
+  age_mode?: 'open' | 'categories' | null;
+  age_category_ids?: Array<number> | string | null;
+  gender_categories?: Array<string> | string | null;
+  level_ids?: Array<number> | string | null;
+  is_default?: boolean | number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface TournamentRegistration {
   id?: number;
   tournament_id: number;
+  /** G11.18 — competition category scope (NOT NULL; auto-set to the default competition by the DB trigger for legacy writers). */
+  competition_id?: number | null;
   user_id?: number;
   team_id?: number;
   /** DB column player_id — mapped to user_id in the domain. */
@@ -486,6 +568,8 @@ export interface TournamentRegistration {
 export interface TournamentMatch {
   id?: number;
   tournament_id: number;
+  /** G11.18 Phase 3 — competition category scope (NOT NULL; match numbering is per competition). */
+  competition_id?: number | null;
   /** Group 5A — link to the shared `matches` row (authoritative Match). */
   match_id?: number | null;
   round: number;
@@ -552,6 +636,8 @@ export interface TournamentMatch {
 export interface TournamentPlacement {
   id?: number;
   tournament_id: number;
+  /** G11.18 — competition category scope (NOT NULL). */
+  competition_id?: number | null;
   placement: number;
   participant_id?: number | null;
   user_id?: number | null;
@@ -614,6 +700,8 @@ export interface TournamentMatchResult {
 export interface TournamentGroup {
   id?: number;
   tournament_id: number;
+  /** G11.18 Phase 3 — competition category scope (NOT NULL; groups never mix competitions). */
+  competition_id?: number | null;
   name: string;
   advance_count: number;
   created_at?: string;
@@ -715,6 +803,8 @@ export interface TournamentPrizeAward {
 
 export interface CreatePrizeAwardInput {
   tournamentId: number;
+  /** G11.18 C1 — competition scope (authoritative); NULL = legacy single-competition. */
+  competitionId?: number | null;
   prizeId: number;
   placement?: number | null;
   registrationId: number;

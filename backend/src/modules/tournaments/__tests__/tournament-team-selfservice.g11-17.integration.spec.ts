@@ -87,6 +87,9 @@ async function createTeamTournament(): Promise<number> {
   );
   const tid = Number((res as any).insertId);
   tournamentIds.push(tid);
+  await exec(
+    `INSERT INTO tournament_competitions (public_id, tournament_id, competition_type, name, currency_code, is_default)
+     VALUES (UUID(), ?, 'team', 'Default', 'EGP', 1)`, [tid]);
   return tid;
 }
 
@@ -118,6 +121,7 @@ afterAll(async () => {
   const idList = tournamentIds.length ? tournamentIds.join(',') : '0';
   await pool.execute(`SET FOREIGN_KEY_CHECKS = 0`);
   await pool.execute(`DELETE FROM tournament_team_invitations WHERE tournament_id IN (${idList})`);
+  await pool.execute(`DELETE FROM tournament_competitions WHERE tournament_id IN (${idList})`);
   await pool.execute(`DELETE FROM tournament_participant_members WHERE tournament_id IN (${idList})`);
   await pool.execute(`DELETE FROM tournament_participants WHERE tournament_id IN (${idList})`);
   await pool.execute(`DELETE FROM tournament_registrations WHERE tournament_id IN (${idList})`);

@@ -57,28 +57,28 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[19]).toBe(0); // 0-based index of registration_fee in the INSERT (after draw_seed)
+    expect(params[29]).toBe(0); // 0-based index of registration_fee in the INSERT (venue columns precede it)
   });
 
   it('passes a supplied registration_fee through unchanged', async () => {
     await repo.create(minimalData({ registration_fee: 25 }) as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[19]).toBe(25);
+    expect(params[29]).toBe(25);
   });
 
   it('binds a valid start_date (NOT NULL) and never NULL for it', async () => {
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[30]).toBe('2026-10-01'); // 0-based index of start_date (after draw_seed + Group 3 payment methods + waitlist_enabled)
+    expect(params[40]).toBe('2026-10-01'); // 0-based index of start_date (venue columns precede it)
   });
 
   it('persists the draw_seed at creation (Group 5 — deterministic, auditable draws)', async () => {
     await repo.create(minimalData({ draw_seed: 123456 }) as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[10]).toBe(123456); // 0-based index of draw_seed (after rule_set_id)
+    expect(params[20]).toBe(123456); // 0-based index of draw_seed (after rule_set_id)
     expect(pool.query.mock.calls[0][0] as string).toContain('draw_seed');
   });
 
@@ -86,7 +86,7 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     await repo.create(minimalData({ registration_payment_methods: ['cash', 'card'] }) as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[22]).toBe('["cash","card"]'); // 0-based index of registration_payment_methods (after price_type)
+    expect(params[32]).toBe('["cash","card"]'); // 0-based index of registration_payment_methods (after price_type)
     expect(pool.query.mock.calls[0][0] as string).toContain('registration_payment_methods');
   });
 
@@ -94,7 +94,7 @@ describe('TournamentRepository.create — NOT NULL contract (UAT blocker regress
     await repo.create(minimalData() as any);
 
     const params = pool.query.mock.calls[0][1] as any[];
-    expect(params[22]).toBeNull();
+    expect(params[32]).toBeNull();
   });
 });
 

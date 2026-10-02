@@ -133,6 +133,9 @@ async function createTournament(opts: { entryFee: number; rate: number; org: num
   );
   const tournamentId = Number((res as any).insertId);
   tournamentIds.push(tournamentId);
+  await pool.execute(
+    `INSERT INTO tournament_competitions (public_id, tournament_id, competition_type, name, currency_code, is_default)
+     VALUES (UUID(), ?, 'singles', 'Default', 'EGP', 1)`, [tournamentId]);
   return tournamentId;
 }
 

@@ -394,7 +394,7 @@ describe('G8 VERIFY — PART 3: generation duplication race', () => {
     pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
     await svc.generateMatchesFromLockedDraw(1, 1);
     expect(poolConn.query).toHaveBeenCalledWith('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [1]);
-    expect(tRepo.countMatches).toHaveBeenCalledWith(1, expect.anything()); // in-lock re-count
+    expect(tRepo.countMatches).toHaveBeenCalledWith(1, null, expect.anything()); // in-lock re-count (competition-scoped)
   });
 
   it('P2. a second concurrent request is blocked by the in-lock re-count (one authoritative set)', async () => {

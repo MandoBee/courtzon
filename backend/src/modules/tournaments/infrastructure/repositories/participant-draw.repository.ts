@@ -25,6 +25,7 @@ export class ParticipantDrawRepository {
 
   async createParticipant(data: {
     tournament_id: number;
+    competition_id?: number | null;
     registration_id?: number | null;
     participant_type?: string;
     status?: string;
@@ -33,10 +34,11 @@ export class ParticipantDrawRepository {
   }, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
     const db = conn ?? getPool();
     const [result] = await db.query<ResultSet>(
-      `INSERT INTO tournament_participants (tournament_id, registration_id, participant_type, status, member_user_ids, waiting_order)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tournament_participants (tournament_id, competition_id, registration_id, participant_type, status, member_user_ids, waiting_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         data.tournament_id,
+        data.competition_id ?? null,
         data.registration_id ?? null,
         data.participant_type ?? 'individual',
         data.status ?? 'active',
@@ -99,11 +101,52 @@ export class ParticipantDrawRepository {
     }>;
   }
 
+  /**
+   * G11.18 Phase 3 — active participants WITHIN ONE competition (a Singles draw
+   * never includes Doubles/Teams participants and vice versa).
+   */
+  async listParticipantsByCompetition(tournamentId: number, competitionId: number): Promise<Array<TournamentParticipant & {
+    display_name?: string | null; seed_number?: number | null; seed_source?: string | null;
+    rating_snapshot?: number | null; rating_matches_played?: number | null; seed_assigned_by?: number | null;
+    seed_assigned_at?: string | null; seed_reason?: string | null; draw_position?: number | null; draw_placement_source?: string | null;
+  }>> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT p.*,
+              (SELECT u.full_name FROM users u
+                WHERE u.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(p.member_user_ids, '$[0]')) AS UNSIGNED)) AS display_name,
+              s.seed_number, s.source AS seed_source, s.rating_snapshot, s.rating_matches_played,
+              s.assigned_by AS seed_assigned_by, s.assigned_at AS seed_assigned_at, s.reason AS seed_reason,
+              de.position AS draw_position, de.placement_source AS draw_placement_source
+       FROM tournament_participants p
+       LEFT JOIN tournament_seeds s ON s.participant_id = p.id
+       LEFT JOIN tournament_draws d ON d.tournament_id = p.tournament_id AND d.competition_id = p.competition_id AND d.is_current = 1
+       LEFT JOIN tournament_draw_entries de ON de.draw_id = d.id AND de.participant_id = p.id
+       WHERE p.tournament_id = ? AND p.competition_id = ? AND p.status = 'active'
+       ORDER BY p.id`,
+      [tournamentId, competitionId],
+    );
+    return rows as Array<TournamentParticipant & {
+      display_name?: string | null; seed_number?: number | null; seed_source?: string | null;
+      rating_snapshot?: number | null; rating_matches_played?: number | null; seed_assigned_by?: number | null;
+      seed_assigned_at?: string | null; seed_reason?: string | null; draw_position?: number | null; draw_placement_source?: string | null;
+    }>;
+  }
+
   async countParticipantsByTournament(tournamentId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
     const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
     const [rows] = await db.query<RowData>(
       "SELECT COUNT(*) AS c FROM tournament_participants WHERE tournament_id = ? AND status = 'active'",
       [tournamentId],
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  /** G11.18 Phase 2 — active participant count within ONE competition (capacity is competition-scoped). */
+  async countParticipantsByCompetition(tournamentId: number, competitionId: number, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      "SELECT COUNT(*) AS c FROM tournament_participants WHERE tournament_id = ? AND competition_id = ? AND status = 'active'",
+      [tournamentId, competitionId],
     );
     return Number(rows[0]?.c ?? 0);
   }
@@ -169,6 +212,18 @@ export class ParticipantDrawRepository {
          AND JSON_CONTAINS(member_user_ids, CAST(? AS JSON)) = 1
        LIMIT 1`,
       [tournamentId, userId],
+    );
+    return rows.length ? (rows[0] as TournamentParticipant) : null;
+  }
+
+  /** G11.18 C1 — the unique ACTIVE participant of a user WITHIN ONE competition (Singles/Doubles/Teams isolation). */
+  async findActiveParticipantByPlayerInCompetition(tournamentId: number, competitionId: number, userId: number): Promise<TournamentParticipant | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT * FROM tournament_participants
+       WHERE tournament_id = ? AND competition_id = ? AND status = 'active'
+         AND JSON_CONTAINS(member_user_ids, CAST(? AS JSON)) = 1
+       LIMIT 1`,
+      [tournamentId, competitionId, userId],
     );
     return rows.length ? (rows[0] as TournamentParticipant) : null;
   }
@@ -246,36 +301,47 @@ export class ParticipantDrawRepository {
 
   // ── Draws ──
 
-  async clearCurrentDraws(tournamentId: number): Promise<void> {
-    await getPool().query('UPDATE tournament_draws SET is_current = 0 WHERE tournament_id = ? AND is_current = 1', [tournamentId]);
+  async clearCurrentDraws(tournamentId: number, competitionId?: number | null): Promise<void> {
+    await getPool().query(
+      competitionId != null
+        ? 'UPDATE tournament_draws SET is_current = 0 WHERE tournament_id = ? AND competition_id = ? AND is_current = 1'
+        : 'UPDATE tournament_draws SET is_current = 0 WHERE tournament_id = ? AND is_current = 1',
+      competitionId != null ? [tournamentId, competitionId] : [tournamentId],
+    );
   }
 
   async createDraw(data: {
     tournament_id: number;
+    competition_id?: number | null;
     attempt_number: number;
     draw_seed: number;
     generated_by?: number | null;
   }): Promise<number> {
     const [result] = await getPool().query<ResultSet>(
-      `INSERT INTO tournament_draws (tournament_id, attempt_number, draw_seed, generated_by, status, validation_status, is_current)
-       VALUES (?, ?, ?, ?, 'draft', 'valid', 1)`,
-      [data.tournament_id, data.attempt_number, data.draw_seed, data.generated_by ?? null],
+      `INSERT INTO tournament_draws (tournament_id, competition_id, attempt_number, draw_seed, generated_by, status, validation_status, is_current)
+       VALUES (?, ?, ?, ?, ?, 'draft', 'valid', 1)`,
+      [data.tournament_id, data.competition_id ?? null, data.attempt_number, data.draw_seed, data.generated_by ?? null],
     );
     return (result as any).insertId;
   }
 
-  async getNextDrawAttempt(tournamentId: number): Promise<number> {
+  /** Next draw attempt WITHIN one competition (per-competition namespace). */
+  async getNextDrawAttempt(tournamentId: number, competitionId?: number | null): Promise<number> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT COALESCE(MAX(attempt_number), 0) + 1 AS next_attempt FROM tournament_draws WHERE tournament_id = ?',
-      [tournamentId],
+      competitionId != null
+        ? 'SELECT COALESCE(MAX(attempt_number), 0) + 1 AS next_attempt FROM tournament_draws WHERE tournament_id = ? AND competition_id = ?'
+        : 'SELECT COALESCE(MAX(attempt_number), 0) + 1 AS next_attempt FROM tournament_draws WHERE tournament_id = ?',
+      competitionId != null ? [tournamentId, competitionId] : [tournamentId],
     );
     return Number(rows[0]?.next_attempt ?? 1);
   }
 
-  async findCurrentDraw(tournamentId: number): Promise<TournamentDraw | null> {
+  async findCurrentDraw(tournamentId: number, competitionId?: number | null): Promise<TournamentDraw | null> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_draws WHERE tournament_id = ? AND is_current = 1 LIMIT 1',
-      [tournamentId],
+      competitionId != null
+        ? 'SELECT * FROM tournament_draws WHERE tournament_id = ? AND competition_id = ? AND is_current = 1 LIMIT 1'
+        : 'SELECT * FROM tournament_draws WHERE tournament_id = ? AND is_current = 1 LIMIT 1',
+      competitionId != null ? [tournamentId, competitionId] : [tournamentId],
     );
     return rows.length ? (rows[0] as TournamentDraw) : null;
   }
@@ -285,9 +351,20 @@ export class ParticipantDrawRepository {
     return rows.length ? (rows[0] as TournamentDraw) : null;
   }
 
-  async listDrawsByTournament(tournamentId: number): Promise<TournamentDraw[]> {
+  async listDrawsByTournament(tournamentId: number, competitionId?: number | null): Promise<TournamentDraw[]> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_draws WHERE tournament_id = ? ORDER BY attempt_number DESC',
+      competitionId != null
+        ? 'SELECT * FROM tournament_draws WHERE tournament_id = ? AND competition_id = ? ORDER BY attempt_number DESC'
+        : 'SELECT * FROM tournament_draws WHERE tournament_id = ? ORDER BY attempt_number DESC',
+      competitionId != null ? [tournamentId, competitionId] : [tournamentId],
+    );
+    return rows as TournamentDraw[];
+  }
+
+  /** G11.18 C2 — every CURRENT draw of a tournament (one per competition). Used by tournament-wide match generation. */
+  async listCurrentDraws(tournamentId: number): Promise<TournamentDraw[]> {
+    const [rows] = await getPool().query<RowData>(
+      'SELECT * FROM tournament_draws WHERE tournament_id = ? AND is_current = 1 ORDER BY id',
       [tournamentId],
     );
     return rows as TournamentDraw[];

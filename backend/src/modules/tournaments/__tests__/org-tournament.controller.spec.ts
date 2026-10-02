@@ -229,7 +229,7 @@ describe('org-tournament.controller (tenant isolation)', () => {
     repo.getOrganisationId.mockResolvedValue(ORG_A);
     service.generateGroups.mockResolvedValue({});
     await ctrl.generateOrgGroupsHandler(req({ params: { orgId: String(ORG_A), id: '7' }, body: { group_size: 4, advance_count: 2 } }), res());
-    expect(service.generateGroups).toHaveBeenCalledWith(7, 4, 2);
+    expect(service.generateGroups).toHaveBeenCalledWith(7, 4, 2, undefined);
 
     service.createStage.mockResolvedValue({ id: 2 });
     const reply = res();

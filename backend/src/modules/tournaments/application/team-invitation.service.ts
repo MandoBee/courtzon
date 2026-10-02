@@ -4,12 +4,14 @@ import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { tournamentRealtimeScope } from './tournament-realtime-scope.js';
 import { participantMemberService } from './participant-member.service.js';
+import { competitionService } from './competition.service.js';
+import { competitionRepository } from '../infrastructure/repositories/competition.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { teamInvitationRepository } from '../infrastructure/repositories/team-invitation.repository.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { recordAudit } from '../../audit-log/index.js';
-import type { Tournament, TournamentParticipant, TournamentTeamInvitation } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentCompetition, TournamentParticipant, TournamentTeamInvitation } from '../domain/tournament-aggregate.js';
 
 /**
  * G11.17 — PLAYER team self-service: creation, join, invitations (invite →
@@ -95,12 +97,18 @@ export class TeamInvitationService {
     void tournamentId;
   }
 
-  /** Is this a TEAM-format tournament? Reject singles/doubles for team flows. */
-  private async assertTeamFormat(t: Tournament): Promise<void> {
-    const fmt = await participantMemberService.resolveFormatConfig(t);
+  /** Is this a TEAM-format competition? Reject singles/doubles for team flows. */
+  private async assertTeamFormat(t: Tournament, competition?: TournamentCompetition | null): Promise<void> {
+    const fmt = await participantMemberService.resolveFormatConfig(t, competition ?? null);
     if (fmt.formatType !== 'team') {
-      throw new ConflictError('Team flows require a team-format tournament', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      throw new ConflictError('Team flows require a team-format competition', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
     }
+  }
+
+  /** The competition of an existing participant (null when unset/legacy). */
+  private async competitionOfParticipant(participant: TournamentParticipant): Promise<TournamentCompetition | null> {
+    if (participant.competition_id == null) return null;
+    return competitionRepository.findById(Number(participant.competition_id)).catch(() => null);
   }
 
   // ── Player team creation ──
@@ -108,10 +116,13 @@ export class TeamInvitationService {
   async createTeamForPlayer(
     tournamentId: number,
     actorId: number,
-    input: { name?: string; memberUserIds?: number[] },
+    input: { name?: string; memberUserIds?: number[]; competitionId?: number | null },
   ): Promise<TournamentParticipant & { members?: Array<any> }> {
     const t = await this.getTournament(tournamentId);
-    await this.assertTeamFormat(t);
+    // G11.18 Phase 2 — the team is created IN a competition (explicit, or the
+    // single/default competition); the format gate uses THAT competition.
+    const competition = await competitionService.resolveRegistrationCompetition(tournamentId, input.competitionId ?? null);
+    await this.assertTeamFormat(t, competition);
     await this.assertTeamWindowOpen(t);
     // THE creator must be the team captain (primary member): never allow a
     // player to create a team they are not part of.
@@ -125,7 +136,11 @@ export class TeamInvitationService {
         { min: 2, actual: members.length },
       );
     }
-    const created = await participantMemberService.createTeamParticipant(tournamentId, { name: input.name, memberUserIds: members }, actorId);
+    const created = await participantMemberService.createTeamParticipant(
+      tournamentId,
+      { name: input.name, memberUserIds: members, competitionId: competition?.id ?? null },
+      actorId,
+    );
     return created;
   }
 
@@ -138,15 +153,16 @@ export class TeamInvitationService {
   }
 
   async listTeamsForJoin(tournamentId: number): Promise<Array<{ id: number; name: string | null; memberCount: number; rosterSize: number | null }>> {
-    const t = await this.getTournament(tournamentId);
-    await this.assertTeamFormat(t);
-    const fmt = await participantMemberService.resolveFormatConfig(t);
-    const rosterSize = fmt.rosterSize ?? 2;
+    await this.getTournament(tournamentId);
+    const defaultFmt = await participantMemberService.resolveFormatConfig(await this.getTournament(tournamentId)).catch(() => null);
     const participants = (await participantDrawRepository.listParticipantsByTournament(tournamentId)).filter((p) => p.participant_type === 'team');
     const out: Array<{ id: number; name: string | null; memberCount: number; rosterSize: number | null }> = [];
     for (const p of participants) {
       const count = await participantMemberRepository.countActiveMembers(Number(p.id));
-      out.push({ id: Number(p.id), name: (p as any).name ?? null, memberCount: count, rosterSize });
+      // G11.18 Phase 2 — the roster limit comes from the team's OWN competition format.
+      const comp = await this.competitionOfParticipant(p).catch(() => null);
+      const fmt = comp ? await participantMemberService.resolveFormatConfig(await this.getTournament(tournamentId), comp).catch(() => null) : null;
+      out.push({ id: Number(p.id), name: (p as any).name ?? null, memberCount: count, rosterSize: fmt?.rosterSize ?? defaultFmt?.rosterSize ?? 2 });
     }
     return out;
   }
@@ -154,9 +170,10 @@ export class TeamInvitationService {
   /** An eligible player joins a team themselves (immediate, pre-start). */
   async joinTeam(tournamentId: number, participantId: number, actorId: number): Promise<void> {
     const t = await this.getTournament(tournamentId);
-    await this.assertTeamFormat(t);
-    await this.assertTeamWindowOpen(t);
     const participant = await this.getParticipant(tournamentId, participantId);
+    const competition = await this.competitionOfParticipant(participant);
+    await this.assertTeamFormat(t, competition);
+    await this.assertTeamWindowOpen(t);
 
     const conn = await getPool().getConnection();
     try {
@@ -190,23 +207,30 @@ export class TeamInvitationService {
     actorId: number,
   ): Promise<TournamentTeamInvitation> {
     const t = await this.getTournament(tournamentId);
-    await this.assertTeamFormat(t);
-    await this.assertTeamWindowOpen(t);
     const participant = await this.getParticipant(tournamentId, participantId);
+    const competition = await this.competitionOfParticipant(participant);
+    await this.assertTeamFormat(t, competition);
+    await this.assertTeamWindowOpen(t);
     await this.assertCaptain(tournamentId, participantId, actorId);
 
     if (Number(inviteeUserId) === Number(actorId)) {
       throw new ConflictError('You cannot invite yourself to your own team', ErrorCodes.TOURNAMENT_TEAM_INVITATION_DUPLICATE);
     }
     // The invitee must be an eligible player and not already an active member of
-    // any participant in this tournament (uk_active_user_tournament semantics).
+    // any participant in THIS competition (uk_active_user_competition semantics —
+    // the same player MAY be active in another competition of the tournament).
     const eligible = await participantMemberRepository.findEligiblePlayer(Number(inviteeUserId));
     if (!eligible) {
       throw new ConflictError('Invitee is not an eligible player', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_NOT_ELIGIBLE);
     }
-    const alreadyActive = await participantMemberRepository.findActiveMemberByUser(Number(t.id), Number(inviteeUserId));
+    const alreadyActive = competition
+      ? await participantMemberRepository.findActiveMemberByCompetition(Number(competition.id), Number(inviteeUserId))
+      : await participantMemberRepository.findActiveMemberByUser(Number(t.id), Number(inviteeUserId));
     if (alreadyActive) {
-      throw new ConflictError('Invitee is already an active participant in this tournament', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_ACTIVE_DUPLICATE);
+      throw new ConflictError(
+        competition ? 'Invitee is already an active member in this competition' : 'Invitee is already an active participant in this tournament',
+        ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_ACTIVE_DUPLICATE,
+      );
     }
     const duplicate = await teamInvitationRepository.findByParticipantAndInvitee(participantId, Number(inviteeUserId));
     if (duplicate) {

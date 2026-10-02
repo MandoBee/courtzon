@@ -61,7 +61,7 @@ export async function getPublicTournamentHandler(request: FastifyRequest, reply:
 export async function createTeamHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
-  const body = (request.body ?? {}) as { name?: string; memberUserIds?: number[] };
+  const body = (request.body ?? {}) as { name?: string; memberUserIds?: number[]; competitionId?: number | null };
   const { teamInvitationService } = await import('../application/team-invitation.service.js');
   const team = await teamInvitationService.createTeamForPlayer(Number(id), userId, body);
   return reply.status(201).send(team);
@@ -76,6 +76,14 @@ export async function listTeamsHandler(request: FastifyRequest, reply: FastifyRe
     teamInvitationService.listTeamsForJoin(Number(id)),
   ]);
   return reply.send({ data: { mine, joinable } });
+}
+
+// ── G11.18 Phase 2 — competition categories for the player registration flow ──
+export async function listTournamentCompetitionsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const { competitionService } = await import('../application/competition.service.js');
+  const competitions = await competitionService.listCompetitions(Number(id));
+  return reply.send({ data: competitions });
 }
 
 export async function joinTeamHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -302,11 +310,11 @@ export async function registerHandler(request: FastifyRequest, reply: FastifyRep
   // Group 7-B — this route is gated by `tournament.register` (privileged
   // registration): the operator MAY bypass eligibility, recorded in the snapshot.
   const registration = body.payment_method
-    ? await tournamentService.register(tournamentId, userId, body.team_id, body.payment_method, { operatorBypass: true })
-    : await tournamentService.register(tournamentId, userId, body.team_id, undefined, { operatorBypass: true });
+    ? await tournamentService.register(tournamentId, userId, body.team_id, body.payment_method, { operatorBypass: true, competitionId: body.competition_id })
+    : await tournamentService.register(tournamentId, userId, body.team_id, undefined, { operatorBypass: true, competitionId: body.competition_id });
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration',
-    entityId: registration.id!, afterState: { tournament_id: tournamentId, team_id: body.team_id, payment_method: body.payment_method ?? null },
+    entityId: registration.id!, afterState: { tournament_id: tournamentId, team_id: body.team_id, competition_id: body.competition_id ?? null, payment_method: body.payment_method ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(registration);
@@ -321,11 +329,11 @@ export async function registerPlayerHandler(request: FastifyRequest, reply: Fast
   // can NEVER be influenced by the client. Only the permission-gated admin/org
   // operator routes may bypass.
   const registration = body.payment_method
-    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: false })
-    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: false });
+    ? await tournamentService.register(Number(id), userId, body.team_id, body.payment_method, { operatorBypass: false, competitionId: body.competition_id })
+    : await tournamentService.register(Number(id), userId, body.team_id, undefined, { operatorBypass: false, competitionId: body.competition_id });
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.REGISTER', entityType: 'tournament_registration',
-    entityId: registration.id!, afterState: { tournament_id: id, team_id: body.team_id, payment_method: body.payment_method ?? null },
+    entityId: registration.id!, afterState: { tournament_id: id, team_id: body.team_id, competition_id: body.competition_id ?? null, payment_method: body.payment_method ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.status(201).send(registration);
@@ -391,10 +399,10 @@ export async function generateGroupsHandler(request: FastifyRequest, reply: Fast
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = GenerateGroupsSchema.parse(request.body);
-  await tournamentService.generateGroups(Number(id), body.group_size, body.advance_count);
+  await tournamentService.generateGroups(Number(id), body.group_size, body.advance_count, body.competition_id);
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.GENERATE_GROUPS', entityType: 'tournament',
-    entityId: Number(id), afterState: { group_size: body.group_size, advance_count: body.advance_count },
+    entityId: Number(id), afterState: { group_size: body.group_size, advance_count: body.advance_count, competition_id: body.competition_id ?? null },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ message: 'Groups generated' });

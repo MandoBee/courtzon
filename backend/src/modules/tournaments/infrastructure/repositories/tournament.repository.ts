@@ -353,10 +353,13 @@ export class TournamentRepository {
     if (data.tournament_type != null && data.tournament_type !== 'community') {
       throw new Error(`Tournament repository invariant violated: unsupported tournament_type "${data.tournament_type}" — expected "community"`);
     }
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, venue_type, venue_name, venue_address, venue_city, venue_country, latitude, longitude, place_id, venue_contact, maps_url, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id, data.branch_id ?? null,
+      data.venue_type ?? null, data.venue_name ?? null, data.venue_address ?? null, data.venue_city ?? null,
+      data.venue_country ?? null, data.latitude ?? null, data.longitude ?? null, data.place_id ?? null,
+      data.venue_contact ?? null, data.maps_url ?? null,
       data.bracket_type_id, data.format ?? null, data.category ?? null, data.season ?? null,
       data.sport_id ?? null, data.match_format_id ?? null, data.rule_set_id ?? null,
       data.draw_seed ?? null,
@@ -392,7 +395,9 @@ export class TournamentRepository {
       // updatable. A tournament's owning organisation and its competition type are
       // fixed at creation: a tournament can never be moved between organisations
       // nor re-labelled as a platform tournament.
-      'branch_id', 'bracket_type_id', 'format', 'category', 'season',
+      'branch_id', 'venue_type', 'venue_name', 'venue_address', 'venue_city', 'venue_country',
+      'latitude', 'longitude', 'place_id', 'venue_contact', 'maps_url',
+      'bracket_type_id', 'format', 'category', 'season',
       'sport_id', 'match_format_id', 'rule_set_id', 'name', 'code', 'description',
       'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
       'currency_code', 'price_type', 'registration_payment_methods', 'waitlist_enabled', 'prize_description',
@@ -551,10 +556,10 @@ export class TournamentRepository {
 
   async createRegistration(data: Partial<TournamentRegistration>, conn?: PoolConnection): Promise<number> {
     const db = conn ?? getPool();
-    const sql = `INSERT INTO tournament_registrations (tournament_id, player_id, team_id, seed_rank, status, payment_status, waiting_order, eligibility_snapshot, registered_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`;
+    const sql = `INSERT INTO tournament_registrations (tournament_id, competition_id, player_id, team_id, seed_rank, status, payment_status, waiting_order, eligibility_snapshot, registered_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`;
     const [result] = await db.query<ResultSet>(sql, [
-      data.tournament_id, data.player_id ?? data.user_id ?? null, data.team_id ?? null,
+      data.tournament_id, data.competition_id ?? null, data.player_id ?? data.user_id ?? null, data.team_id ?? null,
       data.seed ?? null, data.status ?? 'registered', data.payment_status ?? 'unpaid',
       data.waiting_order ?? null,
       data.eligibility_snapshot ? JSON.stringify(data.eligibility_snapshot) : null,
@@ -719,15 +724,20 @@ export class TournamentRepository {
 
   async createMatch(data: Partial<TournamentMatch>, conn?: PoolConnection): Promise<number> {
     const db = conn ?? getPool();
+    // G11.18 Phase 3 — match numbering is COMPETITION-scoped: Singles has its own
+    // 1..n sequence, Doubles its own, Teams its own — never one shared tournament
+    // sequence. Falls back to tournament scope only when no competition is set.
     const [existing] = await db.query<RowData>(
-      'SELECT COALESCE(MAX(match_number), 0) + 1 AS next_num FROM tournament_matches WHERE tournament_id = ?',
-      [data.tournament_id],
+      data.competition_id != null
+        ? 'SELECT COALESCE(MAX(match_number), 0) + 1 AS next_num FROM tournament_matches WHERE tournament_id = ? AND competition_id = ?'
+        : 'SELECT COALESCE(MAX(match_number), 0) + 1 AS next_num FROM tournament_matches WHERE tournament_id = ?',
+      data.competition_id != null ? [data.tournament_id, data.competition_id] : [data.tournament_id],
     );
     const matchNumber = data.match_number ?? existing[0]?.next_num ?? 1;
-    const sql = `INSERT INTO tournament_matches (tournament_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, participant1_id, participant2_id, winner_id, winner_participant_id, loser_participant_id, final_position, bracket_depth, is_final, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournament_matches (tournament_id, competition_id, match_id, round, match_number, round_name, group_id, stage_id, bracket_position, player1_id, player2_id, participant1_id, participant2_id, winner_id, winner_participant_id, loser_participant_id, final_position, bracket_depth, is_final, status, progression_state, progression_meta, resource_id, referee_id, start_time, score_summary)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await db.query<ResultSet>(sql, [
-      data.tournament_id, data.match_id ?? null, data.round, matchNumber, data.round_name ?? null,
+      data.tournament_id, data.competition_id ?? null, data.match_id ?? null, data.round, matchNumber, data.round_name ?? null,
       data.group_id ?? null, data.stage_id ?? null, data.bracket_position ?? 0,
       data.player1_id ?? null, data.player2_id ?? null, data.participant1_id ?? null, data.participant2_id ?? null,
       data.winner_id ?? null,
@@ -825,22 +835,32 @@ export class TournamentRepository {
   }
 
   /** G8 — how many bracket slots (matches) already exist for the tournament. */
-  async countMatches(tournamentId: number, conn?: PoolConnection): Promise<number> {
+  async countMatches(tournamentId: number, competitionId?: number | null, conn?: PoolConnection): Promise<number> {
     const db = conn ?? getPool();
     const [rows] = await db.query<RowData>(
-      'SELECT COUNT(*) AS c FROM tournament_matches WHERE tournament_id = ?',
-      [tournamentId],
+      competitionId != null
+        ? 'SELECT COUNT(*) AS c FROM tournament_matches WHERE tournament_id = ? AND competition_id = ?'
+        : 'SELECT COUNT(*) AS c FROM tournament_matches WHERE tournament_id = ?',
+      competitionId != null ? [tournamentId, competitionId] : [tournamentId],
     );
     return Number(rows[0]?.c ?? 0);
   }
 
-  /** G8 — eligible courts: active resources of the tournament branch + sport. */
+  /**
+   * G11.18 Phase 3 — eligible courts: active resources whose BRANCH belongs to the
+   * tournament's ORGANISATION (server-side tenant rule). A tournament that has an
+   * explicit branch keeps that branch-level restriction; without one, every org
+   * branch's courts qualify. Cross-organisation resources can never be selected.
+   */
   async findEligibleCourts(tournamentId: number): Promise<Array<{ id: number; name: string; branch_id: number; sport_id: number | null; opening_time: string | null; closing_time: string | null; slot_duration: number | null }>> {
     const [rows] = await getPool().query<RowData>(
       `SELECT r.id, r.name, r.branch_id, r.sport_id, r.opening_time, r.closing_time, r.slot_duration
        FROM resources r
-       JOIN tournaments t ON t.branch_id = r.branch_id
-       WHERE t.id = ? AND r.is_active = 1 AND r.deleted_at IS NULL
+       JOIN branches b ON b.id = r.branch_id AND b.deleted_at IS NULL
+       JOIN tournaments t ON t.organisation_id = b.organisation_id
+       WHERE t.id = ?
+         AND r.is_active = 1 AND r.deleted_at IS NULL
+         AND (t.branch_id IS NULL OR r.branch_id = t.branch_id)
          AND (r.sport_id IS NULL OR r.sport_id = t.sport_id)
        ORDER BY r.name`,
       [tournamentId],
@@ -1021,9 +1041,9 @@ export class TournamentRepository {
   // ── Groups ──
 
   async createGroup(data: Partial<TournamentGroup>): Promise<number> {
-    const sql = 'INSERT INTO tournament_groups (tournament_id, name, advance_count) VALUES (?, ?, ?)';
+    const sql = 'INSERT INTO tournament_groups (tournament_id, competition_id, name, advance_count) VALUES (?, ?, ?, ?)';
     const [result] = await getPool().query<ResultSet>(sql, [
-      data.tournament_id, data.name, data.advance_count ?? 1,
+      data.tournament_id, data.competition_id ?? null, data.name, data.advance_count ?? 1,
     ]);
     return (result as any).insertId;
   }
@@ -1072,10 +1092,10 @@ export class TournamentRepository {
   // ── Stages (Group 5A — MIXED tournaments) ──
 
   async createStage(data: Partial<TournamentStage>): Promise<number> {
-    const sql = `INSERT INTO tournament_stages (tournament_id, stage_order, name, progression_format, match_format_id, rule_set_id, advance_count, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournament_stages (tournament_id, competition_id, stage_order, name, progression_format, match_format_id, rule_set_id, advance_count, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
-      data.tournament_id, data.stage_order ?? 1, data.name ?? null,
+      data.tournament_id, data.competition_id ?? null, data.stage_order ?? 1, data.name ?? null,
       data.progression_format ?? 'round_robin', data.match_format_id ?? null,
       data.rule_set_id ?? null, data.advance_count ?? 1, data.status ?? 'pending',
     ]);
