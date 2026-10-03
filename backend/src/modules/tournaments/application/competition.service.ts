@@ -185,6 +185,24 @@ export class CompetitionService {
       );
     }
 
+    // G11.21.1 — revenue/waitlist INHERITANCE. Previously both fields were forced
+    // to `0` / `false`, which silently zeroed the tournament's configured entry
+    // fee on every additional category (100% revenue loss: the tournament-fee
+    // gate at `confirmRegistration` reads the competition fee) and disabled a
+    // waitlist the operator had explicitly turned on. A new category now mirrors
+    // its parent tournament exactly the way `tournament.service.ts → createDefault`
+    // already does at tournament creation. Precedence is UNCHANGED — an explicit
+    // competition value always wins, and the `??` chain keeps the previous
+    // "registration_fee follows an explicit entry_fee" behaviour intact:
+    //   entry_fee:        competition → tournament → 0
+    //   registration_fee: competition → competition entry_fee → tournament → resolved entry fee
+    //   waitlist_enabled: competition → tournament (MySQL tinyint 0/1 → boolean)
+    // Both columns are NOT NULL, so a stored value can never fall back later;
+    // inheritance therefore has to happen HERE, at write time.
+    const resolvedEntryFee = input.entry_fee ?? t.entry_fee ?? 0;
+    const resolvedRegistrationFee = input.registration_fee ?? input.entry_fee ?? t.registration_fee ?? resolvedEntryFee;
+    const resolvedWaitlistEnabled = input.waitlist_enabled ?? Boolean(Number(t.waitlist_enabled ?? 0));
+
     const competitionId = await competitionRepository.create({
       tournament_id: Number(tournamentId),
       competition_type: input.competition_type,
@@ -193,14 +211,14 @@ export class CompetitionService {
       rule_set_id: input.rule_set_id ?? null,
       bracket_type_id: input.bracket_type_id ?? (t.bracket_type_id ?? null),
       sport_id: input.sport_id ?? (t.sport_id ?? null),
-      entry_fee: input.entry_fee ?? 0,
-      registration_fee: input.registration_fee ?? input.entry_fee ?? 0,
+      entry_fee: resolvedEntryFee,
+      registration_fee: resolvedRegistrationFee,
       currency_code: input.currency_code ?? t.currency_code ?? 'EGP',
       price_type: input.price_type ?? 'FIXED',
       max_participants: max,
       min_participants: min,
       registration_payment_methods: input.registration_payment_methods ?? null,
-      waitlist_enabled: input.waitlist_enabled ?? false,
+      waitlist_enabled: resolvedWaitlistEnabled,
       age_mode: input.age_mode ?? null,
       age_category_ids: input.age_category_ids ?? null,
       gender_categories: input.gender_categories ?? null,
@@ -217,7 +235,10 @@ export class CompetitionService {
         tournament_id: Number(tournamentId),
         competition_type: input.competition_type,
         name: input.name,
-        entry_fee: input.entry_fee ?? 0,
+        // The RESOLVED value, not the raw request — the audit trail must record
+        // what was actually persisted, otherwise an inherited fee is logged as 0
+        // and the revenue record is silently falsified.
+        entry_fee: resolvedEntryFee,
         currency_code: input.currency_code ?? t.currency_code ?? 'EGP',
         max_participants: max,
       },

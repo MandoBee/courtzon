@@ -63,16 +63,21 @@ async function mkUser(id: number) {
 }
 
 /** A tournament + its auto-created DEFAULT competition (raw SQL is required: the
- *  tournament itself is inserted directly, so its default competition is too). */
-async function createTournament() {
+ *  tournament itself is inserted directly, so its default competition is too).
+ *  G11.21.1 — the fee/waitlist overrides default to the original FREE values, so
+ *  every pre-existing test still gets exactly the tournament it had before. */
+async function createTournament(opts: { entryFee?: number; registrationFee?: number; waitlistEnabled?: number } = {}) {
+  const entryFee = opts.entryFee ?? 0;
+  const registrationFee = opts.registrationFee ?? 0;
+  const waitlistEnabled = opts.waitlistEnabled ?? 0;
   const tid = await insertId(
     `INSERT INTO tournaments (public_id, creator_id, organisation_id, bracket_type_id, format, match_format_id, rule_set_id, sport_id,
-       name, max_participants, min_participants, entry_fee, registration_fee, currency_code, price_type, tournament_type,
+       name, max_participants, min_participants, entry_fee, registration_fee, currency_code, price_type, waitlist_enabled, tournament_type,
        commission_rate, status, is_public, start_date, end_date, registration_opens, registration_closes)
-     VALUES (UUID(), ?, ?, 1, 'knockout', ?, NULL, ?, ?, 64, 2, 0, 0, 'EGP', 'FIXED', 'community', 0, 'registration_open', 1,
+     VALUES (UUID(), ?, ?, 1, 'knockout', ?, NULL, ?, ?, 64, 2, ?, ?, 'EGP', 'FIXED', ?, 'community', 0, 'registration_open', 1,
              DATE_ADD(NOW(), INTERVAL 30 DAY), DATE_ADD(NOW(), INTERVAL 45 DAY),
              DATE_ADD(NOW(), INTERVAL 5 DAY), DATE_ADD(NOW(), INTERVAL 25 DAY))`,
-    [CREATOR, ORG, fmt, SPORT, `G20 Cup ${tidSeed++}`],
+    [CREATOR, ORG, fmt, SPORT, `G20 Cup ${tidSeed++}`, entryFee, registrationFee, waitlistEnabled],
   );
   tournamentIds.push(tid);
   // The default competition — exactly as `createDefault` writes it.
@@ -593,5 +598,97 @@ describe('G11.20 REGRESSION — G11.18 / G11.19 competition scoping still holds'
   it('26. G11.18 — the public read route shape is untouched', () => {
     const publicRoutes = readFileSync(resolve(__dirname, '../presentation/tournament.routes.ts'), 'utf8');
     expect(publicRoutes).toContain("app.get('/tournaments/:id/competitions'");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// G11.21.1 — REVENUE / WAITLIST INHERITANCE (real database)
+// ────────────────────────────────────────────────────────────────────────────
+describe('G11.21.1 — a new competition inherits the tournament revenue/waitlist config (real SQL)', () => {
+  it('30. inherits entry_fee / registration_fee / waitlist_enabled from a PAID tournament', async () => {
+    const { tid, defId } = await createTournament({ entryFee: 350, registrationFee: 400, waitlistEnabled: 1 });
+    const { competitionService } = await import('../application/competition.service.js');
+
+    // No entry_fee, no registration_fee, no waitlist_enabled in the request.
+    const created = await competitionService.createCompetition(tid, ORG, ADMIN, {
+      competition_type: 'doubles',
+      name: 'Doubles',
+    });
+
+    expect(Number(created.entry_fee)).toBe(350);
+    expect(Number(created.registration_fee)).toBe(400);
+    expect(Number(created.waitlist_enabled)).toBe(1);
+    expect(Number(created.is_default)).toBe(0);
+
+    // Assert against the STORED ROW, not just the returned mapping.
+    const [rows] = await exec(
+      'SELECT entry_fee, registration_fee, waitlist_enabled FROM tournament_competitions WHERE id = ?',
+      [created.id],
+    );
+    const row = rows[0] as any;
+    expect(Number(row.entry_fee)).toBe(350);
+    expect(Number(row.registration_fee)).toBe(400);
+    expect(Number(row.waitlist_enabled)).toBe(1);
+
+    // The tournament row itself is NEVER mutated by creating a category.
+    const [tRows] = await exec('SELECT entry_fee, waitlist_enabled FROM tournaments WHERE id = ?', [tid]);
+    expect(Number((tRows[0] as any).entry_fee)).toBe(350);
+    expect(Number((tRows[0] as any).waitlist_enabled)).toBe(1);
+
+    // The pre-existing DEFAULT category keeps its own stored values untouched.
+    const [dRows] = await exec('SELECT entry_fee FROM tournament_competitions WHERE id = ?', [defId]);
+    expect(Number((dRows[0] as any).entry_fee)).toBe(0);
+  });
+
+  it('31. EXPLICIT competition values still win over the tournament defaults (stored)', async () => {
+    const { tid } = await createTournament({ entryFee: 350, registrationFee: 400, waitlistEnabled: 1 });
+    const { competitionService } = await import('../application/competition.service.js');
+
+    const created = await competitionService.createCompetition(tid, ORG, ADMIN, {
+      competition_type: 'singles',
+      name: 'Free Singles',
+      entry_fee: 0,
+      registration_fee: 0,
+      waitlist_enabled: false,
+    });
+
+    expect(Number(created.entry_fee)).toBe(0);
+    expect(Number(created.registration_fee)).toBe(0);
+    expect(Number(created.waitlist_enabled)).toBe(0);
+
+    const [rows] = await exec(
+      'SELECT entry_fee, registration_fee, waitlist_enabled FROM tournament_competitions WHERE id = ?',
+      [created.id],
+    );
+    const row = rows[0] as any;
+    expect(Number(row.entry_fee)).toBe(0);
+    expect(Number(row.registration_fee)).toBe(0);
+    expect(Number(row.waitlist_enabled)).toBe(0);
+  });
+
+  it('32. a FREE tournament still yields a free category (backward compatible)', async () => {
+    const { tid } = await createTournament(); // entry_fee 0, registration_fee 0, waitlist 0
+    const { competitionService } = await import('../application/competition.service.js');
+
+    const created = await competitionService.createCompetition(tid, ORG, ADMIN, {
+      competition_type: 'doubles',
+      name: 'Doubles',
+    });
+
+    expect(Number(created.entry_fee)).toBe(0);
+    expect(Number(created.registration_fee)).toBe(0);
+    expect(Number(created.waitlist_enabled)).toBe(0);
+  });
+
+  it('33. inheritance is per-tournament and never leaks across tournaments', async () => {
+    const paid = await createTournament({ entryFee: 350, registrationFee: 400, waitlistEnabled: 1 });
+    const free = await createTournament(); // FREE
+    const { competitionService } = await import('../application/competition.service.js');
+
+    const onPaid = await competitionService.createCompetition(paid.tid, ORG, ADMIN, { competition_type: 'doubles', name: 'P' });
+    const onFree = await competitionService.createCompetition(free.tid, ORG, ADMIN, { competition_type: 'doubles', name: 'F' });
+
+    expect(Number(onPaid.entry_fee)).toBe(350);
+    expect(Number(onFree.entry_fee)).toBe(0);
   });
 });

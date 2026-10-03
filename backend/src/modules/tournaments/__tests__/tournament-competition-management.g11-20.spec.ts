@@ -339,3 +339,116 @@ describe('G11.20 — management view', () => {
     expect(view.can_deactivate).toBe(true);
   });
 });
+
+// ── G11.21.1 — revenue/waitlist inheritance ─────────────────────────────────
+// BUG: `createCompetition` forced `entry_fee: input.entry_fee ?? 0` and
+// `waitlist_enabled: input.waitlist_enabled ?? false`, so every ADDITIONAL
+// competition category was created free with the waitlist disabled no matter
+// how the parent tournament was configured. Because both columns are NOT NULL,
+// the value could never be recovered later — the tournament's entry fee was
+// silently lost (100% revenue loss) and a configured waitlist was silently
+// switched off. FIX: inherit from the tournament when the request omits the
+// field; an explicit competition value still always wins.
+describe('G11.21.1 — a new competition INHERITS the tournament revenue/waitlist configuration', () => {
+  /** A tournament configured with a real entry fee and an ENABLED waitlist.
+   *  `waitlist_enabled` arrives from MySQL as a tinyint 0/1, NOT a boolean. */
+  const paidTournament = (overrides: Record<string, unknown> = {}) => ({
+    id: TOURNAMENT_ID,
+    organisation_id: ORG,
+    currency_code: 'EGP',
+    entry_fee: 250,
+    registration_fee: 250,
+    waitlist_enabled: 1,
+    sport_id: 5,
+    bracket_type_id: 2,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    compRepo.findById.mockResolvedValue(competition({ id: 501, is_default: 0 }));
+    tRepo.findById.mockResolvedValue(paidTournament());
+  });
+
+  it('G1. inherits entry_fee when the request omits it (the reported bug)', async () => {
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, { competition_type: 'doubles', name: 'Doubles' });
+    const payload = compRepo.create.mock.calls[0][0] as any;
+    expect(payload.entry_fee).toBe(250);
+    // The old behaviour — the assertion that WAS silently failing in production.
+    expect(payload.entry_fee).not.toBe(0);
+  });
+
+  it('G2. inherits waitlist_enabled when the request omits it (tinyint 1 → true)', async () => {
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, { competition_type: 'doubles', name: 'Doubles' });
+    const payload = compRepo.create.mock.calls[0][0] as any;
+    expect(payload.waitlist_enabled).toBe(true);
+  });
+
+  it('G3. inherits registration_fee when the request omits it', async () => {
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, { competition_type: 'doubles', name: 'Doubles' });
+    expect((compRepo.create.mock.calls[0][0] as any).registration_fee).toBe(250);
+  });
+
+  it('G4. EXPLICIT competition values override the tournament defaults', async () => {
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, {
+      competition_type: 'doubles', name: 'Doubles',
+      entry_fee: 100, registration_fee: 120, waitlist_enabled: false,
+    });
+    const payload = compRepo.create.mock.calls[0][0] as any;
+    expect(payload.entry_fee).toBe(100);
+    expect(payload.registration_fee).toBe(120);
+    // `false` is NOT nullish, so `??` must not fall through to the tournament.
+    expect(payload.waitlist_enabled).toBe(false);
+  });
+
+  it('G5. an explicit entry_fee alone still drives registration_fee (pre-existing behaviour kept)', async () => {
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, {
+      competition_type: 'singles', name: 'S', entry_fee: 300,
+    });
+    expect((compRepo.create.mock.calls[0][0] as any).registration_fee).toBe(300);
+  });
+
+  it('G6. inherits the tournament registration_fee independently of the entry fee', async () => {
+    tRepo.findById.mockResolvedValue(paidTournament({ entry_fee: 400, registration_fee: 500 }));
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, { competition_type: 'singles', name: 'S' });
+    const payload = compRepo.create.mock.calls[0][0] as any;
+    expect(payload.entry_fee).toBe(400);
+    expect(payload.registration_fee).toBe(500);
+  });
+
+  it('G7. a FREE tournament still produces 0 / false (no invented fee)', async () => {
+    tRepo.findById.mockResolvedValue(paidTournament({ entry_fee: 0, registration_fee: 0, waitlist_enabled: 0 }));
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, { competition_type: 'singles', name: 'S' });
+    const payload = compRepo.create.mock.calls[0][0] as any;
+    expect(payload.entry_fee).toBe(0);
+    expect(payload.registration_fee).toBe(0);
+    expect(payload.waitlist_enabled).toBe(false);
+  });
+
+  it('G8. a tournament with NO fee/waitlist configured stays 0 / false (backward compatible)', async () => {
+    tRepo.findById.mockResolvedValue({
+      id: TOURNAMENT_ID, organisation_id: ORG, currency_code: 'EGP',
+      entry_fee: null, registration_fee: null, waitlist_enabled: null,
+    });
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, { competition_type: 'singles', name: 'S' });
+    const payload = compRepo.create.mock.calls[0][0] as any;
+    expect(payload.entry_fee).toBe(0);
+    expect(payload.registration_fee).toBe(0);
+    expect(payload.waitlist_enabled).toBe(false);
+  });
+
+  it('G9. the audit trail records the RESOLVED inherited fee, not a fabricated 0', async () => {
+    await svc.createCompetition(TOURNAMENT_ID, ORG, 42, { competition_type: 'doubles', name: 'Doubles' });
+    expect(audit.recordAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'TOURNAMENT.COMPETITION_CREATED',
+      afterState: expect.objectContaining({ entry_fee: 250 }),
+    }));
+  });
+
+  it('G10. inheritance never bypasses the tenancy guard (org mismatch still fails closed)', async () => {
+    tRepo.findById.mockResolvedValue(paidTournament({ organisation_id: 999 }));
+    await expect(svc.createCompetition(TOURNAMENT_ID, ORG, 42, {
+      competition_type: 'doubles', name: 'Doubles',
+    })).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_NOT_FOUND });
+    expect(compRepo.create).not.toHaveBeenCalled();
+  });
+});
