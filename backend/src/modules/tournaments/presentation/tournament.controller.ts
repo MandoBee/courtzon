@@ -306,7 +306,10 @@ export async function archiveTournamentHandler(request: FastifyRequest, reply: F
 export async function registerHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const body = RegisterSchema.parse(request.body);
-  const tournamentId = body.tournament_id ?? Number((request.params as any).id);
+  // G11.21.4 — the route `:id` is the authoritative tournament. A client-supplied
+  // `body.tournament_id` is IGNORED: it previously let a caller redirect an
+  // org-scoped operator registration to another organisation's tournament.
+  const tournamentId = Number((request.params as any).id);
   // Group 7-B — this route is gated by `tournament.register` (privileged
   // registration): the operator MAY bypass eligibility, recorded in the snapshot.
   const registration = body.payment_method

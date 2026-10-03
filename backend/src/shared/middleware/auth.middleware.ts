@@ -49,6 +49,11 @@ export function requirePermission(permissions: string[]) {
   };
 }
 
+/** Role check for guards/handlers that need a boolean (e.g. platform-admin exemption). */
+export async function userHasRole(userId: number, roles: string[]): Promise<boolean> {
+  return getDeps().checkRole(userId, roles);
+}
+
 /** Pass if the user has any listed role OR any listed permission key. */
 export function eitherRoleOrPermission(roles: string[], permissions: string[]) {
   return async (request: FastifyRequest, reply: FastifyReply) => {

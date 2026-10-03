@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
+import { requireAdminRegistrationOrgScope } from './tournament-registration-guard.js';
+import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import * as ctrl from './tournament.controller.js';
 import * as pdCtrl from './participant-draw.controller.js';
 
@@ -82,9 +84,55 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/tournaments/:id/cancel', { preHandler: [requirePermission(['tournament.update'])] }, ctrl.cancelTournamentHandler);
   app.post('/admin/tournaments/:id/archive', { preHandler: [requirePermission(['tournament.delete'])] }, ctrl.archiveTournamentHandler);
 
-  app.post('/admin/tournaments/:id/register', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.registerHandler);
-  app.post('/admin/tournaments/registrations/:regId/cancel', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.cancelRegistrationHandler);
-  app.post('/admin/tournaments/registrations/:regId/confirm', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.confirmRegistrationHandler);
+  app.post(
+    '/admin/tournaments/:id/register',
+    {
+      preHandler: [
+        requirePermission(['tournament.register']),
+        // G11.21.4 — organisation-aware: foreign/nonexistent tournaments are 404
+        // (identical shape); cross-org operator registration is denied for
+        // non-platform roles while the Tournament Workbench (super/master) keeps
+        // cross-org access. `params.id` is the authoritative tournament.
+        requireAdminRegistrationOrgScope({
+          idParam: 'id',
+          errorCode: 'TOURNAMENT_NOT_FOUND',
+          notFoundMessage: 'Tournament not found',
+          resolveOrgId: (id) => tournamentRepository.getOrganisationId(id),
+        }),
+      ],
+    },
+    ctrl.registerHandler,
+  );
+  app.post(
+    '/admin/tournaments/registrations/:regId/cancel',
+    {
+      preHandler: [
+        requirePermission(['tournament.register']),
+        requireAdminRegistrationOrgScope({
+          idParam: 'regId',
+          errorCode: 'REGISTRATION_NOT_FOUND',
+          notFoundMessage: 'Registration not found',
+          resolveOrgId: (id) => tournamentRepository.getRegistrationOrganisationId(id),
+        }),
+      ],
+    },
+    ctrl.cancelRegistrationHandler,
+  );
+  app.post(
+    '/admin/tournaments/registrations/:regId/confirm',
+    {
+      preHandler: [
+        requirePermission(['tournament.register']),
+        requireAdminRegistrationOrgScope({
+          idParam: 'regId',
+          errorCode: 'REGISTRATION_NOT_FOUND',
+          notFoundMessage: 'Registration not found',
+          resolveOrgId: (id) => tournamentRepository.getRegistrationOrganisationId(id),
+        }),
+      ],
+    },
+    ctrl.confirmRegistrationHandler,
+  );
 
   app.post('/admin/tournaments/:id/generate-groups', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.generateGroupsHandler);
 

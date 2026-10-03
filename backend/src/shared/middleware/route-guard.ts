@@ -78,3 +78,14 @@ export function requireOrgScopedPermission(permissionKey: string, orgIdParam = '
     }
   };
 }
+
+/**
+ * Direct org-scope check for guards/handlers that resolve the organisation from
+ * a resource id instead of a path `:orgId` (e.g. the admin tournament
+ * registration pipeline). Same semantics as `requireOrgScopedPermission`:
+ * org owner, super_admin for any org, or an org-scope-granted holder of the
+ * permission key.
+ */
+export async function hasOrgPermission(userId: number, orgId: number, permissionKey: string): Promise<boolean> {
+  return getDeps().checkOrgPermission(userId, orgId, permissionKey);
+}

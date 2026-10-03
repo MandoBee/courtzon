@@ -80,4 +80,13 @@ describe('G7-B.1 — player self-registration must NEVER bypass eligibility', ()
     expect(recordAudit).toHaveBeenCalledTimes(2);
     expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'TOURNAMENT.REGISTER' }));
   });
+
+  it('10. G11.21.4 — params.id is authoritative; a conflicting body.tournament_id cannot redirect the registration', async () => {
+    // The operator sends a body tournament_id that differs from the routed :id.
+    await registerHandler(req({ body: { tournament_id: 999, team_id: 5 } }), reply());
+    // The routed :id (7) wins — the registration can never be redirected to
+    // tournament 999 (an IDOR to another organisation's tournament).
+    expect(serviceMock.register).toHaveBeenCalledWith(7, 42, 5, undefined, { operatorBypass: true });
+    expect(serviceMock.register).not.toHaveBeenCalledWith(999, expect.anything(), expect.anything(), expect.anything(), expect.anything());
+  });
 });
