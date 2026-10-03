@@ -323,11 +323,22 @@ export const CreateCompetitionSchema = z.object({
   sport_id: z.coerce.number().int().positive().nullable().optional(),
   entry_fee: z.coerce.number().min(0).max(9999999).optional(),
   registration_fee: z.coerce.number().min(0).max(9999999).optional(),
-  currency_code: z.string().length(3).toUpperCase().optional(),
+  // G11.21.3 — normalize at the DTO boundary (trim → uppercase → exactly 3 ASCII
+  // letters). Never an ISO allowlist lookup: the `currencies` table is not
+  // seeded, and the platform tolerates unknown codes by design.
+  currency_code: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'Currency code must be exactly 3 ASCII letters').optional(),
   price_type: competitionPriceTypeEnum.optional(),
   max_participants: z.coerce.number().int().min(0).max(100000).nullable().optional(),
   min_participants: z.coerce.number().int().min(2).max(100000).optional(),
-  registration_payment_methods: z.array(z.string().min(1).max(40)).max(10).nullable().optional(),
+  // G11.21.3 — same contract as the tournament level (cash/card, min 1) plus a
+  // uniqueness refine. The tournament write path dedupes in the service
+  // (`normaliseRegistrationPaymentMethods`); the competition write path stores
+  // the value raw, so duplicates must be rejected HERE or they can never be
+  // repaired from the record.
+  registration_payment_methods: RegistrationPaymentMethodsSchema.refine(
+    (methods) => new Set(methods).size === methods.length,
+    'Duplicate payment methods are not allowed',
+  ).nullable().optional(),
   waitlist_enabled: z.boolean().optional(),
   age_mode: competitionAgeModeEnum.nullable().optional(),
   age_category_ids: z.array(z.coerce.number().int().positive()).max(100).nullable().optional(),

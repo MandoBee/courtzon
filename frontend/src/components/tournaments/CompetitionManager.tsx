@@ -301,6 +301,12 @@ export default function CompetitionManager({ orgId, tournamentId }: Props) {
                         ? `${Number(c.entry_fee)} ${c.currency_code}`
                         : t('tournaments.competition.free', 'Free')}
                       {' · '}
+                      {/* G11.21.3 — informational only: registration_fee is never used for charging. */}
+                      {t('tournaments.competition.registration', 'Registration')}:{' '}
+                      {Number(c.registration_fee ?? 0) > 0
+                        ? `${Number(c.registration_fee)} ${c.currency_code}`
+                        : t('tournaments.competition.free', 'Free')}
+                      {' · '}
                       {t('tournaments.competition.capacity', 'Capacity')}: {capacityLabel}
                       {' · '}
                       {t('tournaments.competition.waiting', 'Waiting')}: {c.waiting_participants}
@@ -376,6 +382,22 @@ export default function CompetitionManager({ orgId, tournamentId }: Props) {
                 value={form.entry_fee}
                 onChange={(e) => setForm({ ...form, entry_fee: Number(e.target.value) })}
               />
+            </div>
+            <div>
+              <span className={labelCls}>
+                {t('tournaments.competition.registration_fee', 'Registration fee')}
+              </span>
+              {/* G11.21.3 — READ-ONLY. The accounting/payment layer never uses
+                  registration_fee for charging; it is shown for reference and
+                  preserved unchanged whenever the category is edited. */}
+              <p className={`${inputCls} text-[var(--color-text-muted)]`} data-testid="registration-fee-readonly">
+                {Number(form.registration_fee ?? 0) > 0
+                  ? `${Number(form.registration_fee)} ${form.currency_code}`
+                  : t('tournaments.competition.free', 'Free')}
+              </p>
+              <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
+                {t('tournaments.competition.registration_fee_hint', 'Informational — not used for charging.')}
+              </p>
             </div>
             <div>
               <label className={labelCls} htmlFor="cmp-currency">{t('tournaments.competition.currency', 'Currency')}</label>
