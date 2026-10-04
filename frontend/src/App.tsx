@@ -237,6 +237,11 @@ const OrgDocumentsPage = lazy(() => import('./pages/org/OrgDocumentsPage'));
 const OrgGalleryPage = lazy(() => import('./pages/org/OrgGalleryPage'));
 const OrgReportsPage = lazy(() => import('./pages/org/OrgReportsPage'));
 const OrgProfilePage = lazy(() => import('./pages/org/OrgProfilePage'));
+const OrgMembershipSettingsPage = lazy(() => import('./pages/org/memberships/OrgMembershipSettingsPage'));
+const OrgMembershipPlansPage = lazy(() => import('./pages/org/memberships/OrgMembershipPlansPage'));
+const OrgMembershipSubscriptionsPage = lazy(() => import('./pages/org/memberships/OrgMembershipSubscriptionsPage'));
+const MembershipStorefrontPage = lazy(() => import('./pages/membership/MembershipStorefrontPage'));
+const MyMembershipsPage = lazy(() => import('./pages/membership/MyMembershipsPage'));
 const OrgBranchesPage = lazy(() => import('./pages/org/OrgBranchesPage'));
 const OrgReviewsPage = lazy(() => import('./pages/org/OrgReviewsPage'));
 const OrgRefereesPage = lazy(() => import('./pages/org/OrgRefereesPage'));
@@ -693,6 +698,8 @@ function AppContent() {
           <Route path="/membership" element={<MembershipDashboard />} />
           <Route path="/membership/plans" element={<PlansPage />} />
           <Route path="/membership/rewards" element={<RewardsPage />} />
+          <Route path="/organisations/:orgId/membership" element={<MembershipStorefrontPage />} />
+          <Route path="/my/membership/subscriptions" element={<MyMembershipsPage />} />
         </Route>
         <Route path="/coach" element={<CoachLayout />}>
           <Route index element={<CoachDashboard />} />
@@ -914,6 +921,9 @@ function AppContent() {
             <Route path="tournaments/:id/draw" element={<TournamentDrawPage mode="org" />} />
             <Route path="tournaments/:id/schedule" element={<TournamentSchedulePage mode="org" />} />
             <Route path="verification" element={<OrgVerificationPage />} />
+            <Route path="membership/settings" element={<OrgMembershipSettingsPage />} />
+            <Route path="membership/plans" element={<OrgMembershipPlansPage />} />
+            <Route path="membership/subscriptions" element={<OrgMembershipSubscriptionsPage />} />
             <Route path="shipping-rates" element={<OrgSettingsPage />} />
             <Route path="settings" element={<Navigate to="shipping-rates" replace />} />
           </Route>

@@ -614,6 +614,33 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['payment_clearing'],
     credit: ['merchant_payable', 'tournament_commission'],
   },
+  // ── MEMBERSHIP (G11.22 P1) ─────────────────────────────────────────────────
+  // Full payment membership subscription. All components are organisation
+  // revenue; CourtZon commission is calculated on the TOTAL original amount.
+  // CourtZon book (org NULL):
+  //   CARD: Dr 1100 Payment Clearing = gross · Cr 2202 Merchant Payable =
+  //         orgNet · Cr 4110 Platform Commission = commission · Cr 2300 Tax = 0.
+  //   CASH: Dr 1161 Marketplace Receivable = commission · Cr 4110 commission ·
+  //         Cr 2300 tax (the org collected the cash directly).
+  // Organization book (org-scoped) mirrors booking/existing org books with a
+  // dedicated MEMB-REV membership revenue leg, so membership income is never
+  // mixed with marketplace/court/academy revenue.
+  membership_card_payment: {
+    debit: ['payment_clearing'],
+    credit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+  },
+  membership_cash_payment: {
+    debit: ['marketplace_receivable'],
+    credit: ['platform_commission', 'tax_liability'],
+  },
+  membership_org_receivable: {
+    debit: ['marketplace_receivable', 'commission_expense'],
+    credit: ['membership_revenue'],
+  },
+  membership_org_cash_receivable: {
+    debit: ['org_cash_bank', 'commission_expense'],
+    credit: ['membership_revenue', 'courtzon_payable'],
+  },
   // G11 Phase 3 — the platform/org-less tournament concept
   // `tournament_platform_card_payment` is REMOVED. The CourtZon platform never
   // owns, funds, or financially recognises a tournament, so the "CourtZon owns

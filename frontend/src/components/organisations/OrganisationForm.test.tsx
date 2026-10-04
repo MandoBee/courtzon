@@ -81,3 +81,45 @@ describe('OrganisationForm identity fields (Name / Type / Country)', () => {
     expect(isFieldEditable('Egypt')).toBe(true);
   });
 });
+
+describe('G11.22 P0 — Club Access Model', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+    mockPut.mockReset();
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/organisation-types') return Promise.resolve({ data: { data: [{ id: 1, name: 'Club' }] } });
+      if (url.includes('/info') || url.includes('/organisations/')) {
+        return Promise.resolve({ data: orgRow({ access_model: 'MEMBERSHIP_CLUB' }) });
+      }
+      return Promise.resolve({ data: { data: [] } });
+    });
+  });
+
+  it('renders the saved Club Access Model from the organisation (org context)', async () => {
+    renderForm('org');
+    await waitFor(() => expect(screen.getAllByText(/Padel Edge/).length).toBeGreaterThan(0));
+    expect(screen.getByLabelText('Club Access Model')).toBeTruthy();
+    expect(isFieldEditable('Membership Club')).toBe(true);
+  });
+
+  it('submits the selected access model on save (org context)', async () => {
+    renderForm('org');
+    await waitFor(() => expect(screen.getAllByText(/Padel Edge/).length).toBeGreaterThan(0));
+    const select = screen.getByLabelText('Club Access Model') as HTMLSelectElement;
+    expect(select.value).toBe('MEMBERSHIP_CLUB');
+    // Switch to Public Club and save.
+    const { fireEvent } = await import('@testing-library/react');
+    fireEvent.change(select, { target: { value: 'PUBLIC_CLUB' } });
+    fireEvent.click(screen.getByText('Save Changes'));
+    await waitFor(() => expect(mockPut).toHaveBeenCalled());
+    const payload = mockPut.mock.calls[0][1] as any;
+    expect(payload.accessModel).toBe('PUBLIC_CLUB');
+  });
+
+  it('renders the Club Access Model field in admin context', async () => {
+    renderForm('admin');
+    await waitFor(() => expect(screen.getAllByText(/Padel Edge/).length).toBeGreaterThan(0));
+    expect(screen.getByLabelText('Club Access Model')).toBeTruthy();
+    expect(isFieldEditable('Membership Club')).toBe(true);
+  });
+});

@@ -5,6 +5,7 @@ export const CANONICAL_COMMISSION_ENTITIES = [
   'marketplace',
   'coach_session',
   'academy',
+  'membership',
 ] as const;
 
 export type CommissionEntity = (typeof CANONICAL_COMMISSION_ENTITIES)[number];
@@ -23,6 +24,8 @@ const ALIAS_TO_CANONICAL: Record<string, CommissionEntity> = {
   coaching_session: 'coach_session',
   academy: 'academy',
   academies: 'academy',
+  membership: 'membership',
+  memberships: 'membership',
 };
 
 /** Map UI / legacy entity slugs to the canonical plan-rate key. */

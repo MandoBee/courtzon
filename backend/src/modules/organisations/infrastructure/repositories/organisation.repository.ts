@@ -87,13 +87,14 @@ export class OrganisationRepository {
   async create(data: any, ownerId: number): Promise<number> {
     const [result] = await this.pool.execute<mysql.ResultSetHeader & RowData>(
       `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, description,
-        logo_url, cover_url, email, phone, website, country_id, cr_number, tax_id, tax_id_type, documents, is_verified, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, TRUE)`,
+        logo_url, cover_url, email, phone, website, country_id, cr_number, tax_id, tax_id_type, documents, access_model, is_verified, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, TRUE)`,
       [generateUUID(), data.orgTypeId, ownerId, data.name, data.slug,
        data.description || null, data.logoUrl || null, data.coverUrl || null,
        data.email || null, data.phone || null, data.website || null,
        data.countryId || null, data.crNumber || null, data.taxId || null, data.taxIdType || null,
-       data.documents ? JSON.stringify(data.documents) : null]
+       data.documents ? JSON.stringify(data.documents) : null,
+       data.accessModel || 'PUBLIC_CLUB']
     );
     return result.insertId;
   }
@@ -102,7 +103,7 @@ export class OrganisationRepository {
     const fields: string[] = [];
     const values: any[] = [];
     const allowed = ['name','slug','description','logo_url','cover_url','email','phone',
-      'website','org_type_id','country_id','cr_number','tax_id','tax_id_type','documents','is_verified','is_active'];
+      'website','org_type_id','country_id','cr_number','tax_id','tax_id_type','documents','is_verified','is_active','access_model'];
     for (const key of allowed) {
       const dbKey = key;
       if (data[key] !== undefined) {

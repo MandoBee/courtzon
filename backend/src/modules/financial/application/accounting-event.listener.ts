@@ -648,6 +648,66 @@ export async function postMarketplaceComplaintRefundAccounting(
   );
 }
 
+async function postMembershipPaymentAccounting(
+  subscriptionId: number,
+  paymentMethod: string,
+  currency: string,
+): Promise<void> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT id, organisation_id, total_amount, commission_amount, org_net_amount, currency
+     FROM membership_subscriptions WHERE id = ? LIMIT 1`,
+    [subscriptionId],
+  );
+  const sub = (rows as any[])[0];
+  if (!sub) {
+    log.error({ subscriptionId }, 'Membership subscription missing for accounting — skipping posting');
+    return;
+  }
+  const total = Math.round(Number(sub.total_amount) * 100) / 100;
+  const commission = Math.round(Number(sub.commission_amount) * 100) / 100;
+  const orgNet = Math.round(Number(sub.org_net_amount) * 100) / 100;
+  const orgId = sub.organisation_id != null ? Number(sub.organisation_id) : null;
+  const cur = String(sub.currency || currency || 'EGP');
+
+  if (paymentMethod === 'cash') {
+    // CourtZon book — the org collected the cash; CourtZon is owed only its
+    // commission. Tax = 0 (same decision as bookings).
+    await postAccountingEvent(
+      'membership_cash_payment', 'membership', subscriptionId, null,
+      { marketplace_receivable: commission, platform_commission: commission, tax_liability: 0 },
+      cur,
+      `Membership subscription #${subscriptionId} cash payment`,
+    );
+    if (orgId != null) {
+      await postAccountingEvent(
+        'membership_org_cash_receivable', 'membership', subscriptionId, orgId,
+        { org_cash_bank: total, commission_expense: commission, membership_revenue: total, courtzon_payable: commission },
+        cur,
+        `Membership subscription #${subscriptionId} organization book (cash collected)`,
+      );
+    }
+    return;
+  }
+
+  // Card / online — CourtZon is merchant of record (Dr 1100 gross / Cr 2202
+  // org net / Cr 4110 commission / Cr 2300 tax 0).
+  await postAccountingEvent(
+    'membership_card_payment', 'membership', subscriptionId, null,
+    { payment_clearing: total, merchant_payable: orgNet, platform_commission: commission, tax_liability: 0 },
+    cur,
+    `Membership subscription #${subscriptionId} card payment`,
+  );
+  if (orgId != null) {
+    await postAccountingEvent(
+      'membership_org_receivable', 'membership', subscriptionId, orgId,
+      { marketplace_receivable: orgNet, commission_expense: commission, membership_revenue: total },
+      cur,
+      `Membership subscription #${subscriptionId} organization book (card custody)`,
+    );
+  }
+}
+
 async function resolveOrgId(referenceType: string, referenceId: number): Promise<number | null> {
   const pool = getPool();
   if (referenceType === 'booking') {
@@ -2245,6 +2305,16 @@ export function registerAccountingEventListeners(): void {
       // payable (card/wallet) or org book receivable (cash).
       if (referenceType === 'academy') {
         await postAcademyPaymentAccounting(referenceId, paymentMethod, currency);
+        return;
+      }
+
+      // ── Membership subscription payment → snapshot-based accounting (G11.22 P1) ──
+      // Economics come EXCLUSIVELY from the immutable membership_subscriptions
+      // snapshot (total / commission / org-net), never recomputed. Mirrors the
+      // booking custody model with the DEDICATED membership events (CourtZon
+      // book + organization book, both idempotent via uk_dedup).
+      if (referenceType === 'membership_subscription') {
+        await postMembershipPaymentAccounting(referenceId, paymentMethod, currency);
         return;
       }
 

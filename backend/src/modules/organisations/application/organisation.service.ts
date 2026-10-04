@@ -260,6 +260,7 @@ export class OrganisationService {
     if (mapped.orgTypeId !== undefined) { mapped.org_type_id = mapped.orgTypeId; delete mapped.orgTypeId; }
     if (mapped.isActive !== undefined) { mapped.is_active = mapped.isActive; delete mapped.isActive; }
     if (mapped.isVerified !== undefined) { mapped.is_verified = mapped.isVerified; delete mapped.isVerified; }
+    if (mapped.accessModel !== undefined) { mapped.access_model = mapped.accessModel; delete mapped.accessModel; }
 
     // Activating an unverified organisation is an approval decision: the org
     // portal guard requires verified AND active, so an activation that leaves

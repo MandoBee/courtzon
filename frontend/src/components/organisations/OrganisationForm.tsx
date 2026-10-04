@@ -20,6 +20,7 @@ interface OrgFormData {
   email: string; phone: string; website: string;
   crNumber: string; taxId: string; vatRegistered: boolean;
   countryId: number;
+  accessModel: 'PUBLIC_CLUB' | 'MEMBERSHIP_CLUB';
   logoFile: File | null; logoPreview: string;
   coverFile: File | null; coverPreview: string;
   documents: { file: File | null; preview: string; name: string }[];
@@ -42,6 +43,7 @@ interface Props {
 const blankForm: OrgFormData = {
   orgTypeId: 1, name: '', slug: '', description: '', email: '', phone: '', website: '',
   crNumber: '', taxId: '', vatRegistered: false, countryId: 1,
+  accessModel: 'PUBLIC_CLUB',
   logoFile: null, logoPreview: '', coverFile: null, coverPreview: '',
   documents: [],
 };
@@ -234,6 +236,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
         taxId: orgData.tax_id || '',
         vatRegistered: orgData.tax_id_type === 'VAT',
         countryId: orgData.country_id || 1,
+        accessModel: orgData.access_model === 'MEMBERSHIP_CLUB' ? 'MEMBERSHIP_CLUB' : 'PUBLIC_CLUB',
         logoFile: null, logoPreview: orgData.logo_url || '',
         coverFile: null, coverPreview: orgData.cover_url || '',
         documents: orgData.documents
@@ -520,6 +523,7 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
       description: form.description || undefined,
       email: form.email || undefined, phone: form.phone || undefined, website: form.website || undefined,
       crNumber: form.crNumber || undefined, taxId: form.taxId || undefined,
+      accessModel: form.accessModel || 'PUBLIC_CLUB',
     };
     if (showNewCountry && isCreate) {
       payload.newCountry = newCountryForm;
@@ -671,6 +675,31 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
               <div><label className="block text-sm font-medium text-[var(--color-text)] mb-1">Description</label>
                 <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3}
                   className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]" /></div>
+            </Can>
+
+            <Can permission="organisations.edit">
+              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 space-y-2">
+                <label className="block text-sm font-medium text-[var(--color-text)]">Club Access Model</label>
+                <select
+                  value={form.accessModel}
+                  onChange={e => set('accessModel', e.target.value as 'PUBLIC_CLUB' | 'MEMBERSHIP_CLUB')}
+                  className="w-full px-3 py-2 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]"
+                  aria-label="Club Access Model"
+                >
+                  <option value="PUBLIC_CLUB">Public Club</option>
+                  <option value="MEMBERSHIP_CLUB">Membership Club</option>
+                </select>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  <span className="font-medium">Public Club:</span> the club is generally open to everyone. Individual
+                  branches may be restricted to members / authorized users only (set a branch to Restricted or
+                  Invite-only below).
+                </p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  <span className="font-medium">Membership Club:</span> the club is fundamentally membership-based.
+                  Branch access respects membership / authorization rules, and membership plans will be able to grant
+                  access to specific branches or all branches.
+                </p>
+              </div>
             </Can>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1068,7 +1097,13 @@ export default function OrganisationForm({ orgId, context, onClose, initialTab, 
                         {(branchForm.latitude && branchForm.longitude) && <p className="text-[10px] text-[var(--color-success-text)] mt-0.5">📍 Pinned</p>}</div>
                     </div>
                     <div className="grid grid-cols-4 gap-3">
-                      <Can permission="branches.edit.access-type"><div><label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Access Type</label><select value={branchForm.accessType} onChange={e => setBranchForm((f: any) => ({ ...f, accessType: e.target.value }))} className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]"><option value="open">Open</option><option value="restricted">Restricted</option><option value="invite_only">Invite Only</option></select></div></Can>
+                      <Can permission="branches.edit.access-type"><div><label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Access Type</label><select value={branchForm.accessType} onChange={e => setBranchForm((f: any) => ({ ...f, accessType: e.target.value }))} className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]"><option value="open">Open</option><option value="restricted">Restricted</option><option value="invite_only">Invite Only</option></select>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                  {form.accessModel === 'MEMBERSHIP_CLUB'
+                    ? 'This branch belongs to a Membership Club — access follows membership / authorization rules; Restricted / Invite Only stay stricter.'
+                    : 'Branch-specific restriction: Restricted / Invite Only = members or approved players only; Open = everyone. The club-level "Club Access Model" sets the default for all branches.'}
+                </p>
+              </div></Can>
                       <Can permission="branches.edit.coach-policy"><div><label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Coach Policy</label><select value={branchForm.coachPolicy || 'contract_required'} onChange={e => setBranchForm((f: any) => ({ ...f, coachPolicy: e.target.value }))} className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]"><option value="contract_required">Contract Required</option><option value="independent_coaches_allowed">Independent Allowed</option></select></div></Can>
                       <Can permission="branches.edit.timezone"><div><label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Timezone</label>
                         <select value={branchForm.timezone || 'Africa/Cairo'} onChange={e => setBranchForm((f: any) => ({ ...f, timezone: e.target.value }))} className="w-full px-2 py-1.5 rounded-[var(--radius-md)] border text-sm text-[var(--color-text)]">

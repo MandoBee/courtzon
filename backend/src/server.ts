@@ -255,6 +255,12 @@ async function bootstrap() {
     createEntitlementTournamentWorkers();
     app.log.info('Entitlement tournament subscribers + workers registered');
 
+    // G11.22 P1 — finalise membership subscriptions when their full payment
+    // succeeds (reference_type = membership_subscription).
+    const { registerMembershipP1Lifecycle } = await import('./modules/membership/application/membership-p1.listeners.js');
+    registerMembershipP1Lifecycle();
+    app.log.info('Membership P1 lifecycle listeners registered');
+
     const { registerTournamentProgressionSubscribers, createTournamentProgressionWorkers } = await import('./modules/tournaments/application/tournament-progression.listener.js');
     registerTournamentProgressionSubscribers();
     createTournamentProgressionWorkers();

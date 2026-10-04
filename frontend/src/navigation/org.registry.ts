@@ -88,6 +88,19 @@ export const ORG_NAV: NavDefinition[] = [
     ],
   },
 
+  // ── Membership (G11.22 P1) ──
+  {
+    id: 'nav.org.domain.membership',
+    label: LIT('Membership'),
+    icon: '🎟️',
+    path: '/org/{orgId}/membership/plans',
+    children: [
+      { id: 'nav.org.membership-plans', label: LIT('Plans'), icon: '📋', path: '/org/{orgId}/membership/plans', permissionKey: 'membership.view' },
+      { id: 'nav.org.membership-settings', label: LIT('Settings'), icon: '⚙️', path: '/org/{orgId}/membership/settings', permissionKey: 'membership.view' },
+      { id: 'nav.org.membership-subscriptions', label: LIT('Subscriptions'), icon: '👥', path: '/org/{orgId}/membership/subscriptions', permissionKey: 'membership.view' },
+    ],
+  },
+
   // ── Organisation ──
   {
     id: 'nav.org.domain.organisation',

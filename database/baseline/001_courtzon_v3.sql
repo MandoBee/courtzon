@@ -3804,6 +3804,7 @@ CREATE TABLE `organisations` (
   `cancellation_before_hours` int NOT NULL DEFAULT '24',
   `cancellation_fee_percentage` decimal(5,2) NOT NULL DEFAULT '0.00',
   `cancellation_fee_fixed` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `access_model` enum('PUBLIC_CLUB','MEMBERSHIP_CLUB') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PUBLIC_CLUB' COMMENT 'Organisation-wide club access model (PUBLIC_CLUB = open by default; MEMBERSHIP_CLUB = membership-gated by default)',
   `is_verified` tinyint(1) NOT NULL DEFAULT '0',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `rating_avg` decimal(3,2) NOT NULL DEFAULT '0.00',
@@ -7633,3 +7634,159 @@ CREATE TABLE `booking_series` (
 ALTER TABLE `bookings`
   ADD COLUMN `series_id` bigint unsigned DEFAULT NULL AFTER `aggregate_version`,
   ADD UNIQUE KEY `uk_booking_series_occurrence` (`series_id`,`booking_date`,`start_time`);
+
+
+-- ============================================================================
+-- G11.22 P1 — membership plan versioning + subscriptions (appended to baseline;
+-- source of truth = migrations 191/192 which carry COURTZON_MIGRATION_ENV markers)
+-- ============================================================================
+
+
+-- ============================================================================
+-- G11.22 P1 — membership plan versioning + subscriptions (P0/P1 addenda; source
+-- of truth = database/migrations/191..192 with COURTZON_MIGRATION_ENV markers)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `organisation_membership_settings` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `organisation_id` int unsigned NOT NULL,
+  `enabled_durations` json NOT NULL COMMENT '["monthly","quarterly","semi_annual","annual"]',
+  `allowed_payment_methods` json NOT NULL COMMENT '["cash","card"]',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_oms_organisation` (`organisation_id`),
+  CONSTRAINT `fk_oms_organisation` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_oms_durations` CHECK (json_valid(`enabled_durations`)),
+  CONSTRAINT `chk_oms_payment_methods` CHECK (json_valid(`allowed_payment_methods`))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS `membership_plan_versions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `membership_plan_id` int unsigned NOT NULL,
+  `version_no` int unsigned NOT NULL DEFAULT '1',
+  `status` enum('draft','active','superseded','archived') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft',
+  `effective_from` date NOT NULL,
+  `duration_type` enum('monthly','quarterly','semi_annual','annual') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `duration_periods` smallint unsigned NOT NULL DEFAULT '1',
+  `renewal_model` enum('anniversary','fixed_date') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'anniversary',
+  `fixed_renewal_month` tinyint unsigned DEFAULT NULL,
+  `fixed_renewal_day` tinyint unsigned DEFAULT NULL,
+  `initial_charge_type` enum('full','percentage') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'full',
+  `initial_charge_percent` decimal(5,2) DEFAULT NULL,
+  `grace_days` smallint unsigned NOT NULL DEFAULT '0',
+  `branch_scope` enum('ALL','SELECTED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ALL',
+  `allowed_payment_methods` json NOT NULL COMMENT '["cash","card"]',
+  `currency` char(3) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'EGP',
+  `installments_enabled` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Reserved for P2; P1 supports full payment only',
+  `created_by` int unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_mpv_plan_version` (`membership_plan_id`,`version_no`),
+  KEY `idx_mpv_plan` (`membership_plan_id`),
+  KEY `idx_mpv_status` (`status`,`effective_from`),
+  KEY `idx_mpv_creator` (`created_by`),
+  CONSTRAINT `fk_mpv_plan` FOREIGN KEY (`membership_plan_id`) REFERENCES `membership_plans` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_mpv_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `chk_mpv_payment_methods` CHECK (json_valid(`allowed_payment_methods`)),
+  CONSTRAINT `chk_mpv_percent` CHECK (`initial_charge_percent` IS NULL OR (`initial_charge_percent` > 0 AND `initial_charge_percent` <= 100))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS `membership_plan_components` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `plan_version_id` int unsigned NOT NULL,
+  `code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `category` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `amount` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `is_required` tinyint(1) NOT NULL DEFAULT '1',
+  `quantity` smallint unsigned NOT NULL DEFAULT '1',
+  `sort_order` smallint unsigned NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_mpc_version_code` (`plan_version_id`,`code`),
+  KEY `idx_mpc_version` (`plan_version_id`),
+  CONSTRAINT `fk_mpc_version` FOREIGN KEY (`plan_version_id`) REFERENCES `membership_plan_versions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS `membership_plan_branches` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `plan_version_id` int unsigned NOT NULL,
+  `branch_id` int unsigned NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_mpb_version_branch` (`plan_version_id`,`branch_id`),
+  KEY `idx_mpb_branch` (`branch_id`),
+  CONSTRAINT `fk_mpb_version` FOREIGN KEY (`plan_version_id`) REFERENCES `membership_plan_versions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_mpb_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+ALTER TABLE `membership_plans`
+  ADD KEY `idx_plan_organisation` (`organisation_id`);
+CREATE TABLE IF NOT EXISTS `membership_subscriptions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `public_id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `organisation_id` int unsigned NOT NULL,
+  `user_id` int unsigned NOT NULL,
+  `plan_id` int unsigned NOT NULL,
+  `plan_version_id` int unsigned NOT NULL,
+  `status` enum('pending','active','expired','cancelled','terminated') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `start_date` date NOT NULL,
+  `end_date` date DEFAULT NULL,
+  `grace_until` date DEFAULT NULL,
+  `duration_type_snapshot` enum('monthly','quarterly','semi_annual','annual') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `duration_periods_snapshot` smallint unsigned NOT NULL DEFAULT '1',
+  `renewal_model_snapshot` enum('anniversary','fixed_date') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'anniversary',
+  `fixed_renewal_month_snapshot` tinyint unsigned DEFAULT NULL,
+  `fixed_renewal_day_snapshot` tinyint unsigned DEFAULT NULL,
+  `initial_charge_type_snapshot` enum('full','percentage') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'full',
+  `initial_charge_percent_snapshot` decimal(5,2) DEFAULT NULL,
+  `grace_days_snapshot` smallint unsigned NOT NULL DEFAULT '0',
+  `branch_scope_snapshot` enum('ALL','SELECTED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ALL',
+  `selected_branch_ids` json DEFAULT NULL COMMENT 'Branch scope snapshot when branch_scope_snapshot = SELECTED',
+  `allowed_payment_methods_snapshot` json NOT NULL,
+  `currency` char(3) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'EGP',
+  `total_amount` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `commission_rate_type_snapshot` enum('percentage','fixed') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `commission_rate_value_snapshot` decimal(5,2) DEFAULT NULL,
+  `commission_amount` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `org_net_amount` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `payment_status` enum('unpaid','paid','partially_paid','refunded') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'unpaid',
+  `payment_method` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `invoice_id` int unsigned DEFAULT NULL,
+  `renewal_of_subscription_id` int unsigned DEFAULT NULL,
+  `aggregate_version` int unsigned NOT NULL DEFAULT '1',
+  `created_by` int unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_ms_public_id` (`public_id`),
+  KEY `idx_ms_org_status` (`organisation_id`,`status`),
+  KEY `idx_ms_user_status` (`user_id`,`status`),
+  KEY `idx_ms_plan` (`plan_id`),
+  KEY `idx_ms_plan_version` (`plan_version_id`),
+  KEY `idx_ms_invoice` (`invoice_id`),
+  KEY `idx_ms_renewal_of` (`renewal_of_subscription_id`),
+  KEY `idx_ms_creator` (`created_by`),
+  CONSTRAINT `fk_ms_organisation` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ms_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ms_plan` FOREIGN KEY (`plan_id`) REFERENCES `membership_plans` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_ms_plan_version` FOREIGN KEY (`plan_version_id`) REFERENCES `membership_plan_versions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_ms_invoice` FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_ms_renewal_of` FOREIGN KEY (`renewal_of_subscription_id`) REFERENCES `membership_subscriptions` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_ms_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `chk_ms_payment_methods` CHECK (json_valid(`allowed_payment_methods_snapshot`)),
+  CONSTRAINT `chk_ms_branch_ids` CHECK (`selected_branch_ids` IS NULL OR json_valid(`selected_branch_ids`))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS `membership_subscription_components` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `subscription_id` int unsigned NOT NULL,
+  `component_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `component_name` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `category` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `quantity` smallint unsigned NOT NULL DEFAULT '1',
+  `unit_amount` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `total_amount` decimal(12,2) NOT NULL DEFAULT '0.00',
+  `is_required_at_purchase` tinyint(1) NOT NULL DEFAULT '1',
+  `sort_order` smallint unsigned NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_msc_subscription` (`subscription_id`),
+  CONSTRAINT `fk_msc_subscription` FOREIGN KEY (`subscription_id`) REFERENCES `membership_subscriptions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

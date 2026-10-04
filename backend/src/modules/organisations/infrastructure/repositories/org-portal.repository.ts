@@ -8,7 +8,7 @@ type RowData = mysql.RowDataPacket[];
 export async function getOrgInfo(orgId: number) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT id, name, logo_url, cover_url, description, email, phone, website, is_verified, is_active
+    `SELECT id, name, logo_url, cover_url, description, email, phone, website, is_verified, is_active, access_model
      FROM organisations WHERE id = ? AND deleted_at IS NULL`,
     [orgId]
   );

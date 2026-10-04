@@ -126,6 +126,11 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   // The former platform map `tournament_platform_card_payment`
   // ({ payment_clearing: '1100', tournament_revenue: '4140' }) is REMOVED.
   tournament_registration_card_payment: { payment_clearing: '1100', merchant_payable: '2202', tournament_commission: '4192' },
+  // G11.22 P1 — Membership full payment (CourtZon book). Mirrors the booking
+  // custody model with the existing accounts: card → Dr 1100 / Cr 2202 + 4110
+  // commission (+2300 tax 0); cash → Dr 1161 commission receivable / Cr 4110.
+  membership_card_payment: { payment_clearing: '1100', merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300' },
+  membership_cash_payment: { marketplace_receivable: '1161', platform_commission: '4110', tax_liability: '2300' },
   // G11.2 — Tournament CASH registration recognition (org collected). The
   // CourtZon book resolves fully from code (no DB mapping rows) to the EXISTING
   // accounts: Dr 2202 Merchant Payable = commission · Cr 4192 Tournament
@@ -196,6 +201,14 @@ export const ORG_MARKETPLACE_ACCOUNT_CODES: Record<string, { code: string; name:
     normalSide: 'credit',
     parentCode: 'REVENUE-COURT',
     description: 'Organization tournament/event registration revenue',
+  },
+  membership_revenue: {
+    code: 'MEMB-REV',
+    name: 'Membership Revenue',
+    type: 'revenue',
+    normalSide: 'credit',
+    parentCode: 'REVENUE-COURT',
+    description: 'Organization membership subscription revenue',
   },
   commission_expense: {
     code: 'MKT-COMM-EXP',
@@ -298,6 +311,12 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // G11.3 — Tournament CASH full-refund org-book reversal (exact negation of
   // tournament_org_cash_payment): Dr 4140 + MKT-CZ-PAY / Cr ORG-CASH + MKT-COMM-EXP.
   tournament_org_cash_payment_reversal: ['tournament_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
+  // G11.22 P1 — Membership org books (org-scoped). Mirror the booking org book
+  // (Dr 1161 + commission expense / Cr revenue) with the DEDICATED MEMB-REV
+  // membership revenue leg so membership income is never mixed with other org
+  // revenue. Cash org book mirrors booking/academy/tournament cash shapes.
+  membership_org_receivable: ['marketplace_receivable', 'commission_expense', 'membership_revenue'],
+  membership_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'membership_revenue', 'courtzon_payable'],
   // G11.5 — Tournament PRIZE org books (org-scoped). The org carries the prize
   // against its tournament revenue and one of its two funding positions:
   //   CARD: Dr org 4140 / Cr org 1161 (reduces the CourtZon receivable).

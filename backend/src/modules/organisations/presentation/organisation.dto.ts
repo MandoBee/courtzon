@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { ACCESS_MODEL_VALUES } from '../domain/organisation-access-model.js';
+
+export const OrganisationAccessModelSchema = z.enum(ACCESS_MODEL_VALUES);
 
 export const CreateSportSchema = z.object({
   name: z.string().min(1).max(100),
@@ -65,6 +68,7 @@ export const CreateOrganisationSchema = z.object({
   taxIdType: z.string().nullish(),
   documents: z.array(z.string()).nullish(),
   attributes: z.record(z.string(), z.any()).nullish(),
+  accessModel: OrganisationAccessModelSchema.optional().default('PUBLIC_CLUB'),
 });
 
 export const BranchFinancialDetailsSchema = z.object({
@@ -84,6 +88,9 @@ export const BranchFinancialDetailsSchema = z.object({
 export const UpdateOrganisationSchema = CreateOrganisationSchema.partial().extend({
   isVerified: z.boolean().nullish(),
   isActive: z.boolean().nullish(),
+  // Update semantics must NOT coerce a missing accessModel to the default:
+  // absent = "leave unchanged". (Create explicitly defaults to PUBLIC_CLUB.)
+  accessModel: OrganisationAccessModelSchema.optional(),
 });
 
 export const CreateBranchSchema = z.object({

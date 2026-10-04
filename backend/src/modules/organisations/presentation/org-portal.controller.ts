@@ -3,7 +3,8 @@ import { z } from 'zod';
 import * as service from '../application/org-portal.service.js';
 import * as orgRepo from '../infrastructure/repositories/org-portal.repository.js';
 import { organisationService } from '../application/organisation.service.js';
-import { BranchFinancialDetailsSchema, CreateBranchSchema, CreateResourceSchema } from './organisation.dto.js';
+import { resolveBranchAccessPolicy } from '../domain/organisation-access-model.js';
+import { BranchFinancialDetailsSchema, CreateBranchSchema, CreateResourceSchema, OrganisationAccessModelSchema } from './organisation.dto.js';
 import { auditOrganisationMutation } from './organisation-audit.js';
 import { cancellationPolicyRepository } from '../infrastructure/repositories/cancellation-policy.repository.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
@@ -92,6 +93,15 @@ export async function updateOrgInfoHandler(request: FastifyRequest, reply: Fasti
   const { orgId } = request.params as { orgId: string };
   const oid = parseInt(orgId, 10);
   const body: Record<string, unknown> = { ...(request.body as any) };
+  // G11.22 P0 — strict validation of the org access model (org portal path is
+  // not zod-parsed; enforce the enum explicitly so an invalid value returns a
+  // standard 400 VALIDATION_ERROR instead of a raw DB enum error).
+  if (body.accessModel !== undefined) {
+    const parsed = OrganisationAccessModelSchema.safeParse(body.accessModel);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'Invalid access model. Use PUBLIC_CLUB or MEMBERSHIP_CLUB.' });
+    }
+  }
   // Org self-service must NOT be able to self-verify / (de)activate or change ownership.
   for (const k of ['isVerified', 'isActive', 'is_verified', 'is_active', 'ownerId', 'owner_id']) delete body[k];
   // Identity fields (Name / Type / Country) are super-admin managed — org self-service
@@ -105,7 +115,17 @@ export async function updateOrgInfoHandler(request: FastifyRequest, reply: Fasti
 // ── Org self-service: Branches ──
 export async function listOrgBranchesHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as { orgId: string };
-  return reply.send(await orgRepo.listOrgBranches(parseInt(orgId, 10)));
+  const oid = parseInt(orgId, 10);
+  const branches = await orgRepo.listOrgBranches(oid);
+  // G11.22 P0 — single authoritative branch-policy resolution. Each branch is
+  // tagged with its effective access policy (organisation model + branch type),
+  // purely additive: existing consumers keep receiving access_type unchanged.
+  const org = await orgRepo.getOrgInfo(oid);
+  const accessModel = (org as any)?.access_model ?? 'PUBLIC_CLUB';
+  for (const branch of branches) {
+    (branch as any).effective_access_policy = resolveBranchAccessPolicy(accessModel, (branch as any).access_type);
+  }
+  return reply.send(branches);
 }
 
 export async function createOrgBranchHandler(request: FastifyRequest, reply: FastifyReply) {

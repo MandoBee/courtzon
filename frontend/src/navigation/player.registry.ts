@@ -24,6 +24,7 @@ export const PLAYER_MORE_ITEMS: PlayerMoreItemDef[] = [
   { id: 'nav.player.payments', label: T('nav.payments'), icon: '💳', path: '/my/payments', permissionKey: 'player.payments.view' },
   { id: 'nav.player.rank_history', label: T('nav.rank_history'), icon: '📈', path: '/my/rank-history', permissionKey: 'player.rank.history' },
   { id: 'nav.player.my_tournaments', label: T('nav.my_tournaments'), icon: '🥇', path: '/my/tournaments', permissionKey: 'player.tournaments.register' },
+  { id: 'nav.player.my_memberships', label: LIT('My Memberships'), icon: '🎟️', path: '/my/membership/subscriptions', permissionKey: 'membership.view' },
   { id: 'nav.player.notifications', label: T('nav.notifications'), icon: '🔔', path: '/notifications' },
   { id: 'nav.player.my_shop', label: T('nav.my_shop'), icon: '🏪', path: '/marketplace/seller', sellerOnly: true },
 ];
