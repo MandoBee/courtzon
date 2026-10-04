@@ -852,7 +852,18 @@ const eventGroups: EventGroupConfig[] = [
     },
   },
   {
-    events: ['membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded'],
+    // G11.22 P1/P2 — membership lifecycle + installment events. Business
+    // modules only emit these domain events; the Notification Platform routes
+    // them (organisation-enabled channels × player preferences, incl. external
+    // push via push_tokens).
+    events: [
+      'membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded',
+      'membership:activated', 'membership:pending-payment', 'membership:payment-received',
+      'membership:installment-due', 'membership:installment-overdue',
+      'membership:grace-started', 'membership:grace-ending',
+      'membership:renewal-reminder', 'membership:renewal-due', 'membership:renewal-completed',
+      'membership:cancelled', 'membership:refunded',
+    ],
     handler: async (eventName, data, categorySlug) => {
       if (data.userId) {
         await dispatchToUser({
@@ -1233,6 +1244,11 @@ class NotificationEngine {
       'friend:request', 'friend:accepted', 'friend:blocked',
       'chat:new-message', 'chat:group-created', 'chat:group-joined', 'chat:group-invitation',
       'membership:expiring', 'membership:expired', 'membership:renewed', 'membership:upgraded',
+      'membership:activated', 'membership:pending-payment', 'membership:payment-received',
+      'membership:installment-due', 'membership:installment-overdue',
+      'membership:grace-started', 'membership:grace-ending',
+      'membership:renewal-reminder', 'membership:renewal-due', 'membership:renewal-completed',
+      'membership:cancelled', 'membership:refunded',
       'wallet:deposit', 'wallet:withdrawal', 'wallet:low-balance', 'wallet:transaction',
       'wallet:withdrawal-submitted', 'wallet:withdrawal-under-review',
       'wallet:withdrawal-approved', 'wallet:withdrawal-rejected',

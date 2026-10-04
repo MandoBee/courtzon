@@ -652,39 +652,71 @@ async function postMembershipPaymentAccounting(
   subscriptionId: number,
   paymentMethod: string,
   currency: string,
+  data?: any,
 ): Promise<void> {
   const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    `SELECT id, organisation_id, total_amount, commission_amount, org_net_amount, currency
-     FROM membership_subscriptions WHERE id = ? LIMIT 1`,
-    [subscriptionId],
-  );
-  const sub = (rows as any[])[0];
-  if (!sub) {
-    log.error({ subscriptionId }, 'Membership subscription missing for accounting — skipping posting');
-    return;
+
+  // G11.22 P2 — per-INSTALLMENT posting. An installment payment is sourced by
+  // the installment id so each installment of one subscription gets its own
+  // (source_type='membership', source_id=installmentId) ledger footprint and
+  // the uk_dedup idempotency key never collides across installments. Economics
+  // come from the IMMUTABLE installment snapshot (amount + commission_amount,
+  // the latter already proportionally allocated at purchase for fixed rates).
+  let sourceId = subscriptionId;
+  let total = 0;
+  let commission = 0;
+  let orgNet = 0;
+  let currencyCode = currency || 'EGP';
+  let orgId: number | null = null;
+
+  const paymentId = Number(data?.paymentId ?? 0);
+  const installment = paymentId > 0
+    ? await lookupInstallmentByPayment(paymentId)
+    : null;
+  if (installment) {
+    sourceId = Number(installment.id);
+    total = Math.round(Number(installment.amount) * 100) / 100;
+    commission = Math.round(Number(installment.commission_amount) * 100) / 100;
+    orgNet = Math.round((total - commission) * 100) / 100;
+    currencyCode = String(installment.currency || 'EGP');
+    const [subRows] = await pool.execute<RowData>(
+      `SELECT organisation_id FROM membership_subscriptions WHERE id = ? LIMIT 1`,
+      [subscriptionId],
+    );
+    orgId = (subRows as any[])[0]?.organisation_id != null ? Number((subRows as any[])[0].organisation_id) : null;
+  } else {
+    const [rows] = await pool.execute<RowData>(
+      `SELECT id, organisation_id, total_amount, commission_amount, org_net_amount, currency
+       FROM membership_subscriptions WHERE id = ? LIMIT 1`,
+      [subscriptionId],
+    );
+    const sub = (rows as any[])[0];
+    if (!sub) {
+      log.error({ subscriptionId }, 'Membership subscription missing for accounting — skipping posting');
+      return;
+    }
+    total = Math.round(Number(sub.total_amount) * 100) / 100;
+    commission = Math.round(Number(sub.commission_amount) * 100) / 100;
+    orgNet = Math.round(Number(sub.org_net_amount) * 100) / 100;
+    orgId = sub.organisation_id != null ? Number(sub.organisation_id) : null;
+    currencyCode = String(sub.currency || currency || 'EGP');
   }
-  const total = Math.round(Number(sub.total_amount) * 100) / 100;
-  const commission = Math.round(Number(sub.commission_amount) * 100) / 100;
-  const orgNet = Math.round(Number(sub.org_net_amount) * 100) / 100;
-  const orgId = sub.organisation_id != null ? Number(sub.organisation_id) : null;
-  const cur = String(sub.currency || currency || 'EGP');
 
   if (paymentMethod === 'cash') {
     // CourtZon book — the org collected the cash; CourtZon is owed only its
     // commission. Tax = 0 (same decision as bookings).
     await postAccountingEvent(
-      'membership_cash_payment', 'membership', subscriptionId, null,
+      'membership_cash_payment', 'membership', sourceId, null,
       { marketplace_receivable: commission, platform_commission: commission, tax_liability: 0 },
-      cur,
-      `Membership subscription #${subscriptionId} cash payment`,
+      currencyCode,
+      `Membership installment #${sourceId} cash payment`,
     );
     if (orgId != null) {
       await postAccountingEvent(
-        'membership_org_cash_receivable', 'membership', subscriptionId, orgId,
+        'membership_org_cash_receivable', 'membership', sourceId, orgId,
         { org_cash_bank: total, commission_expense: commission, membership_revenue: total, courtzon_payable: commission },
-        cur,
-        `Membership subscription #${subscriptionId} organization book (cash collected)`,
+        currencyCode,
+        `Membership installment #${sourceId} organization book (cash collected)`,
       );
     }
     return;
@@ -693,17 +725,105 @@ async function postMembershipPaymentAccounting(
   // Card / online — CourtZon is merchant of record (Dr 1100 gross / Cr 2202
   // org net / Cr 4110 commission / Cr 2300 tax 0).
   await postAccountingEvent(
-    'membership_card_payment', 'membership', subscriptionId, null,
+    'membership_card_payment', 'membership', sourceId, null,
     { payment_clearing: total, merchant_payable: orgNet, platform_commission: commission, tax_liability: 0 },
-    cur,
-    `Membership subscription #${subscriptionId} card payment`,
+    currencyCode,
+    `Membership installment #${sourceId} card payment`,
   );
   if (orgId != null) {
     await postAccountingEvent(
-      'membership_org_receivable', 'membership', subscriptionId, orgId,
+      'membership_org_receivable', 'membership', sourceId, orgId,
       { marketplace_receivable: orgNet, commission_expense: commission, membership_revenue: total },
+      currencyCode,
+      `Membership installment #${sourceId} organization book (card custody)`,
+    );
+  }
+}
+
+/** Resolve a membership installment by its payment_transactions id. */
+async function lookupInstallmentByPayment(paymentId: number): Promise<any | null> {
+  if (!(paymentId > 0)) return null;
+  try {
+    const [rows] = await getPool().execute<RowData>(
+      `SELECT id, amount, commission_amount, currency FROM membership_installments WHERE payment_transaction_id = ? LIMIT 1`,
+      [paymentId],
+    );
+    return (rows as any[])[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * G11.22 P2 — membership refund reversal. EXACT symmetric reversal of the
+ * payment recognition, sourced by the INSTALLMENT id (same source_id the
+ * original payment posted on). Economics come from the immutable installment
+ * snapshot. Refund ONLY — cancellation alone never posts these (decision #11).
+ */
+async function postMembershipRefundAccounting(
+  subscriptionId: number,
+  amount: number,
+  currency: string,
+  data: any,
+): Promise<void> {
+  const paymentId = Number(data?.paymentId ?? 0);
+  const installment = paymentId > 0 ? await lookupInstallmentByPayment(paymentId) : null;
+  if (!installment) {
+    log.info({ paymentId, subscriptionId }, 'Membership installment not found for refund — no posting');
+    return;
+  }
+  const sourceId = Number(installment.id);
+  const paymentMethod = String(data?.metadata?.paymentMethod ?? 'card');
+  const total = Math.round(Number(installment.amount) * 100) / 100;
+  const commission = Math.round(Number(installment.commission_amount) * 100) / 100;
+  const orgNet = Math.round((total - commission) * 100) / 100;
+  const cur = String(installment.currency || currency || 'EGP');
+
+  const [subRows] = await getPool().execute<RowData>(
+    `SELECT organisation_id FROM membership_subscriptions WHERE id = ? LIMIT 1`,
+    [subscriptionId],
+  );
+  const orgId = (subRows as any[])[0]?.organisation_id != null ? Number((subRows as any[])[0].organisation_id) : null;
+
+  if (paymentMethod === 'cash') {
+    // CourtZon book: Dr 4110 commission (+2300 tax 0) / Cr 1161 receivable.
+    await postAccountingEvent(
+      'membership_cash_refund', 'membership', sourceId, null,
+      { platform_commission: commission, tax_liability: 0, marketplace_receivable: commission },
       cur,
-      `Membership subscription #${subscriptionId} organization book (card custody)`,
+      `Membership installment #${sourceId} cash refund`,
+    );
+    if (orgId != null) {
+      // Org book: Dr MEMB-REV + MKT-CZ-PAY / Cr ORG-CASH + MKT-COMM-EXP.
+      await postAccountingEvent(
+        'membership_org_cash_receivable_rev', 'membership', sourceId, orgId,
+        { membership_revenue: total, courtzon_payable: commission, org_cash_bank: total, commission_expense: commission },
+        cur,
+        `Membership installment #${sourceId} org book cash refund`,
+        undefined,
+        { membership_revenue: orgId, courtzon_payable: orgId, org_cash_bank: orgId, commission_expense: orgId },
+      );
+    }
+    return;
+  }
+
+  // Card (org NULL): Dr 2202 orgNet + Dr 4110 commission + Dr 2300 tax 0 /
+  // Cr 1100 gross.
+  await postAccountingEvent(
+    'membership_card_refund', 'membership', sourceId, null,
+    { merchant_payable: orgNet, platform_commission: commission, tax_liability: 0, payment_clearing: total },
+    cur,
+    `Membership installment #${sourceId} card refund`,
+  );
+  if (orgId != null) {
+    // Org book: Dr MEMB-REV / Cr 1161 orgNet + MKT-COMM-EXP.
+    await postAccountingEvent(
+      'membership_org_receivable_reversal', 'membership', sourceId, orgId,
+      { membership_revenue: total, marketplace_receivable: orgNet, commission_expense: commission },
+      cur,
+      `Membership installment #${sourceId} org book refund`,
+      undefined,
+      { membership_revenue: orgId, marketplace_receivable: orgId, commission_expense: orgId },
     );
   }
 }
@@ -2308,13 +2428,15 @@ export function registerAccountingEventListeners(): void {
         return;
       }
 
-      // ── Membership subscription payment → snapshot-based accounting (G11.22 P1) ──
+      // ── Membership subscription payment → snapshot-based accounting (G11.22 P1/P2) ──
       // Economics come EXCLUSIVELY from the immutable membership_subscriptions
-      // snapshot (total / commission / org-net), never recomputed. Mirrors the
-      // booking custody model with the DEDICATED membership events (CourtZon
-      // book + organization book, both idempotent via uk_dedup).
+      // snapshot (total / commission / org-net) OR — for installment payments
+      // (P2) — from the immutable per-installment snapshot (source_id =
+      // installment id). Never recomputed. Mirrors the booking custody model
+      // with the DEDICATED membership events (CourtZon book + organization
+      // book, both idempotent via uk_dedup).
       if (referenceType === 'membership_subscription') {
-        await postMembershipPaymentAccounting(referenceId, paymentMethod, currency);
+        await postMembershipPaymentAccounting(referenceId, paymentMethod, currency, data);
         return;
       }
 
@@ -2443,6 +2565,14 @@ export function registerAccountingEventListeners(): void {
           // any generic accounting reversal.
           log.warn({ paymentId: data.paymentId, registrationId: referenceId, method }, 'Tournament refund with unsupported payment method — no accounting posted (fail-closed)');
         }
+        return;
+      }
+
+      // ── G11.22 P2 — Membership installment refund → exact symmetric reversal
+      //    of the per-installment recognition (source_id = installment id).
+      //    Refund ONLY; cancellation alone never reaches this branch.
+      if (referenceType === 'membership_subscription') {
+        await postMembershipRefundAccounting(Number(referenceId), amount, currency, data);
         return;
       }
 

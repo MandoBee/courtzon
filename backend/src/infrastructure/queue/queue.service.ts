@@ -25,7 +25,11 @@ export type JobType = 'send_email' | 'process_settlement' | 'cancel_expired_book
   | 'expire_academy_holds'
   // G11.4 — tournament entitlement activation (CARD after gateway settlement,
   // CASH after the current draw is locked).
-  | 'tournament_entitlement_activation';
+  | 'tournament_entitlement_activation'
+  // G11.22 P2 — membership subscription lifecycle sweeps.
+  | 'membership_subscription_expiry'
+  | 'membership_installment_overdue'
+  | 'membership_subscription_reminders';
 
 export interface EmailAttachment {
   filename: string;
@@ -166,6 +170,10 @@ export type JobPayloadMap = {
   match_result_deadlines: Record<string, never>;
   match_lifecycle: Record<string, never>;
   expire_academy_holds: ExpireAcademyHoldsJob;
+  // G11.22 P2 — no bulk data; the workers re-scan the DB themselves.
+  membership_subscription_expiry: Record<string, never>;
+  membership_installment_overdue: Record<string, never>;
+  membership_subscription_reminders: Record<string, never>;
 };
 
 export const DEFAULT_QUEUE_NAME = 'default';

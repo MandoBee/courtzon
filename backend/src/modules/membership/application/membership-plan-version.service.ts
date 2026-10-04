@@ -1,6 +1,10 @@
 import { getPool } from '../../../database/mysql.js';
 import { conflictError, notFoundError, validationError } from './membership-p1.errors.js';
 import { membershipP1Repository } from '../infrastructure/repositories/membership-p1.repository.js';
+import { membershipP2Repository } from '../infrastructure/repositories/membership-p2.repository.js';
+import { membershipCancelRefundService } from './membership-cancel-refund.service.js';
+import { normalizeCancellationRefundPolicy } from '../domain/membership-p2.types.js';
+import { round2 } from '../domain/membership-p2.types.js';
 import type { PlanVersionP1Input, CreateMembershipPlanP1Input } from '../presentation/membership-p1.dto.js';
 
 type Row = import('mysql2').RowDataPacket[];
@@ -66,11 +70,11 @@ function toArray(value: unknown): string[] {
 }
 
 export const membershipPlanVersionService = {
-  /** Upsert organisation membership settings (enabled durations + payment channels). */
+  /** Upsert organisation membership settings (enabled durations + payment channels + cancellation/refund policy). */
   async saveOrganisationSettings(
     orgId: number,
-    data: { enabledDurations: string[]; allowedPaymentMethods: string[] },
-  ): Promise<{ enabled_durations: string[]; allowed_payment_methods: string[] }> {
+    data: { enabledDurations: string[]; allowedPaymentMethods: string[]; cancellationRefundPolicy?: Record<string, any> },
+  ): Promise<{ enabled_durations: string[]; allowed_payment_methods: string[]; cancellationRefundPolicy: any }> {
     const allowed = new Set(DEFAULT_DURATIONS);
     for (const d of data.enabledDurations) {
       if (!allowed.has(d)) throw validationError(`Unsupported duration: ${d}`);
@@ -82,15 +86,25 @@ export const membershipPlanVersionService = {
     }
     if (!data.allowedPaymentMethods.length) throw validationError('At least one payment method must be enabled');
     await membershipP1Repository.upsertOrgSettings(orgId, data.enabledDurations, data.allowedPaymentMethods);
-    return { enabled_durations: data.enabledDurations, allowed_payment_methods: data.allowedPaymentMethods };
+    let policy = normalizeCancellationRefundPolicy(null);
+    if (data.cancellationRefundPolicy) {
+      policy = await membershipCancelRefundService.setPolicy(orgId, data.cancellationRefundPolicy);
+    }
+    return { enabled_durations: data.enabledDurations, allowed_payment_methods: data.allowedPaymentMethods, cancellationRefundPolicy: policy };
   },
 
-  async getOrganisationSettings(orgId: number): Promise<{ enabled_durations: string[]; allowed_payment_methods: string[] }> {
+  async getOrganisationSettings(orgId: number): Promise<{ enabled_durations: string[]; allowed_payment_methods: string[]; cancellationRefundPolicy: any }> {
     const row = await membershipP1Repository.getOrgSettings(orgId);
-    if (!row) return { enabled_durations: DEFAULT_DURATIONS.slice(0), allowed_payment_methods: DEFAULT_PAYMENT_METHODS.slice(0) };
+    const policy = await membershipCancelRefundService.loadPolicy(orgId);
+    if (!row) return {
+      enabled_durations: DEFAULT_DURATIONS.slice(0),
+      allowed_payment_methods: DEFAULT_PAYMENT_METHODS.slice(0),
+      cancellationRefundPolicy: policy,
+    };
     return {
       enabled_durations: toArray(row.enabled_durations),
       allowed_payment_methods: toArray(row.allowed_payment_methods),
+      cancellationRefundPolicy: policy,
     };
   },
 
@@ -130,6 +144,11 @@ export const membershipPlanVersionService = {
     if (data.renewalModel === 'fixed_date' && (!data.fixedRenewalMonth || !data.fixedRenewalDay)) {
       throw validationError('fixedRenewalMonth/Day are required when renewalModel = fixed_date');
     }
+    const installments = data.installments ?? [];
+    if (data.installmentsEnabled && installments.length === 0) {
+      throw validationError('installmentsEnabled requires an installment schedule (installments[])');
+    }
+    if (installments.length > 0) this.assertInstallmentsMonotonic(installments);
     const versionNo = await membershipP1Repository.nextVersionNo(planId);
     const effectiveFrom = data.effectiveFrom ?? new Date().toISOString().slice(0, 10);
     const status = data.status === 'active' ? 'active' : 'draft';
@@ -152,6 +171,7 @@ export const membershipPlanVersionService = {
       actorId,
       components: data.components,
       branchIds: data.branchIds,
+      installmentTemplates: installments.length ? installments : null,
     });
     if (status === 'active') {
       await this.activateVersion(orgId, versionId, actorId);
@@ -200,7 +220,18 @@ export const membershipPlanVersionService = {
       actorId,
       components: data.components,
       branchIds: data.branchIds,
+      installmentTemplates: (data.installments ?? []).length ? data.installments! : null,
     });
+  },
+
+  /** Installments must be sequential with consistent ordering. */
+  assertInstallmentsMonotonic(installments: Array<{ seq: number; amount: number; dueOffsetDays: number }>): void {
+    const seqs = installments.map((i) => i.seq).sort((a, b) => a - b);
+    for (let i = 0; i < seqs.length; i++) {
+      if (seqs[i] !== i + 1) throw validationError('Installment seq values must be 1..N without gaps');
+    }
+    const templateTotal = installments.reduce((s, i) => s + round2(i.amount), 0);
+    if (templateTotal <= 0) throw validationError('Installment amounts must be positive');
   },
 
   async archiveVersion(orgId: number, planVersionId: number): Promise<void> {
@@ -231,7 +262,8 @@ export const membershipPlanVersionService = {
       for (const v of versions) {
         const components = await membershipP1Repository.listComponentsByVersionId(Number(v.id));
         const branchIds = await membershipP1Repository.listBranchIdsByVersionId(Number(v.id));
-        versionView.push({ ...this.toVersionJson(v), components, branchIds });
+        const installments = await membershipP2Repository.listInstallmentTemplates(Number(v.id));
+        versionView.push({ ...this.toVersionJson(v), components, branchIds, installments });
       }
       out.push({ ...plan, versions: versionView });
     }
@@ -248,7 +280,8 @@ export const membershipPlanVersionService = {
         if (v.status !== 'active') continue;
         if (Number(plan.is_public) !== 1) continue;
         const components = await membershipP1Repository.listComponentsByVersionId(Number(v.id));
-        out.push({ plan: { id: plan.id, name: plan.name, description: plan.description }, version: this.toVersionJson(v), components });
+        const installments = await membershipP2Repository.listInstallmentTemplates(Number(v.id));
+        out.push({ plan: { id: plan.id, name: plan.name, description: plan.description }, version: this.toVersionJson(v), components, installments });
       }
     }
     return out;

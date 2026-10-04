@@ -3,6 +3,7 @@ import {
   MEMBERSHIP_DURATIONS,
   MEMBERSHIP_PAYMENT_METHODS,
 } from '../domain/membership-p1.types.js';
+import { CancelMembershipP2Schema, InstallmentTemplateP2Schema, MembershipCancellationRefundPolicyP2Schema, RefundMembershipP2Schema } from './membership-p2.dto.js';
 
 const durationEnum = z.enum(MEMBERSHIP_DURATIONS);
 const paymentMethodEnum = z.enum(MEMBERSHIP_PAYMENT_METHODS);
@@ -45,6 +46,7 @@ export const PlanVersionP1Schema = z.object({
   allowedPaymentMethods: z.array(paymentMethodEnum).min(1),
   currency: z.string().length(3).optional().default('EGP'),
   installmentsEnabled: z.boolean().optional().default(false),
+  installments: z.array(InstallmentTemplateP2Schema).optional().default([]),
   components: z.array(componentSchema).min(1, 'A membership version must have at least one component'),
 });
 
@@ -57,6 +59,7 @@ export const UpdatePlanVersionP1Schema = PlanVersionP1Schema.partial();
 export const OrganisationMembershipSettingsP1Schema = z.object({
   enabledDurations: z.array(durationEnum).min(1),
   allowedPaymentMethods: z.array(paymentMethodEnum).min(1),
+  cancellationRefundPolicy: MembershipCancellationRefundPolicyP2Schema.optional(),
 });
 
 export type OrganisationMembershipSettingsP1Input = z.infer<

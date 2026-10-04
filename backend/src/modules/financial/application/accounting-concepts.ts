@@ -641,6 +641,37 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['org_cash_bank', 'commission_expense'],
     credit: ['membership_revenue', 'courtzon_payable'],
   },
+  // ── MEMBERSHIP REFUNDS (G11.22 P2) — symmetric reversals of the P1 payment
+  //    recognitions. REFUND ONLY: cancellation alone NEVER posts these
+  //    (approved decision #11). Commission per installment comes from the P2
+  //    immutable installment snapshot (fixed commission is allocated
+  //    proportionally at purchase). Exact mirror of the card/cash shapes.
+  //    Card (CourtZon book, org NULL):
+  //      Dr 2202 Merchant Payable = orgNet · Dr 4110 commission · Dr 2300 tax 0
+  //      / Cr 1100 Payment Clearing = gross.
+  membership_card_refund: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['payment_clearing'],
+  },
+  //    Cash (CourtZon book, org NULL):
+  //      Dr 4110 commission (+2300 tax 0) / Cr 1161 Marketplace Receivable.
+  membership_cash_refund: {
+    debit: ['platform_commission', 'tax_liability'],
+    credit: ['marketplace_receivable'],
+  },
+  //    Organization book CARD reversal — Dr org MEMB-REV / Cr org 1161 +
+  //    MKT-COMM-EXP (exact negation of membership_org_receivable).
+  membership_org_receivable_reversal: {
+    debit: ['membership_revenue'],
+    credit: ['marketplace_receivable', 'commission_expense'],
+  },
+  //    Organization book CASH reversal — Dr org MEMB-REV + MKT-CZ-PAY /
+  //    Cr org ORG-CASH + MKT-COMM-EXP (exact negation of
+  //    membership_org_cash_receivable).
+  membership_org_cash_receivable_rev: {
+    debit: ['membership_revenue', 'courtzon_payable'],
+    credit: ['org_cash_bank', 'commission_expense'],
+  },
   // G11 Phase 3 — the platform/org-less tournament concept
   // `tournament_platform_card_payment` is REMOVED. The CourtZon platform never
   // owns, funds, or financially recognises a tournament, so the "CourtZon owns

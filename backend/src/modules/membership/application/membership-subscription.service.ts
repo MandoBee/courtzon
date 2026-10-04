@@ -3,7 +3,9 @@ import { recordAudit } from '../../audit-log/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { getCommissionRate, clearSubscriptionCache } from '../../organisations/application/current-subscription.service.js';
 import { membershipP1Repository } from '../infrastructure/repositories/membership-p1.repository.js';
+import { membershipP2Repository } from '../infrastructure/repositories/membership-p2.repository.js';
 import { membershipPlanVersionService } from './membership-plan-version.service.js';
+import { membershipInstallmentService } from './membership-installment.service.js';
 import { notFoundError, validationError, conflictError } from './membership-p1.errors.js';
 import {
   computeComponentTotal,
@@ -12,6 +14,7 @@ import {
   computeSubscriptionEndDate,
   buildMembershipInvoiceNumber,
 } from '../domain/membership-p1.types.js';
+import { buildInstallmentSchedule, round2, deriveEligibility } from '../domain/membership-p2.types.js';
 
 type Row = import('mysql2').RowDataPacket;
 
@@ -98,6 +101,32 @@ export const membershipSubscriptionService = {
       ? await membershipP1Repository.listBranchIdsByVersionId(planVersionId)
       : [];
 
+    // ── G11.22 P2 — installment mode ────────────────────────────────────────
+    // When the version enables installments AND carries a schedule, the
+    // subscription is paid in installments: the FIRST installment activates it,
+    // the invoice covers the FULL total, and every subsequent installment is a
+    // payment against that same invoice. Overdue installments never affect the
+    // membership status (approved decisions #1/#2).
+    const installmentsEnabled = Number(version.installments_enabled) === 1;
+    const installmentTemplates = installmentsEnabled
+      ? await membershipP2Repository.listInstallmentTemplates(planVersionId)
+      : [];
+    let schedule: Array<{ seq: number; amount: number; commissionAmount: number; dueDate: string; currency: string }> = [];
+    if (installmentTemplates.length > 0) {
+      membershipInstallmentService.validateTemplateTotal(
+        installmentTemplates.map((t) => ({ seq: Number(t.seq), amount: Number(t.amount), dueOffsetDays: Number(t.due_offset_days) })),
+        totalAmount,
+      );
+      schedule = buildInstallmentSchedule(
+        installmentTemplates.map((t) => ({ seq: Number(t.seq), amount: Number(t.amount), dueOffsetDays: Number(t.due_offset_days) })),
+        rate?.rateType,
+        rate?.rate ?? 0,
+        totalAmount,
+        startDate,
+        version.currency || 'EGP',
+      );
+    }
+
     const subscriptionId = await membershipP1Repository.createSubscriptionWithParts({
       organisationId: orgId,
       userId,
@@ -132,26 +161,40 @@ export const membershipSubscriptionService = {
         unitAmount: Number(c.amount), totalAmount: Math.round(Number(c.quantity) * Number(c.amount) * 100) / 100,
         isRequired: Number(c.is_required) === 1, sortOrder: Number(c.sort_order),
       })),
+      installments: schedule.length ? schedule : null,
     });
 
-    // Pending payment (cash: operator confirm; card: gateway/operator confirm).
-    const paymentId = await membershipP1Repository.createPayment({
-      userId,
-      referenceId: subscriptionId,
-      amount: totalAmount,
-      currency: version.currency || 'EGP',
-      paymentMethod,
-      gatewayProvider: paymentMethod === 'card' ? 'paymob' : null,
-      gatewayReference: paymentMethod === 'card' ? `ms_${subscriptionId}_${Date.now()}` : null,
-      idempotencyKey: `ms_${subscriptionId}`,
-      status: 'pending',
-    });
+    // Pending payment — the FULL amount (P1 mode) or the FIRST installment (P2 mode).
+    const paymentId = schedule.length
+      ? await membershipP2Repository.createInstallmentPayment(
+        userId, subscriptionId, schedule[0].amount, version.currency || 'EGP', paymentMethod, 1,
+      )
+      : await membershipP1Repository.createPayment({
+        userId,
+        referenceId: subscriptionId,
+        amount: totalAmount,
+        currency: version.currency || 'EGP',
+        paymentMethod,
+        gatewayProvider: paymentMethod === 'card' ? 'paymob' : null,
+        gatewayReference: paymentMethod === 'card' ? `ms_${subscriptionId}_${Date.now()}` : null,
+        idempotencyKey: `ms_${subscriptionId}`,
+        status: 'pending',
+      });
 
     eventBusV2.emit('membership:created', {
       subscriptionId, userId, planId: Number(plan.id), planVersionId, organisationId: orgId,
+      installmentsEnabled: schedule.length > 0,
     } as Record<string, unknown>, {
       aggregateType: 'membership_subscription', aggregateId: String(subscriptionId), aggregateVersion: 1,
     });
+    if (schedule.length > 0) {
+      eventBusV2.emit('membership:pending-payment', {
+        subscriptionId, userId, organisationId: orgId, installmentSeq: 1,
+        amount: schedule[0].amount, totalAmount,
+      } as Record<string, unknown>, {
+        aggregateType: 'membership_subscription', aggregateId: String(subscriptionId), aggregateVersion: 1,
+      });
+    }
 
     return { subscriptionId, paymentId, totalAmount };
   },
@@ -161,6 +204,9 @@ export const membershipSubscriptionService = {
     const subscription = await membershipP1Repository.findSubscription(subscriptionId);
     if (!subscription || Number(subscription.organisation_id) !== orgId) throw notFoundError('Membership subscription');
     if (subscription.status !== 'pending') throw conflictError('Subscription is not pending');
+    if (await membershipInstallmentService.subscriptionHasInstallments(subscriptionId)) {
+      throw conflictError('This subscription is paid in installments — use the per-installment confirm endpoint');
+    }
     const payment = await this.findPendingPayment(subscriptionId, 'cash', Number(subscription.user_id));
     if (!payment) throw conflictError('No pending cash payment found for this subscription');
     await membershipP1Repository.markPaymentPaid(Number(payment.id));
@@ -174,6 +220,9 @@ export const membershipSubscriptionService = {
     const subscription = await membershipP1Repository.findSubscription(subscriptionId);
     if (!subscription || Number(subscription.organisation_id) !== orgId) throw notFoundError('Membership subscription');
     if (subscription.status !== 'pending') throw conflictError('Subscription is not pending');
+    if (await membershipInstallmentService.subscriptionHasInstallments(subscriptionId)) {
+      throw conflictError('This subscription is paid in installments — use the per-installment confirm endpoint');
+    }
     const payment = await this.findPendingPayment(subscriptionId, 'card', Number(subscription.user_id));
     if (!payment) throw conflictError('No pending card payment found for this subscription');
     await membershipP1Repository.markPaymentPaid(Number(payment.id));
@@ -215,6 +264,10 @@ export const membershipSubscriptionService = {
   async finalizePaidSubscription(referenceId: number, paymentMethod: string): Promise<void> {
     const subscription = await membershipP1Repository.findSubscription(referenceId);
     if (!subscription || subscription.status !== 'pending') return;
+    // P2: installment-mode subscriptions are finalised by the per-installment
+    // flow (first installment activates). The legacy full-payment path must
+    // never touch them (it would wrongly mark the subscription fully paid).
+    if (await membershipInstallmentService.subscriptionHasInstallments(referenceId)) return;
     const userId = Number(subscription.user_id);
     const orgId = Number(subscription.organisation_id);
 
@@ -271,17 +324,40 @@ export const membershipSubscriptionService = {
   async getSubscriptionScoped(subscriptionId: number, orgId: number): Promise<any | null> {
     const row = await membershipP1Repository.findSubscription(subscriptionId);
     if (!row) return null;
+    if (Number(row.organisation_id) !== orgId) return null;
     const componentRows = await membershipP1Repository.listSubscriptionComponents(subscriptionId);
-    return this.decorate({ ...row }, componentRows);
+    const item = this.decorate({ ...row }, componentRows);
+    const instRows = await membershipP2Repository.listInstallmentsBySubscription(subscriptionId);
+    item.installments = membershipInstallmentService.decorate(subscriptionId, instRows);
+    item.eligibility = this.decorateEligibility({ ...row }, instRows);
+    return item;
   },
 
   async decorateSubscriptions(rows: Row[]): Promise<any[]> {
     const out: any[] = [];
     for (const r of rows) {
       const compRows = await membershipP1Repository.listSubscriptionComponents(Number(r.id));
-      out.push(this.decorate({ ...r }, compRows));
+      const item = this.decorate({ ...r }, compRows);
+      const instRows = await membershipP2Repository.listInstallmentsBySubscription(Number(r.id));
+      item.installments = membershipInstallmentService.decorate(Number(r.id), instRows);
+      item.eligibility = this.decorateEligibility({ ...r }, instRows);
+      out.push(item);
     }
     return out;
+  },
+
+  decorateEligibility(row: Row, instRows: Row[]): any {
+    const facts = deriveEligibility({
+      subscriptionId: Number(row.id),
+      status: row.status,
+      paymentStatus: row.payment_status,
+      endDate: row.end_date ? (row.end_date instanceof Date ? row.end_date.toISOString().slice(0, 10) : String(row.end_date).slice(0, 10)) : null,
+      graceUntil: row.grace_until ? (row.grace_until instanceof Date ? row.grace_until.toISOString().slice(0, 10) : String(row.grace_until).slice(0, 10)) : null,
+      installments: (instRows || []).map((i) => ({
+        amount: Number(i.amount), commissionAmount: Number(i.commission_amount), status: i.status,
+      })),
+    });
+    return facts;
   },
 
   decorate(row: any, components: Row[]): any {

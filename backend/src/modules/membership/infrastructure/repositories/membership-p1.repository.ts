@@ -193,6 +193,7 @@ class MembershipP1Repository {
       actorId: number;
       components: Array<{ code: string; name: string; category?: string | null; amount: number; quantity: number; isRequired: boolean; sortOrder: number }>;
       branchIds: number[];
+      installmentTemplates?: Array<{ seq: number; amount: number; dueOffsetDays: number }> | null;
     },
   ): Promise<number> {
     const pool = getPool();
@@ -227,6 +228,15 @@ class MembershipP1Repository {
           [versionId, branchId],
         );
       }
+      if (input.installmentTemplates && input.installmentTemplates.length > 0) {
+        for (const t of input.installmentTemplates) {
+          await conn.execute(
+            `INSERT INTO membership_plan_installment_templates (plan_version_id, seq, amount, due_offset_days)
+             VALUES (?, ?, ?, ?)`,
+            [versionId, t.seq, t.amount, t.dueOffsetDays],
+          );
+        }
+      }
       await conn.commit();
       return versionId;
     } catch (err) {
@@ -255,6 +265,7 @@ class MembershipP1Repository {
       actorId: number;
       components: Array<{ code: string; name: string; category?: string | null; amount: number; quantity: number; isRequired: boolean; sortOrder: number }>;
       branchIds: number[];
+      installmentTemplates?: Array<{ seq: number; amount: number; dueOffsetDays: number }> | null;
     },
   ): Promise<void> {
     const pool = getPool();
@@ -276,6 +287,7 @@ class MembershipP1Repository {
       );
       await conn.execute('DELETE FROM membership_plan_components WHERE plan_version_id = ?', [planVersionId]);
       await conn.execute('DELETE FROM membership_plan_branches WHERE plan_version_id = ?', [planVersionId]);
+      await conn.execute('DELETE FROM membership_plan_installment_templates WHERE plan_version_id = ?', [planVersionId]);
       for (const c of input.components) {
         await conn.execute(
           `INSERT INTO membership_plan_components (plan_version_id, code, name, category, amount, is_required, quantity, sort_order)
@@ -288,6 +300,15 @@ class MembershipP1Repository {
           'INSERT INTO membership_plan_branches (plan_version_id, branch_id) VALUES (?, ?)',
           [planVersionId, branchId],
         );
+      }
+      if (input.installmentTemplates && input.installmentTemplates.length > 0) {
+        for (const t of input.installmentTemplates) {
+          await conn.execute(
+            `INSERT INTO membership_plan_installment_templates (plan_version_id, seq, amount, due_offset_days)
+             VALUES (?, ?, ?, ?)`,
+            [planVersionId, t.seq, t.amount, t.dueOffsetDays],
+          );
+        }
       }
       await conn.commit();
     } catch (err) {
@@ -338,6 +359,9 @@ class MembershipP1Repository {
         code: string; name: string; category?: string | null; quantity: number;
         unitAmount: number; totalAmount: number; isRequired: boolean; sortOrder: number;
       }>;
+      installments?: Array<{
+        seq: number; amount: number; commissionAmount: number; dueDate: string; currency: string;
+      }> | null;
     },
   ): Promise<number> {
     const pool = getPool();
@@ -375,6 +399,16 @@ class MembershipP1Repository {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [subscriptionId, c.code, c.name, c.category ?? null, c.quantity, c.unitAmount, c.totalAmount, c.isRequired ? 1 : 0, c.sortOrder],
         );
+      }
+      if (input.installments && input.installments.length > 0) {
+        for (const inst of input.installments) {
+          await conn.execute(
+            `INSERT INTO membership_installments
+             (subscription_id, seq, amount, commission_amount, due_date, status, currency)
+             VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+            [subscriptionId, inst.seq, inst.amount, inst.commissionAmount, inst.dueDate, inst.currency],
+          );
+        }
       }
       await conn.commit();
       return subscriptionId;
@@ -487,6 +521,8 @@ class MembershipP1Repository {
       referenceType: string;
       referenceId: number;
       actorId: number;
+      status?: string;
+      paidAmount?: number;
       items: Array<{ description: string; quantity: number; unitPrice: number; netAmount: number; totalAmount: number; taxRateId?: number | null }>;
     },
   ): Promise<number> {
@@ -494,14 +530,16 @@ class MembershipP1Repository {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      const status = input.status ?? 'paid';
+      const paidAmount = input.paidAmount != null ? input.paidAmount : input.total;
       const [res] = await conn.execute<ResultSetHeader>(
         `INSERT INTO invoices
          (organisation_id, user_id, invoice_number, invoice_type, status, issue_date, subtotal, tax_amount, total,
-          reference_type, reference_id, created_by)
-         VALUES (?, ?, ?, 'sales', 'paid', ?, ?, 0, ?, ?, ?, ?)`,
+          paid_amount, reference_type, reference_id, created_by)
+         VALUES (?, ?, ?, 'sales', ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
         [
-          input.organisationId, input.userId, input.invoiceNumber, input.issueDate,
-          input.subtotal, input.total, input.referenceType, input.referenceId, input.actorId,
+          input.organisationId, input.userId, input.invoiceNumber, status, input.issueDate,
+          input.subtotal, input.total, paidAmount, input.referenceType, input.referenceId, input.actorId,
         ],
       );
       const invoiceId = res.insertId;

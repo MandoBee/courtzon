@@ -32,6 +32,7 @@ function blankVersion() {
     allowedPaymentMethods: ['cash', 'card'],
     currency: 'EGP',
     installmentsEnabled: false,
+    installments: [] as any[],
     components: [emptyComponent()],
   };
 }
@@ -64,7 +65,10 @@ export default function OrgMembershipPlansPage() {
         fixedRenewalMonth: version.fixedRenewalMonth ?? 1, fixedRenewalDay: version.fixedRenewalDay ?? 1, initialChargeType: version.initialChargeType,
         initialChargePercent: version.initialChargePercent ?? 60, graceDays: version.graceDays, branchScope: version.branchScope,
         branchIds: version.branchIds || [], allowedPaymentMethods: version.allowedPaymentMethods || ['cash', 'card'], currency: version.currency || 'EGP',
-        installmentsEnabled: version.installmentsEnabled || false, components: version.components?.length ? version.components.map((c: any) => ({
+        installmentsEnabled: version.installmentsEnabled || false, installments: version.installments?.length ? version.installments.map((t: any) => ({
+          seq: Number(t.seq), amount: Number(t.amount), dueOffsetDays: Number(t.due_offset_days ?? t.dueOffsetDays ?? 0),
+        })) : [],
+        components: version.components?.length ? version.components.map((c: any) => ({
           code: c.code, name: c.name, category: c.category || '', amount: Number(c.amount), quantity: Number(c.quantity),
           isRequired: Number(c.is_required) === 1, sortOrder: Number(c.sort_order),
         })) : [emptyComponent()],
@@ -108,6 +112,14 @@ export default function OrgMembershipPlansPage() {
     const components = form.version.components.map((c: any, idx: number) => (idx === i ? { ...c, [k]: v } : c));
     setV('components', components);
   };
+  const setInst = (i: number, k: string, v: any) => {
+    const installments = form.version.installments.map((t: any, idx: number) => (idx === i ? { ...t, [k]: v } : t));
+    setV('installments', installments);
+  };
+
+  /** Sum of component totals = subscription total (installments must match). */
+  const componentTotal = () => (form.version.components || []).reduce((s: number, c: any) => s + Number(c.amount || 0) * Number(c.quantity || 1), 0);
+  const installmentTotal = () => (form.version.installments || []).reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -197,6 +209,36 @@ export default function OrgMembershipPlansPage() {
             <button type="button" onClick={() => setV('components', [...form.version.components, emptyComponent()])} className="mt-2 text-xs text-[var(--color-primary)]">+ Add component</button>
           </div>
 
+          {/* G11.22 P2 — installment schedule */}
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" checked={form.version.installmentsEnabled} onChange={(e) => setV('installmentsEnabled', e.target.checked)} />
+              Paid in installments (first installment activates the membership)
+            </label>
+            {form.version.installmentsEnabled && (
+              <div className="mt-3">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-xs text-[var(--color-text-muted)]"><th>Seq</th><th>Amount</th><th>Due offset (days)</th><th></th></tr></thead>
+                  <tbody>
+                    {(form.version.installments || []).map((t: any, i: number) => (
+                      <tr key={i}>
+                        <td className="px-1 py-1">{i + 1}</td>
+                        <td><input type="number" min={0} className={`${inputCls} w-28`} value={t.amount} onChange={(e) => setInst(i, 'amount', Number(e.target.value))} /></td>
+                        <td><input type="number" min={0} className={`${inputCls} w-24`} value={t.dueOffsetDays} onChange={(e) => setInst(i, 'dueOffsetDays', Number(e.target.value))} /></td>
+                        <td><button type="button" onClick={() => setV('installments', form.version.installments.filter((_: any, idx: number) => idx !== i))} className="text-xs text-[var(--color-error)]">Remove</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button type="button" onClick={() => setV('installments', [...(form.version.installments || []), { seq: (form.version.installments?.length || 0) + 1, amount: 0, dueOffsetDays: 0 }])}
+                  className="mt-2 text-xs text-[var(--color-primary)]">+ Add installment</button>
+                <p className={`mt-1 text-xs ${Math.abs(componentTotal() - installmentTotal()) >= 0.01 ? 'text-[var(--color-error-text)]' : 'text-[var(--color-text-muted)]'}`}>
+                  Installment total {installmentTotal().toFixed(2)} / component total {componentTotal().toFixed(2)} — amounts must match.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2">
             <button onClick={() => (editing.mode === 'create' ? createPlan.mutate() : saveDraft.mutate())} disabled={createPlan.isPending || saveDraft.isPending}
               className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
@@ -241,6 +283,7 @@ export default function OrgMembershipPlansPage() {
                       </div>
                       <div className="mt-2 text-xs text-[var(--color-text-muted)]">
                         {v.initialChargeType === 'percentage' ? `Initial ${v.initialChargePercent}% · ` : ''}Renewal {v.renewalModel}{v.renewalModel === 'fixed_date' ? ` (${String(v.fixedRenewalMonth).padStart(2, '0')}/${String(v.fixedRenewalDay).padStart(2, '0')})` : ''} · Grace {v.graceDays}d
+                        {v.installmentsEnabled ? ` · Installments (${(v.installments || []).length}): ${(v.installments || []).map((t: any) => Number(t.amount).toFixed(2)).join(' / ')}` : ''}
                         <div className="mt-1">{(v.components || []).map((c: any) => <span key={c.code} className="mr-3">{c.name} {Number(c.amount).toFixed(2)} ×{c.quantity}{c.is_required === 0 ? ' (opt)' : ''}</span>)}</div>
                       </div>
                     </div>

@@ -23,6 +23,7 @@ import { processMatchResultDeadlines, scheduleMatchResultDeadlines } from "./mod
 import { processMatchLifecycle, scheduleMatchLifecycle } from "./modules/match/infrastructure/match-lifecycle.worker.js";
 import { handleComplaintReceiptTimeout, handleComplaintCollectionEscalation } from "./modules/marketplace/infrastructure/marketplace-complaint.worker.js";
 import { handleSyncPendingPayments, handleExpireStalePayments } from "./modules/payment/infrastructure/payment-cron.worker.js";
+import { handleMembershipSubscriptionExpiry, handleMembershipInstallmentOverdue, handleMembershipSubscriptionReminders } from "./modules/membership/infrastructure/membership-subscription-lifecycle.worker.js";
 import { runDatabaseBackup } from "./infrastructure/backup/backup.service.js";
 import {
   handleProcessNotification, handleSendNotificationBatch,
@@ -92,6 +93,11 @@ async function bootstrap() {
     registerHandler('send_subscription_reminders', handleSendExpirationReminders);
     registerHandler('expire_memberships', handleExpireMemberships);
     registerHandler('send_membership_reminders', handleSendExpiringReminders);
+    // G11.22 P2 — membership_SUBSCRIPTION lifecycle (separate from the legacy
+    // user_memberships worker above).
+    registerHandler('membership_subscription_expiry', handleMembershipSubscriptionExpiry);
+    registerHandler('membership_installment_overdue', handleMembershipInstallmentOverdue);
+    registerHandler('membership_subscription_reminders', handleMembershipSubscriptionReminders);
 
     registerHandler('process_notification', handleProcessNotification);
     registerHandler('send_notification_batch', handleSendNotificationBatch);
@@ -380,6 +386,26 @@ async function bootstrap() {
     // Membership expiration reminders — daily at 08:30 UTC
     await queueService.add('send_membership_reminders', {}, {
       repeat: { pattern: '30 8 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    });
+
+    // G11.22 P2 — membership subscription lifecycle sweeps.
+    // Expiry/grace — daily at 00:40 UTC.
+    await queueService.add('membership_subscription_expiry', {}, {
+      repeat: { pattern: '40 0 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    });
+    // Installment overdue — daily at 00:45 UTC.
+    await queueService.add('membership_installment_overdue', {}, {
+      repeat: { pattern: '45 0 * * *' },
+      removeOnComplete: true,
+      removeOnFail: { age: 604800 },
+    });
+    // Renewal / grace-ending / installment-due reminders — daily at 08:45 UTC.
+    await queueService.add('membership_subscription_reminders', {}, {
+      repeat: { pattern: '45 8 * * *' },
       removeOnComplete: true,
       removeOnFail: { age: 604800 },
     });

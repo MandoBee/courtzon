@@ -131,6 +131,11 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   // commission (+2300 tax 0); cash → Dr 1161 commission receivable / Cr 4110.
   membership_card_payment: { payment_clearing: '1100', merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300' },
   membership_cash_payment: { marketplace_receivable: '1161', platform_commission: '4110', tax_liability: '2300' },
+  // G11.22 P2 — Membership refund reversals. Same accounts as the original
+  // postings (2202/4110/2300/1100 card; 4110/2300/1161 cash), exact opposite
+  // sides. No DB mapping rows — full concept set from code.
+  membership_card_refund: { merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300', payment_clearing: '1100' },
+  membership_cash_refund: { platform_commission: '4110', tax_liability: '2300', marketplace_receivable: '1161' },
   // G11.2 — Tournament CASH registration recognition (org collected). The
   // CourtZon book resolves fully from code (no DB mapping rows) to the EXISTING
   // accounts: Dr 2202 Merchant Payable = commission · Cr 4192 Tournament
@@ -317,6 +322,10 @@ export const ORG_BOOK_EVENTS: Record<string, string[]> = {
   // revenue. Cash org book mirrors booking/academy/tournament cash shapes.
   membership_org_receivable: ['marketplace_receivable', 'commission_expense', 'membership_revenue'],
   membership_org_cash_receivable: ['org_cash_bank', 'commission_expense', 'membership_revenue', 'courtzon_payable'],
+  // G11.22 P2 — Membership org-book REVERSALS (refund only; exact negation of
+  // the org-book payment recognitions above).
+  membership_org_receivable_reversal: ['membership_revenue', 'marketplace_receivable', 'commission_expense'],
+  membership_org_cash_receivable_rev: ['membership_revenue', 'courtzon_payable', 'org_cash_bank', 'commission_expense'],
   // G11.5 — Tournament PRIZE org books (org-scoped). The org carries the prize
   // against its tournament revenue and one of its two funding positions:
   //   CARD: Dr org 4140 / Cr org 1161 (reduces the CourtZon receivable).

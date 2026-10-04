@@ -33,7 +33,7 @@ export default function MembershipStorefrontPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-[var(--color-text)]">Memberships</h1>
-        <p className="text-sm text-[var(--color-text-muted)]">Choose a membership plan. Full payment in this phase.</p>
+        <p className="text-sm text-[var(--color-text-muted)]">Choose a membership plan — full payment or installments (first installment activates).</p>
       </div>
 
       <div className="flex items-center gap-2 text-sm">
@@ -67,6 +67,18 @@ export default function MembershipStorefrontPage() {
                     </div>
                   ))}
                 </div>
+                {item.installments?.length ? (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-2 text-[11px]">
+                    <p className="font-semibold mb-1">Installment schedule (first installment activates)</p>
+                    {(item.installments as any[]).map((t: any) => (
+                      <div key={t.id} className="flex justify-between">
+                        <span>#{t.seq}</span>
+                        <span>{formatPrice(Number(t.amount), v.currency || 'EGP')}</span>
+                        <span className="text-[var(--color-text-muted)]">{t.due_offset_days ? `due +${t.due_offset_days}d` : 'on purchase'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">Total {formatPrice(total, v.currency || 'EGP')}</span>
                   <button onClick={() => purchase.mutate(Number(v.id))} disabled={purchase.isPending}

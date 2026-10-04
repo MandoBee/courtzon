@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../../../shared/middleware/auth.middleware.js';
 import { requireOrganisationAccess, requireOrgManageAccess } from '../../../shared/middleware/route-guard.js';
 import * as ctrl from './membership-p1.controller.js';
+import * as p2 from './membership-p2.controller.js';
 
 /**
  * G11.22 P1 membership routes.
@@ -32,9 +33,18 @@ export async function membershipP1Routes(app: FastifyInstance): Promise<void> {
   app.post('/org/:orgId/membership/subscriptions/:subscriptionId/confirm-cash', { preHandler: [requireOrgManageAccess('orgId')] }, ctrl.confirmCashHandler);
   app.post('/org/:orgId/membership/subscriptions/:subscriptionId/complete-card', { preHandler: [requireOrgManageAccess('orgId')] }, ctrl.completeCardHandler);
 
+  // ── G11.22 P2 — installments / renewal / cancel / refund / eligibility ──
+  app.get('/org/:orgId/membership/subscriptions/:subscriptionId/eligibility', { preHandler: [requireOrganisationAccess('orgId')] }, p2.getOrgEligibilityHandler);
+  app.post('/org/:orgId/membership/subscriptions/:subscriptionId/installments/:seq/confirm-cash', { preHandler: [requireOrgManageAccess('orgId')] }, p2.confirmInstallmentCashHandler);
+  app.post('/org/:orgId/membership/subscriptions/:subscriptionId/installments/:seq/complete-card', { preHandler: [requireOrgManageAccess('orgId')] }, p2.completeInstallmentCardHandler);
+  app.post('/org/:orgId/membership/subscriptions/:subscriptionId/renew', { preHandler: [requireOrgManageAccess('orgId')] }, p2.renewSubscriptionHandler);
+  app.post('/org/:orgId/membership/subscriptions/:subscriptionId/cancel', { preHandler: [requireOrgManageAccess('orgId')] }, p2.cancelSubscriptionHandler);
+  app.post('/org/:orgId/membership/subscriptions/:subscriptionId/refund', { preHandler: [requireOrgManageAccess('orgId')] }, p2.refundInstallmentsHandler);
+
   // ── Player: browse active plans + purchase + my subscriptions ──
   app.get('/organisations/:orgId/membership/plans-active', ctrl.listActiveVersionsForPurchaseHandler);
   app.post('/organisations/:orgId/membership/subscriptions', ctrl.createSubscriptionHandler);
   app.get('/my/membership/subscriptions', ctrl.listMySubscriptionsHandler);
   app.get('/my/membership/subscriptions/:subscriptionId', ctrl.getMySubscriptionHandler);
+  app.get('/my/membership/subscriptions/:subscriptionId/eligibility', p2.getMyEligibilityHandler);
 }
