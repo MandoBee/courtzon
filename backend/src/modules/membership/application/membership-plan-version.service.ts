@@ -4,7 +4,8 @@ import { membershipP1Repository } from '../infrastructure/repositories/membershi
 import { membershipP2Repository } from '../infrastructure/repositories/membership-p2.repository.js';
 import { membershipCancelRefundService } from './membership-cancel-refund.service.js';
 import { normalizeCancellationRefundPolicy } from '../domain/membership-p2.types.js';
-import { round2 } from '../domain/membership-p2.types.js';
+import { round2, todayISO } from '../domain/membership-p2.types.js';
+import { computeFixedTermWindow, computeFirstTermAmount } from '../domain/membership-p3.types.js';
 import type { PlanVersionP1Input, CreateMembershipPlanP1Input } from '../presentation/membership-p1.dto.js';
 
 type Row = import('mysql2').RowDataPacket[];
@@ -281,10 +282,47 @@ export const membershipPlanVersionService = {
         if (Number(plan.is_public) !== 1) continue;
         const components = await membershipP1Repository.listComponentsByVersionId(Number(v.id));
         const installments = await membershipP2Repository.listInstallmentTemplates(Number(v.id));
-        out.push({ plan: { id: plan.id, name: plan.name, description: plan.description }, version: this.toVersionJson(v), components, installments });
+        const standardTotal = components.reduce((s: number, c: any) => s + round2(Number(c.amount) * Number(c.quantity)), 0);
+        const extras = this.storefrontPricingExtras(v, standardTotal);
+        out.push({
+          plan: { id: plan.id, name: plan.name, description: plan.description },
+          version: this.toVersionJson(v),
+          components,
+          installments,
+          standardTotal,
+          ...extras,
+        });
       }
     }
     return out;
+  },
+
+  /**
+   * G11.22 P3 — storefront pricing facts for the PLAYER. Returns:
+   *   standardTotal              full/standard cycle price
+   *   fixedDateNote              human note when the plan uses a fixed-date cycle
+   *   initialChargeEstimateForToday  the prorated (or full) first-term charge a
+   *                              joiner TODAY would pay (best-effort estimate —
+   *                              the authoritative charge is computed at purchase)
+   * Reuses the P3 domain proration helpers — no duplicated business logic.
+   */
+  storefrontPricingExtras(v: any, standardTotal: number): { fixedDateNote: string | null; initialChargeEstimateForToday: number | null } {
+    const fixedMonth = v.fixed_renewal_month != null ? Number(v.fixed_renewal_month) : null;
+    const fixedDay = v.fixed_renewal_day != null ? Number(v.fixed_renewal_day) : null;
+    const isFixed = v.renewal_model === 'fixed_date' && fixedMonth && fixedDay;
+    if (!isFixed) return { fixedDateNote: null, initialChargeEstimateForToday: null };
+
+    const today = todayISO();
+    const window = computeFixedTermWindow(today, fixedMonth, fixedDay);
+    const firstTerm = computeFirstTermAmount(
+      { initialChargeType: v.initial_charge_type, initialChargePercent: v.initial_charge_percent != null ? Number(v.initial_charge_percent) : null },
+      standardTotal,
+      window,
+    );
+    const note = window.isFullTerm
+      ? `Fixed-date cycle: renews on ${String(fixedMonth).padStart(2, '0')}/${String(fixedDay).padStart(2, '0')} each year.`
+      : `Fixed-date cycle ends ${window.termEnd} — the initial charge is prorated for the remaining period.`;
+    return { fixedDateNote: note, initialChargeEstimateForToday: firstTerm.amount };
   },
 
   toVersionJson(v: any): any {

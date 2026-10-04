@@ -254,12 +254,20 @@ async function bootstrap() {
     app.log.info('Entitlement marketplace subscribers + workers registered');
 
     // G11.4 — tournament entitlement subscribers (registration paid → entitlement,
-    // refund → cancel). Durable BullMQ subscribers, registered beside the booking /
-    // academy / marketplace entitlement subscribers.
-    const { registerEntitlementTournamentSubscribers, createEntitlementTournamentWorkers } = await import('./modules/financial/application/entitlement-tournament.listener.js');
-    registerEntitlementTournamentSubscribers();
-    createEntitlementTournamentWorkers();
-    app.log.info('Entitlement tournament subscribers + workers registered');
+  // refund → cancel). Durable BullMQ subscribers, registered beside the booking /
+  // academy / marketplace entitlement subscribers.
+  const { registerEntitlementTournamentSubscribers, createEntitlementTournamentWorkers } = await import('./modules/financial/application/entitlement-tournament.listener.js');
+  registerEntitlementTournamentSubscribers();
+  createEntitlementTournamentWorkers();
+  app.log.info('Entitlement tournament subscribers + workers registered');
+
+  // G11.22 P3 — membership entitlement subscribers (paid installment →
+  // entitlement, refund → cancel). Durable BullMQ subscribers reusing the
+  // unified settlement engine (no new model).
+  const { registerEntitlementMembershipSubscribers, createEntitlementMembershipWorkers } = await import('./modules/financial/application/entitlement-membership.listener.js');
+  registerEntitlementMembershipSubscribers();
+  createEntitlementMembershipWorkers();
+  app.log.info('Entitlement membership subscribers + workers registered');
 
     // G11.22 P1 — finalise membership subscriptions when their full payment
     // succeeds (reference_type = membership_subscription).

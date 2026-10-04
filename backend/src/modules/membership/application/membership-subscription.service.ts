@@ -15,6 +15,7 @@ import {
   buildMembershipInvoiceNumber,
 } from '../domain/membership-p1.types.js';
 import { buildInstallmentSchedule, round2, deriveEligibility } from '../domain/membership-p2.types.js';
+import { computeFixedTermWindow, computeFirstTermAmount, scaleInstallmentTemplates } from '../domain/membership-p3.types.js';
 
 type Row = import('mysql2').RowDataPacket;
 
@@ -76,26 +77,54 @@ export const membershipSubscriptionService = {
     const components = await membershipP1Repository.listComponentsByVersionId(planVersionId);
     if (!components.length) throw validationError('The plan version has no components');
 
-    const totalAmount = computeComponentTotal(components.map((c) => ({
+    // FULL-cycle standard price (the version's published period price).
+    const periodPrice = computeComponentTotal(components.map((c) => ({
       code: c.code, name: c.name, category: c.category, amount: Number(c.amount),
       quantity: Number(c.quantity), isRequired: Number(c.is_required) === 1, sortOrder: Number(c.sort_order),
     })));
 
-    // CourtZon commission snapshot at purchase (percentage or fixed; 0 if unconfigured).
-    const rate = await getCommissionRate(orgId, 'membership');
-    const commissionAmount = computeCommission(rate?.rateType, rate?.rate ?? 0, totalAmount);
-    const orgNetAmount = Math.round((totalAmount - commissionAmount) * 100) / 100;
+    // Realised loop price for THIS term.
+    let termPrice = periodPrice;
 
+    // ── G11.22 P3 — fixed-date mid-cycle proration ──────────────────────────
+    // Approved rule: daily actual-calendar-days proration of the PARTIAL first
+    // term; a join on/after the cycle boundary is a FULL cycle; fixed day
+    // 29/30/31 is clamped; initial_charge_percent applies to the FULL cycle
+    // price (never the prorated amount). Anniversary/months-based plans are
+    // unaffected (their first term is always a full period).
+    const fixedMonth = version.fixed_renewal_month != null ? Number(version.fixed_renewal_month) : null;
+    const fixedDay = version.fixed_renewal_day != null ? Number(version.fixed_renewal_day) : null;
     const startDate = today();
-    const endDate = computeSubscriptionEndDate(
+    let endDate = computeSubscriptionEndDate(
       startDate,
       version.duration_type,
       Number(version.duration_periods),
       version.renewal_model,
-      version.fixed_renewal_month != null ? Number(version.fixed_renewal_month) : null,
-      version.fixed_renewal_day != null ? Number(version.fixed_renewal_day) : null,
+      fixedMonth,
+      fixedDay,
     );
+    if (version.renewal_model === 'fixed_date' && fixedMonth && fixedDay) {
+      const window = computeFixedTermWindow(startDate, fixedMonth, fixedDay);
+      const firstTerm = computeFirstTermAmount(
+        { initialChargeType: version.initial_charge_type, initialChargePercent: version.initial_charge_percent != null ? Number(version.initial_charge_percent) : null },
+        periodPrice,
+        window,
+      );
+      if (window.isFullTerm) {
+        endDate = window.termEnd;
+      } else {
+        termPrice = firstTerm.amount;
+        endDate = window.termEnd;
+      }
+    }
     const graceUntil = computeGraceUntil(endDate, Number(version.grace_days));
+
+    // CourtZon commission snapshot on the REALISED term price (P1/P2 formula
+    // unchanged: computeCommission on the subscription total).
+    const rate = await getCommissionRate(orgId, 'membership');
+    const totalAmount = termPrice;
+    const commissionAmount = computeCommission(rate?.rateType, rate?.rate ?? 0, totalAmount);
+    const orgNetAmount = Math.round((totalAmount - commissionAmount) * 100) / 100;
 
     const branchIds = version.branch_scope === 'SELECTED'
       ? await membershipP1Repository.listBranchIdsByVersionId(planVersionId)
@@ -113,12 +142,18 @@ export const membershipSubscriptionService = {
       : [];
     let schedule: Array<{ seq: number; amount: number; commissionAmount: number; dueDate: string; currency: string }> = [];
     if (installmentTemplates.length > 0) {
-      membershipInstallmentService.validateTemplateTotal(
-        installmentTemplates.map((t) => ({ seq: Number(t.seq), amount: Number(t.amount), dueOffsetDays: Number(t.due_offset_days) })),
-        totalAmount,
-      );
+      // P3: on a prorated partial fixed term the template amounts (which are
+      // full-cycle) are scaled proportionally so Σ = the realised term total
+      // (keeps the P2 "Σ templates == total" invariant). seq/offsets unchanged.
+      const templates = (termPrice !== periodPrice)
+        ? scaleInstallmentTemplates(
+          installmentTemplates.map((t) => ({ seq: Number(t.seq), amount: Number(t.amount), dueOffsetDays: Number(t.due_offset_days) })),
+          totalAmount,
+        )
+        : installmentTemplates.map((t) => ({ seq: Number(t.seq), amount: Number(t.amount), dueOffsetDays: Number(t.due_offset_days) }));
+      membershipInstallmentService.validateTemplateTotal(templates, totalAmount);
       schedule = buildInstallmentSchedule(
-        installmentTemplates.map((t) => ({ seq: Number(t.seq), amount: Number(t.amount), dueOffsetDays: Number(t.due_offset_days) })),
+        templates,
         rate?.rateType,
         rate?.rate ?? 0,
         totalAmount,

@@ -755,6 +755,16 @@ async function lookupInstallmentByPayment(paymentId: number): Promise<any | null
 }
 
 /**
+ * G11.22 P3 — membership settled-state oracle. REUSES the G11.4 durable
+ * gateway history check (gateway_settlement_transactions + completed batch) so
+ * the membership refund picks the settled vs unsettled GL variant exactly like
+ * tournament. No new record is consulted; no historical record is modified.
+ */
+async function isMembershipPaymentGatewaySettled(paymentId: number): Promise<boolean> {
+  return tournamentPaymentWasGatewaySettled(paymentId);
+}
+
+/**
  * G11.22 P2 — membership refund reversal. EXACT symmetric reversal of the
  * payment recognition, sourced by the INSTALLMENT id (same source_id the
  * original payment posted on). Economics come from the immutable installment
@@ -808,13 +818,25 @@ async function postMembershipRefundAccounting(
   }
 
   // Card (org NULL): Dr 2202 orgNet + Dr 4110 commission + Dr 2300 tax 0 /
-  // Cr 1100 gross.
-  await postAccountingEvent(
-    'membership_card_refund', 'membership', sourceId, null,
-    { merchant_payable: orgNet, platform_commission: commission, tax_liability: 0, payment_clearing: total },
-    cur,
-    `Membership installment #${sourceId} card refund`,
-  );
+  // Cr 1100 gross (unsettled) — or, after gateway settlement (G11.22 P3,
+  // G11.4 pattern), the refund is paid OUT OF THE BANK (Cr 1120) and any
+  // unrecoverable excess is booked to refund_expense (F-2/F-5).
+  const wasSettled = await isMembershipPaymentGatewaySettled(paymentId);
+  if (wasSettled) {
+    await postAccountingEvent(
+      'membership_card_refund_settled', 'membership', sourceId, null,
+      { merchant_payable: orgNet, platform_commission: commission, tax_liability: 0, cash_bank: total, refund_expense: 0 },
+      cur,
+      `Membership installment #${sourceId} card refund (settled cash leg)`,
+    );
+  } else {
+    await postAccountingEvent(
+      'membership_card_refund', 'membership', sourceId, null,
+      { merchant_payable: orgNet, platform_commission: commission, tax_liability: 0, payment_clearing: total },
+      cur,
+      `Membership installment #${sourceId} card refund (unsettled clearing leg)`,
+    );
+  }
   if (orgId != null) {
     // Org book: Dr MEMB-REV / Cr 1161 orgNet + MKT-COMM-EXP.
     await postAccountingEvent(

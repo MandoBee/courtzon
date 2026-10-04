@@ -7842,3 +7842,16 @@ ALTER TABLE `organisation_membership_settings`
     AFTER `allowed_payment_methods`,
   ADD CONSTRAINT `chk_oms_cancel_refund`
     CHECK (`cancellation_refund_policy` IS NULL OR json_valid(`cancellation_refund_policy`));
+
+
+-- ============================================================================
+-- G11.22 P3 — membership financial entitlement (P3 addendum; source of truth =
+-- database/migrations/194_membership_entitlements.sql with
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE). Additive ENUM extension only.
+-- ============================================================================
+ALTER TABLE `financial_entitlements`
+  MODIFY COLUMN `source_type`
+    enum('booking','academy','marketplace','tournament','coach_session','manual','membership')
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci
+    NOT NULL;

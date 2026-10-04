@@ -81,11 +81,19 @@ export default function MembershipStorefrontPage() {
                 ) : null}
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">Total {formatPrice(total, v.currency || 'EGP')}</span>
+                  {item.initialChargeEstimateForToday != null && item.initialChargeEstimateForToday !== total && (
+                    <span className="text-xs text-[var(--color-warning-text)]">
+                      Initial charge (join today): {formatPrice(Number(item.initialChargeEstimateForToday), v.currency || 'EGP')}
+                    </span>
+                  )}
                   <button onClick={() => purchase.mutate(Number(v.id))} disabled={purchase.isPending}
                     className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
                     {purchase.isPending ? 'Purchasing…' : 'Purchase'}
                   </button>
                 </div>
+                {item.fixedDateNote && (
+                  <p className="text-[11px] text-[var(--color-text-muted)]">📅 {item.fixedDateNote}</p>
+                )}
               </div>
             );
           })}

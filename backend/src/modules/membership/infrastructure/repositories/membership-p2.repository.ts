@@ -63,6 +63,15 @@ class MembershipP2Repository {
     return rows[0] || null;
   }
 
+  async findInstallmentById(installmentId: number): Promise<Row | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<Row[]>(
+      `SELECT * FROM membership_installments WHERE id = ? LIMIT 1`,
+      [installmentId],
+    );
+    return rows[0] || null;
+  }
+
   async findInstallmentPaymentId(installmentId: number): Promise<number | null> {
     const pool = getPool();
     const [rows] = await pool.execute<Row[]>(

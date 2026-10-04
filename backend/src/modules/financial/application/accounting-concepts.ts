@@ -653,6 +653,22 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
+  // G11.22 P3 — Card refund AFTER gateway settlement (exact mirror of
+  // tournament_registration_card_refund_settled / G11.4). Once the gateway
+  // batch moved the funds out of 1100 into 1120, the refund is paid OUT OF THE
+  // BANK — crediting 1100 again would resurrect a clearing balance that no
+  // longer exists:
+  //   Dr 2202 Merchant Payable = orgNet · Dr 4110 Platform Commission =
+  //   commission · Dr 2300 Tax Liability = 0 · Dr 5220 refund_expense = 0
+  //   (unrecoverable excess, reserved per F-2/F-5)
+  //   / Cr 1120 Cash / Bank = gross.
+  // Distinct event_type (never `membership_card_refund`) so a settled and an
+  // unsettled refund of the SAME payment can never collide on the
+  // (source_type, source_id, event_type) idempotency key.
+  membership_card_refund_settled: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability', 'refund_expense'],
+    credit: ['cash_bank'],
+  },
   //    Cash (CourtZon book, org NULL):
   //      Dr 4110 commission (+2300 tax 0) / Cr 1161 Marketplace Receivable.
   membership_cash_refund: {

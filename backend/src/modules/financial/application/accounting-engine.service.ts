@@ -136,6 +136,11 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   // sides. No DB mapping rows — full concept set from code.
   membership_card_refund: { merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300', payment_clearing: '1100' },
   membership_cash_refund: { platform_commission: '4110', tax_liability: '2300', marketplace_receivable: '1161' },
+  // G11.22 P3 — Membership CARD refund AFTER gateway settlement. Same accounts
+  // as G11.4 (tournament_registration_card_refund_settled) plus the existing
+  // refund_expense concept (5220) for an unrecoverable excess (F-2/F-5): the
+  // refund is paid out of the bank (1120). Full concept set from code.
+  membership_card_refund_settled: { merchant_payable: '2202', platform_commission: '4110', tax_liability: '2300', cash_bank: '1120', refund_expense: '5220' },
   // G11.2 — Tournament CASH registration recognition (org collected). The
   // CourtZon book resolves fully from code (no DB mapping rows) to the EXISTING
   // accounts: Dr 2202 Merchant Payable = commission · Cr 4192 Tournament

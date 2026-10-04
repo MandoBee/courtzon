@@ -86,6 +86,12 @@ function toUtcDate(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
+/** G11.22 P3 — clamp 29/30/31 to the last valid day of the month (approved rule). */
+export function clampDayOfMonthFixed(year: number, month1based: number, day: number): number {
+  const lastDay = new Date(Date.UTC(year, month1based, 0)).getUTCDate();
+  return Math.max(1, Math.min(day, lastDay));
+}
+
 /**
  * End date (inclusive period boundary — the day BEFORE the next period starts).
  * P1 stores the term; the full renewal engine (P3) refines fixed-cycle rules.
@@ -102,12 +108,15 @@ export function computeSubscriptionEndDate(
   const months = monthsPerDuration(durationType) * Math.max(1, durationPeriods);
 
   if (renewalModel === 'fixed_date' && fixedRenewalMonth && fixedRenewalDay) {
-    // Anniversary-of-fixed-date for P1 storage: the term runs to the NEXT
-    // occurrence of the fixed date after the start (or +1 year if start falls
-    // on the fixed date). The org-specific 31/12 rule is a P3 engine concern.
-    let end = toUtcDate(new Date(Date.UTC(start.getUTCFullYear(), fixedRenewalMonth - 1, fixedRenewalDay)));
+    // G11.22 P3 — the org-specific fixture (e.g. 31/12 vs per-plan) remains an
+    // org configuration; the DATE MATH here is exact. Fixed day 29/30/31 is
+    // CLAMPED to the last valid day of the month (never rolls into the next
+    // month). The term runs to the NEXT occurrence of the fixed date after
+    // start (or +1 year if start falls on the fixed date).
+    const clamp = (y: number) => clampDayOfMonthFixed(y, fixedRenewalMonth, fixedRenewalDay ?? 1);
+    let end = toUtcDate(new Date(Date.UTC(start.getUTCFullYear(), fixedRenewalMonth - 1, clamp(start.getUTCFullYear()))));
     if (end <= start) {
-      end = toUtcDate(new Date(Date.UTC(start.getUTCFullYear() + 1, fixedRenewalMonth - 1, fixedRenewalDay)));
+      end = toUtcDate(new Date(Date.UTC(start.getUTCFullYear() + 1, fixedRenewalMonth - 1, clamp(start.getUTCFullYear() + 1))));
     }
     end.setUTCDate(end.getUTCDate() - 1);
     return end.toISOString().slice(0, 10);

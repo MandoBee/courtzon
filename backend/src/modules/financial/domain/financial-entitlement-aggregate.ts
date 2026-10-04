@@ -10,12 +10,42 @@ export type SourceType =
   | 'marketplace'
   | 'tournament'
   | 'coach_session'
+  | 'membership'
   | 'manual';
 
 /** Who originally collected the money for this entitlement. */
 export type EntitlementCollector = 'courtzon' | 'org';
 
 export type EntitlementStatus = 'PENDING' | 'AVAILABLE' | 'ON_HOLD' | 'SETTLED' | 'CANCELLED';
+
+/**
+ * Metadata-aware ownership predicate (G11.22 P3 approved #4).
+ *
+ * `financial_entitlements.uk_fe_source_type (source_type, source_id,
+ * entitlement_type)` shares ONE numeric id space between SUBSCRIPTION-scoped
+ * membership entitlements (source_id = membership_subscriptions.id) and
+ * INSTALLMENT-scoped ones (source_id = membership_installments.id) — different
+ * tables' auto-increment ids can coincide numerically. The rows' `metadata`
+ * distinguishes them (`installmentId` vs `subscriptionId` with no
+ * installmentId). Returns whether `row` IS the requested source.
+ */
+export function entitlementOwnsSource(
+  row: { metadata?: unknown; source_id?: unknown },
+  scope: { subscriptionId?: number; installmentId?: number },
+  sourceIdValue: number | string,
+): boolean {
+  if (row.source_id !== undefined && Number(row.source_id) !== Number(sourceIdValue)) return false;
+  let meta: Record<string, any> = {};
+  if (row.metadata) {
+    if (typeof row.metadata === 'string') { try { meta = JSON.parse(row.metadata); } catch { meta = {}; } }
+    else if (typeof row.metadata === 'object') meta = row.metadata as Record<string, any>;
+  }
+  const sub = Number(meta.subscriptionId ?? 0);
+  const inst = Number(meta.installmentId ?? 0);
+  if (scope.installmentId) return inst === Number(scope.installmentId);
+  if (scope.subscriptionId) return inst === 0 && sub === Number(scope.subscriptionId);
+  return false;
+}
 
 const ALLOWED_TRANSITIONS: Record<EntitlementStatus, EntitlementStatus[]> = {
   PENDING:    ['AVAILABLE', 'CANCELLED'],
