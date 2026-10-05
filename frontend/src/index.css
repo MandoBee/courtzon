@@ -990,6 +990,16 @@ html[dir="rtl"] {
     animation: cz-drawer-slide-down 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
   }
 
+  /* Tournament bracket — subtle, one-shot entrance (transform/opacity only).
+     Columns receive a small per-column stagger via inline animation-delay. */
+  .cz-bracket-col {
+    animation: cz-bracket-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  /* Current-player emphasis — one-shot settle, never a continuous pulse. */
+  .cz-player-emphasis {
+    animation: cz-emphasis-in 360ms ease-out both;
+  }
+
   /* Pull-to-refresh indicator */
   .cz-ptr-indicator {
     will-change: transform, opacity;
@@ -1040,10 +1050,26 @@ html[dir="rtl"] {
 @keyframes cz-shimmer {
   100% { transform: translateX(100%); }
 }
+@keyframes cz-bracket-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes cz-emphasis-in {
+  from { opacity: 0.45; transform: translateX(-3px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .cz-sheet-enter, .cz-fade-enter, .cz-drawer-enter, .cz-skeleton::after {
+  .cz-sheet-enter, .cz-fade-enter, .cz-drawer-enter, .cz-skeleton::after,
+  .cz-bracket-col, .cz-player-emphasis {
     animation: none;
+  }
+  /* Neutralise the MatchCard hover/active transform for reduced-motion users. */
+  .cz-match-card,
+  .cz-match-card:hover,
+  .cz-match-card:active {
+    transform: none !important;
+    transition: none !important;
   }
 }
 

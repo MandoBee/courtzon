@@ -56,7 +56,7 @@ export function MatchCard({ match, currentUserId, onClick, footer }: MatchCardPr
     <button
       type="button"
       onClick={() => onClick?.(match)}
-      className="w-full text-left rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 space-y-2 transition-colors hover:border-[var(--color-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+      className="cz-match-card w-full text-left rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 space-y-2 transition-[transform,border-color] duration-150 hover:-translate-y-px hover:border-[var(--color-primary)] active:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
     >
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-semibold text-[var(--color-text-muted)]">
@@ -71,12 +71,12 @@ export function MatchCard({ match, currentUserId, onClick, footer }: MatchCardPr
 
       <div className="space-y-1 text-sm">
         <div className={`flex items-center justify-between gap-2 ${p1Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
-          <span className="truncate">{p1N}</span>
+          <span className={`truncate${p1Mine ? ' cz-player-emphasis' : ''}`}>{p1N}</span>
           {hasScore && <span className="text-xs font-medium tabular-nums">{homeScore}</span>}
         </div>
         <div className="text-center text-xs text-[var(--color-text-muted)]">vs</div>
         <div className={`flex items-center justify-between gap-2 ${p2Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
-          <span className="truncate">{p2N}</span>
+          <span className={`truncate${p2Mine ? ' cz-player-emphasis' : ''}`}>{p2N}</span>
           {hasScore && <span className="text-xs font-medium tabular-nums">{awayScore}</span>}
         </div>
         {hasScore && <div className="text-center text-xs font-medium tabular-nums">{score}</div>}

@@ -49,8 +49,12 @@ export function TournamentBracket({ tournament, matches, participants, currentUs
     return (
       <div className="space-y-4">
         <div className={`flex ${printOnly ? 'print-rounds' : 'gap-3 overflow-x-auto pb-2'} md:gap-4`}>
-          {rounds.map((r) => (
-            <div key={r.round} className={`${printOnly ? 'min-w-0' : 'min-w-[220px] flex-1'} space-y-2`}>
+          {rounds.map((r, i) => (
+            <div
+              key={r.round}
+              className={`${printOnly ? 'min-w-0' : 'min-w-[220px] flex-1 cz-bracket-col'} space-y-2`}
+              style={printOnly ? undefined : { animationDelay: `${i * 60}ms` }}
+            >
               <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase">{r.label1}</h4>
               {r.items.map((m) => (
                 <MatchCard key={m.id} match={m} currentUserId={currentUserId} onClick={onMatchClick} footer={footer} />
@@ -73,8 +77,12 @@ export function TournamentBracket({ tournament, matches, participants, currentUs
           {t('tournamentBracket.tableModeHint', { type: tournament?.bracket_type_name || tournament?.format || '' })}
         </p>
       )}
-      {rounds.map((r) => (
-        <div key={r.round}>
+      {rounds.map((r, i) => (
+        <div
+          key={r.round}
+          className={printOnly ? undefined : 'cz-bracket-col'}
+          style={printOnly ? undefined : { animationDelay: `${i * 60}ms` }}
+        >
           <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase mb-2">{r.label1}</h4>
           <div className={`grid ${printOnly ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'} gap-3`}>
             {r.items.map((m) => (
