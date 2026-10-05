@@ -18,11 +18,12 @@ import { formatPrice } from '../../utils/currency';
 import { useAuthStore } from '../../store/auth.store';
 import { useCan } from '../../hooks/useCan';
 import { TournamentBracket } from '../../components/tournaments/TournamentBracket';
+import { MatchCard } from '../../components/tournaments/MatchCard';
 import { MatchDetailsDrawer } from '../../components/tournaments/MatchDetailsDrawer';
 import { TournamentPrintView } from '../../components/tournaments/TournamentPrintView';
 import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
-type Tab = 'overview' | 'bracket' | 'standings' | 'players';
+type Tab = 'overview' | 'bracket' | 'matches' | 'standings' | 'players';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -80,12 +81,12 @@ export default function TournamentDetailPage() {
     queryFn: () => api.get(`/tournaments/${id}/competitions`).then(r => r.data?.data ?? []),
   });
 
-  const { data: matches } = useQuery({
+  const { data: matches, isLoading: loadingMatches, isError: matchesError } = useQuery({
     queryKey: ['tournament', id, 'bracket'],
     queryFn: () => api.get(`/tournaments/${id}/matches`).then(r => r.data.data),
   });
 
-  const { data: standings } = useQuery({
+  const { data: standings, isLoading: loadingStandings, isError: standingsError } = useQuery({
     queryKey: ['tournament', id, 'standings'],
     queryFn: () => api.get(`/tournaments/${id}/standings`).then(r => r.data.data),
   });
@@ -245,10 +246,10 @@ export default function TournamentDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 flex-wrap">
-        {(['overview', 'bracket', 'standings', 'players'] as Tab[]).map(t => (
+        {(['overview', 'bracket', 'matches', 'standings', 'players'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-3 py-1.5 text-xs font-medium rounded-full ${tab === t ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-muted)]'}`}>
-            {t === 'overview' ? 'Overview' : t === 'bracket' ? 'Bracket' : t === 'standings' ? 'Standings' : 'Players'}
+            {t === 'overview' ? 'Overview' : t === 'bracket' ? 'Bracket' : t === 'matches' ? 'Matches' : t === 'standings' ? 'Standings' : 'Players'}
           </button>
         ))}
       </div>
@@ -314,25 +315,51 @@ export default function TournamentDetailPage() {
               </button>
             )}
           </div>
-          <TournamentBracket
-            tournament={tournament}
-            matches={matchList}
-            participants={participantList}
-            currentUserId={user?.id}
-            onMatchClick={setDrawerMatch}
-            footer={(m) =>
-              can('tournaments.enter_scores') && m.status !== 'completed' && m.match_id != null ? (
-                <button
-                  onClick={() => navigate(`/matches/${m.match_id}/result`)}
-                  className="text-[10px] text-[var(--color-primary)] hover:underline"
-                >
-                  Enter Score
-                </button>
-              ) : null
-            }
-          />
-          {matchList.length === 0 && (
+          {loadingMatches ? (
+            <SkeletonRow count={5} />
+          ) : matchesError ? (
+            <p className="text-sm text-[var(--color-error)] text-center py-8">Unable to load the bracket.</p>
+          ) : (
+            <TournamentBracket
+              tournament={tournament}
+              matches={matchList}
+              participants={participantList}
+              currentUserId={user?.id}
+              onMatchClick={setDrawerMatch}
+              footer={(m) =>
+                can('tournaments.enter_scores') && m.status !== 'completed' && m.match_id != null ? (
+                  <button
+                    onClick={() => navigate(`/matches/${m.match_id}/result`)}
+                    className="text-[10px] text-[var(--color-primary)] hover:underline"
+                  >
+                    Enter Score
+                  </button>
+                ) : null
+              }
+            />
+          )}
+          {!loadingMatches && !matchesError && matchList.length === 0 && (
             <p className="text-xs text-[var(--color-text-muted)] text-center py-8">Bracket not yet generated.</p>
+          )}
+        </div>
+      )}
+
+      {/* Matches Tab */}
+      {tab === 'matches' && (
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Matches</h2>
+          {loadingMatches ? (
+            <SkeletonRow count={5} />
+          ) : matchesError ? (
+            <p className="text-sm text-[var(--color-error)] text-center py-8">Unable to load matches.</p>
+          ) : matchList.length === 0 ? (
+            <p className="text-xs text-[var(--color-text-muted)] text-center py-8">No matches yet.</p>
+          ) : (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {matchList.map((m) => (
+                <MatchCard key={m.id} match={m} currentUserId={user?.id} onClick={setDrawerMatch} />
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -341,7 +368,11 @@ export default function TournamentDetailPage() {
       {tab === 'standings' && (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden">
           <h2 className="text-sm font-semibold text-[var(--color-text)] p-5 pb-0">Standings</h2>
-          {standingList.length === 0 ? (
+          {loadingStandings ? (
+            <SkeletonRow count={5} />
+          ) : standingsError ? (
+            <p className="p-5 text-xs text-[var(--color-error)]">Unable to load standings.</p>
+          ) : standingList.length === 0 ? (
             <p className="p-5 text-xs text-[var(--color-text-muted)]">No standings available yet.</p>
           ) : (
             <table className="w-full text-sm">

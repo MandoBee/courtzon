@@ -6,6 +6,8 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Modal } from '../../../components/ui/Modal';
+import { MatchDetailsDrawer } from '../../../components/tournaments/MatchDetailsDrawer';
+import type { TournamentMatchNode } from '../../../types/tournamentBracket';
 
 import { tournamentApi } from '../../../services/tournament';
 
@@ -64,6 +66,7 @@ export default function TournamentMatchesPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
   const [resultModal, setResultModal] = useState<{ matchId: number; open: boolean }>({ matchId: 0, open: false });
+  const [detailsMatch, setDetailsMatch] = useState<TournamentMatchNode | null>(null);
   const [resultData, setResultData] = useState<ResultForm>(emptyResultForm());
   const [courtAssign, setCourtAssign] = useState<{ matchId: number; resourceId: string }>({ matchId: 0, resourceId: '' });
   const [refereeAssign, setRefereeAssign] = useState<{ matchId: number; refereeId: string }>({ matchId: 0, refereeId: '' });
@@ -218,6 +221,10 @@ export default function TournamentMatchesPage() {
                           <td className="px-4 py-3 text-xs font-mono">{m.score_summary || '-'}</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1 flex-wrap">
+                              <button onClick={() => setDetailsMatch(m as any)}
+                                className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
+                                {t('tournamentBracket.details', 'Details')}
+                              </button>
                               <Can permission="tournament.manage">
                                 <button onClick={() => setCourtAssign({ matchId: m.id, resourceId: '' })}
                                   className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
@@ -331,6 +338,11 @@ export default function TournamentMatchesPage() {
             </button>
           </div>
         </Modal>
+        <MatchDetailsDrawer
+          open={Boolean(detailsMatch)}
+          onClose={() => setDetailsMatch(null)}
+          match={detailsMatch}
+        />
       </div>
     </Can>
   );

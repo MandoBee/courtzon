@@ -12,6 +12,8 @@ import { PrizeList } from '../../../components/tournaments/PrizeList';
 import SponsorList from '../../../components/tournaments/SponsorList';
 import CompetitionManager from '../../../components/tournaments/CompetitionManager';
 import { tournamentApi, orgTournamentApi, tournamentRefundApi } from '../../../services/tournament';
+import { MatchDetailsDrawer } from '../../../components/tournaments/MatchDetailsDrawer';
+import type { TournamentMatchNode } from '../../../types/tournamentBracket';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -95,6 +97,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   });
 
   const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [detailsMatch, setDetailsMatch] = useState<TournamentMatchNode | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerPlayerId, setRegisterPlayerId] = useState('');
   const [registerTeamId, setRegisterTeamId] = useState('');
@@ -390,6 +393,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                       <th className="text-left px-4 py-3">{t('tournaments.match.referee')}</th>
                       <th className="text-left px-4 py-3">{t('tournaments.match.status')}</th>
                       <th className="text-left px-4 py-3">{t('tournaments.match.score')}</th>
+                      <th className="text-left px-4 py-3">{t('tournamentBracket.details', 'Details')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -407,6 +411,12 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs font-mono">{m.score_summary || m.score || '-'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => setDetailsMatch(m as any)}
+                            className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
+                            {t('tournamentBracket.details', 'Details')}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -525,6 +535,11 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
             </button>
           </div>
         </Modal>
+        <MatchDetailsDrawer
+          open={Boolean(detailsMatch)}
+          onClose={() => setDetailsMatch(null)}
+          match={detailsMatch}
+        />
       </div>
     </Can>
   );

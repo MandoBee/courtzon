@@ -1,6 +1,7 @@
 import { useTranslation } from '../../i18n';
 import { Modal } from '../ui/Modal';
 import { formatDateTime, formatISODate } from '../../utils/formatDate';
+import { formatTournamentScore, hasBye } from '../../utils/tournamentScore';
 import { isCurrentUser } from './playerHighlight';
 import ResultSummaryView from '../match-result/ResultSummaryView';
 import type { TournamentMatchNode } from '../../types/tournamentBracket';
@@ -50,11 +51,14 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
   if (!match) return null;
 
   const p1N = match.player1_name || (match.player1_id ? `P${match.player1_id}` : t('tournamentBracket.tbd'));
-  const p2N = match.player2_name || (match.player2_id ? `P${match.player2_id}` : t('tournamentBracket.tbd'));
+  const p2N = match.player2_name || (match.player2_id ? `P${match.player2_id}` : hasBye(match) ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
   const p1Mine = isCurrentUser(match.player1_id, currentUserId);
   const p2Mine = isCurrentUser(match.player2_id, currentUserId);
+  const score = formatTournamentScore(match);
   const scoreStructure = match.rule_snapshot?.score_structure;
-  const hasResult = Boolean(match.score_summary);
+  const hasResult = Boolean(score);
+  const scoreFirst = score.split(' ')[0] ?? '';
+  const scoreRest = score.split(' ').slice(1).join(' ') || '';
   const winner: 'p1' | 'p2' | 'none' =
     match.winner_id == null ? 'none' : Number(match.winner_id) === Number(match.player1_id) ? 'p1' : Number(match.winner_id) === Number(match.player2_id) ? 'p2' : 'none';
   const progression = match.progression_meta;
@@ -65,13 +69,13 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
         <Section title={t('tournamentBracket.sectionMatch')}>
           <div className={`flex items-center justify-between ${p1Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
             <span>{p1N}</span>
-            {hasResult && <span className="text-sm tabular-nums">{String(match.score_summary || '').split(' ')[0]}</span>}
+            {hasResult && <span className="text-sm tabular-nums">{scoreFirst}</span>}
             {winner === 'p1' && <span className="text-xs text-green-600">✓</span>}
           </div>
           <div className="text-center text-xs text-[var(--color-text-muted)]">vs</div>
           <div className={`flex items-center justify-between ${p2Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
             <span>{p2N}</span>
-            {hasResult && <span className="text-sm tabular-nums">{String(match.score_summary || '').split(' ').slice(1).join(' ')}</span>}
+            {hasResult && <span className="text-sm tabular-nums">{scoreRest}</span>}
             {winner === 'p2' && <span className="text-xs text-green-600">✓</span>}
           </div>
           <Row label={t('tournamentBracket.status')} value={t(STATUS_KEYS[match.status || ''] || 'tournamentBracket.statusUnknown', match.status || '—')} />
@@ -97,7 +101,7 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
             ) : (
               <div className="space-y-1 text-sm">
                 <div>
-                  <span className="font-semibold">{match.score_summary}</span>
+                  <span className="font-semibold">{score}</span>
                   {scoreStructure && <span className="ml-2 text-xs text-[var(--color-text-muted)]">{t('tournamentBracket.scoreStructure', { structure: String(scoreStructure) })}</span>}
                 </div>
                 {winner !== 'none' && (

@@ -2659,6 +2659,13 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournamentBracket.printTitle', defaultValue: 'Tournament Bracket', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Print: title' },
   { key: 'tournamentBracket.printDate', defaultValue: 'Date', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Print: date label' },
   { key: 'tournamentBracket.seedLegend', defaultValue: '{count} participants · seeds shown where assigned.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Print: seed legend' },
+  { key: 'tournamentBracket.tabMatches', defaultValue: 'Matches', moduleSlug: 'tournaments', elementType: 'tab', elementLabel: 'Bracket: matches tab', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },
+  { key: 'tournamentBracket.bye', defaultValue: 'Bye', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: bye placeholder' },
+  { key: 'tournamentBracket.loading', defaultValue: 'Loading…', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: loading state' },
+  { key: 'tournamentBracket.error', defaultValue: 'Unable to load the bracket.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: error state' },
+  { key: 'tournamentBracket.matchesError', defaultValue: 'Unable to load matches.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Matches: error state' },
+  { key: 'tournamentBracket.standingsError', defaultValue: 'Unable to load standings.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Standings: error state' },
+  { key: 'tournamentBracket.details', defaultValue: 'Details', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Match: open details action', componentPath: 'pages/admin/tournament/TournamentDetailPage.tsx' },
 ];
 
 /** Build a key \u2192 English default map for offline/runtime fallback. */

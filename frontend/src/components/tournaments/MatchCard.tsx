@@ -1,5 +1,6 @@
 import { useTranslation } from '../../i18n';
 import { formatDateTime } from '../../utils/formatDate';
+import { formatTournamentScore, hasBye } from '../../utils/tournamentScore';
 import { isCurrentUser } from './playerHighlight';
 import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
@@ -36,12 +37,14 @@ const STATUS_KEYS: Record<string, string> = {
 
 export function MatchCard({ match, currentUserId, onClick, footer }: MatchCardProps) {
   const { t } = useTranslation();
-  const p1N = match.player1_name || (match.player1_id ? `P${match.player1_id}` : t('tournamentBracket.tbd'));
-  const p2N = match.player2_name || (match.player2_id ? `P${match.player2_id}` : t('tournamentBracket.tbd'));
+  const bye = hasBye(match);
+  const p1N = match.player1_name || (match.player1_id ? `P${match.player1_id}` : bye ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
+  const p2N = match.player2_name || (match.player2_id ? `P${match.player2_id}` : bye ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
   const p1Mine = isCurrentUser(match.player1_id, currentUserId);
   const p2Mine = isCurrentUser(match.player2_id, currentUserId);
-  const hasScore = Boolean(match.score_summary);
-  const scoreTokens = String(match.score_summary || '').split(' ').filter(Boolean);
+  const score = formatTournamentScore(match);
+  const hasScore = Boolean(score);
+  const scoreTokens = score.split(' ').filter(Boolean);
   const homeScore = scoreTokens[0] ?? '';
   const awayScore = scoreTokens.slice(1).join(' ') || '';
   const hasTime = Boolean(match.start_time);
@@ -73,7 +76,7 @@ export function MatchCard({ match, currentUserId, onClick, footer }: MatchCardPr
           <span className="truncate">{p2N}</span>
           {hasScore && <span className="text-xs font-medium tabular-nums">{awayScore}</span>}
         </div>
-        {hasScore && <div className="text-center text-xs font-medium tabular-nums">{match.score_summary}</div>}
+        {hasScore && <div className="text-center text-xs font-medium tabular-nums">{score}</div>}
       </div>
 
       {(match.resource_name || hasTime) && (
