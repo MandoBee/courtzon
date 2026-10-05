@@ -13,6 +13,10 @@ import SponsorList from '../../../components/tournaments/SponsorList';
 import CompetitionManager from '../../../components/tournaments/CompetitionManager';
 import { tournamentApi, orgTournamentApi, tournamentRefundApi } from '../../../services/tournament';
 import { MatchDetailsDrawer } from '../../../components/tournaments/MatchDetailsDrawer';
+import { TournamentBracket } from '../../../components/tournaments/TournamentBracket';
+import { TournamentPrintView } from '../../../components/tournaments/TournamentPrintView';
+import { useAuthStore } from '../../../store/auth.store';
+import { useCan } from '../../../hooks/useCan';
 import type { TournamentMatchNode } from '../../../types/tournamentBracket';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -41,7 +45,7 @@ const MATCH_STATUS_COLORS: Record<string, string> = {
   walkover: 'bg-purple-100 text-purple-700',
 };
 
-type TabId = 'overview' | 'groups' | 'matches' | 'standings';
+type TabId = 'overview' | 'groups' | 'bracket' | 'matches' | 'standings';
 
 export type TournamentDetailContextMode = 'admin' | 'org';
 
@@ -63,6 +67,10 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const qc = useQueryClient();
+  // Requirement 9 — the current-player highlight comes from the existing auth
+  // store user id. No new backend field is introduced.
+  const user = useAuthStore((s) => s.user);
+  const { can } = useCan();
 
   const isOrg = mode === 'org';
   const api = isOrg && orgId ? orgTournamentApi : tournamentApi;
@@ -98,6 +106,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
 
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [detailsMatch, setDetailsMatch] = useState<TournamentMatchNode | null>(null);
+  const [printRequested, setPrintRequested] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerPlayerId, setRegisterPlayerId] = useState('');
   const [registerTeamId, setRegisterTeamId] = useState('');
@@ -118,10 +127,13 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     enabled: activeTab === 'groups',
   });
 
-  const { data: matches, isLoading: loadingM } = useQuery({
+  // The SHARED bracket tab and the administrative matches table read the SAME
+  // query (same query key → one fetch, no duplicate request).
+  const matchesEnabled = activeTab === 'matches' || activeTab === 'bracket';
+  const { data: matches, isLoading: loadingM, isError: matchesError } = useQuery({
     queryKey: [`${keyRoot}-matches`, tournamentId],
     queryFn: () => getT(api.getMatches, tournamentId),
-    enabled: activeTab === 'matches',
+    enabled: matchesEnabled,
   });
 
   const { data: standings, isLoading: loadingS } = useQuery({
@@ -170,9 +182,21 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview', label: t('tournaments.tab.overview') },
     { id: 'groups', label: t('tournaments.tab.groups') },
+    { id: 'bracket', label: t('tournamentBracket.tabBracket', 'Bracket') },
     { id: 'matches', label: t('tournaments.tab.matches') },
     { id: 'standings', label: t('tournaments.tab.standings') },
   ];
+
+  // Shared bracket read-model. The SAME normalised rows feed TournamentBracket and
+  // MatchDetailsDrawer, so the visual and the details panel can never disagree.
+  const matchList: TournamentMatchNode[] = Array.isArray(matches) ? (matches as TournamentMatchNode[]) : [];
+  const participantList = (Array.isArray(registrations) ? (registrations as any[]) : []).map((r: any) => ({
+    id: r.id,
+    player_id: r.player_id ?? null,
+    player_name: r.player_name ?? r.player?.name ?? null,
+    seed_rank: r.seed_rank ?? null,
+    status: r.status ?? null,
+  }));
 
   return (
     <Can permission={perms.page}>
@@ -378,6 +402,69 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
           </div>
         )}
 
+        {/* SHARED TOURNAMENT BRACKET — the SAME sport-aware visual bracket every
+            other role sees (player / referee / organizer / admin / super admin),
+            including the existing Print Bracket action. The administrative Matches
+            table below is intentionally KEPT unchanged: the bracket coexists with
+            the operational table and its actions.
+            Actions inside the bracket footer stay permission-gated; the visual is
+            identical for every authorised viewer. */}
+        {activeTab === 'bracket' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold text-[var(--color-text)]">
+                {t('tournamentBracket.tabBracket', 'Bracket')}
+              </h3>
+              {matchList.length > 0 && (
+                <button
+                  onClick={() => {
+                    setPrintRequested(true);
+                    setTimeout(() => {
+                      window.print();
+                      setPrintRequested(false);
+                    }, 50);
+                  }}
+                  className="text-xs text-[var(--color-primary)] hover:underline cz-no-print"
+                >
+                  {t('tournamentBracket.printTitle', 'Tournament Bracket')}
+                </button>
+              )}
+            </div>
+            {loadingM ? <SkeletonRow count={5} />
+              : matchesError ? <p className="text-sm text-[var(--color-error)] text-center py-8">{t('tournamentBracket.error')}</p>
+              : (
+                <TournamentBracket
+                  tournament={tournament}
+                  matches={matchList}
+                  participants={participantList}
+                  currentUserId={user?.id}
+                  onMatchClick={setDetailsMatch}
+                  footer={(m) => (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setDetailsMatch(m); }}
+                        className="text-[10px] text-[var(--color-primary)] hover:underline"
+                      >
+                        {t('tournamentBracket.details', 'Details')}
+                      </button>
+                      {/* Administrative score entry keeps its EXISTING permission. */}
+                      {can('tournaments.enter_scores') && m.match_id != null && m.status !== 'completed' && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/matches/${m.match_id}/result`); }}
+                          className="text-[10px] text-[var(--color-primary)] hover:underline ml-2"
+                        >
+                          {t('tournaments.record_result', 'Record Result')}
+                        </button>
+                      )}
+                    </>
+                  )}
+                />
+              )}
+          </div>
+        )}
+
         {activeTab === 'matches' && (
           <div>
             {loadingM ? <SkeletonRow count={5} /> : (
@@ -539,8 +626,19 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
           open={Boolean(detailsMatch)}
           onClose={() => setDetailsMatch(null)}
           match={detailsMatch}
+          currentUserId={user?.id}
         />
       </div>
+      {printRequested && tournament && (
+        <div className="cz-print-area hidden print:block print-only-area">
+          <TournamentPrintView
+            tournament={tournament}
+            matches={matchList}
+            participants={participantList}
+            currentUserId={user?.id}
+          />
+        </div>
+      )}
     </Can>
   );
 }

@@ -50,8 +50,10 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
   const { t } = useTranslation();
   if (!match) return null;
 
-  const p1N = match.player1_name || (match.player1_id ? `P${match.player1_id}` : t('tournamentBracket.tbd'));
-  const p2N = match.player2_name || (match.player2_id ? `P${match.player2_id}` : hasBye(match) ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
+  // Same side-label rule as MatchCard: player name, then participant name (pair/team
+  // slots and the public read-model expose participant names only), then id/TBD.
+  const p1N = match.player1_name || match.participant1_name || (match.player1_id ? `P${match.player1_id}` : t('tournamentBracket.tbd'));
+  const p2N = match.player2_name || match.participant2_name || (match.player2_id ? `P${match.player2_id}` : hasBye(match) ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
   const p1Mine = isCurrentUser(match.player1_id, currentUserId);
   const p2Mine = isCurrentUser(match.player2_id, currentUserId);
   const score = formatTournamentScore(match);

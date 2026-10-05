@@ -6,12 +6,22 @@ import { formatDateTimeLocal } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
+import { TournamentBracket } from '../../components/tournaments/TournamentBracket';
+import { MatchDetailsDrawer } from '../../components/tournaments/MatchDetailsDrawer';
+import { useAuthStore } from '../../store/auth.store';
+import type { TournamentMatchNode } from '../../types/tournamentBracket';
+
+type AssignmentsTab = 'upcoming' | 'completed' | 'bracket';
 
 export default function RefereeAssignmentsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [tab, setTab] = useState<'upcoming' | 'completed'>('upcoming');
+  // Current-player highlight reuses the existing auth-store user id; the referee
+  // bracket reuses the SAME shared component as every other role.
+  const user = useAuthStore((s) => s.user);
+  const [tab, setTab] = useState<AssignmentsTab>('upcoming');
+  const [detailsMatch, setDetailsMatch] = useState<TournamentMatchNode | null>(null);
 
   const { data: assignments, isLoading } = useQuery({
     queryKey: ['referee-assignments'],
@@ -39,6 +49,26 @@ export default function RefereeAssignmentsPage() {
 
   const rows = tab === 'upcoming' ? upcoming : completed;
 
+  // ── SHARED BRACKET for the referee ────────────────────────────────────────
+  // `GET /referee/assignments` already returns the referee's tournament bracket
+  // slots (`tournament_matches` rows + tournament name). The referee is NOT given
+  // `tournament.view`, so this uses ONLY the referee's own authorised assignment
+  // data — no new endpoint, no RBAC change, no backend change. It is fed into the
+  // SAME shared TournamentBracket every other role uses.
+  const refereeTournamentMatches: TournamentMatchNode[] = Array.isArray(assignments?.tournamentMatches)
+    ? (assignments.tournamentMatches as TournamentMatchNode[])
+    : [];
+  const refereeTournament = refereeTournamentMatches.length > 0
+    ? {
+      id: refereeTournamentMatches[0].tournament_id,
+      name: (refereeTournamentMatches[0] as any).tournament_name ?? null,
+      status: null,
+      format: null,
+      bracket_type_name: null,
+      sport_name: null,
+    }
+    : null;
+
   return (
     <div className="space-y-5 md:space-y-6 pb-4">
       <h1 className="text-xl md:text-2xl font-bold text-[var(--color-text)]">
@@ -62,17 +92,44 @@ export default function RefereeAssignmentsPage() {
         >
           {t('referee.assignments.completed', 'Completed')}
         </button>
+        <button
+          onClick={() => setTab('bracket')}
+          className={`px-4 py-1.5 text-sm font-medium rounded-[var(--radius-md)] transition-colors ${
+            tab === 'bracket' ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          {t('tournamentBracket.tabBracket', 'Bracket')}
+        </button>
       </div>
 
       {isLoading && <SkeletonRow count={5} />}
 
-      {!isLoading && rows.length === 0 && (
+      {!isLoading && rows.length === 0 && tab !== 'bracket' && (
         <p className="text-sm text-[var(--color-text-muted)] py-8 text-center">
           {t('referee.assignments.empty', 'No assignments found')}
         </p>
       )}
 
+      {/* ── Referee bracket — SAME shared TournamentBracket as every other role.
+          Scoped to the referee's own assignments (no RBAC change). Clicking a match
+          opens the SAME shared MatchDetailsDrawer. */}
+      {tab === 'bracket' && (
+        <Can permission="referee.assignments.view">
+          {isLoading ? (
+            <SkeletonRow count={5} />
+          ) : (
+            <TournamentBracket
+              tournament={refereeTournament}
+              matches={refereeTournamentMatches}
+              currentUserId={user?.id}
+              onMatchClick={setDetailsMatch}
+            />
+          )}
+        </Can>
+      )}
+
       <Can permission="referee.assignments.view">
+        {tab !== 'bracket' && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -122,7 +179,16 @@ export default function RefereeAssignmentsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </Can>
+
+      {/* Same shared MatchDetailsDrawer used by player / admin / org. */}
+      <MatchDetailsDrawer
+        open={Boolean(detailsMatch)}
+        onClose={() => setDetailsMatch(null)}
+        match={detailsMatch}
+        currentUserId={user?.id}
+      />
     </div>
   );
 }

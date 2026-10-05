@@ -2660,6 +2660,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournamentBracket.printDate', defaultValue: 'Date', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Print: date label' },
   { key: 'tournamentBracket.seedLegend', defaultValue: '{count} participants · seeds shown where assigned.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Print: seed legend' },
   { key: 'tournamentBracket.tabMatches', defaultValue: 'Matches', moduleSlug: 'tournaments', elementType: 'tab', elementLabel: 'Bracket: matches tab', componentPath: 'pages/tournaments/TournamentDetailPage.tsx' },
+  // Universal bracket reuse — the shared bracket tab shown by admin/org AND referee.
+  { key: 'tournamentBracket.tabBracket', defaultValue: 'Bracket', moduleSlug: 'tournaments', elementType: 'tab', elementLabel: 'Bracket: universal shared bracket tab', componentPath: 'components/tournaments/TournamentBracket.tsx' },
   { key: 'tournamentBracket.bye', defaultValue: 'Bye', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: bye placeholder' },
   { key: 'tournamentBracket.loading', defaultValue: 'Loading…', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: loading state' },
   { key: 'tournamentBracket.error', defaultValue: 'Unable to load the bracket.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: error state' },

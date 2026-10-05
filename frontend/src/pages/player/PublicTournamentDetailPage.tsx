@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { publicTournamentApi } from '../../services/tournament';
 import { Card, Spinner } from '../../components/ui';
+import { TournamentBracket } from '../../components/tournaments/TournamentBracket';
 
 /**
  * G11.16 — Public / anonymous tournament DETAIL.
@@ -89,22 +90,29 @@ export default function PublicTournamentDetailPage() {
         </Card>
       )}
 
+      {/* Replaces the former hand-rolled <ul> list with the ONE shared
+          TournamentBracket, so anonymous visitors get the same sport-aware visual
+          bracket. The public read-model exposes participant names only, which
+          TournamentBracket/MatchCard already fall back to. No auth, no drawer. */}
       {Array.isArray(t.bracket) && t.bracket.length > 0 && (
         <Card>
           <h2 className="font-semibold text-[var(--color-text)] mb-3">Bracket</h2>
-          <ul className="space-y-1.5">
-            {t.bracket.map((m: any) => (
-              <li key={`${m.round}-${m.match_number}`} className="text-sm">
-                <span className="text-[var(--color-text-muted)]">
-                  R{m.round}{m.round_name ? ` · ${m.round_name}` : ''}:
-                </span>{' '}
-                <span className="text-[var(--color-text)]">
-                  {m.participant1_name ?? 'TBD'} vs {m.participant2_name ?? 'TBD'}
-                </span>{' '}
-                <span className="text-[var(--color-text-muted)]">({m.status})</span>
-              </li>
-            ))}
-          </ul>
+          <TournamentBracket
+            tournament={{ id: t.id, name: t.name, format: t.format, bracket_type_name: t.bracket_type, status: t.status, sport_name: t.sport?.name }}
+            matches={(t.bracket as any[]).map((m, i) => ({
+              id: i + 1,
+              round: m.round,
+              round_name: m.round_name,
+              match_number: m.match_number,
+              bracket_position: m.bracket_position,
+              participant1_name: m.participant1_name,
+              participant2_name: m.participant2_name,
+              status: m.status,
+              score_summary: m.score_summary,
+              start_time: m.start_time,
+              progression_state: m.progression_state,
+            }))}
+          />
         </Card>
       )}
 
