@@ -72,13 +72,13 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
           <div className={`flex items-center justify-between ${p1Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
             <span>{p1N}</span>
             {hasResult && <span className="text-sm tabular-nums">{scoreFirst}</span>}
-            {winner === 'p1' && <span className="text-xs text-green-600">✓</span>}
+            {winner === 'p1' && <span className="text-xs text-green-600">Winner</span>}
           </div>
           <div className="text-center text-xs text-[var(--color-text-muted)]">vs</div>
           <div className={`flex items-center justify-between ${p2Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
             <span>{p2N}</span>
             {hasResult && <span className="text-sm tabular-nums">{scoreRest}</span>}
-            {winner === 'p2' && <span className="text-xs text-green-600">✓</span>}
+            {winner === 'p2' && <span className="text-xs text-green-600">Winner</span>}
           </div>
           <Row label={t('tournamentBracket.status')} value={t(STATUS_KEYS[match.status || ''] || 'tournamentBracket.statusUnknown', match.status || '—')} />
           <Row label={t('tournamentBracket.roundLabel')} value={[match.round != null ? t('tournamentBracket.round', { round: match.round }) : null, match.round_name, match.is_final ? t('tournamentBracket.final') : null].filter(Boolean).join(' · ')} />
