@@ -491,6 +491,8 @@ export default function TournamentDetailPage() {
         onClose={() => setDrawerMatch(null)}
         match={drawerMatch}
         currentUserId={user?.id}
+        matches={matchList}
+        onSelectMatch={setDrawerMatch}
       />
     </div>
     {printRequested && (

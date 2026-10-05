@@ -627,6 +627,8 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
           onClose={() => setDetailsMatch(null)}
           match={detailsMatch}
           currentUserId={user?.id}
+          matches={matchList}
+          onSelectMatch={setDetailsMatch}
         />
       </div>
       {printRequested && tournament && (

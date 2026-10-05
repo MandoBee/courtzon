@@ -3,6 +3,7 @@ import { Modal } from '../ui/Modal';
 import { formatDateTime, formatISODate } from '../../utils/formatDate';
 import { formatTournamentScore, hasBye } from '../../utils/tournamentScore';
 import { isCurrentUser } from './playerHighlight';
+import { resolveBracketNavigation } from './matchNavigation';
 import ResultSummaryView from '../match-result/ResultSummaryView';
 import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
@@ -13,6 +14,14 @@ interface MatchDetailsDrawerProps {
   currentUserId?: number | null;
   /** When provided, the shared result view is used for the result section. */
   resultRecord?: unknown | null;
+  /**
+   * Already-loaded bracket rows (the same list feeding TournamentBracket).
+   * When supplied, defensive Previous/Next controls are rendered; when omitted
+   * the drawer behaves exactly as before (no navigation controls).
+   */
+  matches?: TournamentMatchNode[];
+  /** Selects a related match, keeping the drawer open and re-targeting it. */
+  onSelectMatch?: (match: TournamentMatchNode) => void;
 }
 
 const STATUS_KEYS: Record<string, string> = {
@@ -46,7 +55,7 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   );
 }
 
-export function MatchDetailsDrawer({ open, onClose, match, currentUserId, resultRecord }: MatchDetailsDrawerProps) {
+export function MatchDetailsDrawer({ open, onClose, match, currentUserId, resultRecord, matches, onSelectMatch }: MatchDetailsDrawerProps) {
   const { t } = useTranslation();
   if (!match) return null;
 
@@ -63,7 +72,9 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
   const scoreRest = score.split(' ').slice(1).join(' ') || '';
   const winner: 'p1' | 'p2' | 'none' =
     match.winner_id == null ? 'none' : Number(match.winner_id) === Number(match.player1_id) ? 'p1' : Number(match.winner_id) === Number(match.player2_id) ? 'p2' : 'none';
-  const progression = match.progression_meta;
+  // Defensive, pure derivation from already-loaded rows — no network call.
+  const navigation = resolveBracketNavigation(match, matches, currentUserId);
+  const showNavigation = typeof onSelectMatch === 'function' && Array.isArray(matches);
 
   return (
     <Modal open={open} onClose={onClose} title={t('tournamentBracket.matchDetailsTitle')}>
@@ -116,14 +127,35 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
           </Section>
         )}
 
-        {progression && Object.keys(progression).length > 0 && (
-          <Section title={t('tournamentBracket.sectionProgression')}>
-            <div className="text-xs text-[var(--color-text-muted)]">{JSON.stringify(progression)}</div>
-          </Section>
+        {!hasResult && !match.start_time && !match.resource_name && !match.referee_name && (
+          <p className="text-sm text-[var(--color-text-muted)]">{t('tournamentBracket.noDetails')}</p>
         )}
 
-        {!hasResult && !match.start_time && !match.resource_name && !match.referee_name && !progression && (
-          <p className="text-sm text-[var(--color-text-muted)]">{t('tournamentBracket.noDetails')}</p>
+        {showNavigation && (
+          <div className="flex items-center justify-between gap-2 border-t border-[var(--color-border)] pt-4">
+            <button
+              type="button"
+              onClick={() => navigation.prev && onSelectMatch?.(navigation.prev)}
+              disabled={!navigation.prev}
+              aria-label={t('tournamentBracket.prevMatch')}
+              title={t('tournamentBracket.prevMatch')}
+              className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-bg)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span aria-hidden="true">←</span>
+              {t('tournamentBracket.prevMatch')}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigation.next && onSelectMatch?.(navigation.next)}
+              disabled={!navigation.next}
+              aria-label={t('tournamentBracket.nextMatch')}
+              title={t('tournamentBracket.nextMatch')}
+              className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-bg)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t('tournamentBracket.nextMatch')}
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
         )}
       </div>
     </Modal>

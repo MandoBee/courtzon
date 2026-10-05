@@ -2652,6 +2652,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournamentBracket.winner', defaultValue: 'Winner', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Match details: winner label' },
   { key: 'tournamentBracket.scoreStructure', defaultValue: '{structure}', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Match details: score structure' },
   { key: 'tournamentBracket.noDetails', defaultValue: 'No further details available for this match.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Match details: empty state' },
+  { key: 'tournamentBracket.prevMatch', defaultValue: 'Previous match', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Match details: previous bracket match', componentPath: 'components/tournaments/MatchDetailsDrawer.tsx' },
+  { key: 'tournamentBracket.nextMatch', defaultValue: 'Next match', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Match details: next bracket match', componentPath: 'components/tournaments/MatchDetailsDrawer.tsx' },
   { key: 'tournamentBracket.empty', defaultValue: 'Bracket not yet generated.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: empty state' },
   { key: 'tournamentBracket.tbdHint', defaultValue: '{count} match(es) awaiting players.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: TBD players hint' },
   { key: 'tournamentBracket.tableModeHint', defaultValue: 'Round-robin / Swiss style — matches grouped by round ({type}).', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket: table mode hint' },

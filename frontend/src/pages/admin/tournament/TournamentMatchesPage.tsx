@@ -342,6 +342,8 @@ export default function TournamentMatchesPage() {
           open={Boolean(detailsMatch)}
           onClose={() => setDetailsMatch(null)}
           match={detailsMatch}
+          matches={matches as TournamentMatchNode[]}
+          onSelectMatch={setDetailsMatch}
         />
       </div>
     </Can>

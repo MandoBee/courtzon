@@ -188,6 +188,8 @@ export default function RefereeAssignmentsPage() {
         onClose={() => setDetailsMatch(null)}
         match={detailsMatch}
         currentUserId={user?.id}
+        matches={refereeTournamentMatches}
+        onSelectMatch={setDetailsMatch}
       />
     </div>
   );
