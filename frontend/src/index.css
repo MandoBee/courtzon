@@ -1046,3 +1046,22 @@ html[dir="rtl"] {
     animation: none;
   }
 }
+
+
+/* ==========================================================================
+   Tournament Bracket & Match Details — print support
+   .cz-print-area  → only visible when printing
+   .cz-no-print    → hidden when printing
+   ========================================================================== */
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  body * { visibility: hidden; }
+  .cz-print-area, .cz-print-area * { visibility: visible; }
+  .cz-print-area { display: block !important; position: absolute; inset: 0; width: 100%; }
+  .cz-no-print { display: none !important; }
+  nav, aside, .cz-bottom-nav, .cz-drawer, .cz-toast-container { display: none !important; }
+  .print-rounds { flex-direction: row !important; flex-wrap: nowrap; overflow: visible !important; gap: 16px; }
+  .print-rounds > div { min-width: 0 !important; break-inside: avoid; }
+  .print-root { font-size: 12px; }
+  a[href]:after { content: none !important; }
+}

@@ -16,6 +16,11 @@ import { translateEligibilityError } from '../../lib/tournamentEligibility';
 import { formatISODate } from '../../utils/formatDate';
 import { formatPrice } from '../../utils/currency';
 import { useAuthStore } from '../../store/auth.store';
+import { useCan } from '../../hooks/useCan';
+import { TournamentBracket } from '../../components/tournaments/TournamentBracket';
+import { MatchDetailsDrawer } from '../../components/tournaments/MatchDetailsDrawer';
+import { TournamentPrintView } from '../../components/tournaments/TournamentPrintView';
+import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
 type Tab = 'overview' | 'bracket' | 'standings' | 'players';
 
@@ -55,7 +60,10 @@ export default function TournamentDetailPage() {
   const { showToast } = useToast();
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
+  const { can } = useCan();
   const [tab, setTab] = useState<Tab>('overview');
+  const [drawerMatch, setDrawerMatch] = useState<TournamentMatchNode | null>(null);
+  const [printRequested, setPrintRequested] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerMethod, setRegisterMethod] = useState<'cash' | 'card' | ''>('');
   // G11.18 Phase 2 — the player selects a competition category when the
@@ -150,7 +158,8 @@ export default function TournamentDetailPage() {
     : null;
 
   return (
-    <div className="space-y-6">
+    <>
+    <div className="space-y-6 cz-no-print">
       <button onClick={() => navigate('/tournaments')} className="text-sm text-[var(--color-primary)] hover:underline">← Back to Tournaments</button>
 
       {/* Header */}
@@ -175,7 +184,7 @@ export default function TournamentDetailPage() {
           <div><span className="text-[var(--color-text-muted)]">Organisation:</span> <span className="font-medium">{tournament.organisation_name || '—'}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Venue:</span> <span className="font-medium">{venue ? venue.name : '—'}</span>
             {venue?.mapsUrl && (
-              <a href={venue.mapsUrl} target="_blank" rel="noreferrer" className="block text-xs text-[var(--color-primary)] underline">Open in Maps</a>
+              <a href={venue.mapsUrl} target="_blank" rel="noreferrer" className="block text-xs text-[var(--color-primary)] underline">View on Map</a>
             )}
           </div>
           <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{participantList.length}/{tournament.max_participants}</span></div>
@@ -288,42 +297,42 @@ export default function TournamentDetailPage() {
       {/* Bracket Tab */}
       {tab === 'bracket' && (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
-          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Bracket</h2>
-          {matchList.length === 0 ? (
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-sm font-semibold text-[var(--color-text)]">Bracket</h2>
+            {matchList.length > 0 && (
+              <button
+                onClick={() => {
+                  setPrintRequested(true);
+                  setTimeout(() => {
+                    window.print();
+                    setPrintRequested(false);
+                  }, 50);
+                }}
+                className="text-xs text-[var(--color-primary)] hover:underline"
+              >
+                Print Bracket
+              </button>
+            )}
+          </div>
+          <TournamentBracket
+            tournament={tournament}
+            matches={matchList}
+            participants={participantList}
+            currentUserId={user?.id}
+            onMatchClick={setDrawerMatch}
+            footer={(m) =>
+              can('tournaments.enter_scores') && m.status !== 'completed' && m.match_id != null ? (
+                <button
+                  onClick={() => navigate(`/matches/${m.match_id}/result`)}
+                  className="text-[10px] text-[var(--color-primary)] hover:underline"
+                >
+                  Enter Score
+                </button>
+              ) : null
+            }
+          />
+          {matchList.length === 0 && (
             <p className="text-xs text-[var(--color-text-muted)] text-center py-8">Bracket not yet generated.</p>
-          ) : (
-            <div className="space-y-4">
-              {Array.from(new Set(matchList.map((m: any) => m.round))).sort().map(round => (
-                <div key={round}>
-                  <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase mb-2">Round {round}</h3>
-                  <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-                    {matchList.filter((m: any) => m.round === round).map((m: any) => (
-                      <div key={m.id} className="bg-[var(--color-bg)] rounded-lg p-3 space-y-2 border border-[var(--color-border)]">
-                        <div className="flex justify-between text-xs">
-                          <span className="font-medium">{m.player1_name || (m.player1_id ? `P${m.player1_id}` : 'TBD')}</span>
-                          {m.winner_id === m.player1_id && <span className="text-green-600">✓</span>}
-                        </div>
-                        <div className="text-center text-xs text-[var(--color-text-muted)]">vs</div>
-                        <div className="flex justify-between text-xs">
-                          <span className="font-medium">{m.player2_name || (m.player2_id ? `P${m.player2_id}` : 'TBD')}</span>
-                          {m.winner_id === m.player2_id && <span className="text-green-600">✓</span>}
-                        </div>
-                        {m.score_summary && <div className="text-center text-xs font-medium">{m.score_summary}</div>}
-                        <div className="flex justify-between items-center mt-1">
-                          <span className={`text-[10px] px-1 py-0.5 rounded ${m.status === 'completed' ? 'bg-green-100 text-green-700' : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{m.status}</span>
-                          <Can permission="tournaments.enter_scores">
-                            {m.status !== 'completed' && m.match_id != null && (
-                              <button onClick={() => navigate(`/matches/${m.match_id}/result`)}
-                                className="text-[10px] text-[var(--color-primary)] hover:underline">Enter Score</button>
-                            )}
-                          </Can>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
         </div>
       )}
@@ -446,6 +455,20 @@ export default function TournamentDetailPage() {
           )}
         </div>
       </Modal>
+      <MatchDetailsDrawer
+        open={Boolean(drawerMatch)}
+        onClose={() => setDrawerMatch(null)}
+        match={drawerMatch}
+        currentUserId={user?.id}
+      />
     </div>
+    {printRequested && (
+      <div className="cz-print-area hidden print:block print-only-area">
+        {tournament && (
+          <TournamentPrintView tournament={tournament} matches={matchList} participants={participantList} currentUserId={user?.id} />
+        )}
+      </div>
+    )}
+    </>
   );
 }
