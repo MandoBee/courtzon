@@ -18,6 +18,7 @@ import { formatPrice } from '../../utils/currency';
 import { useAuthStore } from '../../store/auth.store';
 import { useCan } from '../../hooks/useCan';
 import { TournamentBracket } from '../../components/tournaments/TournamentBracket';
+import { matchPredictionLabel } from '../../components/tournaments/matchSideLabel';
 import { MatchCard } from '../../components/tournaments/MatchCard';
 import { MatchDetailsDrawer } from '../../components/tournaments/MatchDetailsDrawer';
 import { TournamentPrintView } from '../../components/tournaments/TournamentPrintView';
@@ -275,7 +276,7 @@ export default function TournamentDetailPage() {
                 {matchList.map((m: any, i: number) => (
                   <div key={m.id ?? i} className="flex items-center justify-between text-xs py-1 border-b border-[var(--color-border)] last:border-0">
                     <span>R{m.round} M{m.bracket_position ?? m.match_number}</span>
-                    <span className="text-[var(--color-text-muted)]">{m.player1_name || `P${m.player1_id || '—'}`} vs {m.player2_name || `P${m.player2_id || '—'}`}</span>
+                    <span className="text-[var(--color-text-muted)]">{matchPredictionLabel(m, t)}</span>
                     <span className={`px-1.5 py-0.5 rounded ${m.status === 'completed' ? 'bg-green-100 text-green-700' : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{m.status}</span>
                   </div>
                 ))}

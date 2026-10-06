@@ -335,3 +335,106 @@ describe('TournamentDetailPage — venue, map + daily playing window (Group 4)',
     expect(grid).toBeTruthy();
   });
 });
+
+describe('TournamentDetailPage — overview prediction line (no internal ids)', () => {
+  /** Prediction labels of the "Match Summary" card (middle span of every row). */
+  function predictionLines(): string[] {
+    const heading = screen.getByText('Match Summary');
+    const card = heading.parentElement as HTMLElement;
+    const rows = Array.from(card.querySelectorAll('div.flex.items-center.justify-between'));
+    return rows.map((row) => {
+      const spans = row.querySelectorAll('span');
+      return (spans[1]?.textContent ?? '').trim();
+    });
+  }
+
+  async function renderWithMatches(matches: any[]) {
+    __state.matches = matches;
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+    await waitFor(() => expect(predictionLines().length).toBeGreaterThan(0));
+    return predictionLines();
+  }
+
+  const idOnlyMatch = (id: number) => ({
+    id, round: 1, bracket_position: 0, match_number: 1,
+    player1_id: 701, player2_id: 702, status: 'scheduled', match_id: 900 + id,
+  });
+
+  it('shows the real player names when they are available', async () => {
+    const lines = await renderWithMatches([
+      { id: 31, round: 1, bracket_position: 0, match_number: 1,
+        player1_id: 42, player1_name: 'Ali', player2_id: 43, player2_name: 'Sara',
+        status: 'scheduled', match_id: 931 },
+    ]);
+    expect(lines).toEqual(['Ali vs Sara']);
+  });
+
+  it('falls back to the participant display name (pair/team slots)', async () => {
+    const lines = await renderWithMatches([
+      { id: 32, round: 1, bracket_position: 0, match_number: 1,
+        participant1_name: 'Team Alpha', participant2_name: 'Team Bravo',
+        status: 'scheduled', match_id: 932 },
+    ]);
+    expect(lines).toEqual(['Team Alpha vs Team Bravo']);
+  });
+
+  it('keeps the Bye presentation for an unassigned side', async () => {
+    const lines = await renderWithMatches([
+      { id: 33, round: 1, bracket_position: 0, match_number: 1,
+        player1_name: 'Ali', player2_id: null, match_id: null, status: 'scheduled' },
+    ]);
+    expect(lines).toEqual(['Ali vs Bye']);
+  });
+
+  it('keeps the TBD presentation for an unassigned side', async () => {
+    const lines = await renderWithMatches([
+      { id: 34, round: 1, bracket_position: 0, match_number: 1,
+        player1_id: null, player2_id: null, match_id: 934, status: 'scheduled' },
+    ]);
+    expect(lines[0]).toContain('TBD');
+    expect(lines[0]).not.toMatch(/\bP\d+\b/);
+  });
+
+  it('never renders P{id} for a participant that only has an internal id', async () => {
+    const lines = await renderWithMatches([idOnlyMatch(35)]);
+    expect(lines[0]).not.toMatch(/\bP\d+\b/);
+    expect(lines[0]).not.toMatch(/\b70[12]\b/);
+    expect(lines[0]).toBe('Not available');
+  });
+
+  it('keeps the vs structure but no raw ids when only one side has a name', async () => {
+    const lines = await renderWithMatches([
+      { id: 36, round: 1, bracket_position: 0, match_number: 1,
+        player1_id: 42, player1_name: 'Ali', player2_id: 702, status: 'scheduled', match_id: 936 },
+    ]);
+    expect(lines[0]).toBe('Ali vs Not available');
+    expect(lines[0]).not.toMatch(/\bP\d+\b/);
+    expect(lines[0]).not.toContain('702');
+  });
+
+  it('never exposes raw numeric participant ids anywhere in the prediction line', async () => {
+    const lines = await renderWithMatches([idOnlyMatch(37), idOnlyMatch(38)]);
+    for (const line of lines) {
+      expect(line).not.toMatch(/\bP\d+\b/);
+      expect(line).not.toMatch(/\b\d{3,}\b/);
+      expect(line).not.toContain('#');
+    }
+  });
+
+  it('keeps the existing prediction-line behavior intact when valid names exist', async () => {
+    const lines = await renderWithMatches([
+      { id: 39, round: 1, bracket_position: 0, match_number: 1,
+        player1_id: 42, player1_name: 'Ali', player2_id: 43, player2_name: 'Sara',
+        winner_id: 42, status: 'completed', score_summary: '6-4 6-3', match_id: 939 },
+      { id: 40, round: 2, bracket_position: 0, match_number: 2,
+        player1_id: 44, player1_name: 'Nour', player2_id: 43, player2_name: 'Sara',
+        status: 'scheduled', match_id: 940 },
+    ]);
+    expect(lines).toEqual(['Ali vs Sara', 'Nour vs Sara']);
+    // Round/status cells around the prediction line are untouched.
+    expect(screen.getByText('R1 M0')).toBeTruthy();
+    expect(screen.getByText('completed')).toBeTruthy();
+  });
+});
