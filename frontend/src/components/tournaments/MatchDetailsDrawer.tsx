@@ -103,7 +103,7 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
     ) : null;
 
   return (
-    <Modal open={open} onClose={onClose} title={t('tournamentBracket.matchDetailsTitle')}>
+    <Modal open={open} onClose={onClose} title={t('tournamentBracket.matchDetailsTitle')} a11yDialog>
       <div className="space-y-5">
         <Section title={t('tournamentBracket.sectionMatch')}>
           <div className={`flex items-center gap-3 ${rowTone(p1Mine, 'p1')}`}>
