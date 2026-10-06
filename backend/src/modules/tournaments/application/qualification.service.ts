@@ -88,6 +88,15 @@ export class QualificationService {
         participantId: Number(p.id),
         seed: p.seed_number != null ? Number(p.seed_number) : null,
       });
+      // Step 3B-5C — `tournament_standings.registration_id` is persisted as the
+      // participant's REGISTRATION id (FK to tournament_registrations), so the
+      // standings key must ALSO resolve to the participant.
+      if (p.registration_id != null) {
+        knownUsers.set(Number(p.registration_id), {
+          participantId: Number(p.id),
+          seed: p.seed_number != null ? Number(p.seed_number) : null,
+        });
+      }
     }
 
     // 3. Groups must all exist and be fully ranked.

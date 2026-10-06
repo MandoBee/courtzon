@@ -55,7 +55,12 @@ export function createTournamentProgressionWorkers(): Worker[] {
   ];
 }
 
-async function handleProgressionEvent(envelope: EventEnvelope): Promise<void> {
+/**
+ * The single production progression processor (mirror + progress). Exported so
+ * the integration harness can invoke the EXACT production function the BullMQ
+ * subscriber worker runs (deterministic, no duplicated business logic).
+ */
+export async function handleProgressionEvent(envelope: EventEnvelope): Promise<void> {
   const data = envelope.payload as any;
   if (!data?.matchId || !data?.resultId) {
     log.warn({ eventId: envelope.eventId, eventName: envelope.eventName }, 'progression.event.missing_payload');

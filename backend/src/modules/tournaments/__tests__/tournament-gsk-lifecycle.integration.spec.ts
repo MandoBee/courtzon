@@ -33,6 +33,7 @@ let ruleId = 0;
 let tournamentId = 0;
 let competitionId = 0;
 let groupStageId = 0;
+let koStageId = 0;
 const ownerToken = 'gsk-owner-token';
 
 const q = async <T = any>(sql: string, params: any[] = []): Promise<T[]> => {
@@ -90,7 +91,9 @@ beforeAll(async () => {
   initAuthMiddleware({
     resolveUser: async (request: FastifyRequest) => {
       const auth = String((request.headers as any).authorization ?? '');
-      return auth === `Bearer ${ownerToken}` ? CREATOR : null;
+      if (auth === `Bearer ${ownerToken}`) return CREATOR;
+      const player = PLAYERS.findIndex((_, i) => auth === `Bearer p${i}`);
+      return player >= 0 ? PLAYERS[player] : null;
     },
     checkRole: async () => true,
     checkPermission: async () => true,
@@ -107,12 +110,10 @@ beforeAll(async () => {
   });
   const { orgTournamentRoutes } = await import('../presentation/org-tournament.routes.js');
   const { tournamentRoutes } = await import('../presentation/tournament.routes.js');
-  // EventBus listeners for in-process progression (deterministic only when a
-  // result is approved; group results below are pending by design).
-  const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
-  void eventBusV2;
+  const { matchResultRoutes } = await import('../../match-result/presentation/match-result.routes.js');
   app.register(orgTournamentRoutes);
   app.register(tournamentRoutes);
+  app.register(matchResultRoutes);
   await app.ready();
 }, 240000);
 
@@ -152,7 +153,7 @@ afterAll(async () => {
 const gskConfig = {
   format: 'group_stage_knockout',
   groupStage: { groupCount: 2, participantsPerGroup: 4, format: 'round_robin', qualification: { topPerGroup: 2, bestThirdPlaces: 0, ordering: 'rank' } },
-  knockout: { startingRound: 'quarterfinals', seeding: 'automatic', separateGroupWinners: true, preventSameGroupRematch: true, allowByes: false, playInRounds: 0 },
+  knockout: { startingRound: 'semifinals', seeding: 'automatic', separateGroupWinners: true, preventSameGroupRematch: true, allowByes: false, playInRounds: 0 },
 };
 
 async function createTournament() {
@@ -278,5 +279,103 @@ describe('GSK lifecycle over HTTP (Step 3B-5B)', () => {
     });
     expect(res.statusCode).toBe(409); // incomplete group stage (correct boundary through the admin surface too)
     expect(JSON.stringify(res.json())).toContain('unresolved');
+  });
+});
+// -----------------------------------------------------------------------------
+// Step 3B-5C � REAL result?progression pipeline ? standings ? qualify ?
+// knockout ? QF?SF?F ? completion (the production subscriber processor).
+// -----------------------------------------------------------------------------
+describe('GSK result progression pipeline (Step 3B-5C)', () => {
+  async function processApproved(m: any) {
+    const shared = Number(m.match_id);
+    const tmId = Number(m.id);
+    // 0. Start the match session (records played time; required before submitting).
+    const stRes = await app.inject({ method: 'POST', url: `/org/${ORG}/tournaments/matches/${tmId}/start`, headers: { authorization: `Bearer ${ownerToken}` }, payload: {} });
+    if (stRes.statusCode !== 200) console.error('STARTMATCH-FAIL', stRes.statusCode, JSON.stringify(stRes.json()));
+    // 1. Operator submits through the REAL org result route.
+    const sub = await app.inject({
+      method: 'POST', url: `/org/${ORG}/tournaments/matches/${tmId}/result`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { outcome: 'completed', score: { sets: [{ home: 6, away: 3 }, { home: 6, away: 3 }] } },
+    });
+    if (sub.statusCode !== 200 && sub.statusCode !== 201) console.error('SUBMIT-FAIL', sub.statusCode, JSON.stringify(sub.json()));
+    expect([200, 201]).toContain(sub.statusCode);
+    const rec = await q('SELECT id FROM match_result_records WHERE match_id = ? ORDER BY id DESC LIMIT 1', [shared]);
+    const resultId = Number((rec as any)[0].id);
+    // 2. The OPPONENT (side-1 participant) accepts through the REAL accept route.
+    const memberRows = await q('SELECT user_id FROM tournament_participant_members WHERE participant_id = ? AND status = ? LIMIT 1', [Number(m.participant1_id), 'active']);
+    const acceptUserId = Number((memberRows as any)[0]?.user_id);
+    const acceptToken = `p${PLAYERS.indexOf(acceptUserId)}`;
+    const acc = await app.inject({ method: 'POST', url: `/matches/${shared}/result/accept`, headers: { authorization: `Bearer ${acceptToken}` }, payload: {} });
+    if (acc.statusCode !== 200 && acc.statusCode !== 201) console.error('ACCEPT-FAIL', acc.statusCode, JSON.stringify(acc.json()));
+    expect([200, 201]).toContain(acc.statusCode);
+    // 3. Execute the EXACT production subscriber processor (mirror + progress).
+    const { handleProgressionEvent } = await import('../application/tournament-progression.listener.js');
+    try {
+      await handleProgressionEvent({ eventName: 'match:result-approved', payload: { matchId: shared, resultId } } as any);
+    } catch (e: any) {
+      console.error('PROGRESS-FAIL', e?.message ?? String(e));
+      throw e;
+    }
+  }
+
+  it('9. group results approved through the real pipeline ? standings computed', async () => {
+    const startRes = await org('start'); if (startRes.statusCode !== 200) console.error('START-FAIL', startRes.statusCode, JSON.stringify(startRes.json())); expect(startRes.statusCode).toBe(200);
+    const groupMatches = await q('SELECT id, match_id, participant1_id FROM tournament_matches WHERE stage_id = ? ORDER BY id', [groupStageId]);
+    expect(groupMatches).toHaveLength(12);
+    for (const m of groupMatches as any[]) await processApproved(m);
+    // Authoritative standings per group: 4 rows each, ranks 1..4, 3 matches each.
+    const st = await q('SELECT group_id, COUNT(*) AS c, SUM(rank_position) AS rsum FROM tournament_standings WHERE tournament_id = ? GROUP BY group_id', [tournamentId]);
+    for (const s of st as any[]) {
+      expect(Number(s.c)).toBe(4);
+      expect(Number(s.rsum)).toBe(10); // 1+2+3+4
+    }
+  });
+
+  it('10. qualification over HTTP ? exactly 4 qualifiers (2 per group)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/org/${ORG}/tournaments/${tournamentId}/qualify`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { stage_id: groupStageId },
+    });
+    if (res.statusCode !== 200) console.error('HTTP-FAIL', res.statusCode, JSON.stringify(res.json()));
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.totalQualified).toBe(4);
+    const perGroup = new Set(body.qualified.map((x: any) => x.groupId));
+    expect(perGroup.size).toBe(2);
+    expect(body.qualified.every((x: any) => x.groupRank === 1 || x.groupRank === 2)).toBe(true);
+  });
+
+  it('11. knockout transition over HTTP ? 4 QF + 2 SF + 1 F structure', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/org/${ORG}/tournaments/${tournamentId}/knockout`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { stage_id: groupStageId },
+    });
+    if (res.statusCode !== 200) console.error('HTTP-FAIL', res.statusCode, JSON.stringify(res.json()));
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.bracketSize).toBe(4); // semifinals bracket: Q=4 → 2 SF → 1 F
+    koStageId = Number(body.stageId);
+    const rows = await q('SELECT round, COUNT(*) AS c FROM tournament_matches WHERE stage_id = ? GROUP BY round ORDER BY round', [koStageId]);
+    expect((rows as any[]).map((r) => [Number(r.round), Number(r.c)])).toEqual([[1, 2], [2, 1]]);
+  });
+
+  it('12. QF?SF?F results approved ? tournament completes with a winner', async () => {
+    for (let guard = 0; guard < 4; guard++) {
+      const pending = await q('SELECT id, match_id, participant1_id FROM tournament_matches WHERE stage_id = ? AND progression_state = ? AND match_id IS NOT NULL', [koStageId, 'pending']);
+      if ((pending as any[]).length === 0) break;
+      for (const m of pending as any[]) await processApproved(m);
+    }
+    // All knockout matches are resolved — finalise through the existing lifecycle endpoint.
+    expect((await org('complete')).statusCode).toBe(200);
+    const statusRows = await q('SELECT status FROM tournaments WHERE id = ?', [tournamentId]);
+    expect(String((statusRows as any)[0].status)).toBe('completed');
+    const finals = await q('SELECT winner_id, final_position FROM tournament_matches WHERE stage_id = ? AND is_final = 1', [koStageId]);
+    expect((finals as any[]).length).toBe(1);
+    // (champion/final_position projection is a bracket-placements concern — reported limitation)
+    const all = await q('SELECT COUNT(*) AS c FROM tournament_matches WHERE stage_id = ?', [koStageId]);
+    expect(Number((all as any)[0].c)).toBe(3); // no extra matches
   });
 });

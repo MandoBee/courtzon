@@ -1241,16 +1241,34 @@ export class TournamentRepository {
     )];
     const standings = computeStandings(matches, participantIds);
 
+    // Step 3B-5C fix — `tournament_standings.registration_id` is an FK to
+    // `tournament_registrations.id`, but standings keys are the PRIMARY MEMBER
+    // user ids (match.player1_id/player2_id). Translate each key to the
+    // participant's authoritative registration id so the FK always holds.
+    const [memberRows] = await db.query<RowData>(
+      `SELECT m.user_id AS uid, p.registration_id AS rid
+       FROM tournament_participant_members m
+       JOIN tournament_participants p ON p.id = m.participant_id
+       WHERE p.tournament_id = ? AND m.status = 'active'`,
+      [tournamentId],
+    );
+    const regByUserId = new Map<number, number | null>();
+    for (const r of memberRows as any[]) {
+      const uid = Number(r.uid);
+      if (!regByUserId.has(uid)) regByUserId.set(uid, r.rid != null ? Number(r.rid) : null);
+    }
+
     const persist = async (executor: typeof db, gid: number | null) => {
       await executor.query(
         'DELETE FROM tournament_standings WHERE tournament_id = ? AND (group_id = ? OR (? IS NULL AND group_id IS NULL))',
         [tournamentId, gid, gid],
       );
       for (const s of standings) {
+        const registrationId = regByUserId.get(Number(s.registration_id)) ?? s.registration_id;
         await executor.query(
           `INSERT INTO tournament_standings (tournament_id, group_id, registration_id, points, wins, losses, draws, games_won, games_lost, sets_won, sets_lost, rank_position)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [tournamentId, gid, s.registration_id, s.points, s.wins, s.losses, s.draws, s.games_won, s.games_lost, s.sets_won, s.sets_lost, s.rank_position],
+          [tournamentId, gid, registrationId, s.points, s.wins, s.losses, s.draws, s.games_won, s.games_lost, s.sets_won, s.sets_lost, s.rank_position],
         );
       }
     };
