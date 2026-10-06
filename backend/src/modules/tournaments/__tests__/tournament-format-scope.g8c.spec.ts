@@ -160,14 +160,18 @@ describe('G8-C — tournament format scope (engine-executable contract)', () => 
     expect(stored.format).toBe('round_robin');
   });
 
-  it('an explicit engine-unsupported format is rejected at create (double_elimination / swiss / group_stage_knockout / league / custom)', async () => {
-    for (const bad of ['double_elimination', 'swiss', 'group_stage_knockout', 'league', 'custom']) {
+  it('deferred/unsupported formats are rejected at create (double_elimination / swiss / league / custom)', async () => {
+    for (const bad of ['double_elimination', 'swiss', 'league', 'custom']) {
       repo.create.mockClear();
       repo.findBracketTypeById.mockResolvedValue(SE_BRACKET);
       await expect(svc.create(makeTournament({ format: bad }), 1))
         .rejects.toMatchObject({ errorCode: ErrorCodes.TOURNAMENT_FORMAT_NOT_SUPPORTED });
       expect(repo.create).not.toHaveBeenCalled();
     }
+    // Step 3B-5A — `group_stage_knockout` is the explicit GSK CREATION contract
+    // (see tournament-gsk-create-contract.spec.ts): it is NOT part of
+    // ENGINE_EXECUTABLE_FORMATS but it IS accepted at creation with a validated
+    // gsk_config + single-elimination bracket substrate.
   });
 
   it('a bracket change to an unsupported engine format is rejected at update', async () => {

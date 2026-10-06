@@ -61,13 +61,22 @@ export const TournamentSponsorSchema = z.object({
 
 export const CreateTournamentSchema = z.object({
   bracket_type_id: z.number().int().positive(),
-  // G8-C — the ONLY competition formats the draw/match engine can execute are
-  // knockout and round_robin. All other `TournamentFormat` strings
-  // (double_elimination, swiss, group_stage_knockout, league, custom, mixed) are
-  // reserved for future engines and are intentionally NOT part of the create
-  // API contract. The authoritative value is derived server-side from the
-  // bracket type; a client-supplied format is validated for engine capability.
-  format: z.enum(['knockout', 'round_robin']).default('knockout'),
+  // G8-C — the ONLY ready-to-execute competition formats are knockout and
+  // round_robin. Step 3B-5A adds the explicit CREATION contract for
+  // `group_stage_knockout` (a valid configuration may be created; groups/knockout
+  // are generated later through the explicit prepare lifecycle). The stored
+  // `format` is derived server-side from the bracket type for knockout/round_robin;
+  // for group_stage_knockout it is requested explicitly and validated against a
+  // `gsk_config`. double_elimination / swiss / league / custom / mixed remain
+  // intentionally rejected — never advertised as executable.
+  format: z.enum(['knockout', 'round_robin', 'group_stage_knockout']).default('knockout'),
+  /**
+   * Step 3B-5A — validated GSK configuration. Required iff `format ===
+   * 'group_stage_knockout'` (structure validated exactly like a stage config);
+   * otherwise it must be absent. Uses the SAME contract as
+   * `CreateStageSchema.config` — no duplicate schema.
+   */
+  gsk_config: z.lazy(() => GskConfigurationSchema).optional(),
   category: z.string().optional(),
   season: z.string().optional(),
   sport_id: z.number().int().positive().optional(),
@@ -129,7 +138,20 @@ export const CreateTournamentSchema = z.object({
   //     payload can create an org-less tournament.
   //   * tournament_type is derived server-side and is always `community` — the
   //     CourtZon platform never owns a tournament, so `platform` no longer exists.
-});
+})
+  // Step 3B-5A — GSK coupling: `gsk_config` is REQUIRED for `group_stage_knockout`
+  // and FORBIDDEN otherwise. The inner structure is validated by
+  // `GskConfigurationSchema` (groupCount ≥ 1, participantsPerGroup ≥ 2,
+  // topPerGroup ∈ [1, participantsPerGroup], bestThirdPlaces ∈ [0, groupCount],
+  // valid ordering/startingRound/seeding/booleans, playInRounds ≥ 0).
+  .superRefine((v, ctx) => {
+    if (v.format === 'group_stage_knockout' && (!v.gsk_config || v.gsk_config.format !== 'group_stage_knockout')) {
+      ctx.addIssue({ code: 'custom', message: 'group_stage_knockout requires a valid gsk_config', path: ['gsk_config'] });
+    }
+    if (v.format !== 'group_stage_knockout' && v.gsk_config != null) {
+      ctx.addIssue({ code: 'custom', message: 'gsk_config is only valid for group_stage_knockout', path: ['gsk_config'] });
+    }
+  });
 
 export const UpdateTournamentSchema = z.object({
   bracket_type_id: z.number().int().positive().optional(),

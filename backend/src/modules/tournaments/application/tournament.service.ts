@@ -113,12 +113,13 @@ export class TournamentService {
     // actually supported by the current engine. Deferred types (double
     // elimination, swiss) are config-visible but unavailable for creation.
     await this.assertBracketTypeAvailable(data.bracket_type_id);
-    // G8-C — the authoritative competition format is DERIVED from the bracket
-    // type (single-elimination → knockout, round-robin → round_robin) so the
-    // stored `format` always matches what the draw/match engine can execute.
-    // A client-supplied format is never trusted: it is validated for engine
-    // capability, then the bracket-derived value wins (single source of truth).
-    if (data.format != null && !(ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(data.format)) {
+    // Step 3B-5A — the creation contract additionally accepts an EXPLICIT
+    // `group_stage_knockout` request (a valid GSK configuration — groups/knockout
+    // are generated later through the explicit prepare lifecycle). The reserved
+    // future formats (double_elimination, swiss, league, custom, mixed) are still
+    // rejected at creation — never advertised as executable.
+    const CREATION_SUPPORTED_FORMATS = [...(ENGINE_EXECUTABLE_FORMATS as readonly string[]), 'group_stage_knockout'];
+    if (data.format != null && !CREATION_SUPPORTED_FORMATS.includes(data.format)) {
       throw new AppError(
         `Tournament format "${data.format}" is not supported by the current engine — supported: ${ENGINE_EXECUTABLE_FORMATS.join(', ')}`,
         422,
@@ -127,10 +128,20 @@ export class TournamentService {
       );
     }
     const bracketCtx = await this.resolveBracketContext(data.bracket_type_id);
-    if (bracketCtx?.slug != null && (ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(this.engineFormatForBracketSlug(bracketCtx.slug))) {
+    if (data.format !== 'group_stage_knockout' && bracketCtx?.slug != null && (ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(this.engineFormatForBracketSlug(bracketCtx.slug))) {
       // Overwrite with the authoritative derived format (the engine branches on
       // `t.format`; the bracket type is the product's selectable driver).
       data = { ...data, format: this.engineFormatForBracketSlug(bracketCtx.slug) as TournamentFormat };
+    }
+    // Step 3B-5A — GSK substrate + configuration guard at the service boundary.
+    if (data.format === 'group_stage_knockout') {
+      const gskConfig = (data as any).gsk_config;
+      if (!gskConfig || gskConfig.format !== 'group_stage_knockout') {
+        throw new ConflictError('group_stage_knockout requires a valid gsk_config', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      }
+      if (bracketCtx?.slug !== 'single-elimination') {
+        throw new ConflictError('group_stage_knockout requires the single-elimination bracket substrate (its knockout stage is single elimination)', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      }
     }
     // Group 5B-SR — commission is derived from the organisation's authoritative
     // active subscription/plan. The client can never supply it.
@@ -208,6 +219,28 @@ export class TournamentService {
       gender_categories: effectiveData.gender_categories,
       level_ids: effectiveData.level_ids,
     });
+    // Step 3B-5A — GSK tournaments receive their Group Stage skeleton at
+    // creation (stage_order 1, round-robin, validated GSK config). NO groups or
+    // matches are generated here — those stay explicit prepare/generate steps.
+    if (data.format === 'group_stage_knockout' && (data as any).gsk_config) {
+      const stageCompetition = await competitionService.resolveRegistrationCompetition(id, null);
+      const stageCompetitionId = stageCompetition?.id != null ? Number(stageCompetition.id) : null;
+      if (stageCompetitionId == null) {
+        throw new ConflictError('A competition context is required for GSK stage creation', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      }
+      await tournamentRepository.createStage({
+        tournament_id: id,
+        competition_id: stageCompetitionId,
+        stage_order: 1,
+        name: 'Group Stage',
+        progression_format: 'round_robin',
+        match_format_id: effectiveData.match_format_id,
+        rule_set_id: effectiveData.rule_set_id,
+        advance_count: Number((data as any).gsk_config.groupStage.qualification.topPerGroup),
+        status: 'pending',
+        config: (data as any).gsk_config as unknown as Record<string, unknown>,
+      });
+    }
     if (prizes.length > 0) {
       await tournamentRepository.replacePrizes(id, prizes);
     }
@@ -221,6 +254,13 @@ export class TournamentService {
       await tournamentRepository.update(id, { description: generated });
     }
     const tournament = await tournamentRepository.findById(id);
+    // Step 3B-5A — the create response must not falsely report competition
+    // readiness: for GSK it carries the validated config and an explicit
+    // `competition_prepared=false` (groups/knockout are generated later).
+    if (data.format === 'group_stage_knockout' && (data as any).gsk_config) {
+      (tournament as any).gsk_config = (data as any).gsk_config;
+      (tournament as any).competition_prepared = false;
+    }
     eventBusV2.emit('tournament:created', { tournamentId: id, name: data.name, format: data.format, ...this.tournamentRealtimeScope(tournament!) } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
     });
