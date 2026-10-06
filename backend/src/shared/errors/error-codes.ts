@@ -196,6 +196,9 @@ export const ErrorCodes = {
   TOURNAMENT_GROUP_STAGE_INVALID: 'TOURNAMENT_GROUP_STAGE_INVALID',
   /** The participant count is incompatible with the requested group configuration. */
   TOURNAMENT_GROUP_CONFIG_INVALID: 'TOURNAMENT_GROUP_CONFIG_INVALID',
+  // ── Step 3B-3 — GSK qualification ──
+  /** The qualification configuration/state is impossible (missing groups/standings, duplicates, unsatisfiable best-thirds). */
+  TOURNAMENT_QUALIFICATION_INVALID: 'TOURNAMENT_QUALIFICATION_INVALID',
   TOURNAMENT_SCHEDULE_INVALID: 'TOURNAMENT_SCHEDULE_INVALID',
   TOURNAMENT_COURT_NOT_ELIGIBLE: 'TOURNAMENT_COURT_NOT_ELIGIBLE',
   TOURNAMENT_COURT_UNAVAILABLE: 'TOURNAMENT_COURT_UNAVAILABLE',
