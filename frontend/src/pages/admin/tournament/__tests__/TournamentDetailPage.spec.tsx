@@ -4,43 +4,63 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentDetailPage from '../TournamentDetailPage';
 
+function lifecycleApi() {
+  return {
+    getTournament: vi.fn(),
+    getGroups: vi.fn(),
+    getMatches: vi.fn(),
+    getStandings: vi.fn(),
+    getRegistrations: vi.fn(),
+    getFinances: vi.fn(),
+    updateTournament: vi.fn(),
+    listCompetitions: vi.fn(),
+    register: vi.fn(),
+    cancelRegistration: vi.fn(),
+    confirmRegistration: vi.fn(),
+    generateGroups: vi.fn(),
+    publish: vi.fn(),
+    openRegistration: vi.fn(),
+    closeRegistration: vi.fn(),
+    start: vi.fn(),
+    complete: vi.fn(),
+    cancel: vi.fn(),
+    archive: vi.fn(),
+  };
+}
+
+function participantApi() {
+  return {
+    getParticipants: vi.fn(),
+    getCurrentDraw: vi.fn(),
+    getWaitlist: vi.fn(),
+    listReplacementRequests: vi.fn(),
+    generateDraw: vi.fn(),
+    approveDraw: vi.fn(),
+    lockDraw: vi.fn(),
+    validateDraw: vi.fn(),
+    moveParticipant: vi.fn(),
+    assignSeed: vi.fn(),
+    withdrawParticipant: vi.fn(),
+    promoteNextWaitlisted: vi.fn(),
+    replaceParticipant: vi.fn(),
+    createPairParticipant: vi.fn(),
+    createTeamParticipant: vi.fn(),
+    getParticipantMembers: vi.fn(),
+    addParticipantMember: vi.fn(),
+    removeParticipantMember: vi.fn(),
+    createReplacementRequest: vi.fn(),
+    approveReplacementRequest: vi.fn(),
+    rejectReplacementRequest: vi.fn(),
+    cancelReplacementRequest: vi.fn(),
+  };
+}
+
 const __state = vi.hoisted(() => ({
-  adminApi: {
-    getTournament: vi.fn(),
-    getGroups: vi.fn(),
-    getMatches: vi.fn(),
-    getStandings: vi.fn(),
-    getRegistrations: vi.fn(),
-    register: vi.fn(),
-    cancelRegistration: vi.fn(),
-    confirmRegistration: vi.fn(),
-    generateGroups: vi.fn(),
-    publish: vi.fn(),
-    openRegistration: vi.fn(),
-    closeRegistration: vi.fn(),
-    start: vi.fn(),
-    complete: vi.fn(),
-    cancel: vi.fn(),
-    archive: vi.fn(),
-  },
-  orgApi: {
-    getTournament: vi.fn(),
-    getGroups: vi.fn(),
-    getMatches: vi.fn(),
-    getStandings: vi.fn(),
-    getRegistrations: vi.fn(),
-    register: vi.fn(),
-    cancelRegistration: vi.fn(),
-    confirmRegistration: vi.fn(),
-    generateGroups: vi.fn(),
-    publish: vi.fn(),
-    openRegistration: vi.fn(),
-    closeRegistration: vi.fn(),
-    start: vi.fn(),
-    complete: vi.fn(),
-    cancel: vi.fn(),
-    archive: vi.fn(),
-  },
+  adminApi: {} as any,
+  orgApi: {} as any,
+  participantApi: {} as any,
+  orgParticipantApi: {} as any,
+  refundApi: {} as any,
   enrichedTournament: {
     id: 1,
     name: 'Padel Test Tournament',
@@ -62,6 +82,9 @@ const __state = vi.hoisted(() => ({
 vi.mock('../../../../services/tournament', () => ({
   tournamentApi: __state.adminApi,
   orgTournamentApi: __state.orgApi,
+  tournamentParticipantApi: __state.participantApi,
+  orgTournamentParticipantApi: __state.orgParticipantApi,
+  tournamentRefundApi: __state.refundApi,
 }));
 
 vi.mock('../../../../i18n', () => ({
@@ -73,12 +96,20 @@ vi.mock('../../../../permissions/Can', () => ({
 }));
 
 vi.mock('../../../../store/auth.store', () => ({
-  useAuthStore: (sel: any) => sel({ user: { permissions: ['*'] } }),
+  useAuthStore: (sel: any) => sel({ user: { id: 1, permissions: ['*'] } }),
 }));
 
 vi.mock('../../../../components/ui/Toast', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
+
+function setApis() {
+  Object.assign(__state.adminApi, lifecycleApi());
+  Object.assign(__state.orgApi, lifecycleApi());
+  Object.assign(__state.participantApi, participantApi());
+  Object.assign(__state.orgParticipantApi, participantApi());
+  Object.assign(__state.refundApi, { listOrgRequests: vi.fn(), approve: vi.fn(), reject: vi.fn() });
+}
 
 function renderPage(initialPath: string, routePath: string, element: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -95,34 +126,42 @@ function renderPage(initialPath: string, routePath: string, element: React.React
 
 beforeEach(() => {
   vi.clearAllMocks();
-  __state.adminApi.getTournament.mockResolvedValue(__state.enrichedTournament);
-  __state.adminApi.getGroups.mockResolvedValue([]);
-  __state.adminApi.getMatches.mockResolvedValue([]);
-  __state.adminApi.getStandings.mockResolvedValue([]);
-  __state.adminApi.getRegistrations.mockResolvedValue([]);
-  __state.orgApi.getTournament.mockResolvedValue(__state.enrichedTournament);
-  __state.orgApi.getGroups.mockResolvedValue([]);
-  __state.orgApi.getMatches.mockResolvedValue([]);
-  __state.orgApi.getStandings.mockResolvedValue([]);
-  __state.orgApi.getRegistrations.mockResolvedValue([]);
+  setApis();
+  for (const api of [__state.adminApi, __state.orgApi] as any[]) {
+    api.getTournament.mockResolvedValue(__state.enrichedTournament);
+    api.getGroups.mockResolvedValue([]);
+    api.getMatches.mockResolvedValue([]);
+    api.getStandings.mockResolvedValue([]);
+    api.getRegistrations.mockResolvedValue([]);
+    api.getFinances.mockResolvedValue({});
+    api.listCompetitions.mockResolvedValue([]);
+    api.updateTournament.mockResolvedValue({});
+  }
+  for (const api of [__state.participantApi, __state.orgParticipantApi] as any[]) {
+    api.getParticipants.mockResolvedValue([]);
+    api.getCurrentDraw.mockResolvedValue(null);
+    api.getWaitlist.mockResolvedValue([]);
+    api.listReplacementRequests.mockResolvedValue([]);
+  }
+  (__state.refundApi as any).listOrgRequests.mockResolvedValue([]);
 });
 
-describe('TournamentDetailPage — management detail contract (UAT crash regression)', () => {
+describe('Tournament Hub — detail contract (UAT crash regression)', () => {
   it('admin mode renders the enriched fields with RAW array responses (no .map crash)', async () => {
     renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
 
     expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
-    expect(screen.getByText('Padel')).toBeTruthy(); // sport_name
-    expect(screen.getByText('16')).toBeTruthy(); // max_players
+    expect(screen.getAllByText('Padel').length).toBeGreaterThan(0); // sport_name (hero + overview)
+    expect(screen.getAllByText('16').length).toBeGreaterThan(0); // max_players / capacity KPI
     expect(screen.getByText('platform')).toBeTruthy(); // type
 
     // Switch to Matches tab — raw array → renders the empty table, no crash.
-    fireEvent.click(screen.getByText('tournaments.tab.matches'));
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.matches' }));
     await waitFor(() => expect(__state.adminApi.getMatches).toHaveBeenCalled());
 
-    // Switch to Groups tab with a populated raw array → renders group names.
+    // Switch to Competition tab with a populated raw array → renders group names.
     __state.adminApi.getGroups.mockResolvedValue([{ id: 1, name: 'Group A', players: [] }]);
-    fireEvent.click(screen.getByText('tournaments.tab.groups'));
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
     expect(await screen.findByText('Group A')).toBeTruthy();
   });
 
@@ -130,11 +169,11 @@ describe('TournamentDetailPage — management detail contract (UAT crash regress
     renderPage('/org/6/tournaments/1', '/org/:orgId/tournaments/:id', <TournamentDetailPage mode="org" orgId="6" />);
 
     expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
-    expect(screen.getByText('Padel')).toBeTruthy();
-    expect(screen.getByText('16')).toBeTruthy();
+    expect(screen.getAllByText('Padel').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('16').length).toBeGreaterThan(0);
 
     __state.orgApi.getGroups.mockResolvedValue([{ id: 2, name: 'Group B', players: [] }]);
-    fireEvent.click(screen.getByText('tournaments.tab.groups'));
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
     expect(await screen.findByText('Group B')).toBeTruthy();
   });
 
@@ -146,6 +185,9 @@ describe('TournamentDetailPage — management detail contract (UAT crash regress
       { id: 4, player_id: 13, player_name: 'Lina', status: 'disqualified' },
     ]);
     renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.participants' }));
 
     expect(await screen.findByText('Ali')).toBeTruthy();
     expect(screen.getByText('tournaments.reg_status.registered')).toBeTruthy();
@@ -171,7 +213,7 @@ describe('TournamentDetailPage — management detail contract (UAT crash regress
     renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
 
     await screen.findByText('Padel Test Tournament');
-    fireEvent.click(screen.getByText('tournaments.tab.matches'));
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.matches' }));
     expect(await screen.findByText('Ali')).toBeTruthy();
     expect(screen.getByText('Sara')).toBeTruthy();
     expect(screen.getByText('Court 1')).toBeTruthy();
@@ -186,9 +228,9 @@ describe('TournamentDetailPage — management detail contract (UAT crash regress
     renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
 
     await screen.findByText('Padel Test Tournament');
-    fireEvent.click(screen.getByText('tournaments.tab.standings'));
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.standings' }));
     expect(await screen.findByText('Ali')).toBeTruthy();
-    expect(screen.getByText('3')).toBeTruthy(); // points
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0); // points (progress dots also render numbers)
   });
 
   it('overview renders structured prizes (Group 2)', async () => {

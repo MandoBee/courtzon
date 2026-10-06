@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TournamentBracket as NamedBracket } from '../TournamentBracket';
 import { MatchDetailsDrawer } from '../MatchDetailsDrawer';
@@ -158,6 +158,20 @@ function wrap(ui: React.ReactNode) {
   );
 }
 
+/** Route-aware render so `useParams` supplies a real :id (needed by the Hub). */
+function wrapHub(ui: React.ReactNode, path: string, initialEntry: string) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path={path} element={ui} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe('Shared TournamentBracket — single source for every role', () => {
   it('is exported as the SAME component identity used by admin/org/referee', () => {
     // Guards against a role page growing its own private bracket renderer.
@@ -224,27 +238,29 @@ describe('Shared TournamentBracket — single source for every role', () => {
   });
 describe('Admin / Super Admin tournament detail — shared bracket tab', () => {
   it('renders the shared bracket visual alongside the kept administrative matches table', async () => {
-    wrap(<AdminOrgTournamentDetailPage mode="admin" />);
+    wrapHub(<AdminOrgTournamentDetailPage mode="admin" />, '/admin/tournament/list/:id', '/admin/tournament/list/1');
     await screen.findByText('City Open');
 
-    // The administrative table is NOT removed — its rows still render the match data.
-    fireEvent.click(screen.getByText('Matches'));
-    await waitFor(() => expect(screen.getAllByText('Current Player').length).toBeGreaterThan(0));
-
-    // The shared bracket tab exists on the admin screen.
-    fireEvent.click(screen.getByText('Bracket'));
+    // The administrative matches table is NOT removed — it lives in the Matches section.
+    fireEvent.click(screen.getByRole('tab', { name: 'Matches' }));
     await waitFor(() => expect(__state.adminApi.getMatches).toHaveBeenCalled());
-    expect(await screen.findAllByText('Current Player')).not.toHaveLength(0);
+    expect(screen.getAllByText('Current Player').length).toBeGreaterThan(0);
+
+    // The shared bracket is inside the Competition section (Bracket sub-tab).
+    fireEvent.click(screen.getByRole('tab', { name: 'Competition' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Bracket' }));
+    await waitFor(() => expect(screen.getAllByText('Current Player').length).toBeGreaterThan(0));
     expect(screen.getAllByText('2 - 0').length).toBeGreaterThan(0);
   });
 });
 
 describe('Org tournament detail — same shared bracket, no duplicate component', () => {
   it('reuses the identical bracket path for the org context', async () => {
-    wrap(<AdminOrgTournamentDetailPage mode="org" orgId="6" />);
+    wrapHub(<AdminOrgTournamentDetailPage mode="org" orgId="6" />, '/org/:orgId/tournaments/:id', '/org/6/tournaments/1');
     await screen.findByText('City Open');
 
-    fireEvent.click(screen.getByText('Bracket'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Competition' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Bracket' }));
     await waitFor(() => expect(__state.orgApi.getMatches).toHaveBeenCalled());
     expect(await screen.findAllByText('Current Player')).not.toHaveLength(0);
   });

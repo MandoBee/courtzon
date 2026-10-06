@@ -1000,6 +1000,14 @@ html[dir="rtl"] {
     animation: cz-emphasis-in 360ms ease-out both;
   }
 
+  /* Tournament Hub — subtle hero/KPI entrance and tab panel transition. */
+  .cz-hub-enter {
+    animation: cz-bracket-rise 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .cz-hub-panel {
+    animation: cz-fade-in 200ms ease-out both;
+  }
+
   /* Pull-to-refresh indicator */
   .cz-ptr-indicator {
     will-change: transform, opacity;
@@ -1061,7 +1069,7 @@ html[dir="rtl"] {
 
 @media (prefers-reduced-motion: reduce) {
   .cz-sheet-enter, .cz-fade-enter, .cz-drawer-enter, .cz-skeleton::after,
-  .cz-bracket-col, .cz-player-emphasis {
+  .cz-bracket-col, .cz-player-emphasis, .cz-hub-enter, .cz-hub-panel {
     animation: none;
   }
   /* Neutralise the MatchCard hover/active transform for reduced-motion users. */

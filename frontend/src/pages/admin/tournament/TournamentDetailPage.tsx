@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../../i18n';
@@ -15,6 +15,10 @@ import { tournamentApi, orgTournamentApi, tournamentRefundApi } from '../../../s
 import { MatchDetailsDrawer } from '../../../components/tournaments/MatchDetailsDrawer';
 import { TournamentBracket } from '../../../components/tournaments/TournamentBracket';
 import { TournamentPrintView } from '../../../components/tournaments/TournamentPrintView';
+import { TournamentHero, type HubAction, type HubKpi, type HubPhase } from '../../../components/tournaments/hub/TournamentHero';
+import { TournamentTabs, panelId, tabId, type HubTabItem } from '../../../components/tournaments/hub/TournamentTabs';
+import TournamentParticipantsPage from './TournamentParticipantsPage';
+import TournamentDrawPage from './TournamentDrawPage';
 import { useAuthStore } from '../../../store/auth.store';
 import { useCan } from '../../../hooks/useCan';
 import type { TournamentMatchNode } from '../../../types/tournamentBracket';
@@ -45,7 +49,20 @@ const MATCH_STATUS_COLORS: Record<string, string> = {
   walkover: 'bg-purple-100 text-purple-700',
 };
 
-type TabId = 'overview' | 'groups' | 'bracket' | 'matches' | 'standings';
+type HubTab = 'overview' | 'participants' | 'competition' | 'matches' | 'standings' | 'finances' | 'settings';
+type CompetitionSubTab = 'categories' | 'groups' | 'draw' | 'bracket';
+
+/** Derived visual phase index — from the REAL lifecycle status only. No new statuses. */
+const PHASE_INDEX: Record<string, number> = {
+  draft: 0,
+  published: 1,
+  registration_open: 1,
+  registration_closed: 2,
+  running: 3,
+  completed: 4,
+  cancelled: 4,
+  archived: 4,
+};
 
 export type TournamentDetailContextMode = 'admin' | 'org';
 
@@ -55,10 +72,17 @@ interface Props {
 }
 
 /**
- * ONE SHARED tournament detail screen (overview / groups / matches / standings
- * tabs + registration management). Renders identically in the Super Admin
- * workbench and the Org Admin portal; only the API, permissions and query keys
- * are tenant/context aware.
+ * ONE SHARED Tournament Hub — the single coherent management surface for the
+ * Super Admin workbench and the Org Admin portal. Renders identically; only the
+ * API, permissions and query keys are tenant/context aware.
+ *
+ * Hub sections (navigation, NOT permission bypasses — every action inside stays
+ * individually gated by its EXACT backend permission):
+ *   Overview · Participants · Competition · Matches · Standings · Finances · Settings
+ *
+ * All pre-existing routes (participants / draw / schedule / matches / awards /
+ * bracket-types) remain untouched and fully functional. This page reuses the
+ * existing participant/draw components instead of rewriting them.
  */
 export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const { id } = useParams<{ id: string }>();
@@ -76,8 +100,13 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const api = isOrg && orgId ? orgTournamentApi : tournamentApi;
   const keyRoot = isOrg ? `org-${orgId}-tournament` : 'tournament';
   const perms = isOrg
-    ? { page: 'org.tournaments.view' as string, edit: 'org.tournaments.update' as string, register: 'org.tournaments.register' as string }
-    : { page: 'admin-tournaments.view' as string, edit: 'tournaments.edit' as string, register: 'tournaments.edit' as string };
+    ? { page: 'org.tournaments.view' as string, update: 'org.tournaments.update' as string }
+    : { page: 'admin-tournaments.view' as string, update: 'tournament.update' as string };
+  // Backend-exact action permissions (do not expose an action the backend rejects).
+  const publishPerm = isOrg ? 'org.tournaments.publish' : 'tournament.publish';
+  const archivePerm = isOrg ? 'org.tournaments.delete' : 'tournament.delete';
+  const registerPerm = isOrg ? 'org.tournaments.register' : 'tournament.register';
+  const financePerm = isOrg ? 'org.finance.position.view' : 'financial.reconcile';
 
   // G11.3 — organisation official: pending registration refund requests
   // (financial.reconcile). Org-scoped; cross-org enforced server-side.
@@ -104,7 +133,8 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     enabled: !!tournamentId,
   });
 
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [activeTab, setActiveTab] = useState<HubTab>('overview');
+  const [compTab, setCompTab] = useState<CompetitionSubTab>('groups');
   const [detailsMatch, setDetailsMatch] = useState<TournamentMatchNode | null>(null);
   const [printRequested, setPrintRequested] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -112,6 +142,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const [registerTeamId, setRegisterTeamId] = useState('');
   const [groupSize, setGroupSize] = useState(4);
   const [advanceCount, setAdvanceCount] = useState(2);
+  const [nameDraft, setNameDraft] = useState('');
 
   const getT = (fn: (...args: any[]) => any, ...a: any[]) =>
     isOrg && orgId ? fn(orgId, ...a) : fn(...a);
@@ -124,16 +155,15 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const { data: groups, isLoading: loadingG } = useQuery({
     queryKey: [`${keyRoot}-groups`, tournamentId],
     queryFn: () => getT(api.getGroups, tournamentId),
-    enabled: activeTab === 'groups',
+    enabled: activeTab === 'competition',
   });
 
-  // The SHARED bracket tab and the administrative matches table read the SAME
-  // query (same query key → one fetch, no duplicate request).
-  const matchesEnabled = activeTab === 'matches' || activeTab === 'bracket';
+  // The SHARED bracket tab, the administrative matches table and the Hub KPIs
+  // read the SAME query (same query key → one fetch, no duplicate request).
   const { data: matches, isLoading: loadingM, isError: matchesError } = useQuery({
     queryKey: [`${keyRoot}-matches`, tournamentId],
     queryFn: () => getT(api.getMatches, tournamentId),
-    enabled: matchesEnabled,
+    enabled: !!tournamentId,
   });
 
   const { data: standings, isLoading: loadingS } = useQuery({
@@ -177,18 +207,18 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
-  if (loadingT) return <div className="p-6"><SkeletonRow count={3} /></div>;
+  // Settings — rename reuses the EXISTING update endpoint (backend `tournament.update`
+  // / `org.tournaments.update`). No new API, no locked-field edits.
+  const renameMutation = useMutation({
+    mutationFn: () => getT(api.updateTournament, tournamentId, { name: nameDraft.trim() }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [keyRoot, tournamentId] }); showToast(t('tournaments.hub.renamed', 'Tournament updated'), 'success'); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
 
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'overview', label: t('tournaments.tab.overview') },
-    { id: 'groups', label: t('tournaments.tab.groups') },
-    { id: 'bracket', label: t('tournamentBracket.tabBracket', 'Bracket') },
-    { id: 'matches', label: t('tournaments.tab.matches') },
-    { id: 'standings', label: t('tournaments.tab.standings') },
-  ];
+  useEffect(() => {
+    if (tournament?.name) setNameDraft(tournament.name);
+  }, [tournament?.name]);
 
-  // Shared bracket read-model. The SAME normalised rows feed TournamentBracket and
-  // MatchDetailsDrawer, so the visual and the details panel can never disagree.
   const matchList: TournamentMatchNode[] = Array.isArray(matches) ? (matches as TournamentMatchNode[]) : [];
   const participantList = (Array.isArray(registrations) ? (registrations as any[]) : []).map((r: any) => ({
     id: r.id,
@@ -198,289 +228,398 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     status: r.status ?? null,
   }));
 
+  const printBracket = () => {
+    setPrintRequested(true);
+    setTimeout(() => {
+      window.print();
+      setPrintRequested(false);
+    }, 50);
+  };
+
+  // ── Hub tab availability — organizational, but Finances/Settings still require
+  //    their exact backend read/update permission. ──
+  const hubTabs: HubTabItem[] = useMemo(() => {
+    const all: Array<HubTabItem & { perm?: string }> = [
+      { id: 'overview', label: t('tournaments.hub.overview', 'Overview') },
+      { id: 'participants', label: t('tournaments.hub.participants', 'Participants') },
+      { id: 'competition', label: t('tournaments.hub.competition', 'Competition') },
+      { id: 'matches', label: t('tournaments.hub.matches', 'Matches') },
+      { id: 'standings', label: t('tournaments.hub.standings', 'Standings') },
+      { id: 'finances', label: t('tournaments.hub.finances', 'Finances'), perm: financePerm },
+      { id: 'settings', label: t('tournaments.hub.settings', 'Settings'), perm: perms.update },
+    ];
+    return all.filter((x) => !x.perm || can(x.perm)).map(({ id, label }) => ({ id, label }));
+  }, [t, can, financePerm, perms.update]);
+
+  const effectiveTab: HubTab = hubTabs.some((x) => x.id === activeTab) ? activeTab : 'overview';
+
+  const competitionTabs: HubTabItem[] = useMemo(() => {
+    const tabs: HubTabItem[] = [];
+    if (isOrg && orgId) tabs.push({ id: 'categories', label: t('tournaments.hub.categories', 'Categories') });
+    tabs.push({ id: 'groups', label: t('tournaments.hub.groups', 'Groups') });
+    tabs.push({ id: 'draw', label: t('tournaments.hub.draw', 'Draw') });
+    tabs.push({ id: 'bracket', label: t('tournaments.hub.bracket', 'Bracket') });
+    return tabs;
+  }, [isOrg, orgId, t]);
+
+  if (loadingT) return <div className="p-6"><SkeletonRow count={3} /></div>;
+
+  const status = tournament?.status as string | undefined;
+
+  // ── Lifecycle-aware primary action (only valid transitions; only permitted). ──
+  const runLifecycle = (action: string) => statusMutation.mutate({ action });
+  let primary: HubAction | null = null;
+  if (tournament) {
+    if (status === 'draft' && can(publishPerm)) {
+      primary = { key: 'publish', label: t('tournaments.action.publish', 'Publish'), onAct: () => runLifecycle('publish'), pending: statusMutation.isPending };
+    } else if (status === 'published' && can(perms.update)) {
+      primary = { key: 'openRegistration', label: t('tournaments.action.open_reg', 'Open Registration'), onAct: () => runLifecycle('openRegistration'), pending: statusMutation.isPending };
+    } else if (status === 'registration_open' && can(perms.update)) {
+      primary = { key: 'closeRegistration', label: t('tournaments.action.close_reg', 'Close Registration'), onAct: () => runLifecycle('closeRegistration'), pending: statusMutation.isPending };
+    } else if (status === 'registration_closed') {
+      primary = { key: 'prepare', label: t('tournaments.hub.prepare', 'Prepare Competition'), onAct: () => setActiveTab('competition') };
+    } else if (status === 'running') {
+      primary = { key: 'live', label: t('tournaments.hub.manageLive', 'Manage Live Tournament'), onAct: () => setActiveTab('matches') };
+    } else if (status === 'completed') {
+      primary = { key: 'results', label: t('tournaments.hub.viewResults', 'View Results'), onAct: () => setActiveTab('standings') };
+    } else if (status === 'cancelled' || status === 'archived') {
+      primary = { key: 'view', label: t('tournaments.hub.view', 'View Tournament'), onAct: () => setActiveTab('overview') };
+    }
+  }
+
+  // ── Secondary actions: remaining VALID lifecycle transitions + Edit + Print. ──
+  const secondary: HubAction[] = [];
+  if (tournament) {
+    const pushLifecycle = (key: string, label: string, perm: string, tone?: HubAction['tone']) => {
+      if (can(perm)) secondary.push({ key, label, onAct: () => runLifecycle(key), pending: statusMutation.isPending, tone });
+    };
+    if (status === 'registration_closed') pushLifecycle('start', t('tournaments.action.start', 'Start Tournament'), perms.update);
+    if (status === 'running') {
+      pushLifecycle('complete', t('tournaments.action.complete', 'Complete Tournament'), perms.update);
+      pushLifecycle('cancel', t('tournaments.action.cancel', 'Cancel Tournament'), perms.update, 'danger');
+    }
+    if (status === 'completed' || status === 'cancelled') {
+      pushLifecycle('archive', t('tournaments.action.archive', 'Archive'), archivePerm);
+    }
+    if (can(perms.update)) {
+      secondary.push({ key: 'edit', label: t('tournaments.hub.settings', 'Settings'), onAct: () => setActiveTab('settings') });
+    }
+    if (matchList.length > 0) {
+      secondary.push({ key: 'print', label: t('tournamentBracket.printTitle', 'Print bracket'), onAct: printBracket });
+    }
+  }
+
+  const phases: HubPhase[] = [
+    { key: 'setup', label: t('tournaments.hub.phase.setup', 'Setup') },
+    { key: 'registration', label: t('tournaments.hub.phase.registration', 'Registration') },
+    { key: 'draw', label: t('tournaments.hub.phase.draw', 'Draw & Groups') },
+    { key: 'live', label: t('tournaments.hub.phase.live', 'Live') },
+    { key: 'completed', label: t('tournaments.hub.phase.completed', 'Completed') },
+  ];
+  const phaseIndex = PHASE_INDEX[status ?? 'draft'] ?? 0;
+
+  const completedMatches = matchList.filter((m: any) => m.status === 'completed').length;
+  const kpis: HubKpi[] = [
+    { key: 'participants', label: t('tournaments.hub.kpi.participants', 'Participants'), value: (registrations ?? []).length },
+    { key: 'capacity', label: t('tournaments.hub.kpi.capacity', 'Capacity'), value: tournament?.max_participants ?? tournament?.max_players ?? '—' },
+    { key: 'matches', label: t('tournaments.hub.kpi.matches', 'Matches'), value: matchList.length },
+    { key: 'completed', label: t('tournaments.hub.kpi.completed', 'Completed'), value: completedMatches },
+  ];
+
+  const meta = [
+    tournament?.sport_name ? { label: t('tournaments.sport'), value: tournament.sport_name } : null,
+    tournament?.category ? { label: t('tournaments.category'), value: tournament.category } : null,
+    tournament?.format ? { label: t('tournaments.format'), value: tournament.format } : null,
+    tournament?.start_date ? { label: t('tournaments.start_date'), value: String(tournament.start_date).slice(0, 10) } : null,
+    tournament?.venue?.name ? { label: t('tournaments.venue'), value: tournament.venue.name } : null,
+    tournament?.entry_fee != null ? { label: t('tournaments.entry_fee', 'Entry fee'), value: `${tournament.entry_fee} ${tournament.currency_code ?? ''}`.trim() } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
+
+  const backTo = isOrg ? `/org/${orgId}/tournaments` : '/admin/tournament/list';
+  const awardsPath = `/admin/tournament/list/${tournamentId}/awards`;
+
+  const panelProps = (tab: HubTab) => ({
+    role: 'tabpanel' as const,
+    id: panelId('cz-hub', tab),
+    'aria-labelledby': tabId('cz-hub', tab),
+    className: 'cz-hub-panel space-y-6',
+  });
+
   return (
     <Can permission={perms.page}>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--color-text)]">{tournament?.name}</h1>
-            <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[tournament?.status] || ''}`}>
-              {t(`tournaments.status.${tournament?.status}`)}
-            </span>
-          </div>
-          <div className="flex gap-2">
-            {[
-              { key: 'publish', from: ['draft'] },
-              { key: 'openRegistration', from: ['published'], label: 'open_reg' },
-              { key: 'closeRegistration', from: ['registration_open'], label: 'close_reg' },
-              { key: 'start', from: ['registration_closed'] },
-              { key: 'complete', from: ['running'] },
-              { key: 'cancel', from: ['published', 'registration_open', 'registration_closed', 'running'] },
-              { key: 'archive', from: ['completed', 'cancelled'] },
-            ].filter((a) => a.from.includes(tournament?.status)).map((a) => (
-              <Can key={a.key} permission={perms.edit}>
-                <button onClick={() => statusMutation.mutate({ action: a.key })}
-                  className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white">
-                  {t(`tournaments.action.${a.label || a.key}`)}
-                </button>
-              </Can>
-            ))}
-            <Can permission={perms.edit}>
-              <button onClick={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/participants` : `/admin/tournament/list/${tournamentId}/participants`)}
-                className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
-                {t('tournaments.participants', 'Participants & Seeding')}
-              </button>
-            </Can>
-          </div>
-        </div>
+      <div className="space-y-5">
+        <TournamentHero
+          name={tournament?.name ?? ''}
+          statusLabel={status ? t(`tournaments.status.${status}`) : ''}
+          statusClass={status ? STATUS_COLORS[status] : ''}
+          meta={meta}
+          kpis={kpis}
+          phases={phases}
+          phaseIndex={phaseIndex}
+          primary={primary}
+          secondary={secondary}
+          backLabel={t('tournaments.hub.back', 'Tournaments')}
+          onBack={() => navigate(backTo)}
+          progressLabel={t('tournaments.hub.progress', 'Tournament progress')}
+          moreLabel={t('tournaments.hub.more', 'More')}
+        />
 
-        <div className="flex gap-1 border-b border-[var(--color-border)]">
-          {tabs.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === tab.id ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <TournamentTabs
+          tabs={hubTabs}
+          active={effectiveTab}
+          onChange={(id) => setActiveTab(id as HubTab)}
+          ariaLabel={t('tournaments.hub.sections', 'Tournament sections')}
+        />
 
-        {/* G11.20 — Competition Category Management. Org-scoped only: the management
-            routes are organisation-scoped and fail closed on the tournament's owning org,
-            so the panel is rendered only when that org is known. Each action inside is
-            individually permission-gated (create/update/deactivate). */}
-        {isOrg && orgId && (
-          <Can permission="org.tournaments.view">
-            <CompetitionManager orgId={orgId} tournamentId={tournamentId} />
-          </Can>
-        )}
-
-        {/* G11.3 — org official: pending refund requests (financial.reconcile) */}
-        {isOrg && (
-          <Can permission="financial.reconcile">
-            <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3">
-              <h3 className="font-semibold text-[var(--color-text)]">Registration Refund Requests</h3>
-              {(!refundRequests || refundRequests.length === 0) ? (
-                <p className="text-xs text-[var(--color-text-muted)]">No pending refund requests.</p>
-              ) : (
-                <div className="space-y-2">
-                  {refundRequests.map((r: any) => (
-                    <div key={r.id} className="flex items-center justify-between gap-3 border border-[var(--color-border)] rounded-lg p-3">
-                      <div className="text-xs space-y-0.5">
-                        <p className="font-medium text-[var(--color-text)]">{r.player_name || `Player #${r.requested_by}`}</p>
-                        <p className="text-[var(--color-text-muted)]">Registration #{r.registration_id} · {r.tournamentName}</p>
-                        <p className="text-[var(--color-text-muted)]">Reason: {r.reason || '—'}</p>
-                      </div>
-                      <div className="flex gap-2 shrink-0">
-                        <button onClick={() => approveRefund.mutate(r.id)} disabled={approveRefund.isPending}
-                          className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-green-600 text-white disabled:opacity-50">
-                          Approve & Refund
-                        </button>
-                        <button onClick={() => { const reason = window.prompt('Rejection reason'); rejectRefund.mutate({ requestId: r.id, reason: reason || '' }); }} disabled={rejectRefund.isPending}
-                          className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-error)]">
-                          Reject
-                        </button>
-                      </div>
+        {/* ── OVERVIEW ── */}
+        {effectiveTab === 'overview' && (
+          <div {...panelProps('overview')}>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
+                <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.details.general')}</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {[
+                    { label: t('tournaments.code'), value: tournament?.code },
+                    { label: t('tournaments.format'), value: tournament?.format },
+                    { label: t('tournaments.category'), value: tournament?.category },
+                    { label: t('tournaments.sport'), value: tournament?.sport_name },
+                    { label: t('tournaments.organisation'), value: tournament?.organisation_name },
+                    { label: t('tournaments.max_players'), value: tournament?.max_players },
+                    { label: t('tournaments.type'), value: tournament?.type },
+                    { label: t('tournaments.venue'), value: tournament?.venue?.name || '-' },
+                    { label: t('tournaments.start_date'), value: tournament?.start_date?.slice(0, 10) },
+                    { label: t('tournaments.end_date'), value: tournament?.end_date?.slice(0, 10) },
+                    { label: t('tournaments.daily_playing'), value: (tournament?.daily_start_time && tournament?.daily_end_time) ? `${String(tournament.daily_start_time).slice(0, 5)} – ${String(tournament.daily_end_time).slice(0, 5)}` : '-' },
+                    { label: t('tournaments.registration_deadline'), value: tournament?.registration_deadline?.slice(0, 10) },
+                    { label: t('tournaments.payment_methods'), value: (Array.isArray(tournament?.effective_registration_payment_methods) ? tournament.effective_registration_payment_methods : []).join(' + ') || '-' },
+                  ].map((f) => (
+                    <div key={f.label}>
+                      <p className="text-xs text-[var(--color-text-muted)]">{f.label}</p>
+                      <p className="font-medium">{f.value || '-'}</p>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          </Can>
-        )}
-
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3">
-              <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.details.general')}</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                {[
-                  { label: t('tournaments.code'), value: tournament?.code },
-                  { label: t('tournaments.format'), value: tournament?.format },
-                  { label: t('tournaments.category'), value: tournament?.category },
-                  { label: t('tournaments.sport'), value: tournament?.sport_name },
-                  { label: t('tournaments.organisation'), value: tournament?.organisation_name },
-                  { label: t('tournaments.max_players'), value: tournament?.max_players },
-                  { label: t('tournaments.type'), value: tournament?.type },
-                  { label: t('tournaments.venue'), value: tournament?.venue?.name || '-' },
-                  { label: t('tournaments.start_date'), value: tournament?.start_date?.slice(0, 10) },
-                  { label: t('tournaments.end_date'), value: tournament?.end_date?.slice(0, 10) },
-                  { label: t('tournaments.daily_playing'), value: (tournament?.daily_start_time && tournament?.daily_end_time) ? `${String(tournament.daily_start_time).slice(0, 5)} – ${String(tournament.daily_end_time).slice(0, 5)}` : '-' },
-                  { label: t('tournaments.registration_deadline'), value: tournament?.registration_deadline?.slice(0, 10) },
-                  { label: t('tournaments.payment_methods'), value: (Array.isArray(tournament?.effective_registration_payment_methods) ? tournament.effective_registration_payment_methods : []).join(' + ') || '-' },
-                ].map((f) => (
-                  <div key={f.label}>
-                    <p className="text-xs text-[var(--color-text-muted)]">{f.label}</p>
-                    <p className="font-medium">{f.value || '-'}</p>
-                  </div>
-                ))}
               </div>
-            </div>
-            <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3">
-              <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.details.description')}</h3>
-              <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{tournament?.description || '-'}</p>
-            </div>
-            <div className="md:col-span-2">
-              <GeneratedRules
-                rules={tournament?.rules}
-                title={t('tournaments.details.rules')}
-                empty={<p className="text-sm text-[var(--color-text-muted)]">{t('tournaments.details.rules_empty')}</p>}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <PrizeList prizes={tournament?.prizes} legacyDescription={tournament?.prize_description} />
-            </div>
-            <div className="md:col-span-2">
-              <SponsorList sponsors={tournament?.sponsors} showAmount />
-            </div>
-            <div className="md:col-span-2">
-              <Can permission={isOrg ? 'org.finance.position.view' : 'financial.reconcile'}>
-                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3">
-                  <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.finances', 'Tournament Finances')}</h3>
-                  {finances ? (
-                    <>
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Registration revenue</p><p className="font-medium">{finances?.revenue?.registration?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Sponsor cash (ledger)</p><p className="font-medium">{finances?.revenue?.sponsorCash?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Total revenue</p><p className="font-medium">{finances?.revenue?.total?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Cash prize expense</p><p className="font-medium">{finances?.expenses?.cashPrizes?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Net result</p><p className={`font-medium ${Number(finances?.net) >= 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-error)]'}`}>{finances?.net?.toFixed?.(2) ?? '—'}</p></div>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Commission expense</p><p className="font-medium">{finances?.expenses?.commissionExpense?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Platform commission (4192)</p><p className="font-medium">{finances?.platform?.commissionRevenue?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Merchant payable (2202)</p><p className="font-medium">{finances?.platform?.merchantPayable?.toFixed?.(2) ?? '—'}</p></div>
-                        <div><p className="text-xs text-[var(--color-text-muted)]">Prize liability (2100)</p><p className="font-medium">{finances?.platform?.prizeLiability?.toFixed?.(2) ?? '—'}</p></div>
-                      </div>
-                      <p className="text-xs text-[var(--color-text-muted)]">
-                        Ledger-authoritative (G11 Phase 4): only posted accounting entries are recognized. Court rental, balls, equipment and other expenses are not financially represented and are therefore excluded. Sponsors are record-only — not recognized as revenue.
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-xs text-[var(--color-text-muted)]">Loading finances…</p>
-                  )}
-                </div>
-              </Can>
+              <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
+                <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.details.description')}</h3>
+                <p className="text-sm whitespace-pre-wrap text-[var(--color-text)]">{tournament?.description || '-'}</p>
+              </div>
+              <div className="md:col-span-2">
+                <GeneratedRules
+                  rules={tournament?.rules}
+                  title={t('tournaments.details.rules')}
+                  empty={<p className="text-sm text-[var(--color-text-muted)]">{t('tournaments.details.rules_empty')}</p>}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <PrizeList prizes={tournament?.prizes} legacyDescription={tournament?.prize_description} />
+              </div>
+              <div className="md:col-span-2">
+                <SponsorList sponsors={tournament?.sponsors} showAmount />
+              </div>
             </div>
           </div>
         )}
 
-        {activeTab === 'groups' && (
-          <div className="space-y-4">
-            <Can permission={perms.edit}>
-              <div className="flex items-center gap-3 bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4">
-                <div>
-                  <label className="text-xs text-[var(--color-text-muted)]">{t('tournaments.group_size')}</label>
-                  <input type="number" value={groupSize} onChange={(e) => setGroupSize(Number(e.target.value))}
-                    className="w-20 px-2 py-1 border rounded text-sm" min={2} />
-                </div>
-                <div>
-                  <label className="text-xs text-[var(--color-text-muted)]">{t('tournaments.advance_count')}</label>
-                  <input type="number" value={advanceCount} onChange={(e) => setAdvanceCount(Number(e.target.value))}
-                    className="w-20 px-2 py-1 border rounded text-sm" min={1} />
-                </div>
-                <button onClick={() => generateGroupsMutation.mutate()}
-                  className="mt-4 px-4 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm">
-                  {t('tournaments.generate_groups')}
-                </button>
+        {/* ── PARTICIPANTS ── */}
+        {effectiveTab === 'participants' && (
+          <div {...panelProps('participants')}>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-[var(--color-text)]">{t('tournaments.registrations')}</h2>
+                <Can permission={registerPerm}>
+                  <button onClick={() => setShowRegisterModal(true)}
+                    className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 text-xs font-medium text-white">
+                    {t('tournaments.register_player')}
+                  </button>
+                </Can>
               </div>
-            </Can>
-            {loadingG ? <SkeletonRow count={3} /> : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(groups ?? []).map((g: any) => (
-                  <div key={g.id} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4">
-                    <h4 className="font-semibold text-sm text-[var(--color-text)] mb-2">{g.name}</h4>
-                    <div className="space-y-1 text-xs text-[var(--color-text-muted)]">
-                      {(g.players ?? g.members ?? g.participants ?? []).map((p: any) => (
-                        <div key={p.id} className="flex justify-between">
-                          <span>{p.name || p.full_name || p.player_name}</span>
-                        </div>
+              {loadingR ? <SkeletonRow count={3} /> : (
+                <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs text-[var(--color-text-muted)]">
+                        <th className="px-4 py-3 text-left">{t('tournaments.player')}</th>
+                        <th className="px-4 py-3 text-left">{t('tournaments.team')}</th>
+                        <th className="px-4 py-3 text-left">{t('tournaments.status')}</th>
+                        <th className="px-4 py-3 text-right">{t('common.actions')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(registrations ?? []).map((r: any) => (
+                        <tr key={r.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30">
+                          <td className="px-4 py-3">{r.player_name || r.player?.name || '-'}</td>
+                          <td className="px-4 py-3 text-xs">{r.team_name || '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${REG_STATUS_COLORS[r.status] || ''}`}>
+                              {t(`tournaments.reg_status.${r.status}`)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {r.status === 'registered' && (
+                              <Can permission={registerPerm}>
+                                <button onClick={() => confirmRegMutation.mutate(r.id)}
+                                  className="mr-1 rounded border border-green-200 px-2 py-1 text-[10px] text-green-600 hover:bg-green-50">
+                                  {t('tournaments.confirm')}
+                                </button>
+                              </Can>
+                            )}
+                            {['registered', 'confirmed'].includes(r.status) && (
+                              <Can permission={registerPerm}>
+                                <button onClick={() => { if (window.confirm(t('tournaments.confirm_cancel_reg'))) cancelRegMutation.mutate(r.id); }}
+                                  className="rounded border border-red-200 px-2 py-1 text-[10px] text-red-600 hover:bg-red-50">
+                                  {t('tournaments.cancel')}
+                                </button>
+                              </Can>
+                            )}
+                          </td>
+                        </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            {/* Existing participant / seeding / waitlist / replacement surface, reused as-is. */}
+            <TournamentParticipantsPage mode={mode} orgId={orgId} />
+          </div>
+        )}
+
+        {/* ── COMPETITION ── */}
+        {effectiveTab === 'competition' && (
+          <div {...panelProps('competition')}>
+            <TournamentTabs
+              tabs={competitionTabs}
+              active={competitionTabs.some((x) => x.id === compTab) ? compTab : 'groups'}
+              onChange={(id) => setCompTab(id as CompetitionSubTab)}
+              ariaLabel={t('tournaments.hub.competition_sections', 'Competition sections')}
+              idPrefix="cz-hub-comp"
+            />
+
+            {compTab === 'categories' && isOrg && orgId && (
+              <Can permission="org.tournaments.view">
+                <CompetitionManager orgId={orgId} tournamentId={tournamentId} />
+              </Can>
+            )}
+
+            {compTab === 'groups' && (
+              <div className="space-y-4">
+                <Can permission={perms.update}>
+                  <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                    <div>
+                      <label className="text-xs text-[var(--color-text-muted)]">{t('tournaments.group_size')}</label>
+                      <input type="number" value={groupSize} onChange={(e) => setGroupSize(Number(e.target.value))}
+                        className="w-20 rounded border px-2 py-1 text-sm" min={2} />
                     </div>
+                    <div>
+                      <label className="text-xs text-[var(--color-text-muted)]">{t('tournaments.advance_count')}</label>
+                      <input type="number" value={advanceCount} onChange={(e) => setAdvanceCount(Number(e.target.value))}
+                        className="w-20 rounded border px-2 py-1 text-sm" min={1} />
+                    </div>
+                    <button onClick={() => generateGroupsMutation.mutate()}
+                      className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 py-1.5 text-sm text-white">
+                      {t('tournaments.generate_groups')}
+                    </button>
                   </div>
-                ))}
+                </Can>
+                {loadingG ? <SkeletonRow count={3} /> : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {(groups ?? []).map((g: any) => (
+                      <div key={g.id} className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                        <h4 className="mb-2 text-sm font-semibold text-[var(--color-text)]">{g.name}</h4>
+                        <div className="space-y-1 text-xs text-[var(--color-text-muted)]">
+                          {(g.players ?? g.members ?? g.participants ?? []).map((p: any) => (
+                            <div key={p.id} className="flex justify-between">
+                              <span>{p.name || p.full_name || p.player_name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {compTab === 'draw' && (
+              <TournamentDrawPage mode={mode} orgId={orgId} />
+            )}
+
+            {compTab === 'bracket' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-semibold text-[var(--color-text)]">
+                    {t('tournamentBracket.tabBracket', 'Bracket')}
+                  </h3>
+                  {matchList.length > 0 && (
+                    <button onClick={printBracket} className="cz-no-print text-xs text-[var(--color-primary)] hover:underline">
+                      {t('tournamentBracket.printTitle', 'Tournament Bracket')}
+                    </button>
+                  )}
+                </div>
+                {loadingM ? <SkeletonRow count={5} />
+                  : matchesError ? <p className="py-8 text-center text-sm text-[var(--color-error)]">{t('tournamentBracket.error')}</p>
+                  : (
+                    <TournamentBracket
+                      tournament={tournament}
+                      matches={matchList}
+                      participants={participantList}
+                      currentUserId={user?.id}
+                      onMatchClick={setDetailsMatch}
+                      footer={(m) => (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setDetailsMatch(m); }}
+                            className="text-[10px] text-[var(--color-primary)] hover:underline"
+                          >
+                            {t('tournamentBracket.details', 'Details')}
+                          </button>
+                          {can('tournaments.enter_scores') && m.match_id != null && m.status !== 'completed' && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/matches/${m.match_id}/result`); }}
+                              className="ml-2 text-[10px] text-[var(--color-primary)] hover:underline"
+                            >
+                              {t('tournaments.record_result', 'Record Result')}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    />
+                  )}
               </div>
             )}
           </div>
         )}
 
-        {/* SHARED TOURNAMENT BRACKET — the SAME sport-aware visual bracket every
-            other role sees (player / referee / organizer / admin / super admin),
-            including the existing Print Bracket action. The administrative Matches
-            table below is intentionally KEPT unchanged: the bracket coexists with
-            the operational table and its actions.
-            Actions inside the bracket footer stay permission-gated; the visual is
-            identical for every authorised viewer. */}
-        {activeTab === 'bracket' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-semibold text-[var(--color-text)]">
-                {t('tournamentBracket.tabBracket', 'Bracket')}
-              </h3>
-              {matchList.length > 0 && (
+        {/* ── MATCHES ── */}
+        {effectiveTab === 'matches' && (
+          <div {...panelProps('matches')}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-[var(--color-text)]">{t('tournaments.hub.matches', 'Matches')}</h2>
+              <Can permission={perms.update}>
                 <button
-                  onClick={() => {
-                    setPrintRequested(true);
-                    setTimeout(() => {
-                      window.print();
-                      setPrintRequested(false);
-                    }, 50);
-                  }}
-                  className="text-xs text-[var(--color-primary)] hover:underline cz-no-print"
-                >
-                  {t('tournamentBracket.printTitle', 'Tournament Bracket')}
+                  onClick={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/schedule` : `/admin/tournament/list/${tournamentId}/schedule`)}
+                  className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 text-xs font-medium text-[var(--color-text)]">
+                  {t('tournaments.matches_schedule', 'Matches & Schedule')}
                 </button>
-              )}
+              </Can>
             </div>
-            {loadingM ? <SkeletonRow count={5} />
-              : matchesError ? <p className="text-sm text-[var(--color-error)] text-center py-8">{t('tournamentBracket.error')}</p>
-              : (
-                <TournamentBracket
-                  tournament={tournament}
-                  matches={matchList}
-                  participants={participantList}
-                  currentUserId={user?.id}
-                  onMatchClick={setDetailsMatch}
-                  footer={(m) => (
-                    <>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setDetailsMatch(m); }}
-                        className="text-[10px] text-[var(--color-primary)] hover:underline"
-                      >
-                        {t('tournamentBracket.details', 'Details')}
-                      </button>
-                      {/* Administrative score entry keeps its EXISTING permission. */}
-                      {can('tournaments.enter_scores') && m.match_id != null && m.status !== 'completed' && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/matches/${m.match_id}/result`); }}
-                          className="text-[10px] text-[var(--color-primary)] hover:underline ml-2"
-                        >
-                          {t('tournaments.record_result', 'Record Result')}
-                        </button>
-                      )}
-                    </>
-                  )}
-                />
-              )}
-          </div>
-        )}
-
-        {activeTab === 'matches' && (
-          <div>
             {loadingM ? <SkeletonRow count={5} /> : (
-              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-x-auto">
+              <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-xs text-[var(--color-text-muted)]">
-                      <th className="text-left px-4 py-3">{t('tournaments.match.round')}</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.match.match_no')}</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.match.player1')}</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.match.player2')}</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.match.court')}</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.match.referee')}</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.match.status')}</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.match.score')}</th>
-                      <th className="text-left px-4 py-3">{t('tournamentBracket.details', 'Details')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.round')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.match_no')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.player1')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.player2')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.court')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.referee')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.status')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.match.score')}</th>
+                      <th className="px-4 py-3 text-left">{t('tournamentBracket.details', 'Details')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -493,14 +632,14 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                         <td className="px-4 py-3 text-xs">{m.court_name || m.resource_name || '-'}</td>
                         <td className="px-4 py-3 text-xs">{m.referee_name || '-'}</td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${MATCH_STATUS_COLORS[m.status] || ''}`}>
+                          <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${MATCH_STATUS_COLORS[m.status] || ''}`}>
                             {t(`tournaments.match_status.${m.status}`)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs font-mono">{m.score_summary || m.score || '-'}</td>
+                        <td className="px-4 py-3 font-mono text-xs">{m.score_summary || m.score || '-'}</td>
                         <td className="px-4 py-3 text-right">
                           <button onClick={() => setDetailsMatch(m as any)}
-                            className="text-[10px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]">
+                            className="rounded border border-[var(--color-border)] px-2 py-1 text-[10px] hover:bg-[var(--color-bg)]">
                             {t('tournamentBracket.details', 'Details')}
                           </button>
                         </td>
@@ -513,19 +652,20 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
           </div>
         )}
 
-        {activeTab === 'standings' && (
-          <div>
+        {/* ── STANDINGS ── */}
+        {effectiveTab === 'standings' && (
+          <div {...panelProps('standings')}>
             {loadingS ? <SkeletonRow count={5} /> : (
-              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-x-auto">
+              <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-xs text-[var(--color-text-muted)]">
-                      <th className="text-left px-4 py-3">#</th>
-                      <th className="text-left px-4 py-3">{t('tournaments.player')}</th>
-                      <th className="text-center px-4 py-3">{t('tournaments.standings.p')}</th>
-                      <th className="text-center px-4 py-3">{t('tournaments.standings.w')}</th>
-                      <th className="text-center px-4 py-3">{t('tournaments.standings.l')}</th>
-                      <th className="text-center px-4 py-3">{t('tournaments.standings.pts')}</th>
+                      <th className="px-4 py-3 text-left">#</th>
+                      <th className="px-4 py-3 text-left">{t('tournaments.player')}</th>
+                      <th className="px-4 py-3 text-center">{t('tournaments.standings.p')}</th>
+                      <th className="px-4 py-3 text-center">{t('tournaments.standings.w')}</th>
+                      <th className="px-4 py-3 text-center">{t('tournaments.standings.l')}</th>
+                      <th className="px-4 py-3 text-center">{t('tournaments.standings.pts')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -546,82 +686,164 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
           </div>
         )}
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-[var(--color-text)]">{t('tournaments.registrations')}</h2>
-            <Can permission={perms.register}>
-              <button onClick={() => setShowRegisterModal(true)}
-                className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-xs font-medium">
-                {t('tournaments.register_player')}
-              </button>
+        {/* ── FINANCES ── */}
+        {effectiveTab === 'finances' && (
+          <div {...panelProps('finances')}>
+            <Can permission={financePerm}>
+              <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
+                <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.finances', 'Tournament Finances')}</h3>
+                {finances ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Registration revenue</p><p className="font-medium">{finances?.revenue?.registration?.toFixed?.(2) ?? '—'}</p></div>
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Sponsor cash (ledger)</p><p className="font-medium">{finances?.revenue?.sponsorCash?.toFixed?.(2) ?? '—'}</p></div>
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Total revenue</p><p className="font-medium">{finances?.revenue?.total?.toFixed?.(2) ?? '—'}</p></div>
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Cash prize expense</p><p className="font-medium">{finances?.expenses?.cashPrizes?.toFixed?.(2) ?? '—'}</p></div>
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Net result</p><p className={`font-medium ${Number(finances?.net) >= 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-error)]'}`}>{finances?.net?.toFixed?.(2) ?? '—'}</p></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Commission expense</p><p className="font-medium">{finances?.expenses?.commissionExpense?.toFixed?.(2) ?? '—'}</p></div>
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Platform commission (4192)</p><p className="font-medium">{finances?.platform?.commissionRevenue?.toFixed?.(2) ?? '—'}</p></div>
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Merchant payable (2202)</p><p className="font-medium">{finances?.platform?.merchantPayable?.toFixed?.(2) ?? '—'}</p></div>
+                      <div><p className="text-xs text-[var(--color-text-muted)]">Prize liability (2100)</p><p className="font-medium">{finances?.platform?.prizeLiability?.toFixed?.(2) ?? '—'}</p></div>
+                    </div>
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      Ledger-authoritative (G11 Phase 4): only posted accounting entries are recognized. Court rental, balls, equipment and other expenses are not financially represented and are therefore excluded. Sponsors are record-only — not recognized as revenue.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-[var(--color-text-muted)]">Loading finances…</p>
+                )}
+              </div>
             </Can>
+
+            {!isOrg && (
+              <Can permission="tournaments.awards.view">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <div>
+                    <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.awards.title', 'Prize Awards')}</h3>
+                    <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.hub.awards_hint', 'Grant and refund tournament prize awards.')}</p>
+                  </div>
+                  <button onClick={() => navigate(awardsPath)}
+                    className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--color-border)] px-4 text-xs font-medium text-[var(--color-text)]">
+                    {t('tournaments.hub.open_awards', 'Open awards')}
+                  </button>
+                </div>
+              </Can>
+            )}
+
+            {/* G11.3 — org official: pending refund requests (financial.reconcile) */}
+            {isOrg && (
+              <Can permission={financePerm}>
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
+                  <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.hub.refunds', 'Registration Refund Requests')}</h3>
+                  {(!refundRequests || refundRequests.length === 0) ? (
+                    <p className="text-xs text-[var(--color-text-muted)]">No pending refund requests.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {refundRequests.map((r: any) => (
+                        <div key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] p-3">
+                          <div className="space-y-0.5 text-xs">
+                            <p className="font-medium text-[var(--color-text)]">{r.player_name || `Player #${r.requested_by}`}</p>
+                            <p className="text-[var(--color-text-muted)]">Registration #{r.registration_id} · {r.tournamentName}</p>
+                            <p className="text-[var(--color-text-muted)]">Reason: {r.reason || '—'}</p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button onClick={() => approveRefund.mutate(r.id)} disabled={approveRefund.isPending}
+                              className="min-h-[44px] rounded-[var(--radius-md)] bg-green-600 px-3 text-xs font-medium text-white disabled:opacity-50">
+                              Approve &amp; Refund
+                            </button>
+                            <button onClick={() => { const reason = window.prompt('Rejection reason'); rejectRefund.mutate({ requestId: r.id, reason: reason || '' }); }} disabled={rejectRefund.isPending}
+                              className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 text-xs font-medium text-[var(--color-error)]">
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Can>
+            )}
           </div>
-          {loadingR ? <SkeletonRow count={3} /> : (
-            <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-xs text-[var(--color-text-muted)]">
-                    <th className="text-left px-4 py-3">{t('tournaments.player')}</th>
-                    <th className="text-left px-4 py-3">{t('tournaments.team')}</th>
-                    <th className="text-left px-4 py-3">{t('tournaments.status')}</th>
-                    <th className="text-right px-4 py-3">{t('common.actions')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(registrations ?? []).map((r: any) => (
-                    <tr key={r.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30">
-                      <td className="px-4 py-3">{r.player_name || r.player?.name || '-'}</td>
-                      <td className="px-4 py-3 text-xs">{r.team_name || '-'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${REG_STATUS_COLORS[r.status] || ''}`}>
-                          {t(`tournaments.reg_status.${r.status}`)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {r.status === 'registered' && (
-                          <Can permission={perms.register}>
-                            <button onClick={() => confirmRegMutation.mutate(r.id)}
-                              className="text-[10px] px-2 py-1 rounded border border-green-200 text-green-600 hover:bg-green-50 mr-1">
-                              {t('tournaments.confirm')}
-                            </button>
-                          </Can>
-                        )}
-                        {['registered', 'confirmed'].includes(r.status) && (
-                          <Can permission={perms.register}>
-                            <button onClick={() => { if (window.confirm(t('tournaments.confirm_cancel_reg'))) cancelRegMutation.mutate(r.id); }}
-                              className="text-[10px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50">
-                              {t('tournaments.cancel')}
-                            </button>
-                          </Can>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        )}
+
+        {/* ── SETTINGS ── */}
+        {effectiveTab === 'settings' && (
+          <div {...panelProps('settings')}>
+            <Can permission={perms.update}>
+              <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
+                <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.hub.identity', 'Tournament identity')}</h3>
+                <div>
+                  <label htmlFor="hub-name" className="mb-1 block text-xs font-medium text-[var(--color-text-muted)]">
+                    {t('tournaments.create.name')}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      id="hub-name"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      className="min-h-[44px] w-full max-w-md rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 text-sm"
+                    />
+                    <button
+                      onClick={() => renameMutation.mutate()}
+                      disabled={renameMutation.isPending || !nameDraft.trim() || nameDraft.trim() === tournament?.name}
+                      className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      {t('common.save', 'Save')}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {t('tournaments.hub.locked_hint', 'Format, fees and registration dates are locked once registration opens; the draw and matches lock after draw approval. Edit those through the tournament list create/edit flow.')}
+                </p>
+              </div>
+            </Can>
+
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
+              <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.hub.configuration', 'Configuration')}</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+                {[
+                  { label: t('tournaments.status'), value: status ? t(`tournaments.status.${status}`) : '-' },
+                  { label: t('tournaments.format'), value: tournament?.format },
+                  { label: t('tournaments.category'), value: tournament?.category },
+                  { label: t('tournaments.sport'), value: tournament?.sport_name },
+                  { label: t('tournaments.max_players'), value: tournament?.max_participants ?? tournament?.max_players },
+                  { label: t('tournaments.entry_fee', 'Entry fee'), value: tournament?.entry_fee != null ? `${tournament.entry_fee} ${tournament.currency_code ?? ''}`.trim() : '-' },
+                  { label: t('tournaments.registration_opens'), value: tournament?.registration_opens?.slice(0, 16) },
+                  { label: t('tournaments.registration_closes'), value: tournament?.registration_closes?.slice(0, 16) },
+                  { label: t('tournaments.start_date'), value: tournament?.start_date?.slice(0, 10) },
+                ].map((f) => (
+                  <div key={f.label}>
+                    <p className="text-xs text-[var(--color-text-muted)]">{f.label}</p>
+                    <p className="font-medium">{f.value || '-'}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <Modal open={showRegisterModal} onClose={() => setShowRegisterModal(false)}
           title={t('tournaments.register_player')} size="sm">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('tournaments.player_id')}</label>
+              <label className="block mb-1 text-xs font-medium text-[var(--color-text-muted)]">{t('tournaments.player_id')}</label>
               <input type="number" value={registerPlayerId} onChange={(e) => setRegisterPlayerId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
+                className="w-full rounded-[var(--radius-md)] border px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">{t('tournaments.team_id_optional')}</label>
+              <label className="block mb-1 text-xs font-medium text-[var(--color-text-muted)]">{t('tournaments.team_id_optional')}</label>
               <input type="number" value={registerTeamId} onChange={(e) => setRegisterTeamId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
+                className="w-full rounded-[var(--radius-md)] border px-3 py-2 text-sm" />
             </div>
             <button onClick={() => registerMutation.mutate()}
-              className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium">
+              className="w-full rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white">
               {t('tournaments.register')}
             </button>
           </div>
         </Modal>
+
         <MatchDetailsDrawer
           open={Boolean(detailsMatch)}
           onClose={() => setDetailsMatch(null)}
@@ -632,7 +854,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
         />
       </div>
       {printRequested && tournament && (
-        <div className="cz-print-area hidden print:block print-only-area">
+        <div className="cz-print-area print-only-area hidden print:block">
           <TournamentPrintView
             tournament={tournament}
             matches={matchList}
