@@ -4,6 +4,7 @@ import { formatDateTime, formatISODate } from '../../utils/formatDate';
 import { formatTournamentScore, hasBye } from '../../utils/tournamentScore';
 import { isCurrentUser } from './playerHighlight';
 import { resolveBracketNavigation } from './matchNavigation';
+import { PlayerAvatar, resolveWinnerSide, type AvatarTone } from './PlayerAvatar';
 import ResultSummaryView from '../match-result/ResultSummaryView';
 import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
@@ -68,29 +69,56 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
   const score = formatTournamentScore(match);
   const scoreStructure = match.rule_snapshot?.score_structure;
   const hasResult = Boolean(score);
-  const scoreFirst = score.split(' ')[0] ?? '';
-  const scoreRest = score.split(' ').slice(1).join(' ') || '';
-  const winner: 'p1' | 'p2' | 'none' =
-    match.winner_id == null ? 'none' : Number(match.winner_id) === Number(match.player1_id) ? 'p1' : Number(match.winner_id) === Number(match.player2_id) ? 'p2' : 'none';
+  const winner = resolveWinnerSide(match);
   // Defensive, pure derivation from already-loaded rows — no network call.
   const navigation = resolveBracketNavigation(match, matches, currentUserId);
   const showNavigation = typeof onSelectMatch === 'function' && Array.isArray(matches);
+
+  // Winner emphasised, loser secondary (never disabled). Current-player highlight
+  // always wins so it stays distinguishable from the winner treatment.
+  const rowTone = (mine: boolean, side: 'p1' | 'p2') => {
+    if (mine) return 'text-[var(--color-primary)] font-bold';
+    if (winner === side) return 'text-[var(--color-text)] font-semibold';
+    if (winner !== 'none') return 'text-[var(--color-text-muted)]';
+    return 'text-[var(--color-text)]';
+  };
+  const avatarTone = (mine: boolean, side: 'p1' | 'p2'): AvatarTone => {
+    if (mine) return 'current';
+    if (winner === side) return 'winner';
+    if (winner !== 'none') return 'loser';
+    return 'default';
+  };
+  const winnerBadge = (side: 'p1' | 'p2') =>
+    winner === side ? (
+      <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
+        {t('tournamentBracket.winner')}
+      </span>
+    ) : null;
 
   return (
     <Modal open={open} onClose={onClose} title={t('tournamentBracket.matchDetailsTitle')}>
       <div className="space-y-5">
         <Section title={t('tournamentBracket.sectionMatch')}>
-          <div className={`flex items-center justify-between ${p1Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
-            <span>{p1N}</span>
-            {hasResult && <span className="text-sm tabular-nums">{scoreFirst}</span>}
-            {winner === 'p1' && <span className="text-xs text-green-600">Winner</span>}
+          <div className={`flex items-center gap-3 ${rowTone(p1Mine, 'p1')}`}>
+            <PlayerAvatar name={p1N} tone={avatarTone(p1Mine, 'p1')} size="md" />
+            <span className="truncate flex-1">{p1N}</span>
+            {winnerBadge('p1')}
           </div>
-          <div className="text-center text-xs text-[var(--color-text-muted)]">vs</div>
-          <div className={`flex items-center justify-between ${p2Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
-            <span>{p2N}</span>
-            {hasResult && <span className="text-sm tabular-nums">{scoreRest}</span>}
-            {winner === 'p2' && <span className="text-xs text-green-600">Winner</span>}
+          <div className="py-1 text-center tabular-nums">
+            {hasResult
+              ? <span className="text-lg font-semibold text-[var(--color-text)]">{score}</span>
+              : <span className="text-xs text-[var(--color-text-muted)]">vs</span>}
           </div>
+          <div className={`flex items-center gap-3 ${rowTone(p2Mine, 'p2')}`}>
+            <PlayerAvatar name={p2N} tone={avatarTone(p2Mine, 'p2')} size="md" />
+            <span className="truncate flex-1">{p2N}</span>
+            {winnerBadge('p2')}
+          </div>
+          {hasResult && scoreStructure && (
+            <div className="text-center text-[11px] text-[var(--color-text-muted)]">
+              {t('tournamentBracket.scoreStructure', { structure: String(scoreStructure) })}
+            </div>
+          )}
           <Row label={t('tournamentBracket.status')} value={t(STATUS_KEYS[match.status || ''] || 'tournamentBracket.statusUnknown', match.status || '—')} />
           <Row label={t('tournamentBracket.roundLabel')} value={[match.round != null ? t('tournamentBracket.round', { round: match.round }) : null, match.round_name, match.is_final ? t('tournamentBracket.final') : null].filter(Boolean).join(' · ')} />
           {match.match_number != null && <Row label={t('tournamentBracket.matchNumber')} value={match.match_number} />}
@@ -107,23 +135,9 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
           </Section>
         )}
 
-        {hasResult && (
+        {hasResult && Boolean(resultRecord) && typeof resultRecord === 'object' && (
           <Section title={t('tournamentBracket.sectionResult')}>
-            {resultRecord && typeof resultRecord === 'object' ? (
-              <ResultSummaryView record={resultRecord as any} />
-            ) : (
-              <div className="space-y-1 text-sm">
-                <div>
-                  <span className="font-semibold">{score}</span>
-                  {scoreStructure && <span className="ml-2 text-xs text-[var(--color-text-muted)]">{t('tournamentBracket.scoreStructure', { structure: String(scoreStructure) })}</span>}
-                </div>
-                {winner !== 'none' && (
-                  <div className="text-xs text-green-600">
-                    {t('tournamentBracket.winner')}: {winner === 'p1' ? p1N : p2N}
-                  </div>
-                )}
-              </div>
-            )}
+            <ResultSummaryView record={resultRecord as any} />
           </Section>
         )}
 

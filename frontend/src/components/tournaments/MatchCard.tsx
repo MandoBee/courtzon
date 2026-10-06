@@ -2,6 +2,7 @@ import { useTranslation } from '../../i18n';
 import { formatDateTime } from '../../utils/formatDate';
 import { formatTournamentScore, hasBye } from '../../utils/tournamentScore';
 import { isCurrentUser } from './playerHighlight';
+import { PlayerAvatar, resolveWinnerSide, type AvatarTone } from './PlayerAvatar';
 import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
 interface MatchCardProps {
@@ -45,12 +46,33 @@ export function MatchCard({ match, currentUserId, onClick, footer }: MatchCardPr
   const p2N = match.player2_name || match.participant2_name || (match.player2_id ? `P${match.player2_id}` : bye ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
   const p1Mine = isCurrentUser(match.player1_id, currentUserId);
   const p2Mine = isCurrentUser(match.player2_id, currentUserId);
+  // ONE primary score representation, rendered once between the two players.
+  // Sport-aware formatting stays in the shared formatTournamentScore utility.
   const score = formatTournamentScore(match);
   const hasScore = Boolean(score);
-  const scoreTokens = score.split(' ').filter(Boolean);
-  const homeScore = scoreTokens[0] ?? '';
-  const awayScore = scoreTokens.slice(1).join(' ') || '';
   const hasTime = Boolean(match.start_time);
+  const winnerSide = resolveWinnerSide(match);
+
+  // Winner emphasised, loser secondary (never disabled). Current-player highlight
+  // always wins so it stays distinguishable from the winner treatment.
+  const rowTone = (mine: boolean, side: 'p1' | 'p2') => {
+    if (mine) return 'text-[var(--color-primary)] font-bold';
+    if (winnerSide === side) return 'text-[var(--color-text)] font-semibold';
+    if (winnerSide !== 'none') return 'text-[var(--color-text-muted)]';
+    return 'text-[var(--color-text)]';
+  };
+  const avatarTone = (mine: boolean, side: 'p1' | 'p2'): AvatarTone => {
+    if (mine) return 'current';
+    if (winnerSide === side) return 'winner';
+    if (winnerSide !== 'none') return 'loser';
+    return 'default';
+  };
+  const winnerBadge = (side: 'p1' | 'p2') =>
+    winnerSide === side ? (
+      <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-green-700">
+        {t('tournamentBracket.winner')}
+      </span>
+    ) : null;
 
   return (
     <button
@@ -70,16 +92,21 @@ export function MatchCard({ match, currentUserId, onClick, footer }: MatchCardPr
       </div>
 
       <div className="space-y-1 text-sm">
-        <div className={`flex items-center justify-between gap-2 ${p1Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
-          <span className={`truncate${p1Mine ? ' cz-player-emphasis' : ''}`}>{p1N}</span>
-          {hasScore && <span className="text-xs font-medium tabular-nums">{homeScore}</span>}
+        <div className={`flex items-center gap-2 ${rowTone(p1Mine, 'p1')}`}>
+          <PlayerAvatar name={p1N} tone={avatarTone(p1Mine, 'p1')} />
+          <span className={`truncate flex-1${p1Mine ? ' cz-player-emphasis' : ''}`}>{p1N}</span>
+          {winnerBadge('p1')}
         </div>
-        <div className="text-center text-xs text-[var(--color-text-muted)]">vs</div>
-        <div className={`flex items-center justify-between gap-2 ${p2Mine ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-text)]'}`}>
-          <span className={`truncate${p2Mine ? ' cz-player-emphasis' : ''}`}>{p2N}</span>
-          {hasScore && <span className="text-xs font-medium tabular-nums">{awayScore}</span>}
+        <div className="text-center text-xs tabular-nums">
+          {hasScore
+            ? <span className="font-medium text-[var(--color-text)]">{score}</span>
+            : <span className="text-[var(--color-text-muted)]">vs</span>}
         </div>
-        {hasScore && <div className="text-center text-xs font-medium tabular-nums">{score}</div>}
+        <div className={`flex items-center gap-2 ${rowTone(p2Mine, 'p2')}`}>
+          <PlayerAvatar name={p2N} tone={avatarTone(p2Mine, 'p2')} />
+          <span className={`truncate flex-1${p2Mine ? ' cz-player-emphasis' : ''}`}>{p2N}</span>
+          {winnerBadge('p2')}
+        </div>
       </div>
 
       {(match.resource_name || hasTime) && (
