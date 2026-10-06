@@ -175,9 +175,9 @@ describe('TournamentService.create — GSK lifecycle & engine boundary (Step 3B-
   });
 });
 
-describe('Engine boundary — GSK still not in ENGINE_EXECUTABLE_FORMATS', () => {
-  it('ENGINE_EXECUTABLE_FORMATS remains exactly [knockout, round_robin]', () => {
-    expect([...ENGINE_EXECUTABLE_FORMATS]).toEqual(['knockout', 'round_robin']);
+describe('Engine boundary — executable format registry (GSK promoted)', () => {
+  it('ENGINE_EXECUTABLE_FORMATS now includes group_stage_knockout [+ knockout, round_robin]', () => {
+    expect([...ENGINE_EXECUTABLE_FORMATS]).toEqual(['knockout', 'round_robin', 'group_stage_knockout']);
   });
 
   it('double elimination / swiss are still rejected by the create DTO', () => {

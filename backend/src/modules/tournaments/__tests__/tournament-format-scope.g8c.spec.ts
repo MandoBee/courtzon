@@ -138,8 +138,8 @@ beforeEach(() => {
 });
 
 describe('G8-C — tournament format scope (engine-executable contract)', () => {
-  it('declares the authoritative engine-executable format list', () => {
-    expect([...ENGINE_EXECUTABLE_FORMATS]).toEqual(['knockout', 'round_robin']);
+  it('declares the authoritative engine-executable format list (GSK promoted)', () => {
+    expect([...ENGINE_EXECUTABLE_FORMATS]).toEqual(['knockout', 'round_robin', 'group_stage_knockout']);
   });
 
   it('knockout create remains supported; the derived format is stored', async () => {

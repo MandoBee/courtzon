@@ -11,16 +11,15 @@ export type TournamentFormat =
  * swiss, group stage knockout, league, custom, mixed are FUTURE, never advertised
  * as selectable).
  */
-export const ENGINE_EXECUTABLE_FORMATS = ['knockout', 'round_robin'] as const;
+export const ENGINE_EXECUTABLE_FORMATS = ['knockout', 'round_robin', 'group_stage_knockout'] as const;
 
 /**
- * Step 3B-1 — formats whose DATA CONTRACT exists but whose engine is NOT yet
- * executable. `group_stage_knockout` is never advertised as selectable and its
- * configuration is NOT consumed at creation/match generation yet. This constant
- * is the single marker for "contract exists, engine not ready" so the product
- * never fakes readiness.
+ * Formats whose DATA CONTRACT exists but whose engine is NOT yet executable.
+ * Empty after the GSK promotion (Step 3B-5C — GSK is now a fully executable,
+ * HTTP-validated format). double_elimination / swiss / league / custom / mixed
+ * remain reserved FUTURE values — never advertised as executable.
  */
-export const ENGINE_PLANNED_FORMATS = ['group_stage_knockout'] as const;
+export const ENGINE_PLANNED_FORMATS = [] as const;
 
 export type TournamentStatus =
   | 'draft' | 'published' | 'registration_open' | 'registration_closed'

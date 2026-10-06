@@ -113,12 +113,12 @@ export class TournamentService {
     // actually supported by the current engine. Deferred types (double
     // elimination, swiss) are config-visible but unavailable for creation.
     await this.assertBracketTypeAvailable(data.bracket_type_id);
-    // Step 3B-5A — the creation contract additionally accepts an EXPLICIT
-    // `group_stage_knockout` request (a valid GSK configuration — groups/knockout
-    // are generated later through the explicit prepare lifecycle). The reserved
-    // future formats (double_elimination, swiss, league, custom, mixed) are still
-    // rejected at creation — never advertised as executable.
-    const CREATION_SUPPORTED_FORMATS = [...(ENGINE_EXECUTABLE_FORMATS as readonly string[]), 'group_stage_knockout'];
+    // Step 3B-5C (promoted) — `group_stage_knockout` is now a genuinely
+    // executable format included in ENGINE_EXECUTABLE_FORMATS; its creation is
+    // additionally validated against `gsk_config` + the single-elimination
+    // bracket substrate below. The reserved future formats (double_elimination,
+    // swiss, league, custom, mixed) are still rejected at creation.
+    const CREATION_SUPPORTED_FORMATS = ENGINE_EXECUTABLE_FORMATS as readonly string[];
     if (data.format != null && !CREATION_SUPPORTED_FORMATS.includes(data.format)) {
       throw new AppError(
         `Tournament format "${data.format}" is not supported by the current engine — supported: ${ENGINE_EXECUTABLE_FORMATS.join(', ')}`,
