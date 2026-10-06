@@ -1079,15 +1079,68 @@ html[dir="rtl"] {
    .cz-print-area  → only visible when printing
    .cz-no-print    → hidden when printing
    ========================================================================== */
+@page {
+  margin: 12mm;
+}
 @media print {
   body { background: #fff !important; color: #000 !important; }
+
+  /* Legacy visibility scoping — the print area overlays the hidden app chrome. */
   body * { visibility: hidden; }
   .cz-print-area, .cz-print-area * { visibility: visible; }
-  .cz-print-area { display: block !important; position: absolute; inset: 0; width: 100%; }
+  /* Do NOT pin the bottom edge: content taller than one page must not be clipped. */
+  .cz-print-area { display: block !important; position: absolute !important; left: 0; top: 0; width: 100% !important; }
   .cz-no-print { display: none !important; }
   nav, aside, .cz-bottom-nav, .cz-drawer, .cz-toast-container { display: none !important; }
-  .print-rounds { flex-direction: row !important; flex-wrap: nowrap; overflow: visible !important; gap: 16px; }
-  .print-rounds > div { min-width: 0 !important; break-inside: avoid; }
+
+  /* No motion in print, even if a screen animation class ever leaks through. */
+  .cz-print-area, .cz-print-area * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* Colour-independent, high-contrast print palette. */
+  .cz-print-area, .cz-print-area * { color: #000 !important; }
+  .cz-print-area .cz-match-card {
+    border: 1px solid #000 !important;
+    border-radius: 4px !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    transform: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* Status badges / chips: keep a visible outline instead of relying on fill. */
+  .cz-print-area [class*="rounded-full"] { border: 1px solid #000 !important; }
+
+  /* Round headers: clear hierarchy, never orphaned from their matches. */
+  .cz-print-area h4 {
+    color: #000 !important;
+    border-bottom: 1px solid #000;
+    padding-bottom: 2px;
+    font-size: 12px !important;
+    letter-spacing: 0.02em;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
   .print-root { font-size: 12px; }
+  .print-header { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Bracket columns share the page width — no horizontal overflow. */
+  .print-rounds { flex-direction: row !important; flex-wrap: nowrap; overflow: visible !important; gap: 16px; align-items: flex-start; }
+  .print-rounds > div {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Never clip player names in print — wrap instead of ellipsis. */
+  .cz-print-area .truncate {
+    overflow: visible !important;
+    white-space: normal !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere;
+  }
   a[href]:after { content: none !important; }
 }

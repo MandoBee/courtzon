@@ -21,18 +21,19 @@ export function TournamentPrintView({ tournament, matches, participants, current
 
   return (
     <div className="print-root p-4">
-      <div className="mb-4 border-b border-black pb-3">
+      <header className="print-header mb-4 border-b border-black pb-3">
         <h1 className="text-xl font-bold">{tournament?.name || t('tournamentBracket.printTitle')}</h1>
         <p className="text-sm">
           {[tournament?.sport_name, tournament?.bracket_type_name, tournament?.status].filter(Boolean).join(' · ')}
-          {tournament?.bracket_type_name ? '' : ''}
         </p>
         {tournament?.start_date && (
           <p className="text-xs">{t('tournamentBracket.printDate')}: {formatISODate(String(tournament.start_date))}</p>
         )}
-      </div>
-      <TournamentBracket tournament={tournament} matches={matches} participants={participants} currentUserId={currentUserId} printOnly />
-      <p className="mt-4 text-xs text-gray-600">{t('tournamentBracket.seedLegend', { count: participants?.length ?? 0 })}</p>
+      </header>
+      <section className="print-bracket" aria-label={t('tournamentBracket.printTitle')}>
+        <TournamentBracket tournament={tournament} matches={matches} participants={participants} currentUserId={currentUserId} printOnly />
+      </section>
+      <p className="print-legend mt-4 text-xs text-gray-600">{t('tournamentBracket.seedLegend', { count: participants?.length ?? 0 })}</p>
     </div>
   );
 }
