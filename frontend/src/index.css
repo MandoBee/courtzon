@@ -1008,6 +1008,11 @@ html[dir="rtl"] {
     animation: cz-fade-in 200ms ease-out both;
   }
 
+  /* Creation Wizard — single-step fade (transform/opacity only). */
+  .cz-wizard-panel {
+    animation: cz-fade-in 200ms ease-out both;
+  }
+
   /* Pull-to-refresh indicator */
   .cz-ptr-indicator {
     will-change: transform, opacity;
@@ -1069,7 +1074,7 @@ html[dir="rtl"] {
 
 @media (prefers-reduced-motion: reduce) {
   .cz-sheet-enter, .cz-fade-enter, .cz-drawer-enter, .cz-skeleton::after,
-  .cz-bracket-col, .cz-player-emphasis, .cz-hub-enter, .cz-hub-panel {
+  .cz-bracket-col, .cz-player-emphasis, .cz-hub-enter, .cz-hub-panel, .cz-wizard-panel {
     animation: none;
   }
   /* Neutralise the MatchCard hover/active transform for reduced-motion users. */

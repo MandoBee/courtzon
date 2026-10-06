@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, type RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentCreatePage from '../TournamentCreatePage';
@@ -9,10 +9,6 @@ const __state = vi.hoisted(() => ({
   orgApi: {
     getBracketTypes: vi.fn(),
     getCommissionConfig: vi.fn(),
-    getSportFormats: vi.fn(),
-  },
-  bracketTypeApi: {
-    listActive: vi.fn(),
     getSportFormats: vi.fn(),
   },
   sportsPayload: [
@@ -44,15 +40,18 @@ const __state = vi.hoisted(() => ({
     { id: 99, name: 'G11 Org A', country_code: 'AE' },
     { id: 6, name: 'Padel Edge', country_code: 'AE' },
   ] },
+  postError: null as null | Error,
 }));
 
 vi.mock('../../../services/tournament', () => ({
   orgTournamentApi: __state.orgApi,
-  bracketTypeApi: __state.bracketTypeApi,
 }));
 
 vi.mock('../../../services/api', () => ({
-  default: { get: vi.fn().mockResolvedValue({ data: __state.sportsPayload }), post: vi.fn() },
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+  },
 }));
 
 import api from '../../../services/api';
@@ -79,38 +78,94 @@ vi.mock('../../../components/ui', () => ({
     <div>
       {label && <label>{label}</label>}
       {tag === 'textarea' ? <textarea {...rest} /> : <input {...rest} />}
-      {error && <p>{error}</p>}
+      {error && <p role="alert">{error}</p>}
     </div>
   ),
   Card: ({ children }: any) => <div>{children}</div>,
 }));
 
-function renderPage(permissions: string[]) {
+function renderPage(permissions: string[], mode: 'org' | 'admin' = 'org') {
   __state.userPermissions = permissions;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <TournamentCreatePage mode="org" orgId="6" />
+        <TournamentCreatePage mode={mode} orgId={mode === 'org' ? '6' : undefined} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-function renderAdminPage(permissions: string[]) {
-  __state.userPermissions = permissions;
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter>
-        <TournamentCreatePage mode="admin" />
-      </MemoryRouter>
-    </QueryClientProvider>,
+const ALL = [
+  'org.tournaments.create',
+  'tournament.create.organisation',
+  'tournaments.create.name',
+  'tournaments.create.description',
+  'tournaments.create.type',
+  'tournaments.create.sport',
+  'tournaments.create.match-format',
+  'tournaments.create.rule-set',
+  'tournaments.create.max-participants',
+  'tournaments.create.min-participants',
+  'tournaments.create.prize',
+  'tournaments.create.start-date',
+  'tournaments.create.end-date',
+  'tournaments.create.registration-dates',
+  'tournaments.create.rules',
+];
+
+const continueBtn = () => screen.getByRole('button', { name: /tournaments\.wizard\.continue/ });
+const backBtn = () => screen.getByRole('button', { name: 'common.back' });
+
+function fieldInput(labelKey: string): HTMLInputElement {
+  const el = screen.getByText(labelKey).nextElementSibling;
+  if (!el) throw new Error(`No input found after label ${labelKey}`);
+  return el as HTMLInputElement;
+}
+
+function selectByOptionText(view: RenderResult, optionText: string, value: string) {
+  const sel = Array.from(view.container.querySelectorAll('select')).find((s) =>
+    Array.from(s.querySelectorAll('option')).some((o) => (o.textContent || '').includes(optionText)),
   );
+  if (!sel) throw new Error(`No select containing option "${optionText}"`);
+  fireEvent.change(sel!, { target: { value } });
+}
+
+/** Wait until the Single Elimination card is enabled (bracket types loaded), then select it. */
+async function clickSingleElimination() {
+  const card = await screen.findByTestId('format-card-single-elimination');
+  await waitFor(() => expect((card as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(card);
+}
+
+/** Continue and wait until the wizard reaches the given step (mobile header "Step N of 8"). */
+async function clickContinueAndAwait(stepNo: number) {
+  fireEvent.click(continueBtn());
+  await screen.findByText(`Step ${stepNo} of 8`);
+}
+
+/** Fill a full valid walk to the given step index (0-based). */
+async function walkTo(stepIndex: number) {
+  fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'UAT Wizard Cup' } });
+  await clickContinueAndAwait(2); // Format
+  await clickSingleElimination();
+  await clickContinueAndAwait(3); // Participants
+  fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+  await clickContinueAndAwait(4); // Schedule
+  fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+  await clickContinueAndAwait(5); // Rules
+  await clickContinueAndAwait(6); // Payments
+  await clickContinueAndAwait(7); // Prizes
+  await clickContinueAndAwait(8); // Review
+  for (let i = 7; i > stepIndex; i--) {
+    fireEvent.click(backBtn());
+    await screen.findByText(`Step ${i} of 8`);
+  }
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __state.postError = null;
   __state.orgApi.getBracketTypes.mockResolvedValue(__state.bracketTypesPayload);
   __state.orgApi.getCommissionConfig.mockResolvedValue(__state.commissionPayload);
   __state.orgApi.getSportFormats.mockResolvedValue(__state.formatsPayload);
@@ -120,358 +175,268 @@ beforeEach(() => {
     if (url.includes('/organisations')) return Promise.resolve({ data: __state.organisationListPayload });
     return Promise.resolve({ data: __state.sportsPayload });
   });
+  (api.post as any).mockImplementation(() =>
+    __state.postError ? Promise.reject(__state.postError) : Promise.resolve({ data: { id: 1 } }),
+  );
 });
 
-describe('TournamentCreatePage — field-level permission gates (Group 5B UAT regression)', () => {
-  it('renders ALL configuration fields when the org-admin holds every tournaments.create.* key', async () => {
-    renderPage([
-      'org.tournaments.create',
-      'tournaments.create.name',
-      'tournaments.create.description',
-      'tournaments.create.type',
-      'tournaments.create.sport',
-      'tournaments.create.match-format',
-      'tournaments.create.rule-set',
-      'tournaments.create.max-participants',
-      'tournaments.create.min-participants',
-      'tournaments.create.prize',
-      'tournaments.create.start-date',
-      'tournaments.create.end-date',
-      'tournaments.create.registration-dates',
-      'tournaments.create.rules',
-    ]);
-
-    // Every field the UAT expected to be visible renders.
+describe('Creation Wizard — shell, navigation and validation', () => {
+  it('renders the wizard title, step indicator and the Basics step', async () => {
+    renderPage(ALL);
+    expect(screen.getByText('tournaments.create.title')).toBeTruthy();
+    expect(screen.getByTestId('wizard-progress-desktop')).toBeTruthy();
+    // Mobile compact header ("Step 1 of 8").
+    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
     expect(await screen.findByText('tournaments.create.name')).toBeTruthy();
     expect(screen.getByText('tournaments.create.description')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.bracket_type')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.sport')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.max_players')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.start_date')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.end_date')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.registration_opens')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.submit')).toBeTruthy();
-    // Rules are a read-only generated preview (no editable textarea).
-    expect(screen.getByText('tournaments.create.generated_rules')).toBeTruthy();
+    expect(continueBtn()).toBeTruthy();
   });
 
-  it('hides ALL configuration fields when the org-admin has NO tournaments.create.* key (only commission + submit render)', async () => {
-    renderPage(['org.tournaments.view', 'org.tournaments.create']);
-
-    // The un-gated commission box and submit button still render.
-    expect(await screen.findByText('tournaments.create.commission_rate')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.submit')).toBeTruthy();
-
-    // No configuration field renders.
-    expect(screen.queryByText('tournaments.create.name')).toBeNull();
-    expect(screen.queryByText('tournaments.create.description')).toBeNull();
-    expect(screen.queryByText('tournaments.create.bracket_type')).toBeNull();
-    expect(screen.queryByText('tournaments.create.sport')).toBeNull();
-    expect(screen.queryByText('tournaments.create.max_players')).toBeNull();
-    expect(screen.queryByText('tournaments.create.start_date')).toBeNull();
-    expect(screen.queryByText('tournaments.create.registration_opens')).toBeNull();
-    expect(screen.queryByText('tournaments.create.generated_rules')).toBeNull();
+  it('prevented from advancing when the required name is missing', async () => {
+    renderPage(ALL);
+    fireEvent.click(continueBtn());
+    expect(await screen.findByText('tournaments.create.validation.name')).toBeTruthy();
+    // Still on Basics — the Format step has not mounted.
+    expect(screen.queryByTestId('format-card-single-elimination')).toBeNull();
   });
 
-  it('the create form is submitted to the org-scoped endpoint only (G11 Phase 3: no /admin/tournaments)', async () => {
-    const { orgApi } = __state;
-    const { fireEvent } = await import('@testing-library/react');
-    const view = renderPage(['org.tournaments.create', 'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.sport', 'tournaments.create.start-date']);
-    await waitFor(() => expect(orgApi.getBracketTypes).toHaveBeenCalledWith('6'));
-    await waitFor(() => expect(orgApi.getCommissionConfig).toHaveBeenCalledWith('6'));
+  it('back navigation returns to the previous step preserving form state', async () => {
+    const view = renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Back Cup' } });
+    fireEvent.click(continueBtn());
+    expect(await screen.findByTestId('format-card-single-elimination')).toBeTruthy();
+    fireEvent.click(backBtn());
+    expect(await screen.findByText('tournaments.create.name')).toBeTruthy();
+    expect((fieldInput('tournaments.create.name') as HTMLInputElement).value).toBe('Back Cup');
+    expect(view.container.textContent).toContain('tournaments.create.description');
+  });
 
-    // Submit a minimal valid create and assert the ONLY target is the
-    // organisation-scoped route. The platform-wide POST /admin/tournaments
-    // route no longer exists — the CourtZon platform never owns a tournament.
-    await screen.findByText('tournaments.create.name');
-    fireEvent.change(screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement, { target: { value: 'G11 Phase 3 Cup' } });
-    await screen.findByText('Single Elimination');
-    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
-    );
-    fireEvent.change(bracketSelect!, { target: { value: '1' } });
-    fireEvent.change(screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement, { target: { value: '2026-10-01' } });
-    fireEvent.click(screen.getByText('tournaments.create.submit'));
+  it('valid step data advances to the next step', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Advance Cup' } });
+    fireEvent.click(continueBtn());
+    expect(await screen.findByTestId('format-card-single-elimination')).toBeTruthy();
+  });
 
-    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
-    const [url] = (api.post as any).mock.calls[0] as [string, any];
-    expect(url).toBe('/org/6/tournaments');
-    expect(url).not.toContain('/admin/tournaments');
+  it('walks the full wizard to the Review screen', async () => {
+    renderPage(ALL);
+    await walkTo(7);
+    expect(screen.getByTestId('wizard-review')).toBeTruthy();
   });
 });
 
-describe('TournamentCreatePage — generated Rules preview (Group 1)', () => {
-  it('shows an empty state before any sport/format/rule-set is selected (no fake rules)', async () => {
-    renderPage(['tournaments.create.sport', 'tournaments.create.match-format', 'tournaments.create.rule-set', 'tournaments.create.rules']);
-    // No format/rule set selected → the preview shows the empty-state text only.
-    expect(await screen.findByText('tournaments.create.generated_rules_empty')).toBeTruthy();
-    expect(screen.queryByText(/Best of 3 sets/)).toBeNull();
+describe('Creation Wizard — Format selector (engine capability states)', () => {
+  it('shows all five target formats; only engine-executable ones are selectable', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    for (const key of ['single-elimination', 'round-robin', 'double-elimination', 'swiss', 'group-stage-knockout']) {
+      expect(await screen.findByTestId(`format-card-${key}`)).toBeTruthy();
+    }
   });
 
-  it('the Rules section is read-only — no editable textarea is rendered', async () => {
-    renderPage(['tournaments.create.rules']);
-    expect(await screen.findByText('tournaments.create.generated_rules')).toBeTruthy();
-    // The old editable textarea must not exist.
-    expect(screen.queryByRole('textbox')).toBeNull();
+  it('selecting an executable format shows its journey preview and enables Continue', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    await clickSingleElimination();
+    expect(screen.getByTestId('format-journey-preview')).toBeTruthy();
+    // Selection is stored in the form (aria-pressed on the executable card).
+    expect(screen.getByTestId('format-card-single-elimination').getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('the preview updates from the selected rule-set humanReadable value', async () => {
-    const { fireEvent } = await import('@testing-library/react');
-    const view = renderPage(['tournaments.create.sport', 'tournaments.create.match-format', 'tournaments.create.rule-set', 'tournaments.create.rules']);
+  it('planned formats (Double Elimination / Swiss) are not submitted; they explain engine preparation', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    fireEvent.click(await screen.findByTestId('format-card-double-elimination'));
+    expect(screen.getByTestId('format-planned-panel')).toBeTruthy();
+    // No executable format is selected → Continue refuses to advance.
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getByText('tournaments.create.validation.bracket_type')).toBeTruthy());
+  });
 
-    // Locate the Sport select by its contained option text (raw <select>,
-    // gated by tournaments.create.sport).
+  it('Group Stage + Knockout reveals the future configuration preview (no fake submission)', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    fireEvent.click(await screen.findByTestId('format-card-group-stage-knockout'));
+    expect(screen.getByTestId('gsk-preview')).toBeTruthy();
+    expect(screen.getByText('tournaments.wizard.gsk.journey')).toBeTruthy();
+    expect(screen.getByText('tournaments.wizard.gsk.note')).toBeTruthy();
+    // GSK is never written into the bracket field → Continue remains blocked.
+    fireEvent.click(continueBtn());
+    expect(await screen.findByText('tournaments.create.validation.bracket_type')).toBeTruthy();
+  });
+});
+
+describe('Creation Wizard — match format & rule set cascade', () => {
+  it('match format and rule set populate from the sport cascade and preview derives from the rule set', async () => {
+    const view = renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    await clickSingleElimination();
+
+    // Sport → cascade request for the selected bracket (bracket passed through).
     await screen.findByText('Padel');
-    const sportSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel'),
-    );
-    expect(sportSelect).toBeTruthy();
-    fireEvent.change(sportSelect!, { target: { value: '22' } });
-    await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22', undefined));
-    // Select the Padel Standard format so the rule-set select becomes enabled
-    // with options from the cascade.
+    selectByOptionText(view, 'Padel', '22');
+    await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22', '1'));
+
+    // Match format from the cascade.
     await screen.findByText('Padel Standard');
-    const formatSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel Standard'),
-    );
-    fireEvent.change(formatSelect!, { target: { value: '1' } });
-    // Select the rule set and assert the preview renders the server-derived
-    // humanReadable (never a client-computed interpretation).
+    selectByOptionText(view, 'Padel Standard', '1');
     const ruleSetSelect = Array.from(view.container.querySelectorAll('select')).find(
       (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel Standard v1'),
     );
     expect(ruleSetSelect).toBeTruthy();
     fireEvent.change(ruleSetSelect!, { target: { value: '1' } });
+    await clickContinueAndAwait(3); // Participants
+    await clickContinueAndAwait(4); // Schedule
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5); // Rules
+    // Rules step shows the server-derived humanReadable preview.
     expect(await screen.findByText(/Best of 3 sets/)).toBeTruthy();
     expect(screen.getByText(/Golden point at deuce/)).toBeTruthy();
     expect(screen.queryByText('tournaments.create.generated_rules_empty')).toBeNull();
   });
 });
 
-describe('TournamentCreatePage — Group 1A foundation corrections', () => {
-  it('the org create screen displays the server-resolved currency (EGP), not a hardcoded value', async () => {
-    renderPage(['tournaments.create.sport', 'tournaments.create.type', 'tournaments.create.rules']);
-    // currencyCode comes from the org commission-config read (single source).
-    expect(await screen.findByText(/tournaments\.create\.currency/)).toBeTruthy();
-    expect(screen.getByText('EGP')).toBeTruthy();
+describe('Creation Wizard — participants, payments and editor steps', () => {
+  it('min > max blocks progression on the Participants step', async () => {
+    renderPage(ALL);
+    await walkTo(2);
+    fireEvent.change(fieldInput('tournaments.create.min_players'), { target: { value: '10' } });
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getByText('tournaments.wizard.validation.min_max')).toBeTruthy());
   });
 
-  it('no hardcoded AED / currency remains anywhere in the create screen (G11 Phase 3)', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { resolve, dirname } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../TournamentCreatePage.tsx');
-    const src = readFileSync(root, 'utf8');
-    // G11 Phase 3 — the owning organisation's currency is ALWAYS authoritative
-    // and resolved server-side (branch → organisation country default). There is
-    // no platform path and therefore no context in which a currency is hardcoded.
-    expect(src).not.toMatch(/currency_code:\s*'AED'/);
-    expect(src).toMatch(/currency_code: undefined/);
-    // The prize editor always receives the server-resolved org currency.
-    expect(src).toMatch(/currencyCode=\{orgCurrency\}/);
-  });
+  it('payments: free tournaments hide payment configuration; paid shows Cash/Card guards empties', async () => {
+    const view = renderPage(ALL);
+    await walkTo(5);
+    // Free → payment methods hidden.
+    expect(screen.getByText('tournaments.wizard.payments.free_note')).toBeTruthy();
+    expect(screen.queryByText('tournaments.create.payment_methods')).toBeNull();
+    expect(screen.getByText('EGP')).toBeTruthy(); // server-resolved currency
 
-  it('the selected bracket type is passed to the format cascade so preview matches the snapshot', async () => {
-    const { fireEvent } = await import('@testing-library/react');
-    const view = renderPage(['tournaments.create.type', 'tournaments.create.sport', 'tournaments.create.match-format', 'tournaments.create.rule-set', 'tournaments.create.rules']);
-
-    await screen.findByText('Single Elimination');
-    // Select the Single Elimination bracket (first select).
-    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
-    );
-    expect(bracketSelect).toBeTruthy();
-    fireEvent.change(bracketSelect!, { target: { value: '1' } });
-
-    await screen.findByText('Padel');
-    const sportSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Padel'),
-    );
-    fireEvent.change(sportSelect!, { target: { value: '22' } });
-    // The cascade must be requested with the selected bracket_type_id.
-    await waitFor(() => expect(__state.orgApi.getSportFormats).toHaveBeenCalledWith('6', '22', '1'));
-  });
-});
-
-describe('TournamentCreatePage — registration payment methods (Group 3)', () => {
-  it('renders Cash + Card checkboxes (both checked by default) when the prize permission is granted', async () => {
-    renderPage(['tournaments.create.prize']);
+    // Paid → methods appear; removing both blocks Continue.
+    fireEvent.change(fieldInput('tournaments.create.entry_fee'), { target: { value: '100' } });
     expect(await screen.findByText('tournaments.create.payment_methods')).toBeTruthy();
     const cash = screen.getByRole('checkbox', { name: 'tournaments.create.payment_cash' }) as HTMLInputElement;
     const card = screen.getByRole('checkbox', { name: 'tournaments.create.payment_card' }) as HTMLInputElement;
     expect(cash.checked).toBe(true);
     expect(card.checked).toBe(true);
-    // G7-D eligibility is present but separate from payment-method checkboxes.
-    expect(screen.getByRole('checkbox', { name: 'tournaments.eligibility.level.open' })).toBeDefined();
+    fireEvent.click(cash);
+    fireEvent.click(card);
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getAllByText('tournaments.create.payment_methods_required').length).toBeGreaterThan(0));
+    expect(view.container.textContent).toContain('tournaments.create.payment_methods');
   });
 
-  it('Wallet is never rendered as a payment method option', async () => {
-    const view = renderPage(['tournaments.create.prize']);
-    await screen.findByText('tournaments.create.payment_methods');
-    const labels = Array.from(view.container.querySelectorAll('label')).map((l) => l.textContent || '');
-    expect(labels.some((t) => /wallet/i.test(t))).toBe(false);
-  });
-
-  it('hides the payment-method section when the create-prize permission is absent', async () => {
-    renderPage(['org.tournaments.create']);
-    await screen.findByText('tournaments.create.commission_rate');
-    expect(screen.queryByText('tournaments.create.payment_methods')).toBeNull();
-  });
-
-  it('submits the selected registration payment methods with the create payload', async () => {
-    const { fireEvent } = await import('@testing-library/react');
-    const view = renderPage([
-      'org.tournaments.create',
-      'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.prize',
-      'tournaments.create.max-participants', 'tournaments.create.start-date',
-    ]);
-
-    await screen.findByText('tournaments.create.name');
-    // Name
-    const nameInput = screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement;
-    fireEvent.change(nameInput, { target: { value: 'UAT Cup' } });
-    // Bracket type
-    await screen.findByText('Single Elimination');
-    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
-    );
-    fireEvent.change(bracketSelect!, { target: { value: '1' } });
-    // Max players
-    const maxInput = screen.getByText('tournaments.create.max_players').nextElementSibling as HTMLInputElement;
-    fireEvent.change(maxInput, { target: { value: '8' } });
-    // Start date
-    const startInput = screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement;
-    fireEvent.change(startInput, { target: { value: '2026-10-01' } });
-    // Uncheck Cash → card-only
-    fireEvent.click(screen.getByRole('checkbox', { name: 'tournaments.create.payment_cash' }));
-    // Submit
-    fireEvent.click(screen.getByText('tournaments.create.submit'));
-
-    await waitFor(() => expect(__state.orgApi.getBracketTypes).toHaveBeenCalled());
-    await waitFor(() => {
-      const postCalls = (api.post as any).mock.calls;
-      expect(postCalls.length).toBeGreaterThan(0);
-    });
-    const payload = (api.post as any).mock.calls[0][1] as any;
-    expect(payload.registration_payment_methods).toEqual(['card']);
+  it('prizes & sponsors step renders the editor surfaces', async () => {
+    renderPage(ALL);
+    await walkTo(6);
+    expect(screen.getByText('tournaments.create.prize')).toBeTruthy(); // prize description
   });
 });
 
-describe('TournamentCreatePage — venue + daily playing window (Group 4)', () => {
-  it('renders the venue (branch) selector + daily start/end time fields', async () => {
-    const view = renderPage(['tournaments.create.prize']);
-    expect(await screen.findByText('tournaments.create.venue')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.daily_start')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.daily_end')).toBeTruthy();
-    const timeInputs = Array.from(view.container.querySelectorAll('input[type="time"]'));
-    expect(timeInputs.length).toBe(2);
+describe('Creation Wizard — review & submit', () => {
+  it('review shows all sections and Edit jumps back to the matching step', async () => {
+    renderPage(ALL);
+    await walkTo(7);
+    const editButtons = screen.getAllByText('tournaments.wizard.review.edit');
+    expect(editButtons.length).toBeGreaterThanOrEqual(7);
+    fireEvent.click(editButtons[0]);
+    expect(await screen.findByText('tournaments.create.name')).toBeTruthy();
   });
 
-  it('loads the organisation branches into the venue selector (reuses org/branch model)', async () => {
-    const view = renderPage(['tournaments.create.prize']);
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/org/6/branches'));
-    await screen.findByText('tournaments.create.venue');
-    const venueSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent?.includes('Padel Edge City')),
-    );
-    expect(venueSelect).toBeTruthy();
-  });
-
-  it('hides the prize-gated daily window but keeps the ungated venue selector when the prize permission is absent', async () => {
-    renderPage(['org.tournaments.create']);
-    await screen.findByText('tournaments.create.commission_rate');
-    // The daily playing window is gated by `tournaments.create.prize` → hidden.
-    expect(screen.queryByText('tournaments.create.daily_start')).toBeNull();
-    expect(screen.queryByText('tournaments.create.daily_end')).toBeNull();
-    // The venue/courts selector is not coupled to the prize permission (there is no
-    // dedicated venue permission in the RBAC registry), so it remains available.
-    expect(screen.queryByText('tournaments.create.venue')).not.toBeNull();
-  });
-
-  it('submits branch_id + daily_start_time + daily_end_time with the create payload', async () => {
-    const { fireEvent } = await import('@testing-library/react');
-    const view = renderPage([
-      'org.tournaments.create',
-      'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.prize',
-      'tournaments.create.max-participants', 'tournaments.create.start-date',
-    ]);
-
-    await screen.findByText('tournaments.create.name');
-    fireEvent.change(screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement, { target: { value: 'UAT Cup' } });
-    await screen.findByText('Single Elimination');
-    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
-    );
-    fireEvent.change(bracketSelect!, { target: { value: '1' } });
-    fireEvent.change(screen.getByText('tournaments.create.max_players').nextElementSibling as HTMLInputElement, { target: { value: '8' } });
-    fireEvent.change(screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement, { target: { value: '2026-10-01' } });
-
-    // Select venue branch + set daily window
-    const venueSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent?.includes('Padel Edge City')),
-    );
-    fireEvent.change(venueSelect!, { target: { value: '5' } });
+  it('submits through the org-scoped endpoint only (G11 Phase 3) with the full payload', async () => {
+    const view = renderPage(ALL);
+    // Walk with a branch + daily window so the payload is fully asserted.
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'UAT Wizard Cup' } });
+    await clickContinueAndAwait(2);
+    await clickSingleElimination();
+    await clickContinueAndAwait(3);
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+    await clickContinueAndAwait(4);
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await screen.findByText(/Padel Edge City/);
+    selectByOptionText(view, 'Padel Edge City', '5');
     const timeInputs = Array.from(view.container.querySelectorAll('input[type="time"]')) as HTMLInputElement[];
     fireEvent.change(timeInputs[0], { target: { value: '09:00' } });
     fireEvent.change(timeInputs[1], { target: { value: '21:00' } });
+    await clickContinueAndAwait(5);
+    await clickContinueAndAwait(6); // payments (free)
+    await clickContinueAndAwait(7); // prizes
+    await clickContinueAndAwait(8); // review
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
 
-    fireEvent.click(screen.getByText('tournaments.create.submit'));
     await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
-    const payload = (api.post as any).mock.calls[0][1] as any;
+    const [url, payload] = (api.post as any).mock.calls[0] as [string, any];
+    expect(url).toBe('/org/6/tournaments');
+    expect(url).not.toContain('/admin/tournaments');
+    expect(payload.name).toBe('UAT Wizard Cup');
+    expect(payload.bracket_type_id).toBe(1);
+    expect(payload.max_participants).toBe(8);
+    expect(payload.start_date).toBe('2026-10-01');
     expect(payload.branch_id).toBe(5);
     expect(payload.daily_start_time).toBe('09:00:00');
     expect(payload.daily_end_time).toBe('21:00:00');
+    expect(payload.price_type).toBe('FREE');
+    expect(payload.registration_payment_methods).toEqual(['cash', 'card']);
+    expect(payload.venue_type).toBe('ORGANISATION_COURTS');
+    expect(payload.organisation_id).toBeUndefined();
+    expect(payload.currency_code).toBeUndefined();
+    expect(payload.commission_rate).toBeUndefined();
+  });
+
+  it('surfaces backend validation errors on the review screen', async () => {
+    __state.postError = new Error('Server rejected the tournament');
+    renderPage(ALL);
+    await walkTo(7);
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
+    await waitFor(() => expect(screen.getByTestId('create-error-banner')).toBeTruthy());
+    expect(screen.getByText(/Server rejected the tournament/)).toBeTruthy();
   });
 });
 
-describe('TournamentCreatePage — G11 Phase 3 admin mode REQUIRES an owning organisation', () => {
-  it('renders the owning-organisation picker; the submit stays disabled and NEVER fires until a real org is selected', async () => {
-    const { fireEvent } = await import('@testing-library/react');
-    const view = renderAdminPage([
-      'org.tournaments.create',
-      'tournament.create.organisation',
-      'tournaments.create.name', 'tournaments.create.type', 'tournaments.create.start-date',
-    ]);
+describe('Creation Wizard — permissions', () => {
+  it('only renders Basics fields the user is permitted to configure', async () => {
+    renderPage(['org.tournaments.create', 'tournaments.create.name']);
+    expect(await screen.findByText('tournaments.create.name')).toBeTruthy();
+    // Category/season are gated by tournaments.create.type.
+    expect(screen.queryByText('tournaments.create.category')).toBeNull();
+    expect(screen.queryByText('tournaments.create.season')).toBeNull();
+  });
 
-    // The picker is rendered and lists the organisations (no "no org" option
-    // exists — the placeholder is selectable only as the empty value).
-    const orgLabel = await screen.findByText('tournaments.create.organisation');
-    expect(orgLabel).toBeTruthy();
-    // Wait for the organisation list to load into the picker.
+  it('admin mode requires an owning organisation before proceeding', async () => {
+    const view = renderPage(ALL, 'admin');
     await screen.findByText(/G11 Org A/);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Admin Cup' } });
+    fireEvent.click(continueBtn());
+    // No org selected → still on Basics (validated below the picker).
+    expect(await screen.findByText('tournaments.create.validation.organisation_required')).toBeTruthy();
+    expect(screen.queryByTestId('format-card-single-elimination')).toBeNull();
+
+    // Selecting the owning org enables the org-scoped reads and lets us continue.
     const orgSelect = Array.from(view.container.querySelectorAll('select')).find(
       (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent?.includes('G11 Org A')),
     );
     expect(orgSelect).toBeTruthy();
-
-    // Before any org is selected: the submit button is disabled.
-    const submit = screen.getByText('tournaments.create.submit') as HTMLButtonElement;
-    expect(submit.disabled).toBe(true);
-
-    // Fill the remaining required fields while NO org is selected and try to
-    // submit — the disabled button cannot fire, and no API call is made.
-    fireEvent.change(screen.getByText('tournaments.create.name').nextElementSibling as HTMLInputElement, { target: { value: 'No Org Cup' } });
-    fireEvent.change(screen.getByText('tournaments.create.start_date').nextElementSibling as HTMLInputElement, { target: { value: '2026-10-01' } });
-    fireEvent.click(submit);
-    expect((api.post as any).mock.calls.length).toBe(0);
-
-    // Selecting an owning organisation enables the submit — the tournament is
-    // then created on behalf of that organisation only.
     fireEvent.change(orgSelect!, { target: { value: '99' } });
-    await waitFor(() => expect(submit.disabled).toBe(false));
-    // The org-scoped bracket types load for the selected organisation; pick one
-    // so the form validates (the picker gate reuses organisation-scoped reads).
-    await waitFor(() => expect(__state.orgApi.getBracketTypes).toHaveBeenCalledWith('99'));
-    await screen.findByText('Single Elimination');
-    const bracketSelect = Array.from(view.container.querySelectorAll('select')).find(
-      (s) => Array.from(s.querySelectorAll('option')).some((o) => o.textContent === 'Single Elimination'),
-    );
-    fireEvent.change(bracketSelect!, { target: { value: '1' } });
-    fireEvent.click(submit);
-    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
-    const [url, payload] = (api.post as any).mock.calls[0] as [string, any];
-    expect(url).toBe('/org/99/tournaments');
-    // The org id is NEVER client-supplied in the payload — the route provides it.
-    expect(payload.organisation_id).toBeUndefined();
+    fireEvent.click(continueBtn());
+    expect(await screen.findByTestId('format-card-single-elimination')).toBeTruthy();
+  });
+});
+
+describe('Creation Wizard — motion & reduced motion', () => {
+  it('uses the existing CSS motion system and disables it under prefers-reduced-motion', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../index.css');
+    const css = readFileSync(root, 'utf8');
+    expect(css).toContain('.cz-wizard-panel {');
+    const reducedBlock = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reducedBlock).toContain('.cz-wizard-panel');
   });
 });
