@@ -230,6 +230,14 @@ export async function generateOrgGroupsHandler(request: FastifyRequest, reply: F
   const { id } = request.params as any;
   const body = GenerateGroupsSchema.parse(request.body);
   await assertOrgOwnsTournament(orgId, Number(id));
+  if (body.stage_id != null) {
+    // Step 3B-2 — GSK group stage generation (stage-driven configuration).
+    // Lazy import keeps the heavy DB/env module graph out of unrelated boot paths.
+    const { groupStageService } = await import('../application/group-stage.service.js');
+    const res = await groupStageService.generateGroupStage(Number(id), body.stage_id, userId, body.competition_id);
+    recordAudit({ actorId: userId, action: 'TOURNAMENT.GROUP_STAGE_GENERATED', entityType: 'tournament', entityId: Number(id), afterState: { orgId, ...res } });
+    return reply.send({ ok: true, data: res });
+  }
   await tournamentService.generateGroups(Number(id), body.group_size, body.advance_count, body.competition_id);
   recordAudit({ actorId: userId, action: 'TOURNAMENT.GENERATE_GROUPS', entityType: 'tournament', entityId: Number(id), afterState: { orgId } });
   return reply.send({ ok: true });

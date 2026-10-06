@@ -1040,18 +1040,22 @@ export class TournamentRepository {
 
   // ── Groups ──
 
-  async createGroup(data: Partial<TournamentGroup>): Promise<number> {
+  async createGroup(data: Partial<TournamentGroup>, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
     const sql = 'INSERT INTO tournament_groups (tournament_id, competition_id, name, advance_count) VALUES (?, ?, ?, ?)';
-    const [result] = await getPool().query<ResultSet>(sql, [
+    const [result] = await db.query<ResultSet>(sql, [
       data.tournament_id, data.competition_id ?? null, data.name, data.advance_count ?? 1,
     ]);
     return (result as any).insertId;
   }
 
-  async findGroups(tournamentId: number): Promise<TournamentGroup[]> {
-    const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_groups WHERE tournament_id = ? ORDER BY name',
-      [tournamentId],
+  async findGroups(tournamentId: number, competitionId?: number | null, conn?: PoolConnection): Promise<TournamentGroup[]> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      competitionId != null
+        ? 'SELECT * FROM tournament_groups WHERE tournament_id = ? AND competition_id = ? ORDER BY name'
+        : 'SELECT * FROM tournament_groups WHERE tournament_id = ? ORDER BY name',
+      competitionId != null ? [tournamentId, competitionId] : [tournamentId],
     );
     return rows as TournamentGroup[];
   }
@@ -1061,9 +1065,10 @@ export class TournamentRepository {
     return rows.length ? (rows[0] as TournamentGroup) : null;
   }
 
-  async addGroupMember(data: Partial<TournamentGroupMember>): Promise<number> {
+  async addGroupMember(data: Partial<TournamentGroupMember>, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
     const sql = 'INSERT INTO tournament_group_members (group_id, registration_id, seed) VALUES (?, ?, ?)';
-    const [result] = await getPool().query<ResultSet>(sql, [
+    const [result] = await db.query<ResultSet>(sql, [
       data.group_id, data.registration_id, data.seed ?? 0,
     ]);
     return (result as any).insertId;

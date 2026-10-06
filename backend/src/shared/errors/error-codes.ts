@@ -187,6 +187,15 @@ export const ErrorCodes = {
   // ── Group 8 — match generation, scheduling & court reservation ──
   TOURNAMENT_DRAW_NOT_LOCKED: 'TOURNAMENT_DRAW_NOT_LOCKED',
   TOURNAMENT_MATCHES_ALREADY_GENERATED: 'TOURNAMENT_MATCHES_ALREADY_GENERATED',
+  // ── Step 3B-2 — Group Stage engine ──
+  /** The requested stage does not exist. */
+  TOURNAMENT_STAGE_NOT_FOUND: 'TOURNAMENT_STAGE_NOT_FOUND',
+  /** Group-stage generation was already performed for this tournament/competition. */
+  TOURNAMENT_GROUPS_ALREADY_GENERATED: 'TOURNAMENT_GROUPS_ALREADY_GENERATED',
+  /** The target stage is not a valid round-robin Group Stage (wrong progression format / config). */
+  TOURNAMENT_GROUP_STAGE_INVALID: 'TOURNAMENT_GROUP_STAGE_INVALID',
+  /** The participant count is incompatible with the requested group configuration. */
+  TOURNAMENT_GROUP_CONFIG_INVALID: 'TOURNAMENT_GROUP_CONFIG_INVALID',
   TOURNAMENT_SCHEDULE_INVALID: 'TOURNAMENT_SCHEDULE_INVALID',
   TOURNAMENT_COURT_NOT_ELIGIBLE: 'TOURNAMENT_COURT_NOT_ELIGIBLE',
   TOURNAMENT_COURT_UNAVAILABLE: 'TOURNAMENT_COURT_UNAVAILABLE',

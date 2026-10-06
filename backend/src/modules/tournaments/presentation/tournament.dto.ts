@@ -252,6 +252,13 @@ export const GenerateGroupsSchema = z.object({
   advance_count: z.number().int().min(1).default(2),
   /** G11.18 Phase 3 — competition category (default/single when omitted). */
   competition_id: z.coerce.number().int().positive().optional(),
+  /**
+   * Step 3B-2 — stage-scoped Group Stage generation (GSK). When provided, the
+   * target stage MUST be a round-robin Group Stage carrying GSK configuration;
+   * the engine reads groupCount/participantsPerGroup from the stage, so the
+   * legacy group_size/advance_count params are ignored in this mode.
+   */
+  stage_id: z.number().int().positive().optional(),
 });
 
 export const RecordResultSchema = z.object({
