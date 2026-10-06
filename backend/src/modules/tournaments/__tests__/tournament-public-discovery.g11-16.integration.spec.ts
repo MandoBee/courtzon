@@ -153,6 +153,23 @@ describe('G11.16 public tournament discovery', () => {
     const { NotFoundError } = await import('../../../shared/errors/app-error.js');
     const [rows] = await pool.execute<RowData>(`SELECT id FROM tournaments WHERE name = 'Private Only' LIMIT 1`);
     await expect(tournamentService.getPublicTournament(Number((rows as any[])[0].id))).rejects.toBeInstanceOf(NotFoundError);
+    // F-02 — the private 404 carries the TOURNAMENT code, never the academy one.
+    await expect(tournamentService.getPublicTournament(Number((rows as any[])[0].id))).rejects.toMatchObject({
+      statusCode: 404, errorCode: 'NOT_FOUND', code: 'TOURNAMENT_NOT_FOUND',
+    });
+  });
+
+  it('4c. a NONEXISTENT public tournament id → 404 TOURNAMENT_NOT_FOUND (never ACADEMY_PROGRAM_NOT_FOUND)', async () => {
+    const { tournamentService } = await import('../application/tournament.service.js');
+    const { NotFoundError } = await import('../../../shared/errors/app-error.js');
+    const err: any = await tournamentService.getPublicTournament(999999999).catch((e) => e);
+    expect(err).toBeInstanceOf(NotFoundError);
+    expect(err.statusCode).toBe(404);
+    expect(err.errorCode).toBe('NOT_FOUND');
+    expect(err.code).toBe('TOURNAMENT_NOT_FOUND');
+    expect(err.code).not.toBe('ACADEMY_PROGRAM_NOT_FOUND');
+    expect(err.message).toBe('Tournament not found');
+    expect(err.message).not.toContain('999999999');
   });
 
   it('4b. a public but DRAFT / CANCELLED / ARCHIVED tournament is NOT publicly visible (404)', async () => {
@@ -160,9 +177,15 @@ describe('G11.16 public tournament discovery', () => {
     const { NotFoundError } = await import('../../../shared/errors/app-error.js');
     const [rows] = await pool.execute<RowData>(`SELECT id FROM tournaments WHERE name = 'Public Draft' LIMIT 1`);
     await expect(tournamentService.getPublicTournament(Number((rows as any[])[0].id))).rejects.toBeInstanceOf(NotFoundError);
+    await expect(tournamentService.getPublicTournament(Number((rows as any[])[0].id))).rejects.toMatchObject({
+      statusCode: 404, code: 'TOURNAMENT_NOT_FOUND',
+    });
     // A cancelled public tournament must also 404 (regression guard).
     const cancelled = await createTournament('Public Cancelled', { isPublic: 1, status: 'cancelled' });
     await expect(tournamentService.getPublicTournament(cancelled)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(tournamentService.getPublicTournament(cancelled)).rejects.toMatchObject({
+      statusCode: 404, code: 'TOURNAMENT_NOT_FOUND',
+    });
   });
 
   it('7. public bracket/standings appear ONLY when legitimately available', async () => {

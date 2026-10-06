@@ -834,7 +834,7 @@ export class TournamentService {
       && Number(t.is_public ?? 1) === 1
       && !['draft', 'cancelled', 'archived'].includes(String(t.status));
     if (!isDiscoverable) {
-      throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+      throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
     }
     const detail = (await tournamentRepository.findByIdDetailed(id)) ?? t;
     const d: Record<string, unknown> = {
@@ -900,7 +900,7 @@ export class TournamentService {
 
   async getById(id: number): Promise<Tournament> {
     const t = await tournamentRepository.findById(id);
-    if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    if (!t) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
     // Group 3 — the persisted JSON allowlist is exposed as a normalised array
     // (legacy NULL rows → backward-compatible default both methods).
     (t as any).registration_payment_methods = this.readRegistrationPaymentMethods((t as any).registration_payment_methods);
@@ -913,7 +913,7 @@ export class TournamentService {
   /** Management detail — the shared Admin/Org display shape (sport_name, organisation_name, max_players, type, …). */
   async getByIdDetailed(id: number) {
     const t = await tournamentRepository.findByIdDetailed(id);
-    if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    if (!t) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
     // Group 2 — attach structured prizes (authoritative when present; the
     // frontend falls back to legacy prize_description when the array is empty).
     t.prizes = await tournamentRepository.findPrizesByTournament(id);

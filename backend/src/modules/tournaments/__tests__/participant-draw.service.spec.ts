@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { ParticipantDrawService } from '../application/participant-draw.service.js';
 
 const repo = vi.hoisted(() => ({
@@ -323,5 +324,19 @@ describe('Group 5 — Participant & Seeding foundation', () => {
     // No payment or match-generation repository methods are invoked.
     expect(Object.keys(repo).some((k) => k.includes('Payment') || k.includes('Cash'))).toBe(false);
     expect(tRepo.findRegistrationsByTournament).toHaveBeenCalled(); // participants sourced from registrations only
+  });
+});
+
+describe('F-02 — participant-draw tournament lookup error code', () => {
+  it('a nonexistent tournament rejects with 404 TOURNAMENT_NOT_FOUND (never ACADEMY_PROGRAM_NOT_FOUND)', async () => {
+    tRepo.findById.mockResolvedValue(null);
+    const err: any = await svc.promoteNextWaitlisted(999999999, 42).catch((e) => e);
+    expect(err).toBeInstanceOf(NotFoundError);
+    expect(err.statusCode).toBe(404);
+    expect(err.errorCode).toBe('NOT_FOUND');
+    expect(err.code).toBe(ErrorCodes.TOURNAMENT_NOT_FOUND);
+    expect(err.code).not.toBe(ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    expect(err.message).toBe('Tournament not found');
+    expect(err.message).not.toContain('999999999');
   });
 });

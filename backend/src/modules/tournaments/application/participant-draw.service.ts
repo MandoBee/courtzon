@@ -1170,7 +1170,7 @@ export class ParticipantDrawService {
 
   private async getTournament(tournamentId: number): Promise<Tournament> {
     const t = await tournamentRepository.findById(tournamentId);
-    if (!t) throw new NotFoundError('Tournament', ErrorCodes.ACADEMY_PROGRAM_NOT_FOUND);
+    if (!t) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
     return t;
   }
 
