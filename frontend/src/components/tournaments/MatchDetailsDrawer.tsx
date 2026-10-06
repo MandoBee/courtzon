@@ -61,15 +61,22 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
   if (!match) return null;
 
   // Same side-label rule as MatchCard: player name, then participant name (pair/team
-  // slots and the public read-model expose participant names only), then id/TBD.
-  const p1N = match.player1_name || match.participant1_name || (match.player1_id ? `P${match.player1_id}` : t('tournamentBracket.tbd'));
-  const p2N = match.player2_name || match.participant2_name || (match.player2_id ? `P${match.player2_id}` : hasBye(match) ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
+  // slots and the public read-model expose participant names only). When a slot is
+  // assigned but exposes no display name, show the neutral label — NEVER an internal id.
+  const p1N = match.player1_name || match.participant1_name || (match.player1_id != null ? t('tournamentBracket.notAvailable') : t('tournamentBracket.tbd'));
+  const p2N = match.player2_name || match.participant2_name || (match.player2_id != null ? t('tournamentBracket.notAvailable') : hasBye(match) ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
   const p1Mine = isCurrentUser(match.player1_id, currentUserId);
   const p2Mine = isCurrentUser(match.player2_id, currentUserId);
   const score = formatTournamentScore(match);
   const scoreStructure = match.rule_snapshot?.score_structure;
   const hasResult = Boolean(score);
   const winner = resolveWinnerSide(match);
+  // Section presence is driven by meaningful, user-facing data only — never ids.
+  const hasSchedule = Boolean(match.start_time || match.end_time);
+  const hasVenue = Boolean(match.resource_name) || match.resource_id != null;
+  const hasOfficial = Boolean(match.referee_name) || match.referee_id != null;
+  const hasBooking = match.booking_id != null;
+  const hasDetails = hasSchedule || hasVenue || hasOfficial || hasBooking;
   // Defensive, pure derivation from already-loaded rows — no network call.
   const navigation = resolveBracketNavigation(match, matches, currentUserId);
   const showNavigation = typeof onSelectMatch === 'function' && Array.isArray(matches);
@@ -124,14 +131,29 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
           {match.match_number != null && <Row label={t('tournamentBracket.matchNumber')} value={match.match_number} />}
         </Section>
 
-        {(match.start_time || match.resource_name || match.referee_name) && (
+        {hasSchedule && (
           <Section title={t('tournamentBracket.sectionSchedule')}>
             {match.start_time && <Row label={t('tournamentBracket.date')} value={formatISODate(match.start_time)} />}
             {match.start_time && <Row label={t('tournamentBracket.startTime')} value={formatDateTime(match.start_time)} />}
             {match.end_time && <Row label={t('tournamentBracket.endTime')} value={formatDateTime(match.end_time)} />}
-            <Row label={t('tournamentBracket.court')} value={match.resource_name || (match.resource_id ? `#${match.resource_id}` : undefined)} />
-            <Row label={t('tournamentBracket.referee')} value={match.referee_name || (match.referee_id ? `#${match.referee_id}` : undefined)} />
-            {match.booking_id != null && <Row label={t('tournamentBracket.booking')} value={`#${match.booking_id}`} />}
+          </Section>
+        )}
+
+        {hasVenue && (
+          <Section title={t('tournamentBracket.sectionVenue')}>
+            <Row label={t('tournamentBracket.court')} value={match.resource_name || t('tournamentBracket.notAvailable')} />
+          </Section>
+        )}
+
+        {hasOfficial && (
+          <Section title={t('tournamentBracket.sectionOfficial')}>
+            <Row label={t('tournamentBracket.referee')} value={match.referee_name || t('tournamentBracket.notAvailable')} />
+          </Section>
+        )}
+
+        {hasBooking && (
+          <Section title={t('tournamentBracket.sectionBooking')}>
+            <Row label={t('tournamentBracket.booking')} value={t('tournamentBracket.notAvailable')} />
           </Section>
         )}
 
@@ -141,7 +163,7 @@ export function MatchDetailsDrawer({ open, onClose, match, currentUserId, result
           </Section>
         )}
 
-        {!hasResult && !match.start_time && !match.resource_name && !match.referee_name && (
+        {!hasResult && !hasDetails && (
           <p className="text-sm text-[var(--color-text-muted)]">{t('tournamentBracket.noDetails')}</p>
         )}
 
