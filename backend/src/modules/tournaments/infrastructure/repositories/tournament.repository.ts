@@ -846,6 +846,16 @@ export class TournamentRepository {
     return Number(rows[0]?.c ?? 0);
   }
 
+  /** Step 3B-4 — how many matches already exist for a specific stage (idempotency guard). */
+  async countStageMatches(stageId: number, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      'SELECT COUNT(*) AS c FROM tournament_matches WHERE stage_id = ?',
+      [stageId],
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+
   /**
    * G11.18 Phase 3 — eligible courts: active resources whose BRANCH belongs to the
    * tournament's ORGANISATION (server-side tenant rule). A tournament that has an
@@ -1096,10 +1106,11 @@ export class TournamentRepository {
 
   // ── Stages (Group 5A — MIXED tournaments) ──
 
-  async createStage(data: Partial<TournamentStage>): Promise<number> {
+  async createStage(data: Partial<TournamentStage>, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
     const sql = `INSERT INTO tournament_stages (tournament_id, competition_id, stage_order, name, progression_format, match_format_id, rule_set_id, advance_count, status, config)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    const [result] = await getPool().query<ResultSet>(sql, [
+    const [result] = await db.query<ResultSet>(sql, [
       data.tournament_id, data.competition_id ?? null, data.stage_order ?? 1, data.name ?? null,
       data.progression_format ?? 'round_robin', data.match_format_id ?? null,
       data.rule_set_id ?? null, data.advance_count ?? 1, data.status ?? 'pending',

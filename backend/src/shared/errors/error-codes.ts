@@ -199,6 +199,9 @@ export const ErrorCodes = {
   // ── Step 3B-3 — GSK qualification ──
   /** The qualification configuration/state is impossible (missing groups/standings, duplicates, unsatisfiable best-thirds). */
   TOURNAMENT_QUALIFICATION_INVALID: 'TOURNAMENT_QUALIFICATION_INVALID',
+  // ── Step 3B-4 — GSK knockout integration ──
+  /** The knockout configuration is unsupported/invalid (play-ins, incompatible starting round, unsatisfiable seeding). */
+  TOURNAMENT_KNOCKOUT_CONFIG_INVALID: 'TOURNAMENT_KNOCKOUT_CONFIG_INVALID',
   TOURNAMENT_SCHEDULE_INVALID: 'TOURNAMENT_SCHEDULE_INVALID',
   TOURNAMENT_COURT_NOT_ELIGIBLE: 'TOURNAMENT_COURT_NOT_ELIGIBLE',
   TOURNAMENT_COURT_UNAVAILABLE: 'TOURNAMENT_COURT_UNAVAILABLE',
