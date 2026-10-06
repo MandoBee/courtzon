@@ -283,6 +283,16 @@ export const GenerateGroupsSchema = z.object({
   stage_id: z.number().int().positive().optional(),
 });
 
+/**
+ * Step 3B-5B — GSK lifecycle operation (qualify / knockout transition).
+ * `stage_id` identifies the tournament's Group Stage; the operation is
+ * competition-scoped (default/single competition when omitted).
+ */
+export const GskLifecycleSchema = z.object({
+  stage_id: z.number().int().positive(),
+  competition_id: z.coerce.number().int().positive().optional(),
+});
+
 export const RecordResultSchema = z.object({
   winner_id: z.number().int().positive(),
   home_score: z.string().optional(),

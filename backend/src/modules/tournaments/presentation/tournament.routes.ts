@@ -135,6 +135,9 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.post('/admin/tournaments/:id/generate-groups', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.generateGroupsHandler);
+  // Step 3B-5B — GSK lifecycle: qualification + knockout transition (manage).
+  app.post('/admin/tournaments/:id/qualify', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.qualifyGroupStageHandler);
+  app.post('/admin/tournaments/:id/knockout', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.introduceKnockoutStageHandler);
 
   // Group 5A — MIXED tournament stages
   app.post('/admin/tournaments/:id/stages', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.createStageHandler);

@@ -133,6 +133,17 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
     ctrl.generateOrgGroupsHandler,
   );
+  // Step 3B-5B — GSK lifecycle: qualification + knockout transition (manage).
+  app.post(
+    '/org/:orgId/tournaments/:id/qualify',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.qualifyOrgGroupStageHandler,
+  );
+  app.post(
+    '/org/:orgId/tournaments/:id/knockout',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.manage')] },
+    ctrl.introduceOrgKnockoutStageHandler,
+  );
   app.get(
     '/org/:orgId/tournaments/:id/groups',
     { preHandler: [requireOrgScopedPermission('org.tournaments.view')] },

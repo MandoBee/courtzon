@@ -4,7 +4,7 @@ import { tournamentRepository } from '../infrastructure/repositories/tournament.
 import { z } from 'zod';
 import {
   CreateTournamentSchema, UpdateTournamentSchema, ListTournamentsQuerySchema,
-  GenerateGroupsSchema,
+  GenerateGroupsSchema, GskLifecycleSchema,
   AssignCourtSchema, AssignRefereeSchema, CreateStageSchema,
 } from './tournament.dto.js';
 import { RawMatchResultBodySchema } from '../../match-result/presentation/match-result.dto.js';
@@ -241,6 +241,32 @@ export async function generateOrgGroupsHandler(request: FastifyRequest, reply: F
   await tournamentService.generateGroups(Number(id), body.group_size, body.advance_count, body.competition_id);
   recordAudit({ actorId: userId, action: 'TOURNAMENT.GENERATE_GROUPS', entityType: 'tournament', entityId: Number(id), afterState: { orgId } });
   return reply.send({ ok: true });
+}
+
+// ── Step 3B-5B — GSK lifecycle: qualification + knockout transition (org) ──
+
+export async function qualifyOrgGroupStageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = GskLifecycleSchema.parse(request.body);
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { qualificationService } = await import('../application/qualification.service.js');
+  const result = await qualificationService.qualifyGroupStage(Number(id), body.stage_id, body.competition_id);
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.QUALIFY_GROUP_STAGE', entityType: 'tournament', entityId: Number(id), afterState: { orgId, stageId: body.stage_id, totalQualified: result.totalQualified } });
+  return reply.send(result);
+}
+
+export async function introduceOrgKnockoutStageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = GskLifecycleSchema.parse(request.body);
+  await assertOrgOwnsTournament(orgId, Number(id));
+  const { knockoutTransitionService } = await import('../application/knockout-transition.service.js');
+  const result = await knockoutTransitionService.introduceKnockoutStage(Number(id), body.stage_id, userId, body.competition_id);
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.KNOCKOUT_TRANSITION', entityType: 'tournament', entityId: Number(id), afterState: { orgId, stageId: body.stage_id, bracketSize: result.bracketSize, matches: result.matches } });
+  return reply.send(result);
 }
 
 export async function getOrgGroupsHandler(request: FastifyRequest, reply: FastifyReply) {

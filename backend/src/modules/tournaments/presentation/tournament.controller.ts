@@ -4,7 +4,7 @@ import { tournamentRepository } from '../infrastructure/repositories/tournament.
 import { tournamentPrizeAwardService } from '../application/tournament-prize-award.service.js';
 import {
   UpdateTournamentSchema, ListTournamentsQuerySchema,
-  RegisterSchema, GenerateGroupsSchema,
+  RegisterSchema, GenerateGroupsSchema, GskLifecycleSchema,
   AssignCourtSchema, AssignRefereeSchema, CreateStageSchema, BracketTypeUpdateSchema,
 } from './tournament.dto.js';
 import { RawMatchResultBodySchema } from '../../match-result/presentation/match-result.dto.js';
@@ -420,6 +420,37 @@ export async function generateGroupsHandler(request: FastifyRequest, reply: Fast
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send({ message: 'Groups generated' });
+}
+
+// ── Step 3B-5B — GSK lifecycle: qualification + knockout transition ──
+
+export async function qualifyGroupStageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = GskLifecycleSchema.parse(request.body);
+  // Qualification is a read-only, deterministic compute (never creates matches).
+  const { qualificationService } = await import('../application/qualification.service.js');
+  const result = await qualificationService.qualifyGroupStage(Number(id), body.stage_id, body.competition_id);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.QUALIFY_GROUP_STAGE', entityType: 'tournament',
+    entityId: Number(id), afterState: { stageId: body.stage_id, totalQualified: result.totalQualified },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(result);
+}
+
+export async function introduceKnockoutStageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  const body = GskLifecycleSchema.parse(request.body);
+  const { knockoutTransitionService } = await import('../application/knockout-transition.service.js');
+  const result = await knockoutTransitionService.introduceKnockoutStage(Number(id), body.stage_id, userId, body.competition_id);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.KNOCKOUT_TRANSITION', entityType: 'tournament',
+    entityId: Number(id), afterState: { stageId: body.stage_id, bracketSize: result.bracketSize, matches: result.matches },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send(result);
 }
 
 export async function getGroupsHandler(request: FastifyRequest, reply: FastifyReply) {
