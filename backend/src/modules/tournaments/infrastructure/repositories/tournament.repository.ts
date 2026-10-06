@@ -1092,12 +1092,13 @@ export class TournamentRepository {
   // ── Stages (Group 5A — MIXED tournaments) ──
 
   async createStage(data: Partial<TournamentStage>): Promise<number> {
-    const sql = `INSERT INTO tournament_stages (tournament_id, competition_id, stage_order, name, progression_format, match_format_id, rule_set_id, advance_count, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournament_stages (tournament_id, competition_id, stage_order, name, progression_format, match_format_id, rule_set_id, advance_count, status, config)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.tournament_id, data.competition_id ?? null, data.stage_order ?? 1, data.name ?? null,
       data.progression_format ?? 'round_robin', data.match_format_id ?? null,
       data.rule_set_id ?? null, data.advance_count ?? 1, data.status ?? 'pending',
+      data.config != null ? (typeof data.config === 'object' ? JSON.stringify(data.config) : data.config) : null,
     ]);
     return (result as any).insertId;
   }
@@ -1107,7 +1108,10 @@ export class TournamentRepository {
       'SELECT * FROM tournament_stages WHERE tournament_id = ? ORDER BY stage_order',
       [tournamentId],
     );
-    return rows as TournamentStage[];
+    return (rows as TournamentStage[]).map((r) => ({
+      ...r,
+      config: typeof r.config === 'string' && r.config ? JSON.parse(r.config) : r.config,
+    }));
   }
 
   // ── Standings ──

@@ -13,6 +13,15 @@ export type TournamentFormat =
  */
 export const ENGINE_EXECUTABLE_FORMATS = ['knockout', 'round_robin'] as const;
 
+/**
+ * Step 3B-1 — formats whose DATA CONTRACT exists but whose engine is NOT yet
+ * executable. `group_stage_knockout` is never advertised as selectable and its
+ * configuration is NOT consumed at creation/match generation yet. This constant
+ * is the single marker for "contract exists, engine not ready" so the product
+ * never fakes readiness.
+ */
+export const ENGINE_PLANNED_FORMATS = ['group_stage_knockout'] as const;
+
 export type TournamentStatus =
   | 'draft' | 'published' | 'registration_open' | 'registration_closed'
   | 'running' | 'completed' | 'cancelled' | 'archived'
@@ -509,6 +518,12 @@ export interface TournamentStage {
   rule_set_id?: number;
   advance_count: number;
   status: string;
+  /**
+   * Step 3B-1 — per-stage configuration JSON (nullable). NULL = unconfigured.
+   * Existing knockout / round_robin stages always keep it NULL. The future GSK
+   * engine persists its `GskConfiguration` here.
+   */
+  config?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
 }

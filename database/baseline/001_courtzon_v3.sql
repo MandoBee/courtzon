@@ -5666,6 +5666,7 @@ CREATE TABLE `tournament_stages` (
   `rule_set_id` bigint unsigned DEFAULT NULL,
   `advance_count` int unsigned NOT NULL DEFAULT '1',
   `status` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `config` json DEFAULT NULL COMMENT 'Stage-specific configuration (e.g. future Group Stage + Knockout parameters); NULL = unconfigured',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -5731,6 +5732,7 @@ CREATE TABLE `tournament_matches` (
   KEY `idx_tm_loser_participant` (`loser_participant_id`),
   KEY `idx_tm_is_final` (`tournament_id`,`is_final`,`progression_state`),
   KEY `idx_tm_competition` (`competition_id`),
+  CONSTRAINT `fk_tm_group` FOREIGN KEY (`group_id`) REFERENCES `tournament_groups` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_player1` FOREIGN KEY (`player1_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_player2` FOREIGN KEY (`player2_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_match_resource` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
@@ -7637,13 +7639,13 @@ ALTER TABLE `bookings`
 
 
 -- ============================================================================
--- G11.22 P1 — membership plan versioning + subscriptions (appended to baseline;
+-- G11.22 P1 ï¿½ membership plan versioning + subscriptions (appended to baseline;
 -- source of truth = migrations 191/192 which carry COURTZON_MIGRATION_ENV markers)
 -- ============================================================================
 
 
 -- ============================================================================
--- G11.22 P1 — membership plan versioning + subscriptions (P0/P1 addenda; source
+-- G11.22 P1 ï¿½ membership plan versioning + subscriptions (P0/P1 addenda; source
 -- of truth = database/migrations/191..192 with COURTZON_MIGRATION_ENV markers)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `organisation_membership_settings` (
@@ -7793,7 +7795,7 @@ CREATE TABLE IF NOT EXISTS `membership_subscription_components` (
 
 
 -- ============================================================================
--- G11.22 P2 — membership installments (P2 addendum; source of truth =
+-- G11.22 P2 ï¿½ membership installments (P2 addendum; source of truth =
 -- database/migrations/193_membership_p2_installments.sql with
 -- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE)
 -- ============================================================================
@@ -7845,7 +7847,7 @@ ALTER TABLE `organisation_membership_settings`
 
 
 -- ============================================================================
--- G11.22 P3 — membership financial entitlement (P3 addendum; source of truth =
+-- G11.22 P3 ï¿½ membership financial entitlement (P3 addendum; source of truth =
 -- database/migrations/194_membership_entitlements.sql with
 -- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE). Additive ENUM extension only.
 -- ============================================================================

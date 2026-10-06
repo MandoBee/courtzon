@@ -269,6 +269,60 @@ export const AssignRefereeSchema = z.object({
   referee_id: z.number().int().positive(),
 });
 
+// ── Step 3B-1 — GSK (Group Stage + Knockout) configuration CONTRACT ──────────
+// Structural validation ONLY. Nothing here creates groups, matches or
+// qualifiers. The engine remains non-executable (`ENGINE_EXECUTABLE_FORMATS`
+// still excludes group_stage_knockout); this schema prepares the persistent
+// data contract stored on `tournament_stages.config`.
+
+export const GskKnockoutStartSchema = z.enum([
+  'round_of_16',
+  'quarterfinals',
+  'semifinals',
+  'final',
+  'first_valid_round',
+]);
+
+export const GskQualificationSchema = z.object({
+  topPerGroup: z.number().int().min(1),
+  bestThirdPlaces: z.number().int().min(0).optional(),
+  ordering: z.enum(['seed', 'points', 'rank']),
+});
+
+export const GskGroupStageSchema = z
+  .object({
+    groupCount: z.number().int().min(1),
+    participantsPerGroup: z.number().int().min(2),
+    format: z.literal('round_robin'),
+    qualification: GskQualificationSchema,
+  })
+  .refine((v) => v.qualification.topPerGroup <= v.participantsPerGroup, {
+    message: 'topPerGroup cannot exceed participantsPerGroup',
+    path: ['qualification', 'topPerGroup'],
+  });
+
+export const GskKnockoutSchema = z.object({
+  startingRound: GskKnockoutStartSchema,
+  seeding: z.enum(['manual', 'automatic']),
+  separateGroupWinners: z.boolean(),
+  preventSameGroupRematch: z.boolean(),
+  allowByes: z.boolean(),
+  playInRounds: z.number().int().min(0).optional(),
+});
+
+export const GskConfigurationSchema = z
+  .object({
+    format: z.literal('group_stage_knockout'),
+    groupStage: GskGroupStageSchema,
+    knockout: GskKnockoutSchema,
+  })
+  .refine((v) => (v.groupStage.qualification.bestThirdPlaces ?? 0) <= v.groupStage.groupCount, {
+    message: 'bestThirdPlaces cannot exceed the number of groups',
+    path: ['groupStage', 'qualification', 'bestThirdPlaces'],
+  });
+
+export type GskConfigurationInput = z.infer<typeof GskConfigurationSchema>;
+
 export const CreateStageSchema = z.object({
   stage_order: z.number().int().min(1).optional().default(1),
   name: z.string().min(1).max(120).optional(),
@@ -276,6 +330,10 @@ export const CreateStageSchema = z.object({
   match_format_id: z.number().int().positive().optional(),
   rule_set_id: z.number().int().positive().optional(),
   advance_count: z.number().int().min(1).optional().default(1),
+  // Step 3B-1 — per-stage configuration (future GSK). NULL/omitted keeps every
+  // existing knockout / round_robin stage valid; GSK configuration is validated
+  // structurally but never executed yet.
+  config: GskConfigurationSchema.nullable().optional(),
 });
 
 export const DashboardQuerySchema = z.object({});
