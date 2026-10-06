@@ -377,11 +377,15 @@ describe('TournamentCreatePage — venue + daily playing window (Group 4)', () =
     expect(venueSelect).toBeTruthy();
   });
 
-  it('hides the venue/daily section when the prize permission is absent (RBAC visibility)', async () => {
+  it('hides the prize-gated daily window but keeps the ungated venue selector when the prize permission is absent', async () => {
     renderPage(['org.tournaments.create']);
     await screen.findByText('tournaments.create.commission_rate');
-    expect(screen.queryByText('tournaments.create.venue')).toBeNull();
+    // The daily playing window is gated by `tournaments.create.prize` → hidden.
     expect(screen.queryByText('tournaments.create.daily_start')).toBeNull();
+    expect(screen.queryByText('tournaments.create.daily_end')).toBeNull();
+    // The venue/courts selector is not coupled to the prize permission (there is no
+    // dedicated venue permission in the RBAC registry), so it remains available.
+    expect(screen.queryByText('tournaments.create.venue')).not.toBeNull();
   });
 
   it('submits branch_id + daily_start_time + daily_end_time with the create payload', async () => {
