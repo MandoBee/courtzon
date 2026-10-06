@@ -42,8 +42,8 @@ export function MatchCard({ match, currentUserId, onClick, footer }: MatchCardPr
   // Side labels fall back to the PARTICIPANT name (pair/team bracket slots and the
   // public discovery read-model expose `participant1_name` only). One label
   // resolver keeps every role/screen on the same naming rule.
-  const p1N = match.player1_name || match.participant1_name || (match.player1_id ? `P${match.player1_id}` : bye ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
-  const p2N = match.player2_name || match.participant2_name || (match.player2_id ? `P${match.player2_id}` : bye ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
+  const p1N = match.player1_name || match.participant1_name || (match.player1_id != null ? t('tournamentBracket.notAvailable') : t('tournamentBracket.tbd'));
+  const p2N = match.player2_name || match.participant2_name || (match.player2_id != null ? t('tournamentBracket.notAvailable') : bye ? t('tournamentBracket.bye') : t('tournamentBracket.tbd'));
   const p1Mine = isCurrentUser(match.player1_id, currentUserId);
   const p2Mine = isCurrentUser(match.player2_id, currentUserId);
   // ONE primary score representation, rendered once between the two players.

@@ -127,3 +127,41 @@ describe('MatchDetailsDrawer — single score + winner', () => {
     expect(screen.getAllByText(WINNER_LABEL)).toHaveLength(1);
   });
 });
+
+describe('MatchCard — safe participant fallback (no internal ids)', () => {
+  it('renders participant_name when player_name is absent', () => {
+    const participant = m({ id: 50, round: 1, participant1_name: 'Alice', participant2_name: 'Bob', status: 'scheduled' });
+    const { container } = render(<MatchCard match={participant} />);
+    expect(container.textContent).toContain('Alice');
+    expect(container.textContent).toContain('Bob');
+  });
+
+  it('renders TBD and Bye for unassigned sides', () => {
+    const tbd = m({ id: 51, round: 1, status: 'scheduled', match_id: 77 });
+    render(<MatchCard match={tbd} />);
+    expect(screen.getByText('tournamentBracket.tbd')).toBeTruthy();
+    expect(screen.getByText('tournamentBracket.bye')).toBeTruthy();
+  });
+
+  it('keeps the Bye presentation', () => {
+    const bye = m({ id: 52, round: 1, player1_id: 10, status: 'scheduled', match_id: null });
+    render(<MatchCard match={bye} />);
+    expect(screen.getByText('tournamentBracket.bye')).toBeTruthy();
+  });
+
+  it('never renders internal P{id} when only an id exists', () => {
+    const idsOnly = m({ id: 53, round: 1, player1_id: 10, player2_id: 11, status: 'scheduled' });
+    const { container } = render(<MatchCard match={idsOnly} />);
+    expect(container.textContent).not.toMatch(/\bP\d+\b/);
+    expect(container.textContent).not.toContain('#');
+    expect(screen.getAllByText('tournamentBracket.notAvailable').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('preserves current-player highlight and initials avatars when names are absent', () => {
+    const idsOnly = m({ id: 54, round: 1, player1_id: 10, player2_id: 11, status: 'scheduled' });
+    const { container } = render(<MatchCard match={idsOnly} currentUserId={10} />);
+    const rows = Array.from(container.querySelectorAll('div.flex.items-center.gap-2'));
+    expect(rows.some((r) => String(r.className).includes('text-[var(--color-primary)]'))).toBe(true);
+    expect(container.querySelectorAll('span[aria-hidden="true"]').length).toBeGreaterThanOrEqual(2);
+  });
+});

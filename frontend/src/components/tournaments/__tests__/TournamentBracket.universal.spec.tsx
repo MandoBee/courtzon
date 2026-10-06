@@ -263,9 +263,11 @@ describe('Referee — shared bracket from the referee own authorised assignments
 
     fireEvent.click(screen.getByText('Bracket'));
     expect(await screen.findByText('Semi Final')).toBeTruthy();
-    // Player ids render with the shared P{id} fallback and the match is tappable.
-    expect(screen.getByText('P10')).toBeTruthy();
-    expect(screen.getByText('P21')).toBeTruthy();
+    // Assigned players without a display name use the neutral localized label —
+    // never an internal P{id} fallback.
+    expect(screen.getAllByText('Not available').length).toBeGreaterThan(0);
+    expect(screen.queryByText('P10')).toBeNull();
+    expect(screen.queryByText('P21')).toBeNull();
   });
 
   it('keeps the existing referee accept/decline actions gated by referee.assignments.manage', async () => {
