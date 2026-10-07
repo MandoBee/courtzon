@@ -96,7 +96,7 @@ Broader: **31 files / 281 tests passed** (tournaments, admin/org tournament hubs
 
 ## 15. Commit / Push
 
-Message: **`feat(tournaments): add player and public GSK views`** — commit **`07dbb8e5`**. Pushed to `origin/master`; `HEAD == origin/master`, working tree clean.
+Message: **`feat(tournaments): add player and public GSK views`** — feature commit **`442c1806`**. Pushed to `origin/master`; `HEAD == origin/master`, working tree clean.
 
 ## 16. Exact Next Recommended Step
 
