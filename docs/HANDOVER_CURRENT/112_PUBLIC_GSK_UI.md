@@ -83,7 +83,7 @@ Frontend `docker compose build frontend` → fresh image; `up -d frontend` → h
 
 ## 14. Commit / Push
 
-Message: **`feat(tournaments): complete public GSK tournament experience`** — hash + push recorded after verification; `HEAD == origin/master`, working tree clean.
+Message: **`feat(tournaments): complete public GSK tournament experience`** — feature commit **`b160db9f`**. Pushed to `origin/master`; `HEAD == origin/master`, working tree clean.
 
 ## 15. Exact Next Recommended Step
 
