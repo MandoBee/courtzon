@@ -17,6 +17,7 @@ import { TournamentBracket } from '../../../components/tournaments/TournamentBra
 import { TournamentPrintView } from '../../../components/tournaments/TournamentPrintView';
 import { TournamentHero, type HubAction, type HubKpi, type HubPhase } from '../../../components/tournaments/hub/TournamentHero';
 import { TournamentTabs, panelId, tabId, type HubTabItem } from '../../../components/tournaments/hub/TournamentTabs';
+import { GskGroupsView, GskQualificationView, GskKnockoutView } from '../../../components/tournaments/hub/GskCompetitionViews';
 import TournamentParticipantsPage from './TournamentParticipantsPage';
 import TournamentDrawPage from './TournamentDrawPage';
 import { useAuthStore } from '../../../store/auth.store';
@@ -50,7 +51,7 @@ const MATCH_STATUS_COLORS: Record<string, string> = {
 };
 
 type HubTab = 'overview' | 'participants' | 'competition' | 'matches' | 'standings' | 'finances' | 'settings';
-type CompetitionSubTab = 'categories' | 'groups' | 'draw' | 'bracket';
+type CompetitionSubTab = 'categories' | 'groups' | 'qualification' | 'draw' | 'bracket' | 'knockout';
 
 /** Derived visual phase index — from the REAL lifecycle status only. No new statuses. */
 const PHASE_INDEX: Record<string, number> = {
@@ -152,6 +153,28 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     queryFn: () => getT(api.getTournament, tournamentId),
   });
 
+  // Step 4B — GSK detection + authoritative stages + competition refresh.
+  const isGsk = (tournament as any)?.format === 'group_stage_knockout';
+  const managePerm = isOrg ? 'org.tournaments.manage' : 'tournament.manage';
+  const { data: stages } = useQuery({
+    queryKey: [`${keyRoot}-stages`, tournamentId],
+    queryFn: () => getT((api as any).getStages, tournamentId),
+    enabled: !!tournamentId && isGsk,
+  });
+  const groupStage = (Array.isArray(stages) ? stages : []).find((s: any) => s.progression_format === 'round_robin') ?? null;
+  const knockoutStage = (Array.isArray(stages) ? stages : []).find((s: any) => s.progression_format === 'knockout') ?? null;
+  const refreshCompetition = () => {
+    qc.invalidateQueries({ queryKey: [`${keyRoot}-groups`, tournamentId] });
+    qc.invalidateQueries({ queryKey: [`${keyRoot}-matches`, tournamentId] });
+    qc.invalidateQueries({ queryKey: [`${keyRoot}-standings`, tournamentId] });
+    qc.invalidateQueries({ queryKey: [`${keyRoot}-stages`, tournamentId] });
+  };
+  const generateGskGroupsMutation = useMutation({
+    mutationFn: () => (isOrg && orgId ? orgTournamentApi.generateGskGroups(orgId, tournamentId, Number(groupStage?.id)) : tournamentApi.generateGskGroups(tournamentId, Number(groupStage?.id))),
+    onSuccess: () => { showToast(t('tournaments.groups_generated'), 'success'); refreshCompetition(); },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
   const { data: groups, isLoading: loadingG } = useQuery({
     queryKey: [`${keyRoot}-groups`, tournamentId],
     queryFn: () => getT(api.getGroups, tournamentId),
@@ -169,7 +192,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const { data: standings, isLoading: loadingS } = useQuery({
     queryKey: [`${keyRoot}-standings`, tournamentId],
     queryFn: () => getT(api.getStandings, tournamentId),
-    enabled: activeTab === 'standings',
+    enabled: activeTab === 'standings' || (activeTab === 'competition' && isGsk),
   });
 
   const { data: registrations, isLoading: loadingR } = useQuery({
@@ -256,11 +279,18 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const competitionTabs: HubTabItem[] = useMemo(() => {
     const tabs: HubTabItem[] = [];
     if (isOrg && orgId) tabs.push({ id: 'categories', label: t('tournaments.hub.categories', 'Categories') });
-    tabs.push({ id: 'groups', label: t('tournaments.hub.groups', 'Groups') });
-    tabs.push({ id: 'draw', label: t('tournaments.hub.draw', 'Draw') });
-    tabs.push({ id: 'bracket', label: t('tournaments.hub.bracket', 'Bracket') });
+    if (isGsk) {
+      tabs.push({ id: 'groups', label: t('tournaments.hub.groups', 'Groups') });
+      tabs.push({ id: 'qualification', label: t('tournaments.hub.qualification', 'Qualification') });
+      tabs.push({ id: 'draw', label: t('tournaments.hub.draw', 'Draw') });
+      tabs.push({ id: 'knockout', label: t('tournaments.hub.knockout', 'Knockout') });
+    } else {
+      tabs.push({ id: 'groups', label: t('tournaments.hub.groups', 'Groups') });
+      tabs.push({ id: 'draw', label: t('tournaments.hub.draw', 'Draw') });
+      tabs.push({ id: 'bracket', label: t('tournaments.hub.bracket', 'Bracket') });
+    }
     return tabs;
-  }, [isOrg, orgId, t]);
+  }, [isOrg, orgId, t, isGsk]);
 
   if (loadingT) return <div className="p-6"><SkeletonRow count={3} /></div>;
 
@@ -502,7 +532,22 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
               </Can>
             )}
 
-            {compTab === 'groups' && (
+            {compTab === 'groups' && (isGsk ? (
+              <div className="space-y-3">
+                <Can permission={managePerm}>
+                  <button
+                    type="button"
+                    onClick={() => generateGskGroupsMutation.mutate()}
+                    disabled={!groupStage || (groups ?? []).length > 0 || generateGskGroupsMutation.isPending}
+                    className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 text-sm font-medium text-white disabled:opacity-50"
+                    data-testid="gsk-generate-groups"
+                  >
+                    {generateGskGroupsMutation.isPending ? t('common.loading') : t('tournaments.generate_groups')}
+                  </button>
+                </Can>
+                <GskGroupsView groups={groups ?? []} standings={standings ?? []} loading={loadingG} />
+              </div>
+            ) : (
               <div className="space-y-4">
                 <Can permission={perms.update}>
                   <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
@@ -539,13 +584,51 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                   </div>
                 )}
               </div>
-            )}
+            ))}
 
             {compTab === 'draw' && (
               <TournamentDrawPage mode={mode} orgId={orgId} />
             )}
 
-            {compTab === 'bracket' && (
+            {compTab === 'qualification' && isGsk && (
+              <GskQualificationView
+                mode={mode}
+                orgId={orgId}
+                tournamentId={tournamentId}
+                groupStage={groupStage}
+                groupMatches={matchList.filter((m: any) => Number(m.stage_id) === Number(groupStage?.id))}
+                canManage={can(managePerm)}
+                onDone={refreshCompetition}
+              />
+            )}
+
+            {compTab === 'knockout' && isGsk && (
+              <GskKnockoutView
+                mode={mode}
+                orgId={orgId}
+                tournamentId={tournamentId}
+                tournamentName={tournament?.name}
+                bracketTypeName={tournament?.bracket_type_name}
+                sportName={tournament?.sport_name}
+                status={tournament?.status}
+                groupStage={groupStage}
+                knockoutStage={knockoutStage}
+                matches={matchList}
+                participants={participantList}
+                currentUserId={user?.id}
+                canManage={can(managePerm)}
+                onMatchClick={setDetailsMatch}
+                onDone={refreshCompetition}
+                footer={(m) => (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setDetailsMatch(m); }}
+                    className="text-[10px] text-[var(--color-primary)] hover:underline">
+                    {t('tournamentBracket.details', 'Details')}
+                  </button>
+                )}
+              />
+            )}
+
+            {compTab === 'bracket' && !isGsk && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="font-semibold text-[var(--color-text)]">

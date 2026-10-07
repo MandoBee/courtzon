@@ -22,6 +22,14 @@ export const tournamentApi = {
   archive: (id: number) => api.post(`/admin/tournaments/${id}/archive`).then(r => r.data),
 
   getGroups: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/groups`).then(r => r.data),
+  getStages: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/stages`).then(r => r.data),
+  generateGskGroups: (tournamentId: number, stageId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/generate-groups`, { stage_id: stageId }).then(r => r.data),
+  // Step 4B — GSK lifecycle (existing permissioned backend routes).
+  qualifyGsk: (tournamentId: number, stageId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/qualify`, { stage_id: stageId }).then(r => r.data),
+  generateKnockout: (tournamentId: number, stageId: number) =>
+    api.post(`/admin/tournaments/${tournamentId}/knockout`, { stage_id: stageId }).then(r => r.data),
   generateGroups: (tournamentId: number, groupSize: number, advanceCount: number) =>
     api.post(`/admin/tournaments/${tournamentId}/generate-groups`, { group_size: groupSize, advance_count: advanceCount }).then(r => r.data),
 
@@ -126,6 +134,13 @@ export const orgTournamentApi = {
   cancel: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/cancel`).then(r => r.data),
   archive: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/archive`).then(r => r.data),
   getGroups: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/groups`).then(r => r.data),
+  getStages: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/stages`).then(r => r.data),
+  generateGskGroups: (orgId: number | string, tournamentId: number, stageId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/generate-groups`, { stage_id: stageId }).then(r => r.data),
+  qualifyGsk: (orgId: number | string, tournamentId: number, stageId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/qualify`, { stage_id: stageId }).then(r => r.data),
+  generateKnockout: (orgId: number | string, tournamentId: number, stageId: number) =>
+    api.post(`/org/${orgId}/tournaments/${tournamentId}/knockout`, { stage_id: stageId }).then(r => r.data),
   generateGroups: (orgId: number | string, tournamentId: number, groupSize: number, advanceCount: number) =>
     api.post(`/org/${orgId}/tournaments/${tournamentId}/generate-groups`, { group_size: groupSize, advance_count: advanceCount }).then(r => r.data),
   getMatches: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/matches`).then(r => r.data),
