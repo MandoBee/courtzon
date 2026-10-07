@@ -528,6 +528,35 @@ html[dir="rtl"] {
   .cz-landing-inner--narrow {
     max-width: 48rem;
   }
+  /* Two-column landing layout (e.g. contact page: details + map on the left,
+     the contact form on the right). Nested blocks rendered inside the columns
+     drop their own section padding and inner gutters — the outer section owns
+     the vertical rhythm and page alignment. */
+  .cz-landing-cols {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--landing-cols-gap, 2.5rem);
+    align-items: start;
+  }
+  @media (min-width: 1024px) {
+    .cz-landing-cols {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  .cz-landing-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--landing-cols-gap, 2.5rem);
+    min-width: 0;
+  }
+  .cz-landing-cols .cz-landing-section {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .cz-landing-cols .cz-landing-inner {
+    padding-left: 0;
+    padding-right: 0;
+  }
   .cz-landing-section-header {
     text-align: center;
     margin-bottom: var(--landing-section-header-margin, 4rem);

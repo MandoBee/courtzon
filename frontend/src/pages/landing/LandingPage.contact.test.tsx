@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '../../components/ui/Toast';
 import LandingPage from './LandingPage';
 
 vi.mock('../../services/api', () => ({
@@ -22,10 +24,22 @@ function makePage(blocks: Block[]) {
 }
 
 function renderPage(blocks: Block[]) {
-  (api.get as any).mockResolvedValue({ data: makePage(blocks) });
+  (api.get as any).mockImplementation((url: string) => {
+    if (url.startsWith('/public/pages/')) return Promise.resolve({ data: makePage(blocks) });
+    if (url.startsWith('/public/countries')) return Promise.resolve({ data: { data: [] } });
+    if (url.startsWith('/public/contact/options')) return Promise.resolve({ data: { data: {} } });
+    return Promise.resolve({ data: {} });
+  });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <MemoryRouter initialEntries={['/contact']}>
-      <LandingPage />
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <LandingPage />
+        </ToastProvider>
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }
@@ -104,5 +118,65 @@ describe('LandingPage (CMS-driven contact blocks)', () => {
   it('shows "No content yet." when the CMS page has no blocks', async () => {
     renderPage([]);
     expect(await screen.findByText('No content yet.')).toBeTruthy();
+  });
+
+  it('arranges contact_info + location_map on the left and the whole form on the right', async () => {
+    const { container } = renderPage([
+      {
+        id: 1,
+        block_type: 'contact_info',
+        title: 'Contact Information',
+        subtitle: null,
+        content: JSON.stringify({
+          items: [
+            { type: 'email', title: 'Email', value: 'mniazyy@gmail.com', link: 'mailto:mniazyy@gmail.com' },
+          ],
+        }),
+      },
+      {
+        id: 2,
+        block_type: 'location_map',
+        title: 'Our Location',
+        subtitle: null,
+        content: JSON.stringify({
+          address: '4 Galal st., Faisal, Giza, Egypt',
+          mapEmbedUrl: 'https://maps.google.com/maps?q=pin&output=embed',
+        }),
+      },
+      { id: 3, block_type: 'contact_form', title: 'Send Us a Message', subtitle: null, content: '{}' },
+    ]);
+
+    await screen.findByText('Send Us a Message');
+
+    // Exactly one two-column wrapper with two columns
+    expect(container.querySelectorAll('.cz-landing-cols').length).toBe(1);
+    const cols = container.querySelectorAll('.cz-landing-col');
+    expect(cols.length).toBe(2);
+
+    // Left column: contact cards + map
+    expect(cols[0].textContent).toContain('Contact Information');
+    expect(cols[0].textContent).toContain('Our Location');
+    expect(cols[0].textContent).toContain('mniazyy@gmail.com');
+    expect(cols[0].querySelector('iframe')).toBeTruthy();
+
+    // Right column: the whole "Send Us a Message" form
+    expect(cols[1].textContent).toContain('Send Us a Message');
+    expect(cols[1].querySelector('form')).toBeTruthy();
+    expect(cols[1].querySelector('textarea')).toBeTruthy();
+    expect(cols[1].querySelector('button[type="submit"]')).toBeTruthy();
+  });
+
+  it('keeps the plain full-width stack when there is no form to pair with', async () => {
+    const { container } = renderPage([
+      {
+        id: 1,
+        block_type: 'contact_info',
+        title: 'Contact Information',
+        subtitle: null,
+        content: JSON.stringify({ items: [] }),
+      },
+    ]);
+    await screen.findByText('Contact Information');
+    expect(container.querySelector('.cz-landing-cols')).toBeNull();
   });
 });
