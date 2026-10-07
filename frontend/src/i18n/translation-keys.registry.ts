@@ -2047,6 +2047,10 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.hub.gsk.knockoutPending', defaultValue: 'Knockout stage not generated yet.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'GSK knockout pending' },
   { key: 'tournaments.hub.gsk.generateKnockout', defaultValue: 'Generate Knockout', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'GSK generate knockout' },
   { key: 'tournaments.hub.gsk.knockoutToast', defaultValue: 'Knockout stage generated', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'GSK knockout toast' },
+  // Step 4C — Player/Public read-only GSK views.
+  { key: 'tournaments.hub.gsk.you', defaultValue: 'You', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'GSK current player badge' },
+  { key: 'tournaments.hub.gsk.qualPendingReadonly', defaultValue: 'Qualification pending — the group stage has not been generated yet.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'GSK read-only qualification pending' },
+  { key: 'tournaments.hub.gsk.qualNotPublished', defaultValue: 'The qualified participants will be published by the organiser.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'GSK read-only qualification not published' },
   { key: 'tournaments.formats.single', defaultValue: 'Single Elimination', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Single elimination format' },
   { key: 'tournaments.formats.round_robin', defaultValue: 'Round Robin', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Round robin format' },
   { key: 'tournaments.formats.double', defaultValue: 'Double Elimination', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Double elimination format' },

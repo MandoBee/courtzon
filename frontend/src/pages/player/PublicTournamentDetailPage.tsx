@@ -41,6 +41,13 @@ export default function PublicTournamentDetailPage() {
 
   const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
 
+  // Step 4C — GSK detection. The public read-model exposes the full match list
+  // and standings but does NOT (yet) expose group_id/stage_id, groups or stages,
+  // so the grouped-standings + knockout-only views cannot be separated publicly.
+  // We therefore present the authoritative match list neutrally (never claim it
+  // is a knockout bracket) and keep the public standings table. No fabrication.
+  const isGsk = t.format === 'group_stage_knockout';
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
       <div>
@@ -96,7 +103,11 @@ export default function PublicTournamentDetailPage() {
           TournamentBracket/MatchCard already fall back to. No auth, no drawer. */}
       {Array.isArray(t.bracket) && t.bracket.length > 0 && (
         <Card>
-          <h2 className="font-semibold text-[var(--color-text)] mb-3">Bracket</h2>
+          <h2 className="font-semibold text-[var(--color-text)] mb-3" data-testid="public-bracket-heading">{isGsk ? 'Matches' : 'Bracket'}</h2>
+          {isGsk && (
+            <p className="text-xs text-[var(--color-text-muted)] mb-3">Includes group-stage and knockout matches.</p>
+          )}
+          <div data-testid="public-bracket">
           <TournamentBracket
             tournament={{ id: t.id, name: t.name, format: t.format, bracket_type_name: t.bracket_type, status: t.status, sport_name: t.sport?.name }}
             matches={(t.bracket as any[]).map((m, i) => ({
@@ -113,12 +124,13 @@ export default function PublicTournamentDetailPage() {
               progression_state: m.progression_state,
             }))}
           />
+          </div>
         </Card>
       )}
 
       {Array.isArray(t.standings) && t.standings.length > 0 && (
         <Card>
-          <h2 className="font-semibold text-[var(--color-text)] mb-3">Standings</h2>
+          <h2 className="font-semibold text-[var(--color-text)] mb-3" data-testid="public-standings-heading">Standings</h2>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left">

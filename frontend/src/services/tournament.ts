@@ -22,7 +22,9 @@ export const tournamentApi = {
   archive: (id: number) => api.post(`/admin/tournaments/${id}/archive`).then(r => r.data),
 
   getGroups: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/groups`).then(r => r.data),
-  getStages: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/stages`).then(r => r.data),
+  // Step 4C — the admin stages handler returns `{ data }` while the org handler
+  // returns a RAW array; normalise both to an array for every GSK consumer.
+  getStages: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/stages`).then(r => r.data?.data ?? r.data),
   generateGskGroups: (tournamentId: number, stageId: number) =>
     api.post(`/admin/tournaments/${tournamentId}/generate-groups`, { stage_id: stageId }).then(r => r.data),
   // Step 4B — GSK lifecycle (existing permissioned backend routes).
@@ -134,7 +136,7 @@ export const orgTournamentApi = {
   cancel: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/cancel`).then(r => r.data),
   archive: (orgId: number | string, id: number) => api.post(`/org/${orgId}/tournaments/${id}/archive`).then(r => r.data),
   getGroups: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/groups`).then(r => r.data),
-  getStages: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/stages`).then(r => r.data),
+  getStages: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/stages`).then(r => r.data?.data ?? r.data),
   generateGskGroups: (orgId: number | string, tournamentId: number, stageId: number) =>
     api.post(`/org/${orgId}/tournaments/${tournamentId}/generate-groups`, { stage_id: stageId }).then(r => r.data),
   qualifyGsk: (orgId: number | string, tournamentId: number, stageId: number) =>

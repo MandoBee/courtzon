@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { tournamentRefundApi } from '../../services/tournament';
+import { tournamentRefundApi, tournamentApi } from '../../services/tournament';
 import { Skeleton, SkeletonRow } from '../../components/ui/Skeleton';
 import { Modal } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -22,9 +22,10 @@ import { matchPredictionLabel } from '../../components/tournaments/matchSideLabe
 import { MatchCard } from '../../components/tournaments/MatchCard';
 import { MatchDetailsDrawer } from '../../components/tournaments/MatchDetailsDrawer';
 import { TournamentPrintView } from '../../components/tournaments/TournamentPrintView';
+import { GskGroupsView, GskQualificationPanel, GskKnockoutPanel } from '../../components/tournaments/hub/GskCompetitionViews';
 import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
-type Tab = 'overview' | 'bracket' | 'matches' | 'standings' | 'players';
+type Tab = 'overview' | 'bracket' | 'matches' | 'groups' | 'qualification' | 'standings' | 'players';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -97,6 +98,25 @@ export default function TournamentDetailPage() {
     queryFn: () => api.get(`/tournaments/${id}/participants`).then(r => r.data.data),
   });
 
+  // ── Step 4C — GSK read-only competition data (Player) ──
+  // Group-stage names and stage configuration are read through the EXISTING
+  // `tournament.view` endpoints (the same permission the player already holds
+  // for `/tournaments/:id/*`). These are read-only GETs — no organizer actions.
+  const isGsk = (tournament as any)?.format === 'group_stage_knockout';
+  const canViewStages = can('tournament.view');
+  const { data: gskGroups } = useQuery({
+    queryKey: ['tournament', id, 'groups'],
+    queryFn: () => tournamentApi.getGroups(Number(id)),
+    enabled: Boolean(id) && isGsk && canViewStages,
+  });
+  const { data: gskStages } = useQuery({
+    queryKey: ['tournament', id, 'stages'],
+    queryFn: () => tournamentApi.getStages(Number(id)),
+    enabled: Boolean(id) && isGsk && canViewStages,
+  });
+  const groupStage = Array.isArray(gskStages) ? gskStages.find((s: any) => s.progression_format === 'round_robin') ?? null : null;
+  const knockoutStage = Array.isArray(gskStages) ? gskStages.find((s: any) => s.progression_format === 'knockout') ?? null : null;
+
   // Group 3 — player registration with the tournament's effective allowed
   // payment methods (Cash / Card). Free tournaments register without a method.
   // G11.18 Phase 2 — the selected competitionId is sent to the registration API.
@@ -144,6 +164,22 @@ export default function TournamentDetailPage() {
   const standingList = Array.isArray(standings) ? standings : [];
   const participantList = Array.isArray(participants) ? participants : [];
   const myRegistration = participantList.find((p: any) => Number(p.player_id) === Number(user?.id));
+  const groupMatches = groupStage ? matchList.filter((m: any) => Number(m.stage_id) === Number(groupStage.id)) : [];
+  // Step 4C — GSK tabs are additive; non-GSK keeps its exact existing tabs.
+  const TABS: Tab[] = isGsk
+    ? ['overview', 'matches', 'groups', 'qualification', 'bracket', 'standings', 'players']
+    : ['overview', 'bracket', 'matches', 'standings', 'players'];
+  const tabLabel = (tb: Tab): string => {
+    switch (tb) {
+      case 'overview': return 'Overview';
+      case 'bracket': return isGsk ? 'Knockout' : 'Bracket';
+      case 'matches': return 'Matches';
+      case 'groups': return 'Groups';
+      case 'qualification': return 'Qualification';
+      case 'standings': return 'Standings';
+      default: return 'Players';
+    }
+  };
   const registerPaymentMethods = Array.isArray(tournament?.effective_registration_payment_methods)
     ? (tournament.effective_registration_payment_methods as string[])
     : [];
@@ -247,10 +283,10 @@ export default function TournamentDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 flex-wrap">
-        {(['overview', 'bracket', 'matches', 'standings', 'players'] as Tab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
+        {TABS.map(t => (
+          <button key={t} onClick={() => setTab(t)} role="tab" aria-selected={tab === t}
             className={`px-3 py-1.5 text-xs font-medium rounded-full ${tab === t ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-muted)]'}`}>
-            {t === 'overview' ? 'Overview' : t === 'bracket' ? 'Bracket' : t === 'matches' ? 'Matches' : t === 'standings' ? 'Standings' : 'Players'}
+            {tabLabel(t)}
           </button>
         ))}
       </div>
@@ -296,11 +332,11 @@ export default function TournamentDetailPage() {
         </div>
       )}
 
-      {/* Bracket Tab */}
+      {/* Bracket / Knockout Tab */}
       {tab === 'bracket' && (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
           <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-sm font-semibold text-[var(--color-text)]">Bracket</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text)]">{isGsk ? 'Knockout' : 'Bracket'}</h2>
             {matchList.length > 0 && (
               <button
                 onClick={() => {
@@ -312,7 +348,7 @@ export default function TournamentDetailPage() {
                 }}
                 className="text-xs text-[var(--color-primary)] hover:underline"
               >
-                Print Bracket
+                Print {isGsk ? 'Knockout' : 'Bracket'}
               </button>
             )}
           </div>
@@ -320,6 +356,29 @@ export default function TournamentDetailPage() {
             <SkeletonRow count={5} />
           ) : matchesError ? (
             <p className="text-sm text-[var(--color-error)] text-center py-8">Unable to load the bracket.</p>
+          ) : isGsk ? (
+            <GskKnockoutPanel
+              tournamentId={Number(id)}
+              tournamentName={tournament.name}
+              bracketTypeName={tournament.bracket_type_name}
+              sportName={tournament.sport_name}
+              status={tournament.status}
+              knockoutStage={knockoutStage}
+              matches={matchList as TournamentMatchNode[]}
+              participants={participantList}
+              currentUserId={user?.id}
+              onMatchClick={setDrawerMatch}
+              footer={(m) =>
+                can('tournaments.enter_scores') && m.status !== 'completed' && m.match_id != null ? (
+                  <button
+                    onClick={() => navigate(`/matches/${m.match_id}/result`)}
+                    className="text-[10px] text-[var(--color-primary)] hover:underline"
+                  >
+                    Enter Score
+                  </button>
+                ) : null
+              }
+            />
           ) : (
             <TournamentBracket
               tournament={tournament}
@@ -339,9 +398,29 @@ export default function TournamentDetailPage() {
               }
             />
           )}
-          {!loadingMatches && !matchesError && matchList.length === 0 && (
+          {!isGsk && !loadingMatches && !matchesError && matchList.length === 0 && (
             <p className="text-xs text-[var(--color-text-muted)] text-center py-8">Bracket not yet generated.</p>
           )}
+        </div>
+      )}
+
+      {/* Groups Tab (GSK only) */}
+      {tab === 'groups' && isGsk && (
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Groups</h2>
+          <GskGroupsView
+            groups={Array.isArray(gskGroups) ? gskGroups : []}
+            standings={standingList}
+            highlightRegistrationId={myRegistrationId}
+          />
+        </div>
+      )}
+
+      {/* Qualification Tab (GSK only, read-only) */}
+      {tab === 'qualification' && isGsk && (
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Qualification</h2>
+          <GskQualificationPanel groupStage={groupStage} groupMatches={groupMatches} />
         </div>
       )}
 
