@@ -18,11 +18,11 @@ type Mode = 'admin' | 'org';
 const card = 'rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4';
 const th = 'px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]';
 
-export function GskGroupsView({ groups, standings, loading, highlightRegistrationId }: { groups: any[]; standings: any[]; loading?: boolean; highlightRegistrationId?: number }) {
+export function GskGroupsView({ groups, standings, loading, highlightRegistrationId, qualifyTop }: { groups: any[]; standings: any[]; loading?: boolean; highlightRegistrationId?: number; qualifyTop?: number }) {
   const { t } = useTranslation();
   if (loading) return <p className="text-sm text-[var(--color-text-muted)]">{t('common.loading')}</p>;
   if (!groups.length) {
-    return <p className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-[var(--color-text-muted)]">{t('tournaments.hub.gsk.noGroups', 'Groups have not been generated yet. Generate groups from the competition actions.')}</p>;
+    return <p data-testid="gsk-groups-empty" className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-[var(--color-text-muted)]">{t('tournaments.hub.gsk.noGroups', 'Groups have not been generated yet. Generate groups from the competition actions.')}</p>;
   }
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" data-testid="gsk-groups">
@@ -30,7 +30,9 @@ export function GskGroupsView({ groups, standings, loading, highlightRegistratio
         const rows = (standings || [])
           .filter((s: any) => Number(s.group_id) === Number(g.id))
           .sort((a: any, b: any) => (a.rank_position ?? 0) - (b.rank_position ?? 0));
-        const advance = Number(g.advance_count ?? 0);
+        // Organizer Hub rows carry per-group `advance_count`; the public read
+        // model does not, so it supplies the shared qualification `qualifyTop`.
+        const advance = Number(g.advance_count ?? qualifyTop ?? 0);
         return (
           <section key={g.id} className={card}>
             <div className="mb-3 flex items-center justify-between">
@@ -57,7 +59,7 @@ export function GskGroupsView({ groups, standings, loading, highlightRegistratio
                       const isMe = highlightRegistrationId != null && Number(s.registration_id) === Number(highlightRegistrationId);
                       return (
                         <tr
-                          key={s.id ?? s.registration_id}
+                          key={s.id ?? s.registration_id ?? `${g.id}-${s.rank_position}`}
                           data-current-player={isMe ? 'true' : undefined}
                           aria-current={isMe ? 'true' : undefined}
                           className={`border-b border-[var(--color-border)] last:border-0${isMe ? ' bg-[var(--color-primary-bg)]' : ''}`}

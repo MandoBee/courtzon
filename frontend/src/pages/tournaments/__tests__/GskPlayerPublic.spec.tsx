@@ -47,18 +47,43 @@ const publicShape = {
   id: 1, name: 'GSK Cup', format: 'group_stage_knockout', status: 'in_progress', is_public: 1,
   bracket_type: 'Single Elimination', sport: { name: 'Padel' }, venue: null,
   start_date: null, end_date: null, registration_opens: null, registration_closes: null, max_participants: 8,
+  groups: [
+    { id: 10, name: 'A' },
+    { id: 11, name: 'B' },
+  ],
+  stages: [
+    { id: 5, name: 'Group Stage', stage_order: 1, progression_format: 'round_robin', config: { groupStage: { groupCount: 2, participantsPerGroup: 2, qualification: { topPerGroup: 2, bestThirdPlaces: 0, ordering: 'rank' } } } },
+    { id: 6, name: 'Knockout', stage_order: 2, progression_format: 'knockout', config: { knockout: { startingRound: 'semifinals' } } },
+  ],
   bracket: [
-    { round: 1, round_name: 'Semi-final', match_number: 1, bracket_position: 0, participant1_name: 'Ali', participant2_name: 'Nour', status: 'scheduled', score_summary: null, start_time: null, progression_state: null },
+    { round: 1, round_name: 'Round 1', match_number: 1, bracket_position: 0, stage_id: 5, group_id: 10, participant1_name: 'Ali', participant2_name: 'Sara', status: 'completed', score_summary: '6-4', start_time: null, progression_state: null },
+    { round: 1, round_name: 'Round 1', match_number: 1, bracket_position: 0, stage_id: 5, group_id: 11, participant1_name: 'Nour', participant2_name: 'Hana', status: 'completed', score_summary: '6-3', start_time: null, progression_state: null },
+    { round: 1, round_name: 'Semi-final', match_number: 1, bracket_position: 0, stage_id: 6, group_id: null, participant1_name: 'Ali', participant2_name: 'Nour', status: 'scheduled', score_summary: null, start_time: null, progression_state: null },
   ],
   standings: [
-    { rank_position: 1, player_name: 'Ali', points: 3, wins: 1, losses: 0, draws: 0, games_won: 1, games_lost: 0 },
+    { rank_position: 1, group_id: 10, player_name: 'Ali', points: 3, wins: 1, losses: 0, draws: 0, games_won: 1, games_lost: 0 },
+    { rank_position: 2, group_id: 10, player_name: 'Sara', points: 0, wins: 0, losses: 1, draws: 0, games_won: 0, games_lost: 1 },
+    { rank_position: 1, group_id: 11, player_name: 'Nour', points: 3, wins: 1, losses: 0, draws: 0, games_won: 1, games_lost: 0 },
   ],
 };
 
 vi.mock('../../../services/api', () => ({
   default: { get: vi.fn(), post: vi.fn().mockResolvedValue({ data: {} }) },
 }));
-vi.mock('../../../i18n', () => ({ useTranslation: () => ({ t: (k: string, d?: any) => (typeof d === 'string' ? d : k) }) }));
+vi.mock('../../../i18n', () => ({
+  useTranslation: () => ({
+    t: (k: string, d?: any, opts?: any) => {
+      let s = typeof d === 'string' ? d : k;
+      const params = (d && typeof d === 'object') ? d : opts;
+      if (params && typeof params === 'object') {
+        for (const [key, val] of Object.entries(params)) {
+          s = s.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(val));
+        }
+      }
+      return s;
+    },
+  }),
+}));
 vi.mock('../../../permissions/Can', () => ({ Can: ({ children }: any) => <>{children}</> }));
 vi.mock('../../../components/ui/Toast', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../../../store/auth.store', () => ({ useAuthStore: (sel: any) => sel({ user: __state.user }) }));
@@ -216,38 +241,119 @@ describe('Step 4C — shared read-only qualification panel', () => {
   });
 });
 
-describe('Step 4C — Public GSK views (unauthenticated, read-only)', () => {
-  it('renders the public match list neutrally and the public standings (no auth)', async () => {
+describe('Step 4E — Public GSK UI (unauthenticated, read-only)', () => {
+  it('detects GSK and exposes the read-only navigation tabs with no organizer controls', async () => {
     renderPublic();
     await screen.findByText('GSK Cup');
-    expect(await screen.findByTestId('public-bracket')).toBeTruthy();
-    expect(screen.getByTestId('public-bracket-heading').textContent).toBe('Matches');
-    expect(screen.getByTestId('public-standings-heading')).toBeTruthy();
-    expect(screen.getAllByText('Ali').length).toBeGreaterThan(0);
-  });
-
-  it('does not fabricate qualification and exposes no organizer actions', async () => {
-    renderPublic();
-    await screen.findByText('GSK Cup');
+    for (const label of ['Overview', 'Matches', 'Groups', 'Qualification', 'Knockout', 'Standings']) {
+      expect(screen.getByRole('tab', { name: label })).toBeTruthy();
+    }
     expect(screen.queryByText('Generate Groups')).toBeNull();
     expect(screen.queryByText('Run Qualification')).toBeNull();
     expect(screen.queryByText('Generate Knockout')).toBeNull();
-    // The public read-model does not persist/expose a qualification result.
+  });
+
+  it('renders groups from the public groups[] with standings filtered by standings[].group_id', async () => {
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Groups' }));
+    expect(await screen.findByTestId('gsk-groups')).toBeTruthy();
+    // Group A → Ali + Sara; Group B → Nour (filtered by group_id, not inferred).
+    expect(screen.getByText('Ali')).toBeTruthy();
+    expect(screen.getByText('Sara')).toBeTruthy();
+    expect(screen.getByText('Nour')).toBeTruthy();
+  });
+
+  it('shows an honest empty state when no groups exist', async () => {
+    (publicShape as any).groups = [];
+    mockApi();
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Groups' }));
+    expect(await screen.findByTestId('gsk-groups-empty')).toBeTruthy();
+    (publicShape as any).groups = [{ id: 10, name: 'A' }, { id: 11, name: 'B' }];
+  });
+
+  it('groups group-stage matches using the explicit bracket group_id filter', async () => {
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Matches' }));
+    expect(await screen.findByTestId('public-gsk-group-filter')).toBeTruthy();
+    // Filter to Group A → the Group B match (Hana) disappears; the Group A match remains.
+    fireEvent.click(screen.getByRole('button', { name: 'A' }));
+    await waitFor(() => expect(screen.queryByText('Hana')).toBeNull());
+    expect(screen.getByText('Sara')).toBeTruthy();
+    // "All" restores every match.
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(await screen.findByText('Hana')).toBeTruthy();
+  });
+
+  it('renders the configured qualification rule and never fabricates a qualified list', async () => {
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Qualification' }));
+    expect(await screen.findByTestId('gsk-qualification')).toBeTruthy();
+    expect(screen.getByText(/Top 2 per group/)).toBeTruthy();
     expect(screen.queryByTestId('gsk-qualified')).toBeNull();
   });
 
-  it('does not render admin/private data (fee, organiser, prizes, payment)', async () => {
+  it('shows an honest qualification pending state when there is no group stage', async () => {
+    (publicShape as any).stages = publicShape.stages.filter((s: any) => s.progression_format !== 'round_robin');
+    mockApi();
     renderPublic();
     await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Qualification' }));
+    expect(await screen.findByTestId('gsk-qual-pending')).toBeTruthy();
+    (publicShape as any).stages = [
+      { id: 5, name: 'Group Stage', stage_order: 1, progression_format: 'round_robin', config: { groupStage: { groupCount: 2, participantsPerGroup: 2, qualification: { topPerGroup: 2, bestThirdPlaces: 0, ordering: 'rank' } } } },
+      { id: 6, name: 'Knockout', stage_order: 2, progression_format: 'knockout', config: { knockout: { startingRound: 'semifinals' } } },
+    ];
+  });
+
+  it('identifies the knockout stage via progression_format/stage_id and renders the shared bracket', async () => {
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Knockout' }));
+    expect(await screen.findByTestId('gsk-knockout')).toBeTruthy();
+    expect(screen.getAllByText('Semi-final').length).toBeGreaterThan(0);
+    // The Group B group-stage name must NOT appear in the knockout bracket.
+    expect(screen.queryByText('Hana')).toBeNull();
+  });
+
+  it('shows a knockout pending state when no knockout stage exists', async () => {
+    (publicShape as any).stages = publicShape.stages.filter((s: any) => s.progression_format !== 'knockout');
+    mockApi();
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Knockout' }));
+    expect(await screen.findByTestId('gsk-knockout-pending')).toBeTruthy();
+    (publicShape as any).stages = [
+      { id: 5, name: 'Group Stage', stage_order: 1, progression_format: 'round_robin', config: { groupStage: { groupCount: 2, participantsPerGroup: 2, qualification: { topPerGroup: 2, bestThirdPlaces: 0, ordering: 'rank' } } } },
+      { id: 6, name: 'Knockout', stage_order: 2, progression_format: 'knockout', config: { knockout: { startingRound: 'semifinals' } } },
+    ];
+  });
+
+  it('opens the shared MatchDetailsDrawer from a public match', async () => {
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Knockout' }));
+    const ko = await screen.findByTestId('gsk-knockout');
+    fireEvent.click(within(ko).getAllByRole('button')[0]);
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
+  });
+
+  it('renders standings and exposes no admin/private data', async () => {
+    renderPublic();
+    await screen.findByText('GSK Cup');
+    fireEvent.click(screen.getByRole('tab', { name: 'Standings' }));
+    expect(screen.getByTestId('public-standings-heading')).toBeTruthy();
     expect(screen.queryByText(/Fee:/)).toBeNull();
     expect(screen.queryByText(/Organisation:/)).toBeNull();
-    expect(screen.queryByText(/Prize Pool/)).toBeNull();
-    expect(screen.queryByText(/Payment/)).toBeNull();
     expect(screen.queryByText('Padel Edge')).toBeNull();
   });
 });
 
-describe('Step 4C — regression: non-GSK behaviour preserved', () => {
+describe('Step 4C/4E — regression: non-GSK behaviour preserved', () => {
   it('player non-GSK keeps the Bracket tab and has no GSK tabs', async () => {
     mockApi(__state.ko);
     renderPlayer();

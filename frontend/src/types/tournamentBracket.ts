@@ -14,6 +14,9 @@ export interface TournamentMatchNode {
   round_name?: string | null;
   match_number?: number | null;
   bracket_position?: number | null;
+  // Step 4D/4E — public read-model explicit stage/group discriminators.
+  stage_id?: number | null;
+  group_id?: number | null;
   player1_id?: number | null;
   player2_id?: number | null;
   player1_name?: string | null;
