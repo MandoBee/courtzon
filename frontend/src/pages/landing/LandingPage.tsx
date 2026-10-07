@@ -26,6 +26,7 @@ interface Block {
 
 interface Page {
   title: string;
+  slug?: string;
   blocks: Block[];
 }
 
@@ -163,7 +164,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="cz-landing">
+    <div className={`cz-landing cz-landing--${page.slug || slug || 'home'}`}>
       {page.blocks && page.blocks.length > 0 ? (
         renderBlocks()
       ) : (
