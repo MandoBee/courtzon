@@ -256,17 +256,56 @@ describe('Creation Wizard — Format selector (engine capability states)', () =>
     await waitFor(() => expect(screen.getByText('tournaments.create.validation.bracket_type')).toBeTruthy());
   });
 
-  it('Group Stage + Knockout reveals the future configuration preview (no fake submission)', async () => {
+  it('Group Stage + Knockout is selectable and shows a valid GSK configuration', async () => {
     renderPage(ALL);
     fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
     fireEvent.click(continueBtn());
-    fireEvent.click(await screen.findByTestId('format-card-group-stage-knockout'));
-    expect(screen.getByTestId('gsk-preview')).toBeTruthy();
-    expect(screen.getByText('tournaments.wizard.gsk.journey')).toBeTruthy();
-    expect(screen.getByText('tournaments.wizard.gsk.note')).toBeTruthy();
-    // GSK is never written into the bracket field → Continue remains blocked.
+    const gskCard = await screen.findByTestId('format-card-group-stage-knockout');
+    await waitFor(() => expect((gskCard as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(gskCard);
+    expect(await screen.findByTestId('gsk-config')).toBeTruthy();
+    expect(screen.getByTestId('gsk-valid')).toBeTruthy(); // defaults are valid
+    // Continue advances — GSK writes the single-elimination bracket substrate.
     fireEvent.click(continueBtn());
-    expect(await screen.findByText('tournaments.create.validation.bracket_type')).toBeTruthy();
+    expect(await screen.findByText('tournaments.create.max_players')).toBeTruthy();
+  });
+
+  it('GSK rejects an invalid group configuration before continuing', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    const gskCard = await screen.findByTestId('format-card-group-stage-knockout');
+    await waitFor(() => expect((gskCard as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(gskCard);
+    const groupCount = document.getElementById('gsk-group-count') as HTMLInputElement;
+    fireEvent.change(groupCount, { target: { value: '0' } });
+    expect((await screen.findAllByText('gsk.invalid.groupCount')).length).toBeGreaterThan(0);
+    fireEvent.click(continueBtn());
+    // Still on the Format step — no advancement.
+    expect(screen.queryByText('tournaments.create.max_players')).toBeNull();
+  });
+
+  it('submits format=group_stage_knockout with gsk_config (and omits it for non-GSK)', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'GSK Cup' } });
+    await clickContinueAndAwait(2);
+    const gskCard = await screen.findByTestId('format-card-group-stage-knockout');
+    await waitFor(() => expect((gskCard as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(gskCard);
+    await clickContinueAndAwait(3);
+    await clickContinueAndAwait(4);
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5);
+    await clickContinueAndAwait(6);
+    await clickContinueAndAwait(7);
+    await clickContinueAndAwait(8);
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const payload = (api.post as any).mock.calls[0][1] as any;
+    expect(payload.format).toBe('group_stage_knockout');
+    expect(payload.gsk_config).toBeTruthy();
+    expect(payload.gsk_config.groupStage.groupCount).toBe(8);
+    expect(payload.gsk_config.knockout.startingRound).toBe('round_of_16');
   });
 });
 
@@ -376,6 +415,8 @@ describe('Creation Wizard — review & submit', () => {
     expect(url).not.toContain('/admin/tournaments');
     expect(payload.name).toBe('UAT Wizard Cup');
     expect(payload.bracket_type_id).toBe(1);
+    expect(payload.format).toBe('knockout');
+    expect(payload.gsk_config).toBeUndefined();
     expect(payload.max_participants).toBe(8);
     expect(payload.start_date).toBe('2026-10-01');
     expect(payload.branch_id).toBe(5);

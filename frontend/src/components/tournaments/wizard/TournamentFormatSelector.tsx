@@ -3,18 +3,15 @@ import { useTranslation } from '../../../i18n';
 /**
  * Tournament Creation Wizard — Format selector.
  *
- * Clearly separates TOURNAMENT FORMAT (bracket) from MATCH FORMAT / RULE SET
- * (handled on the Format step by the sport cascade in the page).
+ * The five target formats are presented as cards, each stating its REAL
+ * executable state:
+ *   • single-elimination, round-robin, group-stage-knockout → selectable
+ *     (engine executes all three)
+ *   • double-elimination, swiss → "Engine preparation" (planned; never
+ *     submitted)
  *
- * The five target formats are presented as cards. Every card states its real
- * state — a format is NEVER shown as "Active" unless the engine can execute it:
- *   • single-elimination, round-robin   → selectable (engine executes)
- *   • double-elimination, swiss         → "Engine preparation" (planned)
- *   • group-stage-knockout              → "Engine preparation" + future
- *                                         configuration journey preview
- *
- * Planned formats are never submitted to the backend as executable: the page
- * only writes a bracket type id for engine-executable formats.
+ * `onSelectGsk` is used for the GSK card: the page maps it to the
+ * single-elimination bracket substrate + sets `format=group_stage_knockout`.
  */
 
 export interface TournamentFormatCard {
@@ -35,6 +32,7 @@ interface TournamentFormatSelectorProps {
   /** planned format currently revealed for explanation */
   plannedKey: string | null;
   onSelect: (id: string) => void;
+  onSelectGsk?: (bracketId: number) => void;
   onRevealPlanned: (key: string | null) => void;
   disabled?: boolean;
   disabledReason?: string;
@@ -45,6 +43,7 @@ export function TournamentFormatSelector({
   selectedId,
   plannedKey,
   onSelect,
+  onSelectGsk,
   onRevealPlanned,
   disabled,
   disabledReason,
@@ -67,7 +66,9 @@ export function TournamentFormatSelector({
               onClick={() => {
                 if (disabled) return;
                 if (card.executable) {
-                  if (card.dbId != null) onSelect(String(card.dbId));
+                  if (card.dbId == null) return;
+                  if (card.key === 'group-stage-knockout') onSelectGsk?.(card.dbId);
+                  else onSelect(String(card.dbId));
                 } else {
                   onRevealPlanned(revealsLinked(card.key));
                 }
@@ -123,32 +124,6 @@ export function TournamentFormatSelector({
               'This tournament format is part of the CourtZon roadmap. The execution engine is not available yet, so it cannot be created today.',
             )}
           </p>
-
-          {plannedKey === 'group-stage-knockout' && (
-            <div className="mt-2 space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4" data-testid="gsk-preview">
-              <p className="text-sm font-semibold text-[var(--color-text)]">
-                {t('tournaments.wizard.gsk.title', 'Group Stage + Knockout — future configuration')}
-              </p>
-              <p className="whitespace-pre-line text-xs leading-relaxed text-[var(--color-text)]">
-                {t(
-                  'tournaments.wizard.gsk.journey',
-                  '32 Participants\n    ↓\n8 Groups × 4\n    ↓\nGroup Round Robin\n    ↓\nTop 2 from each group\n    ↓\n16 Qualified\n    ↓\nRound of 16\n    ↓\nQuarter Final\n    ↓\nSemi Final\n    ↓\nFinal',
-                )}
-              </p>
-              <p className="text-xs text-[var(--color-text-muted)]">
-                {t(
-                  'tournaments.wizard.gsk.config',
-                  'Planned configuration: number of groups, participants per group, group round-robin rules, qualifiers per group, best third-place participants, qualification ordering, seeding (manual/automatic), knockout start round, rematch prevention, group-winner separation.',
-                )}
-              </p>
-              <p className="text-[11px] text-[var(--color-warning-text)]">
-                {t(
-                  'tournaments.wizard.gsk.note',
-                  'Not yet submit-ready — no group-stage configuration is persisted until the Group Stage + Knockout engine ships. This is a UX foundation only.',
-                )}
-              </p>
-            </div>
-          )}
         </div>
       )}
 

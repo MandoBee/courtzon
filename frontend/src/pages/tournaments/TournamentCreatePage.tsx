@@ -17,6 +17,7 @@ import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFo
 import MapLocationPicker, { type PickedLocation } from '../../components/map/MapLocationPicker';
 import { CreateWizardStepper, type WizardStepItem } from '../../components/tournaments/wizard/CreateWizardStepper';
 import { TournamentFormatSelector, type TournamentFormatCard } from '../../components/tournaments/wizard/TournamentFormatSelector';
+import { GskConfiguration, validateGskConfig, DEFAULT_GSK_CONFIG, type GskConfigValue } from '../../components/tournaments/wizard/GskConfiguration';
 
 type TournamentForm = {
   /**
@@ -31,6 +32,10 @@ type TournamentForm = {
   category?: string;
   season?: string;
   bracketTypeId: string;
+  /** Step 4A — explicit competition format (knockout | round_robin | group_stage_knockout). */
+  format?: string;
+  /** Step 4A — validated GSK configuration, sent ONLY with group_stage_knockout. */
+  gsk_config?: GskConfigValue | null;
   sportId?: string;
   matchFormatId?: string;
   ruleSetId?: string;
@@ -144,6 +149,8 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
           category: z.string().optional(),
           season: z.string().optional(),
           bracketTypeId: z.string().min(1, t('tournaments.create.validation.bracket_type')),
+          format: z.string().optional(),
+          gsk_config: z.any().optional(),
           sportId: z.string().optional(),
           matchFormatId: z.string().optional(),
           ruleSetId: z.string().optional(),
@@ -317,6 +324,8 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       category: data.category?.trim() || undefined,
       season: data.season?.trim() || undefined,
       bracket_type_id: Number(data.bracketTypeId),
+      format: data.format === 'group_stage_knockout' ? 'group_stage_knockout' : (data.format === 'knockout' || data.format === 'round_robin' ? data.format : undefined),
+      gsk_config: data.format === 'group_stage_knockout' ? (data.gsk_config ?? undefined) : undefined,
       sport_id: data.sportId ? Number(data.sportId) : undefined,
       match_format_id: data.matchFormatId ? Number(data.matchFormatId) : undefined,
       rule_set_id: data.ruleSetId ? Number(data.ruleSetId) : undefined,
@@ -377,6 +386,13 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     let ok = STEP_FIELDS[idx].length ? await trigger(STEP_FIELDS[idx] as any) : true;
 
     if (idx === 0 && !isOrg && !selectedOrgId.trim()) ok = false;
+    if (idx === 1) {
+      // Step 4A — GSK configuration must be structurally valid before continuing.
+      if (values.format === 'group_stage_knockout' && values.gsk_config) {
+        const gv = validateGskConfig(values.gsk_config);
+        if (gv.error) ok = false;
+      }
+    }
     if (idx === 2) {
       const v = getValues();
       const min = v.minParticipants ? Number(v.minParticipants) : Number.NaN;
@@ -441,6 +457,8 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
 
   // ── Completion / indicators ──
   const values = watch();
+  const isGsk = values.format === 'group_stage_knockout';
+  const gsk = isGsk ? values.gsk_config ?? null : null;
   const completed = useMemo(() => {
     const ids: string[] = [];
     if (!!values.name?.trim() && (isOrg || !!effectiveOrgId)) ids.push('basics');
@@ -478,7 +496,10 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       executable('round-robin'),
       planned('double-elimination', 'double-elimination', t('tournaments.formats.double', 'Double Elimination')),
       planned('swiss', 'swiss', t('tournaments.formats.swiss', 'Swiss System')),
-      planned(null, 'group-stage-knockout', t('tournaments.formats.gsk', 'Group Stage + Knockout')),
+      (() => {
+        const se = bySlug('single-elimination'); // GSK knockout stage is single elimination (backend substrate)
+        return { slug: null, key: 'group-stage-knockout', name: t('tournaments.formats.gsk', 'Group Stage + Knockout'), executable: !!se, dbId: se?.id ?? null, unavailable: !se };
+      })(),
     ];
   }, [bracketOptions, t]);
 
@@ -598,11 +619,32 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
                   cards={formatCards}
                   selectedId={values.bracketTypeId}
                   plannedKey={plannedFormatKey}
-                  onSelect={(id) => setValue('bracketTypeId', id, { shouldValidate: true })}
+                  onSelect={(id) => {
+                    const card = formatCards.find((c) => c.executable && String(c.dbId) === String(id));
+                    setValue('bracketTypeId', id, { shouldValidate: true });
+                    setValue('format', card?.slug === 'round-robin' ? 'round_robin' : 'knockout');
+                    setValue('gsk_config', null);
+                  }}
+                  onSelectGsk={(bid) => {
+                    setValue('bracketTypeId', String(bid), { shouldValidate: true });
+                    setValue('format', 'group_stage_knockout');
+                    if (!values.gsk_config) setValue('gsk_config', JSON.parse(JSON.stringify(DEFAULT_GSK_CONFIG)));
+                  }}
                   onRevealPlanned={setPlannedFormatKey}
                   disabled={!hasOwningOrg}
                   disabledReason={t('tournaments.wizard.format.org_required', 'Select the owning organisation to load available formats.')}
                 />
+                {isGsk && values.gsk_config && (
+                  <GskConfiguration value={values.gsk_config} onChange={(cfg) => setValue('gsk_config', cfg, { shouldValidate: false })} />
+                )}
+                {isGsk && values.gsk_config && (() => {
+                  const gv = validateGskConfig(values.gsk_config);
+                  return gv.error ? (
+                    <p className="rounded-md border border-[var(--color-error)]/40 bg-[var(--color-error-bg)] p-2 text-xs text-[var(--color-error-text)]" role="alert">
+                      {t(gv.error, gv.error)}
+                    </p>
+                  ) : null;
+                })()}
                 {errors.bracketTypeId?.message && (
                   <p className="text-xs text-[var(--color-error)]" role="alert">{errors.bracketTypeId.message}</p>
                 )}
@@ -896,7 +938,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
                   title={t('tournaments.wizard.review.format', 'Format')}
                   complete={completed.includes('format')}
                   onEdit={() => goTo(1)}
-                  rows={[
+                  rows={isGsk && gsk ? [
+                    { label: t('tournaments.create.bracket_type'), value: t('tournaments.formats.gsk', 'Group Stage + Knockout') },
+                    { label: 'Group Stage', value: `${gsk.groupStage.groupCount} × ${gsk.groupStage.participantsPerGroup}` },
+                    { label: 'Qualification', value: `Top ${gsk.groupStage.qualification.topPerGroup} per group${gsk.groupStage.qualification.bestThirdPlaces ? ` + ${gsk.groupStage.qualification.bestThirdPlaces} thirds` : ''}` },
+                    { label: 'Knockout', value: `${gsk.knockout.startingRound} · ${gsk.knockout.seeding} seeding${gsk.knockout.separateGroupWinners ? '' : ' · group winners NOT separated'}${gsk.knockout.preventSameGroupRematch ? '' : ' · rematch NOT prevented'}` },
+                  ] : [
                     { label: t('tournaments.create.bracket_type'), value: selectedBracketName || '-' },
                     { label: t('tournaments.create.sport'), value: selectedSportName || '-' },
                     { label: t('tournaments.create.match_format'), value: selectedFormatName || '-' },
