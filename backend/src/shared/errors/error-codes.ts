@@ -154,6 +154,10 @@ export const ErrorCodes = {
   TOURNAMENT_DRAW_LOCKED: 'TOURNAMENT_DRAW_LOCKED',
   TOURNAMENT_DRAW_INVALID: 'TOURNAMENT_DRAW_INVALID',
   TOURNAMENT_FORMAT_NOT_SUPPORTED: 'TOURNAMENT_FORMAT_NOT_SUPPORTED',
+  /** Group 5B-SR — activation of a bracket type whose engine is not executable. */
+  TOURNAMENT_BRACKET_ENGINE_UNSUPPORTED: 'TOURNAMENT_BRACKET_ENGINE_UNSUPPORTED',
+  /** Group 5B-SR — deactivation of an executable bracket type still depended on by active/future tournaments. */
+  TOURNAMENT_BRACKET_ENGINE_DEPENDENCY: 'TOURNAMENT_BRACKET_ENGINE_DEPENDENCY',
   /** G8-D — a tournament cannot be completed while required matches are unresolved. */
   TOURNAMENT_MATCHES_UNRESOLVED: 'TOURNAMENT_MATCHES_UNRESOLVED',
   /**

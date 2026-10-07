@@ -11,6 +11,7 @@ const repo = vi.hoisted(() => ({
   findBracketTypeById: vi.fn(),
   setBracketTypeActive: vi.fn(),
   countBracketTypeReferences: vi.fn(),
+  countActiveTournamentReferences: vi.fn(),
   findRegistrationsByTournament: vi.fn(),
   update: vi.fn(),
   findPrizesByTournament: vi.fn(async () => []),
@@ -76,6 +77,7 @@ beforeEach(() => {
   mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { best_of: 3 }, standingsRules: null });
   commission.getCommissionRate.mockResolvedValue(null);
   commission.getCurrentSubscription.mockResolvedValue({ exists: false, planName: null });
+  repo.countActiveTournamentReferences.mockResolvedValue(0);
 });
 
 describe('Group 5B-SR — Bracket type configuration', () => {

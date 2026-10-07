@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { tournamentService } from '../application/tournament.service.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { tournamentPrizeAwardService } from '../application/tournament-prize-award.service.js';
+import { bracketSlugCapability, bracketTypeCreationAvailable } from '../domain/tournament-aggregate.js';
 import {
   UpdateTournamentSchema, ListTournamentsQuerySchema,
   RegisterSchema, GenerateGroupsSchema, GskLifecycleSchema,
@@ -614,7 +615,16 @@ export async function listActiveBracketTypesHandler(_request: FastifyRequest, re
   return reply.send({ data: types });
 }
 
-/** All bracket types (Super Admin management) with reference counts + engine support. */
+/**
+ * All bracket types (Super Admin management) with reference counts, engine
+ * capability and creation availability, plus the registry-level GSK composite
+ * capability entry (GSK has no `tournament_bracket_types` row — it is
+ * engine-registry content riding the single-elimination substrate).
+ *
+ * Response is ADDITIVE: `data` keeps the exact row shape the current screen
+ * consumes; each row gains `engine_capability` / `creation_available`; the new
+ * top-level `registry` array carries non-DB (composite) capabilities.
+ */
 export async function listBracketTypesHandler(_request: FastifyRequest, reply: FastifyReply) {
   const types = await tournamentService.listBracketTypes(true);
   const enriched = await Promise.all(
@@ -622,9 +632,26 @@ export async function listBracketTypesHandler(_request: FastifyRequest, reply: F
       ...bt,
       is_active: Boolean(Number(bt.is_active)),
       referenced_count: await tournamentRepository.countBracketTypeReferences(bt.id),
+      engine_capability: bracketSlugCapability(bt.slug),
+      creation_available: bracketTypeCreationAvailable(bt.slug, Number(bt.is_active)),
     })),
   );
-  return reply.send({ data: enriched });
+
+  // GSK composite — registry-level, engine-driven, NEVER a fake DB row, NEVER toggleable.
+  const seActive = enriched.some((t) => t.slug === 'single-elimination' && t.is_active === true);
+  const registry: Array<Record<string, unknown>> = [{
+    format: 'group_stage_knockout',
+    name: 'Group Stage + Knockout',
+    type: 'composite',
+    source: 'engine_registry',
+    engine_capability: 'ready',
+    creation_available: seActive,
+    toggleable: false,
+    substrate: 'single-elimination',
+    description: 'Composite format — group stage (round-robin) + single-elimination knockout. Rides the single-elimination bracket substrate; configuration via gsk_config / tournament stage config.',
+  }];
+
+  return reply.send({ data: enriched, registry });
 }
 
 export async function updateBracketTypeHandler(request: FastifyRequest, reply: FastifyReply) {

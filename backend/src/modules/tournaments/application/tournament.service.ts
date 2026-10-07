@@ -3,7 +3,7 @@ import { participantDrawRepository } from '../infrastructure/repositories/partic
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { competitionRepository } from '../infrastructure/repositories/competition.repository.js';
 import { competitionService } from './competition.service.js';
-import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS } from '../domain/tournament-aggregate.js';
+import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS, BRACKET_SLUG_TO_FORMAT, bracketSlugCapability } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
@@ -60,12 +60,19 @@ export interface BracketProgressionMeta {
 }
 
 /**
- * Group 5B-SR — engine-capable bracket types. The Group 5B progression engine
- * fully supports Single Elimination (knockout) and Round Robin; Double
- * Elimination and Swiss System are configuration-visible but DEFERRED (their
- * config_schema is preserved, but the engine cannot safely generate them yet).
+ * Group 5B-SR — engine-capable bracket-type slugs (for create/update selection).
+ *
+ * DERIVED from the single slug→format map + the executable-format registry so
+ * this can never drift from `bracketSlugCapability`: every slug whose mapped
+ * format is engine-executable is "supported". `group_stage_knockout` has no
+ * slug (it is a composite riding the single-elimination substrate) and is
+ * therefore deliberately absent here.
  */
-export const ENGINE_SUPPORTED_BRACKET_SLUGS = ['single-elimination', 'round-robin'] as const;
+export const ENGINE_SUPPORTED_BRACKET_SLUGS = Object.keys(BRACKET_SLUG_TO_FORMAT).filter(
+  (slug) => (ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(
+    BRACKET_SLUG_TO_FORMAT[slug as keyof typeof BRACKET_SLUG_TO_FORMAT],
+  ),
+) as readonly string[];
 
 /**
  * G11 Phase 3 (LOCKED PRODUCT RULE) — the CourtZon PLATFORM must never create,
@@ -804,14 +811,13 @@ export class TournamentService {
 
   /**
    * G8-C — deterministic bracket-type slug → competition format mapping.
-   * THIS is the product contract the engine can execute. Never invent any other
-   * mapping: unsupported bracket types are rejected earlier by
-   * `assertBracketTypeAvailable`, so only single-elimination / round-robin reach
-   * this point.
+   * Consumes the SINGLE `BRACKET_SLUG_TO_FORMAT` map (the only slug→format
+   * identity). Unknown slugs keep the legacy `knockout` fallback for backward
+   * compatibility (create/update never reach them — `assertBracketTypeAvailable`
+   * rejects unsupported slugs earlier). GSK is composite and has no slug.
    */
   private engineFormatForBracketSlug(slug: string): TournamentFormat {
-    if (slug === 'round-robin') return 'round_robin';
-    return 'knockout'; // single-elimination (and any other ENGINE-supported slug)
+    return BRACKET_SLUG_TO_FORMAT[slug as keyof typeof BRACKET_SLUG_TO_FORMAT] ?? 'knockout';
   }
 
   /**
@@ -1110,14 +1116,49 @@ export class TournamentService {
   /**
    * Group 5B-SR — toggle a bracket type active/inactive. Deactivation is the
    * preferred lifecycle: referenced types are never destructively deleted.
+   *
+   * SAFETY (backend-authoritative):
+   *  - ACTIVATION is rejected for any slug whose engine is not executable
+   *    (`bracketSlugCapability !== 'ready'`) → DE/Swiss/unknown can never be
+   *    offered at creation no matter what the admin screen does.
+   *  - DEACTIVATION of a READY type (single-elimination, round-robin) is
+   *    rejected while ACTIVE/FUTURE tournaments still depend on it. This guards
+   *    GSK too: GSK tournaments reference the single-elimination substrate, so
+   *    deactivating single-elimination with GSK tournaments live is blocked.
+   *    Historical (completed/cancelled/archived / soft-deleted) tournaments
+   *    never block.
+   *  - Deactivating a PLANNED/UNSUPPORTED row is allowed (it only reflects the
+   *    operational status; creation is engine-blocked regardless).
    */
   async updateBracketTypeActive(id: number, isActive: boolean, actorId: number): Promise<BracketTypeRow> {
     const bt = await tournamentRepository.findBracketTypeById(id);
     if (!bt) throw new NotFoundError('Bracket type', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    const capability = bracketSlugCapability(bt.slug);
+
+    if (isActive && capability !== 'ready') {
+      throw new ConflictError(
+        `Bracket type "${bt.name}" (${bt.slug}) cannot be activated — its engine is not executable (capability: ${capability})`,
+        ErrorCodes.TOURNAMENT_BRACKET_ENGINE_UNSUPPORTED,
+      );
+    }
+
+    if (!isActive && capability === 'ready') {
+      const activeRefs = await tournamentRepository.countActiveTournamentReferences(id);
+      if (activeRefs > 0) {
+        throw new ConflictError(
+          bt.slug === 'single-elimination'
+            ? `Bracket type "${bt.name}" cannot be deactivated — ${activeRefs} active/future tournament(s) still depend on it (including Group Stage + Knockout, which uses this as its substrate)`
+            : `Bracket type "${bt.name}" cannot be deactivated — ${activeRefs} active/future tournament(s) still depend on it`,
+          ErrorCodes.TOURNAMENT_BRACKET_ENGINE_DEPENDENCY,
+        );
+      }
+    }
+
     await tournamentRepository.setBracketTypeActive(id, isActive);
     recordAudit({
       actorId, action: 'TOURNAMENT.BRACKET_TYPE_UPDATE', entityType: 'tournament_bracket_type', entityId: id,
-      beforeState: { is_active: bt.is_active }, afterState: { is_active: isActive, slug: bt.slug },
+      beforeState: { is_active: bt.is_active, slug: bt.slug },
+      afterState: { is_active: isActive, slug: bt.slug, capability },
     });
     const updated = await tournamentRepository.findBracketTypeById(id);
     return updated!;

@@ -83,6 +83,25 @@ export class TournamentRepository {
     return Number(rows[0]?.total ?? 0);
   }
 
+  /**
+   * Group 5B-SR — count ACTIVE/FUTURE tournaments still depending on a bracket
+   * type (deactivation guard). Historical terminal states (completed,
+   * cancelled, archived) and soft-deleted rows NEVER count — retiring a format
+   * must not be blocked by the past, only by tournaments that still consume it.
+   * `open` / `in_progress` are legacy lifecycle statuses treated as active
+   * (they funnel into the validated lifecycle; see domain/lifecycle.ts).
+   */
+  async countActiveTournamentReferences(bracketTypeId: number): Promise<number> {
+    const statuses = ['draft', 'published', 'registration_open', 'registration_closed', 'running', 'open', 'in_progress'];
+    const placeholders = statuses.map(() => '?').join(',');
+    const [rows] = await getPool().query<RowData>(
+      `SELECT COUNT(*) AS total FROM tournaments
+        WHERE bracket_type_id = ? AND status IN (${placeholders}) AND deleted_at IS NULL`,
+      [bracketTypeId, ...statuses],
+    );
+    return Number(rows[0]?.total ?? 0);
+  }
+
   async list(filters: {
     page?: number; limit?: number; search?: string; status?: string; format?: string; category?: string; sport_id?: number;
     /** G11.14 — tenant scope. When supplied the list is restricted to ONE organisation. */

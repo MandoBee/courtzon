@@ -21,6 +21,65 @@ export const ENGINE_EXECUTABLE_FORMATS = ['knockout', 'round_robin', 'group_stag
  */
 export const ENGINE_PLANNED_FORMATS = [] as const;
 
+/**
+ * Group 5B-SR — authoritative bracket-type slug → competition format identity.
+ *
+ * THE single slug→format mapping the engine consumes (create/update derive
+ * `tournaments.format` from it; `bracketSlugCapability` classifies it). It is
+ * the ONLY place a bracket-type slug is bound to a format.
+ *
+ * NOTE: `group_stage_knockout` deliberately has NO slug here. GSK is a
+ * COMPOSITE format: it rides the single-elimination substrate for
+ * `tournaments.bracket_type_id` and persists its real configuration via
+ * `gsk_config` / `tournament_stages.config`. It is surfaced at registry level
+ * (see `GET /admin/bracket-types` → `registry`), never as a DB bracket row.
+ */
+export const BRACKET_SLUG_TO_FORMAT = {
+  'single-elimination': 'knockout',
+  'round-robin': 'round_robin',
+  'double-elimination': 'double_elimination',
+  'swiss': 'swiss',
+} as const;
+
+export type BracketSlug = keyof typeof BRACKET_SLUG_TO_FORMAT;
+
+/** Engine readiness of a bracket format — the ONLY capability classification. */
+export type BracketEngineCapability = 'ready' | 'planned' | 'unsupported';
+
+/**
+ * Formats the engine recognizes as roadmap (configurable/planned) but cannot
+ * execute today. Used to distinguish `planned` from `unsupported` capabilities.
+ */
+export const ENGINE_PLANNED_BRACKET_FORMATS: readonly TournamentFormat[] = ['double_elimination', 'swiss'];
+
+/**
+ * Group 5B-SR — capability of a bracket-type row, derived SOLELY from the
+ * engine registry + the slug→format map (never from `is_active`, never from a
+ * second hard-coded list).
+ *
+ * ready       → slug maps to an `ENGINE_EXECUTABLE_FORMATS` format
+ * planned     → slug maps to an `ENGINE_PLANNED_BRACKET_FORMATS` format
+ * unsupported → unknown/unregistered slug or an unlisted format
+ */
+export function bracketSlugCapability(slug: string): BracketEngineCapability {
+  const format = BRACKET_SLUG_TO_FORMAT[slug as BracketSlug];
+  if (format == null) return 'unsupported';
+  if ((ENGINE_EXECUTABLE_FORMATS as readonly string[]).includes(format)) return 'ready';
+  if (ENGINE_PLANNED_BRACKET_FORMATS.includes(format)) return 'planned';
+  return 'unsupported';
+}
+
+/**
+ * Group 5B-SR — is this bracket-type row selectable at tournament creation?
+ *
+ * creation_available = row is active AND the engine can execute it. This is the
+ * SAME predicate `assertBracketTypeAvailable` enforces on the create path — the
+ * admin list surfaces it so the UI never answers differently from the backend.
+ */
+export function bracketTypeCreationAvailable(slug: string, isActive: boolean | number): boolean {
+  return Number(isActive) === 1 && bracketSlugCapability(slug) === 'ready';
+}
+
 export type TournamentStatus =
   | 'draft' | 'published' | 'registration_open' | 'registration_closed'
   | 'running' | 'completed' | 'cancelled' | 'archived'
