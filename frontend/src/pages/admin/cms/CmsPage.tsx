@@ -16,6 +16,8 @@ const BLOCK_TYPES = [
   { value: 'team', label: 'Team Members' },
   { value: 'faq', label: 'FAQ Accordion' },
   { value: 'contact_form', label: 'Contact Form' },
+  { value: 'contact_info', label: 'Contact Information' },
+  { value: 'location_map', label: 'Location / Map' },
   { value: 'stats', label: 'Statistics' },
   { value: 'testimonials', label: 'Testimonials' },
   { value: 'blog_preview', label: 'Blog Preview (Dynamic)' },
@@ -242,6 +244,20 @@ function BlockManager({ pageId, pageTitle, back }: { pageId: number; pageTitle: 
       case 'blog_preview': return '{}';
       case 'pricing': return '{}';
       case 'steps': return JSON.stringify({ steps: [{ icon: '1', title: 'Step 1', description: 'Description' }, { icon: '2', title: 'Step 2', description: 'Description' }, { icon: '3', title: 'Step 3', description: 'Description' }] }, null, 2);
+      case 'contact_info': return JSON.stringify({
+        items: [
+          { type: 'email', title: 'Email', value: 'support@courtzon.com', icon: 'mail', link: 'mailto:support@courtzon.com' },
+          { type: 'phone', title: 'Phone', value: '+1 123 456 7890', icon: 'phone', link: 'tel:+11234567890' },
+          { type: 'location', title: 'Location', value: '123 Main St, City, Country', icon: 'map-pin', link: '' }
+        ]
+      }, null, 2);
+      case 'location_map': return JSON.stringify({
+        address: '123 Main St, City, Country',
+        mapEmbedUrl: '',
+        mapLink: '',
+        latitude: '',
+        longitude: ''
+      }, null, 2);
       default: return '{}';
     }
   };

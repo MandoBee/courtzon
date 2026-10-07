@@ -8,6 +8,8 @@ import TextBlock from './blocks/TextBlock';
 import TeamBlock from './blocks/TeamBlock';
 import FAQBlock from './blocks/FAQBlock';
 import ContactFormBlock from './blocks/ContactFormBlock';
+import ContactInfoBlock from './blocks/ContactInfoBlock';
+import LocationMapBlock from './blocks/LocationMapBlock';
 import StatsBlock from './blocks/StatsBlock';
 import TestimonialsBlock from './blocks/TestimonialsBlock';
 import BlogPreviewBlock from './blocks/BlogPreviewBlock';
@@ -94,6 +96,10 @@ export default function LandingPage() {
         return <FAQBlock key={key} data={data} title={block.title || undefined} subtitle={block.subtitle || undefined} />;
       case 'contact_form':
         return <ContactFormBlock key={key} title={block.title || undefined} subtitle={block.subtitle || undefined} />;
+      case 'contact_info':
+        return <ContactInfoBlock key={key} data={data} title={block.title || undefined} subtitle={block.subtitle || undefined} />;
+      case 'location_map':
+        return <LocationMapBlock key={key} data={data} title={block.title || undefined} subtitle={block.subtitle || undefined} />;
       case 'stats':
         return <StatsBlock key={key} data={data} title={block.title || undefined} />;
       case 'testimonials':
