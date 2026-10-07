@@ -41,6 +41,9 @@ const repo = vi.hoisted(() => ({
   findByIdDetailed: vi.fn(),
   findMatchesDetailed: vi.fn(),
   getStandings: vi.fn(),
+  // Step 4D — public GSK read-model projections.
+  findGroups: vi.fn(),
+  findStages: vi.fn(),
   findPrizesByTournament: vi.fn(),
   findSponsorsByTournament: vi.fn(),
   listPublic: vi.fn(),
@@ -120,6 +123,8 @@ describe('F-02 — tournament not-found error code', () => {
     vi.clearAllMocks();
     repo.findMatchesDetailed.mockResolvedValue([]);
     repo.getStandings.mockResolvedValue([]);
+    repo.findGroups.mockResolvedValue([]);
+    repo.findStages.mockResolvedValue([]);
     repo.findPrizesByTournament.mockResolvedValue([]);
     repo.findSponsorsByTournament.mockResolvedValue([]);
   });
@@ -246,6 +251,8 @@ describe('F-02 — HTTP surface GET /public/tournaments/:id', () => {
     vi.clearAllMocks();
     repo.findMatchesDetailed.mockResolvedValue([]);
     repo.getStandings.mockResolvedValue([]);
+    repo.findGroups.mockResolvedValue([]);
+    repo.findStages.mockResolvedValue([]);
   });
 
   it('GET /public/tournaments/999999999 → 404 with TOURNAMENT_NOT_FOUND, no redirect, no leak', async () => {

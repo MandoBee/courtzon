@@ -912,6 +912,12 @@ export class TournamentService {
         round_name: m.round_name ?? null,
         match_number: m.match_number,
         bracket_position: m.bracket_position ?? null,
+        // Step 4D — additive GSK discriminator: which stage/group a match belongs
+        // to. `group_id` distinguishes GROUP-STAGE matches from KNOCKOUT matches
+        // (knockout rows have no group); `stage_id` identifies the stage. These
+        // are competition identifiers, never user/private identity.
+        stage_id: m.stage_id ?? null,
+        group_id: m.group_id ?? null,
         participant1_name: m.participant1_name ?? null,
         participant2_name: m.participant2_name ?? null,
         status: m.status,
@@ -924,6 +930,9 @@ export class TournamentService {
     if (standings && standings.length) {
       d.standings = standings.map((s) => ({
         rank_position: s.rank_position,
+        // Step 4D — additive: the group a standing row belongs to (GSK group
+        // stage). NULL for non-grouped standings (round-robin / knockout).
+        group_id: (s as any).group_id ?? null,
         player_name: (s as any).player_name ?? null,
         points: s.points,
         wins: s.wins,
@@ -935,7 +944,62 @@ export class TournamentService {
         sets_lost: s.sets_lost,
       }));
     }
+
+    // Step 4D — Public GSK read-model (additive + optional; non-GSK behaviour is
+    // untouched). A group stage match/standing is meaningless without its group
+    // label, so expose the MINIMUM public group representation.
+    const groups = await tournamentRepository.findGroups(id);
+    if (groups && groups.length) {
+      d.groups = groups.map((g) => ({ id: g.id ?? null, name: g.name ?? null }));
+    }
+    // Stage progression + a public-safe GSK configuration subset, so the public
+    // view can identify the knockout stage and show the qualification rule
+    // WITHOUT inference. Organizer-only seeding/bye/play-in flags are excluded.
+    const stages = await tournamentRepository.findStages(id);
+    if (stages && stages.length) {
+      d.stages = stages.map((s) => ({
+        id: s.id ?? null,
+        name: s.name ?? null,
+        stage_order: s.stage_order ?? null,
+        progression_format: s.progression_format ?? null,
+        config: this.buildPublicStageConfig(s.config),
+      }));
+    }
     return d;
+  }
+
+  /**
+   * Step 4D — public-safe projection of a persisted stage config.
+   *
+   * Whitelists ONLY the competition fields the public GSK view needs
+   * (groupCount, participantsPerGroup, the qualification rule and the knockout
+   * starting round). Organizer-only configuration (seeding strategy, bye /
+   * play-in flags, same-group-rematch prevention, rule-set internals) is NEVER
+   * exposed. Returns `null` when the stage carries no public configuration.
+   */
+  private buildPublicStageConfig(config: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+    if (!config || typeof config !== 'object') return null;
+    const out: Record<string, unknown> = {};
+    const gs = (config as any).groupStage;
+    if (gs && typeof gs === 'object') {
+      const safeGs: Record<string, unknown> = {};
+      if (typeof gs.groupCount === 'number') safeGs.groupCount = gs.groupCount;
+      if (typeof gs.participantsPerGroup === 'number') safeGs.participantsPerGroup = gs.participantsPerGroup;
+      const q = gs.qualification;
+      if (q && typeof q === 'object') {
+        const safeQ: Record<string, unknown> = {};
+        if (typeof q.topPerGroup === 'number') safeQ.topPerGroup = q.topPerGroup;
+        if (typeof q.bestThirdPlaces === 'number') safeQ.bestThirdPlaces = q.bestThirdPlaces;
+        if (typeof q.ordering === 'string') safeQ.ordering = q.ordering;
+        if (Object.keys(safeQ).length) safeGs.qualification = safeQ;
+      }
+      if (Object.keys(safeGs).length) out.groupStage = safeGs;
+    }
+    const ko = (config as any).knockout;
+    if (ko && typeof ko === 'object' && typeof ko.startingRound === 'string') {
+      out.knockout = { startingRound: ko.startingRound };
+    }
+    return Object.keys(out).length ? out : null;
   }
 
   async getById(id: number): Promise<Tournament> {
