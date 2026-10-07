@@ -688,17 +688,18 @@ html[dir="rtl"] {
     margin-top: 0;
   }
 
-  /* Legal document typography — scoped to the CMS Terms page (.cz-landing--terms,
-     set from the page slug in LandingPage). The Terms content is stored/rendered
-     as semantic HTML inside TextBlock: <h2> = main sections (1-12), <h3> =
-     subsections (7.1-7.5), followed by <p>/<ul> body copy. @tailwindcss/typography
-     is intentionally NOT used (not installed), so these rules supply the readable
-     legal-document presentation using the existing dark-theme tokens. Other CMS
-     pages are unaffected. */
-  .cz-landing--terms .prose {
+  /* Legal document typography — scoped to the CMS legal pages: Terms of Service
+     and Privacy Policy (wrapper class cz-landing--{slug} is set from the page
+     slug in LandingPage). Both documents are stored/rendered as semantic HTML
+     inside TextBlock: <h2> = main sections, <h3> = subsections (Terms 7.1-7.5),
+     followed by <p>/<ul> body copy. @tailwindcss/typography is intentionally NOT
+     used (not installed), so these rules supply the readable legal-document
+     presentation using the existing dark-theme tokens. Other CMS pages are
+     unaffected. */
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose {
     font-size: 1.05rem;
   }
-  .cz-landing--terms .prose h2 {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose h2 {
     margin-top: 2.5rem;
     margin-bottom: 1rem;
     padding-top: 1.5rem;
@@ -710,12 +711,12 @@ html[dir="rtl"] {
     letter-spacing: -0.01em;
     color: var(--color-text);
   }
-  .cz-landing--terms .prose h2:first-of-type {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose h2:first-of-type {
     margin-top: 0;
     padding-top: 0;
     border-top: 0;
   }
-  .cz-landing--terms .prose h3 {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose h3 {
     margin-top: 2rem;
     margin-bottom: 0.75rem;
     font-size: clamp(1.0625rem, 1.8vw, 1.125rem);
@@ -723,44 +724,44 @@ html[dir="rtl"] {
     line-height: 1.4;
     color: var(--color-text);
   }
-  .cz-landing--terms .prose p {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose p {
     margin-bottom: 1.25rem;
     line-height: 1.75;
     color: var(--color-text-muted);
   }
-  .cz-landing--terms .prose strong {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose strong {
     color: var(--color-text);
     font-weight: 600;
   }
-  .cz-landing--terms .prose ul {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose ul {
     margin: 0 0 1.25rem 0;
     padding-left: 1.5rem;
     list-style: disc;
   }
-  .cz-landing--terms .prose li {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose li {
     margin-bottom: 0.5rem;
     line-height: 1.75;
     color: var(--color-text-muted);
   }
-  .cz-landing--terms .prose li::marker {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose li::marker {
     color: var(--color-primary);
   }
-  .cz-landing--terms .prose a {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose a {
     color: var(--color-primary);
   }
-  .cz-landing--terms .prose a:hover {
+  .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose a:hover {
     text-decoration: underline;
   }
   @media (max-width: 640px) {
-    .cz-landing--terms .prose h2 {
+    .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose h2 {
       margin-top: 2rem;
       padding-top: 1.25rem;
     }
-    .cz-landing--terms .prose h3 {
+    .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose h3 {
       margin-top: 1.75rem;
     }
-    .cz-landing--terms .prose p,
-    .cz-landing--terms .prose li {
+    .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose p,
+    .cz-landing:is(.cz-landing--terms, .cz-landing--privacy) .prose li {
       font-size: 1rem;
     }
   }
