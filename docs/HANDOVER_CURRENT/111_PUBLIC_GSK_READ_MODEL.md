@@ -89,7 +89,7 @@ Verified (integration test asserts key-by-key):
 
 ## 12. Commit / Push
 
-Message: **`feat(tournaments): expose GSK public read model`** — hash + push recorded after verification; `HEAD == origin/master`, working tree clean.
+Message: **`feat(tournaments): expose GSK public read model`** — feature commit **`c242734f`**. Pushed to `origin/master`; `HEAD == origin/master`, working tree clean.
 
 ## 13. Remaining Limitations
 
