@@ -647,60 +647,67 @@ All player academy screens get the BottomNav on mobile and sit inside AppLayout.
 
 ### 1. Admin Tournament Screen Flows (AdminLayout)
 
-#### TournamentDashboardPage (`/admin/tournaments`)
+Legacy entry points `/admin/tournaments` (old list) and `/admin/tournament/matches`
+(standalone matches screen) redirect (`<Navigate replace />`) to the canonical list
+`/admin/tournament/list`. `TournamentAdminPage.tsx` and `TournamentMatchesPage.tsx` were
+removed; the Tournament Hub detail screen is the canonical per-tournament workspace, and
+match management lives in the Hub's Matches tab plus the standalone Schedule surface.
+
+#### TournamentDashboardPage (`/admin/tournament/dashboard`)
 
 | Property | Value |
 |----------|-------|
 | **Component** | `pages/admin/tournament/TournamentDashboardPage.tsx` |
-| **Purpose** | KPI cards: total, published, registration open, running, completed, cancelled. Quick-action buttons for creating new tournament |
-| **Navigation Source** | Admin sidebar "Tournaments" |
-| **Navigation Destination** | Click "Create Tournament" → create form; click tournament card → detail page |
-| **APIs Used** | `GET /admin/tournaments/dashboard`, `GET /admin/tournaments` |
-| **Permissions** | `tournament.dashboard.view` |
-| **Empty State** | "No tournaments yet. Create your first tournament!" |
-| **Loading State** | Implicit via React Query |
-| **Error State** | Not handled explicitly |
+| **Purpose** | KPI cards: total, open registrations, running, completed, registered players, scheduled/completed matches |
+| **Navigation Source** | Admin sidebar "Tournament" → "Dashboard" |
+| **Navigation Destination** | None (KPI overview); list and creation are reached via the sidebar |
+| **APIs Used** | `GET /admin/tournaments/dashboard` |
+| **Permissions** | `admin-tournaments.view` (page gate) |
+| **Empty State** | n/a — KPI cards render zeros |
+| **Loading State** | Skeleton row grid while loading |
+| **Error State** | Toast on dashboard load error |
 
-#### TournamentListPage (`/admin/tournaments/list`)
+#### TournamentListPage (`/admin/tournament/list`)
 
 | Property | Value |
 |----------|-------|
 | **Component** | `pages/admin/tournament/TournamentListPage.tsx` |
-| **Purpose** | Paginated list with search, status/format/sport filters. Status badges with color coding. Create, edit, manage registrations |
-| **Navigation Source** | Admin sidebar "Tournaments" → "All Tournaments" |
-| **Navigation Destination** | Click tournament → `/admin/tournaments/:id` |
+| **Purpose** | Paginated list with search, status/format/sport filters. Status badges with color coding. Create, edit, delete |
+| **Navigation Source** | Admin sidebar "Tournament" → "Tournaments" |
+| **Navigation Destination** | Click tournament → `/admin/tournament/list/:id` (Tournament Hub); "New Tournament" → `/admin/tournament/list/new` |
 | **APIs Used** | `GET /admin/tournaments`, `POST /admin/tournaments`, `PUT /admin/tournaments/:id` |
-| **Permissions** | `tournament.view`, `tournament.create`, `tournament.update` |
+| **Permissions** | `admin-tournaments.view` (page); actions `tournaments.create`, `tournaments.edit`, `tournaments.delete` |
 | **Empty State** | "No tournaments found" — centered muted text |
 | **Loading State** | Skeleton table while loading |
 | **Error State** | Toast on mutation failures |
 
-#### TournamentDetailPage (`/admin/tournaments/:id`)
+#### TournamentDetailPage — Tournament Hub (`/admin/tournament/list/:id`)
 
 | Property | Value |
 |----------|-------|
-| **Component** | `pages/admin/tournament/TournamentDetailPage.tsx` |
-| **Purpose** | Full tournament management: details card, status transition buttons (publish, open reg, close reg, start, complete, cancel, archive), registrations tab, bracket tab, matches tab, standings tab, groups tab |
+| **Component** | `pages/admin/tournament/TournamentDetailPage.tsx` (shared `mode="admin"`; the org variant renders the same component via `OrgTournamentDetailPage`) |
+| **Purpose** | Canonical tournament workspace (Tournament Hub): details card, status transition buttons (publish, open reg, close reg, start, complete, cancel, archive), registrations tab, bracket tab, matches tab, standings tab, groups tab. The Matches tab hosts the consolidated match-management surface and links to the standalone Schedule surface |
 | **Navigation Source** | Click tournament in TournamentListPage |
-| **Navigation Destination** | Status actions inline; no page navigation |
+| **Navigation Destination** | Status actions inline; child surfaces via Hub links — Schedule `/admin/tournament/list/:id/schedule`, Draw, Participants, Awards |
 | **APIs Used** | `GET /admin/tournaments/:id`, status endpoints, `GET /admin/tournaments/:id/registrations`, `GET /admin/tournaments/:id/bracket`, `GET /admin/tournaments/:id/matches`, `GET /admin/tournaments/:id/standings`, `GET /admin/tournaments/:id/groups`, `POST /admin/tournaments/:id/generate-groups`, `POST /admin/tournaments/:id/generate-fixtures`, `POST /admin/tournaments/:id/generate-bracket`, `POST /admin/tournaments/matches/:matchId/result`, `POST /admin/tournaments/matches/:matchId/assign-court`, `POST /admin/tournaments/matches/:matchId/assign-referee` |
-| **Permissions** | `tournament.view`, `tournament.manage`, `tournament.delete` for archive |
+| **Permissions** | `admin-tournaments.view` (page); actions `tournament.update`, `tournament.publish`, `tournament.delete` (archive); result actions `tournament.result.manage` |
 | **Empty State** | "Tournament not found" if null |
 | **Loading State** | Implicit via React Query with tab-level loading |
 | **Error State** | Toast on all mutation failures |
 
-#### TournamentMatchesPage (`/admin/tournaments/:id/matches`)
+#### TournamentSchedulePage — Matches & Schedule (`/admin/tournament/list/:id/schedule`)
 
 | Property | Value |
 |----------|-------|
-| **Component** | `pages/admin/tournament/TournamentMatchesPage.tsx` |
-| **Purpose** | Dedicated match management interface: list all matches with round, players, status, scores. Record results (winner, scores, score details). Assign court and referee per match |
-| **Navigation Source** | Tournament detail page → "Matches" tab, or direct link |
-| **APIs Used** | `GET /admin/tournaments/:id/matches`, `POST /admin/tournaments/matches/:matchId/result`, `POST /admin/tournaments/matches/:matchId/assign-court`, `POST /admin/tournaments/matches/:matchId/assign-referee` |
-| **Permissions** | `tournament.view`, `tournament.manage` |
-| **Empty State** | "No matches generated yet. Generate bracket or fixtures first." |
-| **Loading State** | Implicit via React Query |
-| **Error State** | Toast on result/court/referee mutations |
+| **Component** | `pages/admin/tournament/TournamentSchedulePage.tsx` |
+| **Purpose** | Standalone scheduling & match-generation surface reached from the Tournament Hub: generate matches (from locked draw), auto-schedule, schedule a match with date/time/court (reserves the court resource), release a court reservation |
+| **Navigation Source** | Tournament Hub → Matches tab → "Matches & Schedule" button; also reachable from Draw and Participants screens |
+| **Navigation Destination** | None (actions inline); "← Draw" link back to the Draw surface |
+| **APIs Used** | `GET /admin/tournaments/:id`, `GET /admin/tournaments/:id/matches`, `GET /admin/tournaments/:id/matches/eligible-courts`, `POST /admin/tournaments/:id/matches/generate`, `POST /admin/tournaments/:id/matches/auto-schedule`, `POST /admin/tournaments/:id/matches/:matchId/schedule`, `POST /admin/tournaments/:id/matches/:matchId/release-court` |
+| **Permissions** | `tournament.manage` (action gates) |
+| **Empty State** | "No matches generated yet. Lock the draw, then generate the match set." |
+| **Loading State** | Skeleton rows while loading |
+| **Error State** | Toast on generate/schedule/court mutations |
 
 ### 2. Player Tournament Screen Flows (AppLayout)
 
@@ -746,7 +753,7 @@ All player academy screens get the BottomNav on mobile and sit inside AppLayout.
 | **Loading State** | Submit button shows spinner |
 | **Error State** | Inline validation errors + toast on server error |
 
-**Source:** Player pages at `frontend/src/pages/tournaments/` (3 files). Admin pages at `frontend/src/pages/admin/tournament/` (4 files) + `pages/admin/tournaments/TournamentAdminPage.tsx`. Backend routes at `tournament.routes.ts:10-50`.
+**Source:** Player pages at `frontend/src/pages/tournaments/` (3 files). Admin tournament surfaces at `frontend/src/pages/admin/tournament/` (TournamentDashboardPage, TournamentListPage, TournamentDetailPage — Tournament Hub, TournamentSchedulePage, TournamentDrawPage, TournamentParticipantsPage, TournamentBracketTypesPage) + `frontend/src/pages/admin/tournaments/TournamentAwardsPage.tsx`. Backend routes at `tournament.routes.ts:10-50`.
 
 ---
 

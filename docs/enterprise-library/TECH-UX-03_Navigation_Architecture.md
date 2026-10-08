@@ -190,7 +190,7 @@ No BottomNav on desktop (`md:hidden`). Standard top Navbar provides:
 | **Tournament** | `/admin/tournament/dashboard` | `sidebar.tournament` |
 | ├ Dashboard | `/admin/tournament/dashboard` | `sidebar.tournament-dashboard` |
 | ├ Tournaments | `/admin/tournament/list` | `sidebar.tournament-list` |
-| └ Matches | `/admin/tournament/matches` | `sidebar.tournament-matches` |
+| └ Bracket Types | `/admin/tournament/bracket-types` | `tournament.bracket-types.view` |
 | **Academy** | `/admin/academy/dashboard` | `sidebar.academy` |
 | ├ Dashboard | `/admin/academy/dashboard` | `sidebar.academy-dashboard` |
 | ├ Programs | `/admin/academy/programs` | `sidebar.academy-programs` |
