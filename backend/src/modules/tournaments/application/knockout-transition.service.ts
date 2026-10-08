@@ -42,9 +42,10 @@ const TRANSITION_STATUSES = new Set(['registration_closed', 'running']);
  * `allowByes` (play-ins explicitly unsupported), and persists the knockout
  * bracket through the SAME match-creation path the existing engine uses.
  *
- * Reasons to stay OUT of `ENGINE_EXECUTABLE_FORMATS`: the full GSK lifecycle
- * (registration → groups → RR → transition → progression) still has no public
- * create/UI flow; this step proves only the backend transition piece.
+ * `group_stage_knockout` is a fully executable `ENGINE_EXECUTABLE_FORMATS`
+ * entry: the create contract, group engine, qualification computation and this
+ * transition are live end-to-end, and the admin Hub plus public pages drive the
+ * groups → qualification → knockout progression.
  */
 export class KnockoutTransitionService {
   async introduceKnockoutStage(

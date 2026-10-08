@@ -11,7 +11,6 @@ const skip = new Set(
   [
     'coupons/CouponListPage.tsx',
     'academies/AcademyAdminPage.tsx',
-    'tournaments/TournamentAdminPage.tsx',
     'organisations/OrganisationListPage.tsx',
     'bookings/BookingsPage.tsx',
     'AdminDashboard.tsx',

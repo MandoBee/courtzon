@@ -16,7 +16,6 @@ function walk(dir, out = []) {
 const skip = new Set([
   'coupons/CouponListPage.tsx',
   'academies/AcademyAdminPage.tsx',
-  'tournaments/TournamentAdminPage.tsx',
 ].map((p) => path.join(adminRoot, p).replace(/\\/g, '/')));
 
 let changed = 0;

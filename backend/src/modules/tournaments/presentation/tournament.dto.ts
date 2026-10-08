@@ -334,9 +334,11 @@ export const AssignRefereeSchema = z.object({
 
 // ── Step 3B-1 — GSK (Group Stage + Knockout) configuration CONTRACT ──────────
 // Structural validation ONLY. Nothing here creates groups, matches or
-// qualifiers. The engine remains non-executable (`ENGINE_EXECUTABLE_FORMATS`
-// still excludes group_stage_knockout); this schema prepares the persistent
-// data contract stored on `tournament_stages.config`.
+// qualifiers. `group_stage_knockout` is a fully executable engine format
+// (`ENGINE_EXECUTABLE_FORMATS` includes it); group generation, qualification
+// and the knockout transition run through the standard prepare/generate
+// lifecycle. This schema defines the persistent `gsk_config` data contract
+// stored on `tournament_stages.config`.
 
 export const GskKnockoutStartSchema = z.enum([
   'round_of_16',
