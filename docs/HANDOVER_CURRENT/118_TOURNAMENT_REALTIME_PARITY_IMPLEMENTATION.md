@@ -84,11 +84,11 @@ Backend `/health` ok (db ok, redis ok); frontend SPA HTTP 200.
 
 ## 14. Git Commit Hash
 
-`<commit-hash>` — "feat(tournaments): add realtime parity to tournament hub".
+`c48f8e85` — "feat(tournaments): add realtime parity to tournament hub".
 
 ## 15. Git Push Result
 
-Pushed to `origin/master` (`<from>..<commit>`).
+Pushed to `origin/master` (`0cc87478..c48f8e85`). Working tree clean.
 
 ## 16. Remaining Limitations
 
