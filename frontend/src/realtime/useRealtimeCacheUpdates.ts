@@ -219,6 +219,58 @@ export function invalidateTournament(
 }
 
 /**
+ * Step 3H — is `root` (a React Query key[0]) one of the Tournament Hub's
+ * canonical roots (admin `tournament-…` and org `org-<orgId>-tournament-…`)?
+ * Matches by exact root or `-<suffix>` suffix so org-<orgId>-tournament-matches
+ * is covered without knowing the org id (id scoping happens in the predicate).
+ */
+export function isTournamentHubQueryRoot(
+  root: unknown,
+  suffix: 'tournament-matches' | 'tournament-groups' | 'tournament-stages',
+): boolean {
+  const r = String(root ?? '');
+  return r === suffix || r.endsWith(`-${suffix}`);
+}
+
+/** Predicate-based invalidation for a Hub query root scoped to one tournament. */
+export function tournamentHubPredicate(
+  suffix: 'tournament-matches' | 'tournament-groups' | 'tournament-stages',
+  tournamentId: number,
+): (query: { queryKey: readonly unknown[] }) => boolean {
+  const t = String(tournamentId);
+  return (query) => {
+    const key = query.queryKey;
+    if (!Array.isArray(key) || key.length < 2) return false;
+    return String(key[1]) === t && isTournamentHubQueryRoot(key[0], suffix);
+  };
+}
+
+/**
+ * Step 3H — invalidate the Tournament Hub's canonical queries for one
+ * tournament. Invalidation-only (never computes standings/progression/matches):
+ * the authoritative backend re-delivers the data. Scoped by tournamentId in the
+ * key, so events for OTHER tournaments never touch the viewer's Hub.
+ */
+export function invalidateTournamentHub(
+  qc: { invalidateQueries: (opts: { predicate?: (query: { queryKey: readonly unknown[] }) => boolean; queryKey?: readonly (string | number)[] }) => void },
+  tournamentId: number | null | undefined,
+): void {
+  if (tournamentId == null) return;
+  const id = Number(tournamentId);
+  const t = String(id);
+  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-matches', id) });
+  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-groups', id) });
+  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-stages', id) });
+  // Player/public canonical detail keys (TournamentDetailPage + bracket/standings).
+  for (const root of [id, t] as const) {
+    qc.invalidateQueries({ queryKey: ['tournament', root] });
+    qc.invalidateQueries({ queryKey: ['tournament', root, 'matches'] });
+    qc.invalidateQueries({ queryKey: ['tournament', root, 'bracket'] });
+    qc.invalidateQueries({ queryKey: ['tournament', root, 'standings'] });
+  }
+}
+
+/**
  * G11.14 — tournament invalidation that ALSO refreshes the org workbench list
  * (`org-${orgId}-tournaments` — TournamentListPage.tsx) and the player's own
  * `my-tournaments` list without hardcoding any org id. Used by lifecycle /
@@ -353,6 +405,9 @@ export function invalidateMatchKeys(qc: QueryClient, p: Record<string, any> | un
 
   if (p?.tournamentId != null) {
     invalidateTournament(qc, Number(p.tournamentId));
+    // Step 3H — also refresh the Tournament Hub's canonical queries for this
+    // tournament (matches/status/result events must not leave the Hub stale).
+    invalidateTournamentHub(qc, Number(p.tournamentId));
   }
 }
 
@@ -419,6 +474,21 @@ export function invalidateRealtimeReconcile(qc: { invalidateQueries: (opts: { qu
         && key[0].endsWith('-tournaments');
     },
   });
+
+  // Step 3H — Tournament Hub canonical roots (`tournament-matches` /
+  // `tournament-groups` / `tournament-stages`, incl. org-<orgId>-tournament-*)
+  // are keyed dynamically per tournament; recover them all on reconnect via
+  // predicates (the viewer's own Hub queries are refreshed, nothing is computed).
+  for (const suffix of ['tournament-matches', 'tournament-groups', 'tournament-stages'] as const) {
+    qc.invalidateQueries({
+      predicate: (query: any) => {
+        const key = query?.queryKey;
+        return Array.isArray(key)
+          && typeof key[0] === 'string'
+          && isTournamentHubQueryRoot(key[0], suffix);
+      },
+    });
+  }
 }
 
 /**
@@ -1168,6 +1238,8 @@ export function useRealtimeCacheUpdates(): void {
   useSocketEvent('tournament.result', (p: any) => {
     invalidateTournament(qc, p?.tournamentId);
     qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'standings'] });
+    // Step 3H — a result event refreshes the Hub's matches + standings.
+    invalidateTournamentHub(qc, p?.tournamentId);
   });
 
   // Group 5B draw + progression signals. A bracket generation, a seeded
@@ -1179,9 +1251,28 @@ export function useRealtimeCacheUpdates(): void {
   for (const eventName of tournamentRealtimeEvents) {
     useSocketEvent(eventName, (p: any) => {
       invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
+      // Step 3H — progression/match-created/stage-completed events must refresh
+      // the Tournament Hub's matches + bracket/standings, not just the player
+      // detail keys.
+      invalidateTournamentHub(qc, p?.tournamentId);
       const key = eventName === 'tournament.match-progressed' || eventName === 'tournament.completed' ? 'standings' : 'bracket';
       if (key === 'standings') qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'standings'] });
       else qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'bracket'] });
+    });
+  }
+
+  // Step 3H — GSK generation + match-set generation parity: the engine emits
+  // these with the privacy-slim tournamentRealtimeScope (now allowlisted on the
+  // publisher). The Hub listener only invalidates the canonical groups / stages
+  // / matches queries for the payload's tournament — it never computes groups,
+  // qualification or brackets.
+  for (const eventName of [
+    'tournament.group-stage-generated',
+    'tournament.knockout-generated',
+    'tournament.matches-generated',
+  ] as const) {
+    useSocketEvent(eventName, (p: any) => {
+      invalidateTournamentHub(qc, p?.tournamentId);
     });
   }
 
@@ -1215,6 +1306,9 @@ export function useRealtimeCacheUpdates(): void {
   // cache is refreshed without a manual reload.
   useSocketEvent('tournament.updated', (p: any) => {
     invalidateRegistrationLifecycle(qc, p);
+    // Step 3H — corrections / no-result reconciliation (standings/bracket
+    // flags) must also refresh the Hub's canonical queries.
+    invalidateTournamentHub(qc, p?.tournamentId);
     if (p?.standings === true) {
       invalidateTournamentStandings(qc, p?.tournamentId);
     }

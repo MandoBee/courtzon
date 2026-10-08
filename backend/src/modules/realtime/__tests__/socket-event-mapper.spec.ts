@@ -973,3 +973,57 @@ describe('SocketEventMapper', () => {
     });
   });
 });
+
+describe('Step 3H — GSK generation mappings', () => {
+  it('maps group-stage-generated to tenant/admin rooms with the scoped payload', () => {
+    const result = mapDomainEvent('tournament:group-stage-generated', {
+      tournamentId: 3,
+      stageId: 2,
+      groupCount: 4,
+      matchCount: 12,
+      memberCount: 16,
+      organisationId: 1001,
+      branchId: 7,
+      creatorId: 9,
+      participantUserIds: [9, 11],
+      visibility: 'private',
+    });
+    expect(result!.type).toBe('tournament.group-stage-generated');
+    expect(result!.payload).toMatchObject({
+      tournamentId: 3,
+      stageId: 2,
+      organisationId: 1001,
+      branchId: 7,
+      creatorId: 9,
+      visibility: 'private',
+    });
+    expect(result!.rooms).toContain('organisation:1001');
+    expect(result!.rooms).toContain('branch:7');
+    expect(result!.rooms).toContain('user:9');
+    expect(result!.rooms).not.toContain('player');
+  });
+
+  it('maps knockout-generated to tenant/admin rooms with the scoped payload', () => {
+    const result = mapDomainEvent('tournament:knockout-generated', {
+      tournamentId: 3,
+      stageId: 4,
+      bracketSize: 8,
+      qualified: 7,
+      organisationId: 1001,
+      branchId: 7,
+      creatorId: 9,
+      participantUserIds: [9],
+      visibility: 'private',
+    });
+    expect(result!.type).toBe('tournament.knockout-generated');
+    expect(result!.payload).toMatchObject({
+      tournamentId: 3,
+      stageId: 4,
+      organisationId: 1001,
+      branchId: 7,
+      creatorId: 9,
+    });
+    expect(result!.rooms).toContain('organisation:1001');
+    expect(result!.rooms).not.toContain('player');
+  });
+});

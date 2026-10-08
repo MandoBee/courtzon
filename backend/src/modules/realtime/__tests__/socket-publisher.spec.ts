@@ -86,3 +86,15 @@ describe('SocketPublisher Group 5 subscriptions and delivery', () => {
     expect(emit).toHaveBeenCalledWith('match.status_changed', expect.objectContaining({ matchId: 15 }));
   });
 });
+
+  it('subscribes to the Step 3H GSK generation events (group-stage-generated, knockout-generated)', () => {
+    (eventBusV2.on as any).mockClear();
+
+    const publisher = new SocketPublisher();
+    publisher.setIO({ to: vi.fn(() => ({ emit: vi.fn() })) } as never);
+    publisher.start();
+
+    const subscribed = new Set<string>((eventBusV2.on as any).mock.calls.map((c: any) => c[0]));
+    expect(subscribed).toContain('tournament:group-stage-generated');
+    expect(subscribed).toContain('tournament:knockout-generated');
+  });

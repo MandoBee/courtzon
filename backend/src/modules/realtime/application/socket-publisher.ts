@@ -115,6 +115,11 @@ export class SocketPublisher {
       'tournament:replacement-request-updated',
       'tournament:matches-generated', 'tournament:schedule-updated',
       'tournament:court-reserved', 'tournament:court-released',
+      // Step 3H — GSK generation parity: already emitted by the engine with the
+      // privacy-slim tournamentRealtimeScope; add to the allowlist so the Hub's
+      // groups/stages/matches refresh without a manual reload (mapper already
+      // routes tournament:* to org/admin rooms; payload unchanged).
+      'tournament:group-stage-generated', 'tournament:knockout-generated',
       'setting:updated', 'setting:profile-applied',
       'accounting:entry-recorded',
       'user:suspended', 'user:activated', 'user:deleted', 'user.role.changed',
