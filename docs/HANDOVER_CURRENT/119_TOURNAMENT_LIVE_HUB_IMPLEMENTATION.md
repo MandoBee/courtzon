@@ -80,11 +80,11 @@ Frontend SPA HTTP 200; backend `/health` ok (db ok, redis ok); mysql/redis healt
 
 ## 16. Git Commit
 
-`<commit-hash>` — "feat(tournaments): polish live matches hub".
+`6623944a` — "feat(tournaments): polish live matches hub".
 
 ## 17. Git Push
 
-Pushed to `origin/master`.
+Pushed to `origin/master` (`f1f245ec..6623944a`). Working tree clean.
 
 ## 18. Remaining Limitations
 
