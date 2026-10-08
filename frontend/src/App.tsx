@@ -139,7 +139,6 @@ const PaymentGatewaysPage = lazy(() => import('./pages/admin/payment-gateways/Pa
 const WithdrawalQueuePage = lazy(() => import('./pages/admin/WithdrawalQueuePage'));
 const CouponListPage = lazy(() => import('./pages/admin/coupons/CouponListPage'));
 const DesignTokensPage = lazy(() => import('./pages/admin/design-tokens/DesignTokensPage'));
-const TournamentAdminPage = lazy(() => import('./pages/admin/tournaments/TournamentAdminPage'));
 const TournamentDashboardPage = lazy(() => import('./pages/admin/tournament/TournamentDashboardPage'));
 const TournamentListAdminPage = lazy(() => import('./pages/admin/tournament/TournamentListPage'));
 const TournamentDetailAdminPage = lazy(() => import('./pages/admin/tournament/TournamentDetailPage'));
@@ -776,7 +775,7 @@ function AppContent() {
             <Route path="withdrawals" element={<WithdrawalQueuePage />} />
             <Route path="coupons" element={<CouponListPage />} />
             <Route path="design-tokens" element={<DesignTokensPage />} />
-            <Route path="tournaments" element={<TournamentAdminPage />} />
+            <Route path="tournaments" element={<Navigate to="/admin/tournament/list" replace />} />
             <Route path="tournament/dashboard" element={<TournamentDashboardPage />} />
             <Route path="tournament/list" element={<TournamentListAdminPage mode="admin" />} />
             <Route path="tournament/list/new" element={<TournamentCreatePage mode="admin" />} />

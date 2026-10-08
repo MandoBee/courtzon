@@ -126,3 +126,24 @@ describe('TournamentListPage — populated list contract (UAT "e is not a functi
     expect(screen.queryAllByText('tournaments.new')).toHaveLength(0);
   });
 });
+
+describe('TournamentListPage — Step 5D redirect destination stays permission-gated', () => {
+  it('hides the whole admin screen when admin-tournaments.view is missing (redirect cannot bypass authorization)', async () => {
+    __state.userPermissions = ['org.tournaments.view']; // NOT admin-tournaments.view
+    renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
+
+    // The page-level Can(admin-tournaments.view) gate hides heading, search and table.
+    expect(screen.queryByText('tournaments.list.title')).toBeNull();
+    expect(screen.queryByPlaceholderText('tournaments.search')).toBeNull();
+    expect(screen.queryByText('Padel Test Tournament')).toBeNull();
+    expect(screen.queryByText('tournaments.new')).toBeNull();
+  });
+
+  it('renders fully once admin-tournaments.view is granted (existing behavior preserved)', async () => {
+    __state.userPermissions = ['admin-tournaments.view'];
+    renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
+
+    expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
+    expect(screen.getAllByText('tournaments.status.draft').length).toBeGreaterThan(0);
+  });
+});
