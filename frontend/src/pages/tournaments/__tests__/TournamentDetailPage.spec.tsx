@@ -6,7 +6,7 @@ import TournamentDetailPage from '../TournamentDetailPage';
 
 const __state = vi.hoisted(() => ({
   userPermissions: ['*'] as string[],
-  user: { id: 42 } as any,
+  user: { id: 42, permissions: ['*'] } as any,
   tournament: {
     id: 1,
     name: 'Padel Open',
@@ -77,6 +77,7 @@ function renderPage() {
         <Routes>
           <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
           <Route path="/tournaments" element={<div>list</div>} />
+          <Route path="/matches/:id/result" element={<div>RESULT_ENTRY_PAGE</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -102,9 +103,15 @@ function clickTab(label: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   __state.userPermissions = ['*'];
-  __state.user = { id: 42 };
+  __state.user = { id: 42, permissions: [...__state.userPermissions] };
   mockDetailApi();
 });
+
+/** Set the acting user's permissions (keeps $Can$ and `can()` in sync). */
+function setPerms(perms: string[]) {
+  __state.userPermissions = [...perms];
+  __state.user = { id: 42, permissions: [...perms] };
+}
 
 describe('TournamentDetailPage — player detail authoritative contract (Group 1B)', () => {
   it('renders authoritative fields (sport_name, bracket_type_name, organisation, fee, deadline)', async () => {
@@ -436,5 +443,47 @@ describe('TournamentDetailPage — overview prediction line (no internal ids)', 
     // Round/status cells around the prediction line are untouched.
     expect(screen.getByText('R1 M0')).toBeTruthy();
     expect(screen.getByText('completed')).toBeTruthy();
+  });
+});
+describe('TournamentDetailPage � player result permission gate (Step 5A)', () => {
+  const LIVE_MATCH = {
+    id: 11, round: 1, match_number: 1, bracket_position: 0,
+    player1_id: 42, player1_name: 'Ali', player2_id: 43, player2_name: 'Sara',
+    status: 'in_progress', score_summary: null, match_id: 77,
+  };
+
+  it('shows Enter Score for an authorized player (matches.result.submit) and opens the shared result page', async () => {
+    setPerms(['matches.result.submit']);
+    __state.matches = [LIVE_MATCH as any];
+    renderPage();
+    await screen.findByText('Padel Open');
+    clickTab('Bracket');
+    const btn = await screen.findByText('Enter Score');
+    fireEvent.click(btn);
+    expect(await screen.findByText('RESULT_ENTRY_PAGE')).toBeTruthy();
+  });
+
+  it('hides Enter Score when the player is not authorized', async () => {
+    setPerms([]);
+    __state.matches = [LIVE_MATCH as any];
+    renderPage();
+    await screen.findByText('Padel Open');
+    clickTab('Bracket');
+    expect(screen.queryByText('Enter Score')).toBeNull();
+  });
+
+  it('hides Enter Score on completed matches (lifecycle state guards the action)', async () => {
+    setPerms(['matches.result.submit']);
+    __state.matches = [{ ...LIVE_MATCH, status: 'completed', score_summary: '6-4 6-3' } as any];
+    renderPage();
+    await screen.findByText('Padel Open');
+    clickTab('Bracket');
+    expect(screen.queryByText('Enter Score')).toBeNull();
+  });
+
+  it('no stale tournaments.enter_scores usage remains in the player-facing detail flow', () => {
+    const { readFileSync } = require('node:fs');
+    const src = readFileSync('src/pages/tournaments/TournamentDetailPage.tsx', 'utf8');
+    expect(src).not.toContain("can('tournaments.enter_scores')");
   });
 });

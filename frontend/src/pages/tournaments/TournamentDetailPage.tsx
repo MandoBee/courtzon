@@ -369,7 +369,7 @@ export default function TournamentDetailPage() {
               currentUserId={user?.id}
               onMatchClick={setDrawerMatch}
               footer={(m) =>
-                can('tournaments.enter_scores') && m.status !== 'completed' && m.match_id != null ? (
+                can('matches.result.submit') && m.status !== 'completed' && m.match_id != null ? (
                   <button
                     onClick={() => navigate(`/matches/${m.match_id}/result`)}
                     className="text-[10px] text-[var(--color-primary)] hover:underline"
@@ -387,7 +387,7 @@ export default function TournamentDetailPage() {
               currentUserId={user?.id}
               onMatchClick={setDrawerMatch}
               footer={(m) =>
-                can('tournaments.enter_scores') && m.status !== 'completed' && m.match_id != null ? (
+                can('matches.result.submit') && m.status !== 'completed' && m.match_id != null ? (
                   <button
                     onClick={() => navigate(`/matches/${m.match_id}/result`)}
                     className="text-[10px] text-[var(--color-primary)] hover:underline"
