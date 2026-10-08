@@ -66,11 +66,11 @@ SPA HTTP 200; backend `/health` ok (db ok, redis ok); mysql/redis healthy.
 
 ## 13. Git Commit
 
-`<commit-hash>` — "fix(tournaments): align player result permission gate".
+`bbe1998d` — "fix(tournaments): align player result permission gate".
 
 ## 14. Git Push
 
-Pushed to `origin/master`.
+Pushed to `origin/master` (`40557e54..bbe1998d`). Working tree clean.
 
 ## 15. Remaining Limitations
 
