@@ -72,7 +72,6 @@ export function buildLegacyAdminNavItems(
       children: [
         { label: t('admin.sidebar.tournament_dashboard'), path: '/admin/tournament/dashboard', permissionKey: 'sidebar.tournament-dashboard' },
         { label: t('admin.sidebar.tournament_list'), path: '/admin/tournament/list', permissionKey: 'sidebar.tournament-list' },
-        { label: t('admin.sidebar.tournament_matches'), path: '/admin/tournament/matches', permissionKey: 'sidebar.tournament-matches' },
         { label: t('admin.sidebar.tournament_bracket_types'), path: '/admin/tournament/bracket-types', permissionKey: 'tournament.bracket-types.view' },
       ],
     },

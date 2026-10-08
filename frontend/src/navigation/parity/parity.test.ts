@@ -758,8 +758,8 @@ describe('Navigation registry integrity (immutable ids)', () => {
   it('namespaces ids per shell (nav.admin.*, nav.org.*) and keeps them stable per node', () => {
     const adminIds = collectIds(ADMIN_NAV);
     expect(adminIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(adminIds.length).toBe(145);
-    expect(ADMIN_ID_TO_KEY.size).toBe(137);
+    expect(adminIds.length).toBe(144);
+    expect(ADMIN_ID_TO_KEY.size).toBe(136);
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
@@ -829,7 +829,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const adminTop = resolveAdminNav(enT, allCan, allFlags);
     const walk = (items: ResolvedNavItem[]): number =>
       items.reduce((n, it) => n + (it.id ? 1 : 0) + (it.children ? walk(it.children) : 0), 0);
-    expect(walk(adminTop)).toBe(145);
+    expect(walk(adminTop)).toBe(144);
     const orgTop = resolveOrgNav(allCan, '7', enT);
     expect(orgTop.every((it) => it.id !== undefined)).toBe(true);
     expect(orgTop[0].id).toBe('nav.org.dashboard');
@@ -1091,9 +1091,9 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
 
   it('every workspace node carries a nav.admin.* immutable id', () => {
     const allIds = collectAllIds(registryWorkspace);
-    expect(allIds.length).toBe(145);
+    expect(allIds.length).toBe(144);
     expect(allIds.every((id) => id.startsWith('nav.admin.'))).toBe(true);
-    expect(new Set(allIds).size).toBe(145);
+    expect(new Set(allIds).size).toBe(144);
   });
 
   it('workspace resolver is deterministic', () => {
@@ -1106,11 +1106,11 @@ describe('Consumer 6 — Workspace Registry integration (drift resolved)', () =>
     const wsAllIds = collectAllIds(registryWorkspace);
     const registryAllIds = collectIds(ADMIN_NAV);
     expect(wsAllIds).toEqual(registryAllIds);
-    expect(wsAllIds.length).toBe(145);
+    expect(wsAllIds.length).toBe(144);
   });
 
   it('workspace root count matches ADMIN_NAV root', () => {
-    expect(countNodes(registryWorkspace)).toBe(145);
+    expect(countNodes(registryWorkspace)).toBe(144);
     expect(registryWorkspace.length).toBe(ADMIN_NAV.length);
   });
 });
@@ -1230,7 +1230,6 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (fro
     'sidebar.tournament',
     'sidebar.tournament-dashboard',
     'sidebar.tournament-list',
-    'sidebar.tournament-matches',
     'admin-tournaments.view',
     'tournament.view',
     'tournament.dashboard.view',
@@ -1258,7 +1257,7 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (fro
     return competitions?.children?.find((c) => c.id === 'nav.admin.tournament');
   }
 
-  it('master-admin workbench keys reveal the Tournament section + all 4 screens', () => {
+  it('master-admin workbench keys reveal the Tournament section + all 3 screens', () => {
     const nav = resolveAdminNav(enT, (p) => masterAdminWorkbenchKeys.has(p), allFlags);
     const section = findTournamentSection(nav);
     expect(section).toBeDefined();
@@ -1266,7 +1265,6 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (fro
     expect(ids).toEqual([
       'nav.admin.tournament-dashboard',
       'nav.admin.tournament-list',
-      'nav.admin.tournament-matches',
       'nav.admin.tournament-bracket-types',
     ]);
   });
