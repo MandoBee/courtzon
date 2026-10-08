@@ -212,9 +212,33 @@ export const UpdateTournamentSchema = z.object({
   branch_id: z.number().int().positive().optional(),
 });
 
-export const BracketTypeUpdateSchema = z.object({
-  is_active: z.boolean(),
+/**
+ * Group 5B-SR — CREATE bracket type. Engine safety is enforced in the SERVICE
+ * (bracketSlugCapability) — the DTO only normalizes the fields. `slug` is the
+ * engine identity: lowercase, hyphenated, ≤50 (matches DB column). config_schema
+ * is a stored definition blob (engine does NOT read it); JSON syntax is checked
+ * in the service so there is exactly one authority.
+ */
+export const CreateBracketTypeSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  slug: z.string().trim().min(1).max(50),
+  config_schema: z.string().optional(),
 });
+
+/**
+ * Group 5B-SR — UPDATE bracket type. NO slug field (immutable engine identity).
+ * `.strict()` rejects any attempt to smuggle `slug` (or any other key) through —
+ * it can never be silently ignored. Field-level safety (config edits on
+ * referenced READY rows, activation/deactivation rules) is enforced in the
+ * service.
+ */
+export const BracketTypeUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+    config_schema: z.string().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
 
 // G11.3 — tournament registration full-refund request/approval contracts.
 export const RefundRequestSchema = z.object({

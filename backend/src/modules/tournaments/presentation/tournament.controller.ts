@@ -1,12 +1,13 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { tournamentService } from '../application/tournament.service.js';
-import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
+import { tournamentRepository, type BracketTypeRow } from '../infrastructure/repositories/tournament.repository.js';
 import { tournamentPrizeAwardService } from '../application/tournament-prize-award.service.js';
 import { bracketSlugCapability, bracketTypeCreationAvailable } from '../domain/tournament-aggregate.js';
 import {
   UpdateTournamentSchema, ListTournamentsQuerySchema,
   RegisterSchema, GenerateGroupsSchema, GskLifecycleSchema,
-  AssignCourtSchema, AssignRefereeSchema, CreateStageSchema, BracketTypeUpdateSchema,
+  AssignCourtSchema, AssignRefereeSchema, CreateStageSchema,
+  BracketTypeUpdateSchema, CreateBracketTypeSchema,
 } from './tournament.dto.js';
 import { RawMatchResultBodySchema } from '../../match-result/presentation/match-result.dto.js';
 import { recordAudit } from '../../audit-log/index.js';
@@ -654,17 +655,74 @@ export async function listBracketTypesHandler(_request: FastifyRequest, reply: F
   return reply.send({ data: enriched, registry });
 }
 
+/** Group 5B-SR — GET bracket-type detail (Step 2B-1), same capability contract as the list. */
+export async function getBracketTypeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const data = await tournamentService.getBracketTypeDetail(Number(id));
+  return reply.send({ data });
+}
+
+/** Group 5B-SR — CREATE bracket-type definition (Step 2B-1); engine safety enforced in the service. */
+export async function createBracketTypeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const body = CreateBracketTypeSchema.parse(request.body);
+  const created = await tournamentService.createBracketType(
+    { name: body.name, slug: body.slug, config_schema: body.config_schema },
+    userId,
+  );
+  return reply.send({
+    data: {
+      ...created,
+      is_active: Boolean(Number(created.is_active)),
+      referenced_count: 0,
+      engine_capability: bracketSlugCapability(created.slug),
+      creation_available: bracketTypeCreationAvailable(created.slug, Number(created.is_active)),
+    },
+  });
+}
+
 export async function updateBracketTypeHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
   const body = BracketTypeUpdateSchema.parse(request.body);
-  const updated = await tournamentService.updateBracketTypeActive(Number(id), body.is_active, userId);
+  const hasMetadata = body.name !== undefined || body.config_schema !== undefined;
+  let updated: BracketTypeRow | undefined;
+  if (hasMetadata) {
+    updated = await tournamentService.updateBracketTypeMetadata(
+      Number(id),
+      { name: body.name, config_schema: body.config_schema },
+      userId,
+    );
+  }
+  if (body.is_active !== undefined) {
+    updated = await tournamentService.updateBracketTypeActive(Number(id), body.is_active, userId);
+  }
+  if (!updated) {
+    const found = await tournamentRepository.findBracketTypeById(Number(id));
+    if (!found) throw new NotFoundError('Bracket type', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    updated = found;
+  }
+  // Controller audit mirrors the existing toggle convention (service also records
+  // detailed before/after for metadata changes); both are idempotent reports.
   recordAudit({
     actorId: userId, action: 'TOURNAMENT.BRACKET_TYPE_UPDATE', entityType: 'tournament_bracket_type',
-    entityId: Number(id), afterState: { is_active: body.is_active },
+    entityId: Number(id), afterState: { is_active: body.is_active, name: body.name, config_schema: body.config_schema },
     ipAddress: request.ip, userAgent: getUserAgent(request),
   });
   return reply.send(updated);
+}
+
+/** Group 5B-SR — DELETE bracket-type definition (Step 2B-1); service guards refs + canonical types. */
+export async function deleteBracketTypeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id } = request.params as any;
+  await tournamentService.deleteBracketType(Number(id), userId);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.BRACKET_TYPE_DELETE', entityType: 'tournament_bracket_type',
+    entityId: Number(id), afterState: { deleted: true },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true });
 }
 
 /** Organisation's authoritative tournament commission config (read-only, subscription-derived). */

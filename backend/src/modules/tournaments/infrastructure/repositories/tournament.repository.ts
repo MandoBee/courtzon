@@ -75,6 +75,41 @@ export class TournamentRepository {
     await getPool().query('UPDATE tournament_bracket_types SET is_active = ? WHERE id = ?', [isActive ? 1 : 0, id]);
   }
 
+  /** Group 5B-SR — CREATE a bracket-type definition row (service enforces engine safety first). */
+  async createBracketType(data: {
+    name: string;
+    slug: string;
+    is_active: number;
+    config_schema?: string | null;
+  }): Promise<number> {
+    const [res] = await getPool().query<RowData>(
+      'INSERT INTO tournament_bracket_types (name, slug, is_active, config_schema) VALUES (?, ?, ?, ?)',
+      [data.name, data.slug, data.is_active, data.config_schema ?? null],
+    );
+    return Number((res as any).insertId);
+  }
+
+  /** Group 5B-SR — resolve a bracket-type row by its slug (unique identity). */
+  async findBracketTypeBySlug(slug: string): Promise<BracketTypeRow | null> {
+    const [rows] = await getPool().query<RowData>(
+      `SELECT bt.id, bt.name, bt.slug, bt.is_active, bt.config_schema, bt.created_at
+       FROM tournament_bracket_types bt WHERE bt.slug = ? LIMIT 1`,
+      [slug],
+    );
+    return rows.length ? (rows[0] as BracketTypeRow) : null;
+  }
+
+  /** Group 5B-SR — metadata-only update (name / stored schema). Slug is immutable. */
+  async updateBracketType(id: number, data: { name?: string; config_schema?: string }): Promise<void> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (data.name !== undefined) { sets.push('name = ?'); params.push(data.name); }
+    if (data.config_schema !== undefined) { sets.push('config_schema = ?'); params.push(data.config_schema); }
+    if (sets.length === 0) return;
+    params.push(id);
+    await getPool().query(`UPDATE tournament_bracket_types SET ${sets.join(', ')} WHERE id = ?`, params);
+  }
+
   /** Count tournaments referencing a bracket type (guard against destructive deletion). */
   async countBracketTypeReferences(bracketTypeId: number): Promise<number> {
     const [rows] = await getPool().query<RowData>(

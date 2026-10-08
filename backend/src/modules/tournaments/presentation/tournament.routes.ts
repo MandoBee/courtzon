@@ -155,10 +155,15 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/tournaments/matches/:matchId/complete', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.completeTournamentMatchHandler);
   app.post('/admin/tournaments/matches/:matchId/result', { preHandler: [requirePermission(['tournament.result.manage'])] }, ctrl.recordMatchResultHandler);
 
-  // ── Group 5B-SR — Bracket type configuration (Super Admin) ──
+  // ── Group 5B-SR — Bracket type configuration (Super Admin, full CRUD) ──
 
   app.get('/admin/bracket-types', { preHandler: [requirePermission(['tournament.bracket-types.view'])] }, ctrl.listBracketTypesHandler);
+  // Step 2B-1 — CRUD contract. Slug is IMMUTABLE (no update path). Engine safety,
+  // reference/canonical guards and GSK-as-composite protection run in the service.
+  app.get('/admin/bracket-types/:id', { preHandler: [requirePermission(['tournament.bracket-types.view'])] }, ctrl.getBracketTypeHandler);
+  app.post('/admin/bracket-types', { preHandler: [requirePermission(['tournament.bracket-types.manage'])] }, ctrl.createBracketTypeHandler);
   app.put('/admin/bracket-types/:id', { preHandler: [requirePermission(['tournament.bracket-types.manage'])] }, ctrl.updateBracketTypeHandler);
+  app.delete('/admin/bracket-types/:id', { preHandler: [requirePermission(['tournament.bracket-types.manage'])] }, ctrl.deleteBracketTypeHandler);
 
   // ── Public / Player-facing routes ──
 

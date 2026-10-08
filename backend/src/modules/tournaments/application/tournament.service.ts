@@ -3,7 +3,7 @@ import { participantDrawRepository } from '../infrastructure/repositories/partic
 import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { competitionRepository } from '../infrastructure/repositories/competition.repository.js';
 import { competitionService } from './competition.service.js';
-import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS, BRACKET_SLUG_TO_FORMAT, bracketSlugCapability } from '../domain/tournament-aggregate.js';
+import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS, BRACKET_SLUG_TO_FORMAT, bracketSlugCapability, bracketTypeCreationAvailable } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
@@ -1169,6 +1169,167 @@ export class TournamentService {
    * types referenced by historical tournaments cannot be deleted (deactivation
    * is preferred). Provided as a defensive guard for future use + tests.
    */
+  /**
+   * Group 5B-SR — CREATE bracket-type definition (Step 2B-1).
+   *
+   * ENGINE SAFETY (backend authoritative — a DB row cannot invent an engine):
+   *  - slug is normalized (trim + lowercase) and must match the registered
+   *    hyphenated slug convention, otherwise rejected.
+   *  - `group-stage-knockout` / `group_stage_knockout` are rejected explicitly:
+   *    GSK is a COMPOSITE engine format and must NEVER exist as a DB row.
+   *  - capability comes from the Step 1 registry: `unsupported` slugs are
+   *    rejected outright; `planned` slugs may be registered (kept inactive,
+   *    non-creatable until the engine exists); `ready` slugs are the canonical
+   *    engine identities (single-elimination, round-robin) and duplicates are
+   *    rejected (one canonical definition per slug; UNIQUE(slug) is the DB
+   *    backstop).
+   *  - New definitions default to INACTIVE (is_active = 0) — a brand new format
+   *    is brought online only via explicit, engine-gated activation.
+   *  - config_schema is a STORED definition blob (the engine does not read it);
+   *    it must be valid JSON but is presented as stored schema, never as engine
+   *    behavior.
+   */
+  async createBracketType(
+    input: { name: string; slug: string; config_schema?: string | null },
+    actorId: number,
+  ): Promise<BracketTypeRow> {
+    const name = input.name.trim();
+    const slug = input.slug.trim().toLowerCase();
+
+    if (slug === 'group-stage-knockout' || slug === 'group_stage_knockout') {
+      throw new ConflictError(
+        'Group Stage + Knockout is a composite engine format and cannot be created as a DB bracket type',
+        ErrorCodes.TOURNAMENT_INVALID_FORMAT,
+      );
+    }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      throw new ConflictError(
+        `Invalid bracket type slug "${slug}" — use lowercase letters, digits and hyphens`,
+        ErrorCodes.TOURNAMENT_INVALID_FORMAT,
+      );
+    }
+    const capability = bracketSlugCapability(slug);
+    if (capability === 'unsupported') {
+      throw new ConflictError(
+        `Bracket type slug "${slug}" does not map to a supported engine identity`,
+        ErrorCodes.TOURNAMENT_BRACKET_ENGINE_UNSUPPORTED,
+      );
+    }
+    const existing = await tournamentRepository.findBracketTypeBySlug(slug);
+    if (existing) {
+      throw new ConflictError(
+        `A bracket type with slug "${slug}" already exists — one canonical definition per engine slug`,
+        ErrorCodes.TOURNAMENT_BRACKET_DUPLICATE,
+      );
+    }
+    if (input.config_schema != null) this.assertJsonConfigSchema(input.config_schema);
+
+    const isActive = 0; // inactive until explicitly activated (activation is engine-gated)
+    const id = await tournamentRepository.createBracketType({
+      name,
+      slug,
+      is_active: isActive,
+      config_schema: input.config_schema ?? null,
+    });
+    recordAudit({
+      actorId, action: 'TOURNAMENT.BRACKET_TYPE_CREATE', entityType: 'tournament_bracket_type', entityId: id,
+      afterState: { name, slug, is_active: isActive, capability },
+    });
+    const created = await tournamentRepository.findBracketTypeById(id);
+    return created!;
+  }
+
+  /**
+   * Group 5B-SR — GET bracket-type detail with the SAME capability/predicate
+   * used by the list endpoint, plus active/future and historical usage split
+   * (derived from existing dependency helpers — never new queries with new
+   * semantics). GSK is registry-level and deliberately NOT resolvable by id.
+   */
+  async getBracketTypeDetail(id: number): Promise<Record<string, unknown>> {
+    const bt = await tournamentRepository.findBracketTypeById(id);
+    if (!bt) throw new NotFoundError('Bracket type', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    const referencedCount = await tournamentRepository.countBracketTypeReferences(id);
+    const activeReferences = await tournamentRepository.countActiveTournamentReferences(id);
+    return {
+      id: bt.id,
+      name: bt.name,
+      slug: bt.slug,
+      is_active: Number(bt.is_active) === 1,
+      config_schema: bt.config_schema,
+      created_at: bt.created_at,
+      referenced_count: referencedCount,
+      active_references: activeReferences,
+      historical_references: Math.max(0, referencedCount - activeReferences),
+      engine_capability: bracketSlugCapability(bt.slug),
+      creation_available: bracketTypeCreationAvailable(bt.slug, Number(bt.is_active)),
+    };
+  }
+
+  /**
+   * Group 5B-SR — metadata-only UPDATE (name / stored config_schema). Slug is
+   * IMMUTABLE (no update field exists). config_schema edits are blocked on
+   * READY rows while active/future tournaments depend on them; planned and
+   * zero-reference rows remain editable. Historical-only references never
+   * block. is_active toggles go through `updateBracketTypeActive` (Step 1
+   * guards).
+   */
+  async updateBracketTypeMetadata(
+    id: number,
+    data: { name?: string; config_schema?: string },
+    actorId: number,
+  ): Promise<BracketTypeRow> {
+    const bt = await tournamentRepository.findBracketTypeById(id);
+    if (!bt) throw new NotFoundError('Bracket type', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    const capability = bracketSlugCapability(bt.slug);
+    const updates: { name?: string; config_schema?: string } = {};
+
+    if (data.name !== undefined) {
+      const name = data.name.trim();
+      if (!name) {
+        throw new ConflictError('Bracket type name cannot be empty', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+      }
+      updates.name = name;
+    }
+    if (data.config_schema !== undefined) {
+      this.assertJsonConfigSchema(data.config_schema);
+      if (capability === 'ready') {
+        const activeRefs = await tournamentRepository.countActiveTournamentReferences(id);
+        if (activeRefs > 0) {
+          throw new ConflictError(
+            `Stored schema of executable format "${bt.name}" cannot be changed while ${activeRefs} active/future tournament(s) depend on it`,
+            ErrorCodes.TOURNAMENT_BRACKET_IN_USE,
+          );
+        }
+      }
+      updates.config_schema = data.config_schema;
+    }
+
+    if (Object.keys(updates).length === 0) return bt;
+    await tournamentRepository.updateBracketType(id, updates);
+    recordAudit({
+      actorId, action: 'TOURNAMENT.BRACKET_TYPE_UPDATE', entityType: 'tournament_bracket_type', entityId: id,
+      beforeState: { name: bt.name, config_schema: bt.config_schema ?? null },
+      afterState: { ...updates, capability },
+    });
+    const updated = await tournamentRepository.findBracketTypeById(id);
+    return updated!;
+  }
+
+  private assertJsonConfigSchema(configSchema: string): void {
+    try {
+      JSON.parse(configSchema);
+    } catch {
+      throw new ConflictError('config_schema must be valid JSON', ErrorCodes.TOURNAMENT_BRACKET_INVALID_CONFIG);
+    }
+  }
+
+  /**
+   * Group 5B-SR — DELETE (Step 2B-1) exposing the established soft-delete
+   * lifecycle (deactivate): guarded by reference count first (existing
+   * semantics preserved) then by CANONICAL status. Canonical engine substrates
+   * (single-elimination — GSK depends on it — and round-robin) can never be
+   * deleted. GSK has no DB row to delete. The FK RESTRICT is the DB backstop.
+   */
   async deleteBracketType(id: number, actorId: number): Promise<void> {
     const bt = await tournamentRepository.findBracketTypeById(id);
     if (!bt) throw new NotFoundError('Bracket type', ErrorCodes.TOURNAMENT_NOT_FOUND);
@@ -1177,6 +1338,12 @@ export class TournamentService {
       throw new ConflictError(
         `Bracket type "${bt.name}" is referenced by ${refs} tournament(s) and cannot be deleted — deactivate it instead`,
         ErrorCodes.TOURNAMENT_INVALID_FORMAT,
+      );
+    }
+    if ((ENGINE_SUPPORTED_BRACKET_SLUGS as readonly string[]).includes(bt.slug)) {
+      throw new ConflictError(
+        `Bracket type "${bt.name}" (${bt.slug}) is a canonical engine substrate (Group Stage + Knockout uses single-elimination) and cannot be deleted`,
+        ErrorCodes.TOURNAMENT_BRACKET_CANONICAL,
       );
     }
     await tournamentRepository.setBracketTypeActive(id, false);

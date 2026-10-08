@@ -158,6 +158,14 @@ export const ErrorCodes = {
   TOURNAMENT_BRACKET_ENGINE_UNSUPPORTED: 'TOURNAMENT_BRACKET_ENGINE_UNSUPPORTED',
   /** Group 5B-SR — deactivation of an executable bracket type still depended on by active/future tournaments. */
   TOURNAMENT_BRACKET_ENGINE_DEPENDENCY: 'TOURNAMENT_BRACKET_ENGINE_DEPENDENCY',
+  /** Group 5B-SR — a bracket type with this slug already exists (one canonical definition per engine slug). */
+  TOURNAMENT_BRACKET_DUPLICATE: 'TOURNAMENT_BRACKET_DUPLICATE',
+  /** Group 5B-SR — the bracket type is in use and cannot be modified/deleted. */
+  TOURNAMENT_BRACKET_IN_USE: 'TOURNAMENT_BRACKET_IN_USE',
+  /** Group 5B-SR — a canonical engine substrate (e.g. single-elimination, round-robin) cannot be deleted. */
+  TOURNAMENT_BRACKET_CANONICAL: 'TOURNAMENT_BRACKET_CANONICAL',
+  /** Group 5B-SR — the stored config_schema is not valid JSON. */
+  TOURNAMENT_BRACKET_INVALID_CONFIG: 'TOURNAMENT_BRACKET_INVALID_CONFIG',
   /** G8-D — a tournament cannot be completed while required matches are unresolved. */
   TOURNAMENT_MATCHES_UNRESOLVED: 'TOURNAMENT_MATCHES_UNRESOLVED',
   /**
