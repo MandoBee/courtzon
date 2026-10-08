@@ -2435,6 +2435,10 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.matchessection.accept_result', defaultValue: 'Accept Result', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results accept result' },
   { key: 'tournaments.matchessection.result_accepted', defaultValue: 'Result accepted', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Hub results accepted toast' },
   { key: 'tournaments.matchessection.no_results_yet', defaultValue: 'No results yet for this tournament.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Hub results empty state' },
+  { key: 'tournaments.matchessection.live_now', defaultValue: 'Live Now', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Hub live now section' },
+  { key: 'tournaments.matchessection.starting_soon', defaultValue: 'Starting Soon', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Hub starting soon section' },
+  { key: 'tournaments.matchessection.no_live_now', defaultValue: 'No matches are currently live.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Hub live empty state' },
+  { key: 'tournaments.matchessection.no_starting_soon', defaultValue: 'No matches are starting soon.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Hub starting soon empty state' },
 
   // ── Referee Module (Sprint 11) ──
   { key: 'referee.dashboard.title', defaultValue: 'Referee Dashboard', moduleSlug: 'referee', elementType: 'heading', elementLabel: 'Referee dashboard title' },

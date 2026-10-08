@@ -74,6 +74,11 @@ const KO_MATCH = makeMatch({
 const PENDING_MATCH = makeMatch({ id: 4, status: 'completed', shared_status: 'completed', player1_name: 'Tariq', player2_name: 'Huda', result_status: 'pending_confirmation', result_id: 88 });
 const DISPUTED_MATCH = makeMatch({ id: 6, status: 'completed', shared_status: 'completed', player1_name: 'D1', player2_name: 'D2', stage_name: 'Knockout', stage_order: 2, stage_progression_format: 'knockout', result_status: 'disputed', result_id: 66 });
 const NO_RESULT_MATCH = makeMatch({ id: 7, status: 'completed', player1_name: 'N1', player2_name: 'N2', stage_name: 'Group Stage', stage_order: 1, stage_progression_format: 'round_robin', group_name: 'C', result_status: 'no_result', result_id: 77 });
+const STARTING_SOON_MATCH = makeMatch({ id: 8, status: 'scheduled', shared_status: 'open', player1_name: 'P1', player2_name: 'P2', start_time: new Date(Date.now() + 10 * 60 * 1000).toISOString(), stage_name: 'Group Stage', stage_progression_format: 'round_robin', group_name: 'B', score_summary: null });
+const STARTED_CLOSED_MATCH = makeMatch({ id: 11, status: 'scheduled', shared_status: 'closed', player1_name: 'C1', player2_name: 'C2', start_time: new Date(Date.now() + 5 * 60 * 1000).toISOString() });
+const PAST_START_MATCH = makeMatch({ id: 12, status: 'scheduled', player1_name: 'X1', player2_name: 'X2', start_time: new Date(Date.now() - 60 * 60 * 1000).toISOString() });
+const LIVE_KNOCKOUT = makeMatch({ id: 13, status: 'in_progress', shared_status: 'in_progress', player1_name: 'K1', player2_name: 'K2', stage_name: 'Knockout', stage_order: 2, stage_progression_format: 'knockout', group_id: null, score_summary: '4-3' });
+const LIVE_PENDING = makeMatch({ id: 14, status: 'in_progress', shared_status: 'in_progress', player1_name: 'L1', player2_name: 'L2', stage_name: 'Group Stage', stage_progression_format: 'round_robin', group_name: 'A', result_status: 'pending_confirmation', result_id: 99, score_summary: null });
 const RR_MATCH = makeMatch({ id: 5, status: 'scheduled', player1_name: 'K', player2_name: 'L', stage_name: null, group_name: null });
 
 const ALL = [GROUP_MATCH, KO_MATCH, PENDING_MATCH, RR_MATCH];
@@ -237,9 +242,9 @@ describe('Tournament Hub MatchesManager (Step 3C)', () => {
   });
 
   it('13. segment empty state', async () => {
-    renderManager({ matches: [makeMatch({ status: 'scheduled' })] });
+    renderManager({ matches: [makeMatch({ status: 'completed' })] });
     await screen.findByText('Ali');
-    fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Upcoming' }));
     expect(screen.getByText('No matches in this segment.')).toBeTruthy();
   });
 
@@ -396,5 +401,110 @@ describe('Tournament Hub Results management (Step 3F)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Accept Result' }));
     await waitFor(() => expect(resultApi.acceptMatchResult).toHaveBeenCalledTimes(1), { timeout: 3000 });
     expect(resultApi.fetchMatchResult).not.toHaveBeenCalled(); // no extra fetch from accept path
+  });
+});
+
+describe('Tournament Hub Matches � Live segment (Step 3G)', () => {
+  const openLive = async () => {
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Live' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+  };
+
+  it('renders in-progress matches under Live Now with status + stage/group context', async () => {
+    renderManager({ matches: [GROUP_MATCH, LIVE_KNOCKOUT] });
+    await openLive();
+    expect(await screen.findByText('Live Now')).toBeTruthy();
+    expect(screen.getByText('Lina')).toBeTruthy(); // in-progress group match
+    expect(screen.getByText('Stage: Group Stage')).toBeTruthy();
+    expect(screen.getByText('Group: A')).toBeTruthy();
+    expect(screen.getByText('Stage: Knockout')).toBeTruthy(); // knockout live match
+    expect(screen.getByText('4-3')).toBeTruthy(); // score
+    expect(screen.getAllByText('in_progress').length).toBeGreaterThan(0);
+  });
+
+  it('renders starting-soon matches when the authoritative start_time is within the window', async () => {
+    renderManager({ matches: [STARTING_SOON_MATCH] });
+    await openLive();
+    expect(await screen.findByText('Starting Soon')).toBeTruthy();
+    expect(screen.getByText('P1')).toBeTruthy();
+    expect(screen.getByText('P2')).toBeTruthy();
+    expect(screen.getByText('Group: B')).toBeTruthy();
+  });
+
+  it('does not show scheduled matches with a past start_time (no fabrication)', async () => {
+    renderManager({ matches: [PAST_START_MATCH, GROUP_MATCH] });
+    await openLive();
+    expect(screen.getByText('Lina')).toBeTruthy();
+    expect(screen.queryByText('X1')).toBeNull();
+  });
+
+  it('shows the no-live empty state without fabricating live data', async () => {
+    renderManager({ matches: [STARTING_SOON_MATCH] });
+    await openLive();
+    expect(await screen.findByText('No matches are currently live.')).toBeTruthy();
+    expect(screen.getByText('P1')).toBeTruthy(); // starting-soon still shown
+  });
+
+  it('shows the no-starting-soon empty state', async () => {
+    renderManager({ matches: [GROUP_MATCH] });
+    await openLive();
+    expect(await screen.findByText('No matches are starting soon.')).toBeTruthy();
+  });
+
+  it('Start action is gated by tournament.manage and shown for a ready (closed) match', async () => {
+    __state.permissions = ['tournament.manage'];
+    renderManager({ matches: [STARTED_CLOSED_MATCH] });
+    await openLive();
+    const startBtn = screen.getByRole('button', { name: 'Start' });
+    fireEvent.click(startBtn);
+    await waitFor(() => expect(api.startMatch).toHaveBeenCalledWith(11), { timeout: 3000 });
+  });
+
+  it('Start / Complete / Court / Referee are hidden without tournament.manage', async () => {
+    __state.permissions = ['tournament.result.manage'];
+    renderManager({ matches: [GROUP_MATCH, STARTED_CLOSED_MATCH] });
+    await openLive();
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Complete' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Assign Court' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Assign Referee' })).toBeNull();
+  });
+
+  it('Complete action is gated by tournament.manage', async () => {
+    __state.permissions = ['tournament.manage'];
+    renderManager({ matches: [LIVE_PENDING] });
+    await openLive();
+    fireEvent.click(screen.getByRole('button', { name: 'Complete' }));
+    await waitFor(() => expect(api.completeMatch).toHaveBeenCalledWith(14), { timeout: 3000 });
+  });
+
+  it('Record Result is gated by tournament.result.manage (hidden without it)', async () => {
+    __state.permissions = ['tournament.manage'];
+    renderManager({ matches: [GROUP_MATCH] });
+    await openLive();
+    expect(screen.queryByRole('button', { name: 'Record Result' })).toBeNull();
+  });
+
+  it('Accept Result is gated by matches.result.accept and calls the canonical API', async () => {
+    __state.permissions = ['matches.result.accept'];
+    renderManager({ matches: [LIVE_PENDING] });
+    await openLive();
+    fireEvent.click(screen.getByRole('button', { name: 'Accept Result' }));
+    await waitFor(() => expect(resultApi.acceptMatchResult).toHaveBeenCalledWith(LIVE_PENDING.match_id), { timeout: 3000 });
+  });
+
+  it('Open Monitoring links to the shared workbench from the Live segment', async () => {
+    const props = renderManager({ matches: [GROUP_MATCH] });
+    await openLive();
+    fireEvent.click(screen.getByRole('button', { name: 'Live Monitoring' }));
+    expect(props.onOpenMonitoring).toHaveBeenCalled();
+  });
+
+  it('uses only the existing socket hook � no second Socket.IO client is introduced', () => {
+    const { readFileSync } = require('node:fs');
+    const { resolve } = require('node:path');
+    const src = readFileSync(resolve('./src/components/tournaments/hub/MatchesManager.tsx'), 'utf8');
+    expect(src).not.toMatch(/from ['"].*socket-client['"]/);
+    expect(src).not.toMatch(/from ['"].*realtime\/socket['"]/);
   });
 });

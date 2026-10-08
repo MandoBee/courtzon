@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../ui/Toast';
@@ -85,6 +85,20 @@ function isInProgress(m: TournamentMatchNode): boolean {
   return m.status === 'in_progress' || m.shared_status === 'in_progress';
 }
 
+/**
+ * Step 3G — presentation-only grouping: a scheduled match with an authoritative
+ * `start_time` no more than 60 minutes in the future (and not in the past) is
+ * treated as "starting soon". No business logic — the backend decides state;
+ * this only orders the Live view using data the canonical API already supplies.
+ */
+function isStartingSoon(m: TournamentMatchNode): boolean {
+  if (m.status !== 'scheduled' || !m.start_time) return false;
+  const at = new Date(m.start_time).getTime();
+  if (!Number.isFinite(at)) return false;
+  const now = Date.now();
+  return at > now && at - now <= 60 * 60 * 1000;
+}
+
 const labelCls = 'mb-1 block text-xs font-medium text-[var(--color-text-muted)]';
 const inputCls =
   'min-h-[44px] w-full rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text)] focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[var(--color-primary)]';
@@ -142,7 +156,7 @@ export function MatchesManager({
   const segmentMatches = useMemo(() => {
     return matches.filter((m) => {
       if (segment === 'upcoming') return m.status === 'scheduled';
-      if (segment === 'live') return isInProgress(m);
+      if (segment === 'live') return isInProgress(m) || isStartingSoon(m);
       if (segment === 'completed') return TERMINAL_STATUSES.has(String(m.status ?? ''));
       // Results = any match that carries a shared result (submitted state).
       if (segment === 'results') return m.result_status != null;
@@ -174,6 +188,17 @@ export function MatchesManager({
       return true; // all
     });
   }, [segment, visible, resultFilter]);
+
+  // Step 3G — Live segment ordering: in-progress (Live Now) first, then
+  // starting-soon (scheduled within the 60-minute window). Presentation only.
+  const liveRows = useMemo(() => {
+    if (segment !== 'live') return { rows: resultVisible, liveCount: 0, startingSoonCount: 0 };
+    return {
+      rows: [...resultVisible.filter((m) => isInProgress(m)), ...resultVisible.filter((m) => isStartingSoon(m))],
+      liveCount: resultVisible.filter((m) => isInProgress(m)).length,
+      startingSoonCount: resultVisible.filter((m) => isStartingSoon(m)).length,
+    };
+  }, [segment, resultVisible]);
 
   const startMatch = useMutation({
     mutationFn: (matchId: number) => call(api.startMatch, matchId),
@@ -342,7 +367,7 @@ export function MatchesManager({
       )}
 
       {/* Segmented empty */}
-      {!loading && !error && matches.length > 0 && resultVisible.length === 0 && (
+      {!loading && !error && matches.length > 0 && segment !== 'live' && resultVisible.length === 0 && (
         <p className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
           {segment === 'results'
             ? t('tournaments.matchessection.no_results_yet', 'No results yet for this tournament.')
@@ -350,16 +375,41 @@ export function MatchesManager({
         </p>
       )}
 
+      {/* Live section empties (never fabricate "live" data) */}
+      {!loading && !error && segment === 'live' && liveRows.liveCount === 0 && (
+        <p data-testid="live-now-empty" className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
+          {t('tournaments.matchessection.no_live_now', 'No matches are currently live.')}
+        </p>
+      )}
+      {!loading && !error && segment === 'live' && liveRows.startingSoonCount === 0 && (
+        <p data-testid="starting-soon-empty" className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
+          {t('tournaments.matchessection.no_starting_soon', 'No matches are starting soon.')}
+        </p>
+      )}
+
       {/* Rows */}
-      {!loading && !error && resultVisible.map((m) => {
+      {!loading && !error && liveRows.rows.map((m, idx) => {
         const live = isInProgress(m);
+        // Step 3G — a section heading appears at the first row of each Live group.
+        const prev = (liveRows.rows as TournamentMatchNode[])[idx - 1];
+        const sectionHeader = segment === 'live'
+          ? (!prev || isInProgress(prev) !== live)
+            ? (live
+              ? t('tournaments.matchessection.live_now', 'Live Now')
+              : t('tournaments.matchessection.starting_soon', 'Starting Soon'))
+            : null
+          : null;
         const canStart = m.shared_status === 'closed';
         const canPlay = m.shared_status === 'in_progress' || m.shared_status === 'completed';
         const p1 = m.player1_name || m.participant1_name || (m.player1_id != null ? 'Player' : t('tournamentBracket.tbd', 'TBD'));
         const p2 = m.player2_name || m.participant2_name || (m.player2_id != null ? 'Player' : t('tournamentBracket.tbd', 'TBD'));
         const stageLabel = m.stage_name ?? t('tournaments.matchessection.unassigned', 'Unassigned');
         return (
-          <div
+          <Fragment key={m.id}>
+            {sectionHeader && (
+              <h3 className="mb-2 text-sm font-semibold text-[var(--color-text)]">{sectionHeader}</h3>
+            )}
+            <div
             key={m.id}
             className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 md:flex md:items-center md:gap-4"
           >
@@ -415,12 +465,12 @@ export function MatchesManager({
               <Button size="sm" variant="ghost" onClick={() => onDetails(m)}>
                 {t('tournamentBracket.details', 'Details')}
               </Button>
-              {segment === 'results' && m.match_id != null && m.result_status && (
+              {(segment === 'results' || segment === 'live') && m.match_id != null && m.result_status && (
                 <Button size="sm" variant="ghost" onClick={() => setViewReq({ m })}>
                   {t('tournaments.matchessection.view_result', 'View Result')}
                 </Button>
               )}
-              {segment === 'results' && m.result_status === 'pending_confirmation' && m.match_id != null && (
+              {(segment === 'results' || segment === 'live') && m.result_status === 'pending_confirmation' && m.match_id != null && (
                 <Can permission="matches.result.accept">
                   <Button size="sm" variant="primary" onClick={() => acceptResult.mutate(m.match_id!)}>
                     {t('tournaments.matchessection.accept_result', 'Accept Result')}
@@ -487,6 +537,7 @@ export function MatchesManager({
               )}
             </div>
           </div>
+          </Fragment>
         );
       })}
 
