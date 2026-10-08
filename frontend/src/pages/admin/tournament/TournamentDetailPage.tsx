@@ -130,6 +130,8 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const [activeTab, setActiveTab] = useState<HubTab>('overview');
   const [compTab, setCompTab] = useState<CompetitionSubTab>('groups');
   const [detailsMatch, setDetailsMatch] = useState<TournamentMatchNode | null>(null);
+  // Step 3F — shared result record for the universal Drawer (ResultSummaryView reuse).
+  const [detailsResult, setDetailsResult] = useState<unknown>(null);
   const [printRequested, setPrintRequested] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerPlayerId, setRegisterPlayerId] = useState('');
@@ -694,6 +696,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
               error={matchesError}
               onRetry={() => refetchMatches()}
               onDetails={(m) => setDetailsMatch(m as any)}
+              onViewResult={(m, record) => { setDetailsMatch(m as any); setDetailsResult(record); }}
               onSchedule={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/schedule` : `/admin/tournament/list/${tournamentId}/schedule`)}
               onOpenResults={() => navigate(isOrg ? `/org/${orgId}/match-results` : '/admin/match-results')}
               onOpenMonitoring={() => navigate(isOrg ? `/org/${orgId}/matches` : '/admin/matches')}
@@ -895,8 +898,9 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
 
         <MatchDetailsDrawer
           open={Boolean(detailsMatch)}
-          onClose={() => setDetailsMatch(null)}
+          onClose={() => { setDetailsMatch(null); setDetailsResult(null); }}
           match={detailsMatch}
+          resultRecord={detailsResult}
           currentUserId={user?.id}
           matches={matchList}
           onSelectMatch={setDetailsMatch}

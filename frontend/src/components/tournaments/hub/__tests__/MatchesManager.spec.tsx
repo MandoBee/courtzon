@@ -13,6 +13,13 @@ const api = vi.hoisted(() => ({
   getEligibleCourts: vi.fn(),
 }));
 
+const resultApi = vi.hoisted(() => ({
+  fetchMatchResult: vi.fn(),
+  acceptMatchResult: vi.fn(),
+}));
+
+const __state = vi.hoisted(() => ({ permissions: ['*'] as string[] }));
+
 vi.mock('../../../../services/tournament', () => ({
   tournamentApi: api,
   orgTournamentApi: api,
@@ -20,8 +27,16 @@ vi.mock('../../../../services/tournament', () => ({
   orgTournamentParticipantApi: api,
 }));
 
+vi.mock('../../../../services/match-result.api', () => ({
+  fetchMatchResult: resultApi.fetchMatchResult,
+  acceptMatchResult: resultApi.acceptMatchResult,
+}));
+
 vi.mock('../../../../permissions/Can', () => ({
-  Can: ({ children }: any) => <>{children}</>,
+  Can: ({ permission, children }: any) => {
+    if (__state.permissions.includes('*') || __state.permissions.includes(permission)) return <>{children}</>;
+    return null;
+  },
 }));
 
 vi.mock('../../../ui/Toast', () => ({
@@ -32,6 +47,7 @@ function makeMatch(overrides: Partial<TournamentMatchNode> = {}): TournamentMatc
   return {
     id: 1,
     tournament_id: 1,
+    match_id: 900,
     round: 1,
     match_number: 1,
     status: 'scheduled',
@@ -56,6 +72,8 @@ const KO_MATCH = makeMatch({
   player1_name: 'Nour', player2_name: 'Yara', score_summary: '6-4 6-3', result_status: 'approved', result_id: 77,
 });
 const PENDING_MATCH = makeMatch({ id: 4, status: 'completed', shared_status: 'completed', player1_name: 'Tariq', player2_name: 'Huda', result_status: 'pending_confirmation', result_id: 88 });
+const DISPUTED_MATCH = makeMatch({ id: 6, status: 'completed', shared_status: 'completed', player1_name: 'D1', player2_name: 'D2', stage_name: 'Knockout', stage_order: 2, stage_progression_format: 'knockout', result_status: 'disputed', result_id: 66 });
+const NO_RESULT_MATCH = makeMatch({ id: 7, status: 'completed', player1_name: 'N1', player2_name: 'N2', stage_name: 'Group Stage', stage_order: 1, stage_progression_format: 'round_robin', group_name: 'C', result_status: 'no_result', result_id: 77 });
 const RR_MATCH = makeMatch({ id: 5, status: 'scheduled', player1_name: 'K', player2_name: 'L', stage_name: null, group_name: null });
 
 const ALL = [GROUP_MATCH, KO_MATCH, PENDING_MATCH, RR_MATCH];
@@ -74,6 +92,7 @@ function renderManager(overrides: Partial<Parameters<typeof MatchesManager>[0]> 
     onSchedule: vi.fn(),
     onOpenResults: vi.fn(),
     onOpenMonitoring: vi.fn(),
+    onViewResult: vi.fn(),
     ...overrides,
   };
   render(
@@ -94,12 +113,15 @@ function rowContaining(name: string): HTMLElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __state.permissions = ['*'];
   api.startMatch.mockResolvedValue({ data: {} });
   api.completeMatch.mockResolvedValue({ data: {} });
   api.assignCourt.mockResolvedValue({ data: {} });
   api.assignReferee.mockResolvedValue({ data: {} });
   api.recordResult.mockResolvedValue({ data: {} });
   api.getEligibleCourts.mockResolvedValue([{ id: 1, name: 'Court A' }, { id: 2, name: 'Court B' }]);
+  resultApi.fetchMatchResult.mockResolvedValue({ record: { id: 55, matchId: 900, submissionStatus: 'pending_confirmation', rawResult: { outcome: 'completed', score: { sets: [{ home: 6, away: 3 }] } } }, participants: [] });
+  resultApi.acceptMatchResult.mockResolvedValue({ data: {} });
 });
 
 describe('Tournament Hub MatchesManager (Step 3C)', () => {
@@ -269,5 +291,110 @@ describe('Tournament Hub MatchesManager (Step 3C)', () => {
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+describe('Tournament Hub Results management (Step 3F)', () => {
+  const RES = [GROUP_MATCH, KO_MATCH, PENDING_MATCH, DISPUTED_MATCH];
+  const openResults = async () => {
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Results' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Results' }));
+  };
+
+  it('1+2. Results renders result matches with status chips; default filter = Needs Attention', async () => {
+    renderManager({ matches: RES });
+    await openResults();
+    expect(screen.getByText('Tariq')).toBeTruthy(); // pending
+    expect(screen.getByText('D1')).toBeTruthy(); // disputed
+    expect(screen.queryByText('Nour')).toBeNull(); // approved hidden by default
+    expect(screen.getByText('pending_confirmation')).toBeTruthy();
+    expect(screen.getByText('disputed')).toBeTruthy();
+  });
+
+  it('3. All Results shows approved too', async () => {
+    renderManager({ matches: RES });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'All Results' }));
+    expect(screen.getByText('Nour')).toBeTruthy();
+  });
+
+  it('4. Approved filter shows only approved', async () => {
+    renderManager({ matches: RES });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'Approved' }));
+    expect(screen.getByText('Nour')).toBeTruthy();
+    expect(screen.queryByText('Tariq')).toBeNull();
+    expect(screen.queryByText('D1')).toBeNull();
+  });
+
+  it('5. Disputed filter shows only disputed', async () => {
+    renderManager({ matches: RES });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'Disputed' }));
+    expect(screen.getByText('D1')).toBeTruthy();
+    expect(screen.queryByText('Tariq')).toBeNull();
+  });
+
+  it('6. stage/group context renders in result cards (GSK group vs knockout)', async () => {
+    renderManager({ matches: [NO_RESULT_MATCH, DISPUTED_MATCH] });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'All Results' }));
+    expect(screen.getByText('Group: C')).toBeTruthy();
+    expect(screen.getByText('Stage: Group Stage')).toBeTruthy();
+    expect(screen.getByText('Stage: Knockout')).toBeTruthy();
+  });
+
+  it('7. View Result fetches the shared record and hands it to the drawer callback', async () => {
+    const props = renderManager({ matches: [PENDING_MATCH] });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'View Result' }));
+    await waitFor(() => expect(resultApi.fetchMatchResult).toHaveBeenCalledWith(900), { timeout: 3000 });
+    await waitFor(() => expect(props.onViewResult).toHaveBeenCalledWith(expect.anything(), expect.any(Object)), { timeout: 3000 });
+  });
+
+  it('8. Accept Result calls the canonical shared accept API', async () => {
+    renderManager({ matches: [PENDING_MATCH] });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'Accept Result' }));
+    await waitFor(() => expect(resultApi.acceptMatchResult).toHaveBeenCalledWith(900), { timeout: 3000 });
+  });
+
+  it('9. Accept is gated by matches.result.accept', async () => {
+    __state.permissions = ['tournament.result.manage'];
+    renderManager({ matches: [PENDING_MATCH] });
+    await openResults();
+    expect(screen.queryByRole('button', { name: 'Accept Result' })).toBeNull();
+    // Record Result (tournament.result.manage) still available
+    expect(screen.getAllByRole('button', { name: 'Record Result' }).length).toBeGreaterThan(0);
+  });
+
+  it('10. dispute/correction are NOT duplicated inside the Hub (shared-module link only)', async () => {
+    renderManager({ matches: [DISPUTED_MATCH] });
+    await openResults();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Correct' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Match Results' })).toBeTruthy();
+  });
+
+  it('11. empty results state', async () => {
+    renderManager({ matches: [makeMatch({ result_status: null })] });
+    await openResults();
+    expect(screen.getByText('No results yet for this tournament.')).toBeTruthy();
+  });
+
+  it('12. org mode routes result submission through the org-scoped tournament API', async () => {
+    renderManager({ isOrg: true, orgId: '6', matches: [PENDING_MATCH] });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'Record Result' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Result' }));
+    await waitFor(() => expect(api.recordResult).toHaveBeenCalledWith('6', 4, expect.anything()), { timeout: 3000 });
+  });
+
+  it('13. Query refresh after accept (mutation calls the canonical API; row remains from one fetch)', async () => {
+    renderManager({ matches: [PENDING_MATCH] });
+    await openResults();
+    fireEvent.click(screen.getByRole('button', { name: 'Accept Result' }));
+    await waitFor(() => expect(resultApi.acceptMatchResult).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(resultApi.fetchMatchResult).not.toHaveBeenCalled(); // no extra fetch from accept path
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../ui/Toast';
@@ -14,6 +14,7 @@ import {
   tournamentParticipantApi,
   orgTournamentParticipantApi,
 } from '../../../services/tournament';
+import { fetchMatchResult, acceptMatchResult } from '../../../services/match-result.api';
 import type { TournamentMatchNode } from '../../../types/tournamentBracket';
 import { emptyResultForm, buildResultPayload, type ResultForm } from '../../../utils/tournamentResult';
 
@@ -54,7 +55,11 @@ interface MatchesManagerProps {
   onSchedule: () => void;
   onOpenResults: () => void;
   onOpenMonitoring: () => void;
+  /** Shows the universal drawer with a shared result record (Step 3F). */
+  onViewResult?: (m: TournamentMatchNode, record: unknown) => void;
 }
+
+export type ResultFilter = 'attention' | 'approved' | 'disputed' | 'withdrawn' | 'no_result' | 'all';
 
 const STATUS_TONE: Record<string, 'success' | 'warning' | 'info' | 'default'> = {
   scheduled: 'info',
@@ -75,7 +80,6 @@ const RESULT_TONE: Record<string, 'success' | 'warning' | 'default'> = {
 };
 
 const TERMINAL_STATUSES = new Set(['completed', 'walkover', 'forfeit', 'no_show']);
-const RESULT_ATTENTION_STATUSES = new Set(['pending_confirmation', 'disputed', 'no_result']);
 
 function isInProgress(m: TournamentMatchNode): boolean {
   return m.status === 'in_progress' || m.shared_status === 'in_progress';
@@ -97,6 +101,7 @@ export function MatchesManager({
   onSchedule,
   onOpenResults,
   onOpenMonitoring,
+  onViewResult,
 }: MatchesManagerProps) {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -108,6 +113,8 @@ export function MatchesManager({
   const [resultData, setResultData] = useState<ResultForm>(emptyResultForm());
   const [courtFor, setCourtFor] = useState<{ matchId: number; resourceId: string; open: boolean }>({ matchId: 0, resourceId: '', open: false });
   const [refereeFor, setRefereeFor] = useState<{ matchId: number; refereeId: string; open: boolean }>({ matchId: 0, refereeId: '', open: false });
+  const [resultFilter, setResultFilter] = useState<ResultFilter>('attention');
+  const [viewReq, setViewReq] = useState<{ m: TournamentMatchNode } | null>(null);
 
   const api = isOrg && orgId ? orgTournamentApi : tournamentApi;
   const pApi = isOrg && orgId ? orgTournamentParticipantApi : tournamentParticipantApi;
@@ -137,7 +144,8 @@ export function MatchesManager({
       if (segment === 'upcoming') return m.status === 'scheduled';
       if (segment === 'live') return isInProgress(m);
       if (segment === 'completed') return TERMINAL_STATUSES.has(String(m.status ?? ''));
-      if (segment === 'results') return RESULT_ATTENTION_STATUSES.has(String(m.result_status ?? ''));
+      // Results = any match that carries a shared result (submitted state).
+      if (segment === 'results') return m.result_status != null;
       return true;
     });
   }, [matches, segment]);
@@ -152,6 +160,20 @@ export function MatchesManager({
     () => segmentMatches.filter((m) => !stageFilter || (m.stage_name ?? '') === stageFilter),
     [segmentMatches, stageFilter],
   );
+
+  // Result sub-filter inside the Results segment (client-side, canonical data only).
+  const resultVisible = useMemo(() => {
+    if (segment !== 'results') return visible;
+    return visible.filter((m) => {
+      const rs = String(m.result_status ?? '');
+      if (resultFilter === 'attention') return rs === 'pending_confirmation' || rs === 'disputed';
+      if (resultFilter === 'approved') return rs === 'approved';
+      if (resultFilter === 'disputed') return rs === 'disputed';
+      if (resultFilter === 'withdrawn') return rs === 'withdrawn';
+      if (resultFilter === 'no_result') return rs === 'no_result';
+      return true; // all
+    });
+  }, [segment, visible, resultFilter]);
 
   const startMatch = useMutation({
     mutationFn: (matchId: number) => call(api.startMatch, matchId),
@@ -183,6 +205,31 @@ export function MatchesManager({
     },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
+
+  // Step 3F — accept a pending result through the canonical shared endpoint.
+  const acceptResult = useMutation({
+    mutationFn: (matchId: number) => acceptMatchResult(matchId),
+    onSuccess: () => {
+      invalidate();
+      showToast(t('tournaments.matchessection.result_accepted', 'Result accepted'), 'success');
+    },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  // Step 3F — lazy fetch of the shared result record so the universal Drawer
+  // can reuse ResultSummaryView (no second summary implementation).
+  const viewResultFetch = useQuery({
+    queryKey: ['match-result-lazy', viewReq?.m?.match_id],
+    queryFn: () => fetchMatchResult(Number(viewReq?.m?.match_id)),
+    enabled: Boolean(viewReq?.m?.match_id),
+    retry: false,
+  });
+  useEffect(() => {
+    if (viewReq && viewResultFetch.data) {
+      onViewResult?.(viewReq.m, viewResultFetch.data);
+      setViewReq(null);
+    }
+  }, [viewReq, viewResultFetch.data, onViewResult]);
 
   const selectedMatch = resultModal.open ? resultModal.match : null;
   const saveResult = () => {
@@ -250,6 +297,27 @@ export function MatchesManager({
         </div>
       </div>
 
+      {/* Results sub-filter (clientside, canonical data only) */}
+      {segment === 'results' && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('tournaments.matchessection.result_filter_label', 'Filter results')}>
+          {resultFilters(t).map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setResultFilter(f.key)}
+              aria-pressed={resultFilter === f.key}
+              className={`min-h-[44px] rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                resultFilter === f.key
+                  ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)] text-[var(--color-primary)]'
+                  : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Loading */}
       {loading && <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} count={1} />)}</div>}
 
@@ -274,14 +342,16 @@ export function MatchesManager({
       )}
 
       {/* Segmented empty */}
-      {!loading && !error && matches.length > 0 && visible.length === 0 && (
+      {!loading && !error && matches.length > 0 && resultVisible.length === 0 && (
         <p className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
-          {t('tournaments.matchessection.segment_empty', 'No matches in this segment.')}
+          {segment === 'results'
+            ? t('tournaments.matchessection.no_results_yet', 'No results yet for this tournament.')
+            : t('tournaments.matchessection.segment_empty', 'No matches in this segment.')}
         </p>
       )}
 
       {/* Rows */}
-      {!loading && !error && visible.map((m) => {
+      {!loading && !error && resultVisible.map((m) => {
         const live = isInProgress(m);
         const canStart = m.shared_status === 'closed';
         const canPlay = m.shared_status === 'in_progress' || m.shared_status === 'completed';
@@ -345,6 +415,18 @@ export function MatchesManager({
               <Button size="sm" variant="ghost" onClick={() => onDetails(m)}>
                 {t('tournamentBracket.details', 'Details')}
               </Button>
+              {segment === 'results' && m.match_id != null && m.result_status && (
+                <Button size="sm" variant="ghost" onClick={() => setViewReq({ m })}>
+                  {t('tournaments.matchessection.view_result', 'View Result')}
+                </Button>
+              )}
+              {segment === 'results' && m.result_status === 'pending_confirmation' && m.match_id != null && (
+                <Can permission="matches.result.accept">
+                  <Button size="sm" variant="primary" onClick={() => acceptResult.mutate(m.match_id!)}>
+                    {t('tournaments.matchessection.accept_result', 'Accept Result')}
+                  </Button>
+                </Can>
+              )}
               <Button size="sm" variant="ghost" onClick={onSchedule}>
                 {t('tournaments.matches_schedule', 'Matches & Schedule')}
               </Button>
@@ -478,6 +560,17 @@ export function MatchesManager({
       </Modal>
     </div>
   );
+}
+
+export function resultFilters(t: (k: string, d?: string) => string): Array<{ key: ResultFilter; label: string }> {
+  return [
+    { key: 'attention', label: t('tournaments.matchessection.result_attention', 'Needs Attention') },
+    { key: 'all', label: t('tournaments.matchessection.result_all', 'All Results') },
+    { key: 'approved', label: t('tournaments.matchessection.result_approved', 'Approved') },
+    { key: 'disputed', label: t('tournaments.matchessection.result_disputed', 'Disputed') },
+    { key: 'withdrawn', label: t('tournaments.matchessection.result_withdrawn', 'Withdrawn') },
+    { key: 'no_result', label: t('tournaments.matchessection.result_noresult', 'No Result') },
+  ];
 }
 
 function formatWhen(iso: string): string {

@@ -2424,6 +2424,17 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.match.winner', defaultValue: 'Winner', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Hub matches winner field' },
   { key: 'tournaments.match.select_winner', defaultValue: 'Select winner', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Hub matches winner select' },
   { key: 'tournaments.match.sets', defaultValue: 'Sets', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Hub matches sets field' },
+  { key: 'tournaments.matchessection.result_filter_label', defaultValue: 'Filter results', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Hub results filter label' },
+  { key: 'tournaments.matchessection.result_attention', defaultValue: 'Needs Attention', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results needs attention filter' },
+  { key: 'tournaments.matchessection.result_all', defaultValue: 'All Results', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results all filter' },
+  { key: 'tournaments.matchessection.result_approved', defaultValue: 'Approved', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results approved filter' },
+  { key: 'tournaments.matchessection.result_disputed', defaultValue: 'Disputed', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results disputed filter' },
+  { key: 'tournaments.matchessection.result_withdrawn', defaultValue: 'Withdrawn', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results withdrawn filter' },
+  { key: 'tournaments.matchessection.result_noresult', defaultValue: 'No Result', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results no-result filter' },
+  { key: 'tournaments.matchessection.view_result', defaultValue: 'View Result', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results view result' },
+  { key: 'tournaments.matchessection.accept_result', defaultValue: 'Accept Result', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results accept result' },
+  { key: 'tournaments.matchessection.result_accepted', defaultValue: 'Result accepted', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Hub results accepted toast' },
+  { key: 'tournaments.matchessection.no_results_yet', defaultValue: 'No results yet for this tournament.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Hub results empty state' },
 
   // ── Referee Module (Sprint 11) ──
   { key: 'referee.dashboard.title', defaultValue: 'Referee Dashboard', moduleSlug: 'referee', elementType: 'heading', elementLabel: 'Referee dashboard title' },
