@@ -18,6 +18,7 @@ import { TournamentPrintView } from '../../../components/tournaments/TournamentP
 import { TournamentHero, type HubAction, type HubKpi, type HubPhase } from '../../../components/tournaments/hub/TournamentHero';
 import { TournamentTabs, panelId, tabId, type HubTabItem } from '../../../components/tournaments/hub/TournamentTabs';
 import { GskGroupsView, GskQualificationView, GskKnockoutView } from '../../../components/tournaments/hub/GskCompetitionViews';
+import { MatchesManager } from '../../../components/tournaments/hub/MatchesManager';
 import TournamentParticipantsPage from './TournamentParticipantsPage';
 import TournamentDrawPage from './TournamentDrawPage';
 import { useAuthStore } from '../../../store/auth.store';
@@ -40,14 +41,6 @@ const REG_STATUS_COLORS: Record<string, string> = {
   confirmed: 'bg-green-100 text-green-700',
   withdrawn: 'bg-red-100 text-red-700',
   disqualified: 'bg-gray-100 text-gray-700',
-};
-
-const MATCH_STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-blue-100 text-blue-700',
-  in_progress: 'bg-amber-100 text-amber-700',
-  completed: 'bg-green-100 text-green-700',
-  cancelled: 'bg-red-100 text-red-700',
-  walkover: 'bg-purple-100 text-purple-700',
 };
 
 type HubTab = 'overview' | 'participants' | 'competition' | 'matches' | 'standings' | 'finances' | 'settings';
@@ -183,7 +176,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
 
   // The SHARED bracket tab, the administrative matches table and the Hub KPIs
   // read the SAME query (same query key → one fetch, no duplicate request).
-  const { data: matches, isLoading: loadingM, isError: matchesError } = useQuery({
+  const { data: matches, isLoading: loadingM, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: [`${keyRoot}-matches`, tournamentId],
     queryFn: () => getT(api.getMatches, tournamentId),
     enabled: !!tournamentId,
@@ -676,7 +669,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
           </div>
         )}
 
-        {/* ── MATCHES ── */}
+        {/* ── MATCHES (Step 3C — consolidated tournament-specific management surface) ── */}
         {effectiveTab === 'matches' && (
           <div {...panelProps('matches')}>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -689,49 +682,19 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                 </button>
               </Can>
             </div>
-            {loadingM ? <SkeletonRow count={5} /> : (
-              <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs text-[var(--color-text-muted)]">
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.round')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.match_no')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.player1')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.player2')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.court')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.referee')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.status')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournaments.match.score')}</th>
-                      <th className="px-4 py-3 text-left">{t('tournamentBracket.details', 'Details')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(matches ?? []).map((m: any) => (
-                      <tr key={m.id} className="border-b last:border-0 hover:bg-[var(--color-bg)]/30">
-                        <td className="px-4 py-3 text-xs">{m.round ?? '-'}</td>
-                        <td className="px-4 py-3 font-mono text-xs">{m.match_number ?? m.match_no ?? '-'}</td>
-                        <td className="px-4 py-3">{m.player1_name || m.player1?.name || (m.player1_id ? `Player #${m.player1_id}` : '-')}</td>
-                        <td className="px-4 py-3">{m.player2_name || m.player2?.name || (m.player2_id ? `Player #${m.player2_id}` : '-')}</td>
-                        <td className="px-4 py-3 text-xs">{m.court_name || m.resource_name || '-'}</td>
-                        <td className="px-4 py-3 text-xs">{m.referee_name || '-'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${MATCH_STATUS_COLORS[m.status] || ''}`}>
-                            {t(`tournaments.match_status.${m.status}`)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs">{m.score_summary || m.score || '-'}</td>
-                        <td className="px-4 py-3 text-right">
-                          <button onClick={() => setDetailsMatch(m as any)}
-                            className="rounded border border-[var(--color-border)] px-2 py-1 text-[10px] hover:bg-[var(--color-bg)]">
-                            {t('tournamentBracket.details', 'Details')}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <MatchesManager
+              tournamentId={tournamentId}
+              isOrg={isOrg}
+              orgId={orgId}
+              matches={(Array.isArray(matches) ? matches : []) as any}
+              loading={loadingM}
+              error={matchesError}
+              onRetry={() => refetchMatches()}
+              onDetails={(m) => setDetailsMatch(m as any)}
+              onSchedule={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/schedule` : `/admin/tournament/list/${tournamentId}/schedule`)}
+              onOpenResults={() => navigate(isOrg ? `/org/${orgId}/match-results` : '/admin/match-results')}
+              onOpenMonitoring={() => navigate(isOrg ? `/org/${orgId}/matches` : '/admin/matches')}
+            />
           </div>
         )}
 

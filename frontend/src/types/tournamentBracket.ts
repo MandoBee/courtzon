@@ -17,6 +17,13 @@ export interface TournamentMatchNode {
   // Step 4D/4E — public read-model explicit stage/group discriminators.
   stage_id?: number | null;
   group_id?: number | null;
+  // Step 3B canonical contract (GET /admin/tournaments/:id/matches) — additive context.
+  stage_name?: string | null;
+  stage_order?: number | null;
+  stage_progression_format?: string | null;
+  group_name?: string | null;
+  result_id?: number | null;
+  result_status?: string | null;
   player1_id?: number | null;
   player2_id?: number | null;
   player1_name?: string | null;

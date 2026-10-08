@@ -49,6 +49,9 @@ vi.mock('../../../services/tournament', () => ({
   tournamentRefundApi: {
     listOrgRequests: vi.fn().mockResolvedValue([]),
   },
+  // Hub Matches manager (Step 3C) — participant/assignment APIs.
+  tournamentParticipantApi: { getEligibleCourts: vi.fn().mockResolvedValue([]) },
+  orgTournamentParticipantApi: { getEligibleCourts: vi.fn().mockResolvedValue([]) },
 }));
 
 // Faithful, minimal i18n mock: resolves the registry English defaults (the same

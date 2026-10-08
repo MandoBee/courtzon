@@ -7,6 +7,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Modal } from '../../../components/ui/Modal';
 import { MatchDetailsDrawer } from '../../../components/tournaments/MatchDetailsDrawer';
+import { emptyResultForm, buildResultPayload, type ResultForm } from '../../../utils/tournamentResult';
 import type { TournamentMatchNode } from '../../../types/tournamentBracket';
 
 import { tournamentApi } from '../../../services/tournament';
@@ -24,38 +25,6 @@ const SHARED_STATUS_COLORS: Record<string, string> = {
   in_progress: 'bg-amber-100 text-amber-700',
   completed: 'bg-green-100 text-green-700',
 };
-
-interface ResultForm {
-  outcome: string;
-  winnerSide: string;
-  sets: { home: string; away: string }[];
-  homeGoals: string;
-  awayGoals: string;
-}
-
-function emptyResultForm(): ResultForm {
-  return { outcome: 'completed', winnerSide: '', sets: [{ home: '', away: '' }], homeGoals: '', awayGoals: '' };
-}
-
-/** Build the shared RawMatchResultPayload ({outcome, winner, score, termination}). */
-function buildResultPayload(form: ResultForm, scoreStructure: string | undefined): any {
-  const winner = form.winnerSide || null;
-  if (form.outcome === 'abandoned') return { outcome: 'abandoned', winner: null };
-  if (form.outcome === 'completed') {
-    if (scoreStructure === 'goals') {
-      return { outcome: 'completed', winner: null, score: { homeGoals: Number(form.homeGoals || 0), awayGoals: Number(form.awayGoals || 0) } };
-    }
-    const sets = form.sets
-      .map((s) => ({ home: Number(s.home), away: Number(s.away) }))
-      .filter((s) => Number.isInteger(s.home) && Number.isInteger(s.away) && s.home >= 0 && s.away >= 0);
-    if (sets.length === 0) return { outcome: 'completed', winner: null, score: { sets: [{ home: 0, away: 0 }] } };
-    return { outcome: 'completed', winner: null, score: { sets } };
-  }
-  if (form.outcome === 'retired') {
-    return { outcome: 'retired', winner: null, termination: { retired_side: winner } };
-  }
-  return { outcome: form.outcome, winner };
-}
 
 export default function TournamentMatchesPage() {
   const { t } = useTranslation();
