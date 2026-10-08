@@ -1530,7 +1530,6 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'admin.tournament.complete', defaultValue: 'Complete', moduleSlug: 'admin', elementType: 'button', elementLabel: 'Complete tournament button' },
   { key: 'admin.tournament.archive', defaultValue: 'Archive', moduleSlug: 'admin', elementType: 'button', elementLabel: 'Archive tournament button' },
   { key: 'admin.tournament.no_tournaments', defaultValue: 'No tournaments found', moduleSlug: 'admin', elementType: 'text', elementLabel: 'No tournaments empty state' },
-  { key: 'admin.tournament.matches', defaultValue: 'Matches', moduleSlug: 'admin', elementType: 'heading', elementLabel: 'Matches page title' },
   { key: 'admin.tournament.player1', defaultValue: 'Player 1', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Player 1 column' },
   { key: 'admin.tournament.player2', defaultValue: 'Player 2', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Player 2 column' },
   { key: 'admin.tournament.round', defaultValue: 'Round', moduleSlug: 'admin', elementType: 'label', elementLabel: 'Round column' },
@@ -1845,7 +1844,6 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
 
   // ── Tournament Module (list / detail / dashboard / matches / create) ──
   { key: 'common.all_statuses', defaultValue: 'All Statuses', moduleSlug: 'common', elementType: 'label', elementLabel: 'All statuses filter' },
-  { key: 'tournaments.admin.title', defaultValue: 'Tournament Management', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Tournament admin title' },
   { key: 'tournaments.list.title', defaultValue: 'Tournaments', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Tournament list title' },
   { key: 'tournaments.new', defaultValue: 'New Tournament', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'New tournament button' },
   { key: 'tournaments.search', defaultValue: 'Search tournaments...', moduleSlug: 'tournaments', elementType: 'placeholder', elementLabel: 'Search placeholder' },
