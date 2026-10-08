@@ -43,6 +43,13 @@ export function buildSections(): NavItem[] {
         { label: 'Tags', icon: '🔖', path: '/admin/tags', permissionKey: 'sidebar.tags' },
       ],
     },
+    // FROZEN pre-consolidation snapshot (Step 5H F-10 / Step 5I-4): the legacy
+    // Tournament admin entry, retained verbatim for historical fidelity. The
+    // legacy path `/admin/tournaments` now redirects to `/admin/tournament/list`
+    // (Step 5D; redirect covered by AdminTournamentsRedirect.spec.tsx) and
+    // `sidebar.tournaments-admin` is a retired legacy key excluded from the
+    // canonical workspace (asserted by the parity 'editor-only keys removed' test).
+    // This node is NOT live navigation — it is an audit artifact only.
     { label: 'Tournaments', icon: '🏆', path: '/admin/tournaments', permissionKey: 'sidebar.tournaments-admin' },
     { label: 'Academies', icon: '🎓', path: '/admin/academies', permissionKey: 'sidebar.academies-admin' },
     { label: 'Coaches', icon: '👨‍🏫', path: '/admin/coaches', permissionKey: 'sidebar.coaches-admin' },

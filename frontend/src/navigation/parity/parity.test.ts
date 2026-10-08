@@ -1218,6 +1218,9 @@ describe('Commit 10 — Workspace DnD round-trip (saved layout compatibility)', 
 });
 
 describe('Workspace: frozen fixture preserved for audit', () => {
+  // Step 5I-4 (F-10) — workspace-nav.ts is a frozen PRE-consolidation admin
+  // snapshot (audit artifact, decoupled from resolveWorkspaceNav). Its legacy
+  // `/admin/tournaments` entry is annotated in-file and intentionally retained.
   it('fixture buildSections() is frozen and still callable', () => {
     const sections = buildSections();
     expect(sections.length).toBeGreaterThan(0);
@@ -1226,6 +1229,21 @@ describe('Workspace: frozen fixture preserved for audit', () => {
 });
 
 describe('Group 1C — master-admin Tournament Admin Workbench reachability (frontend nav)', () => {
+  // Step 5I-4 (F-11) — every key below was VERIFIED live against the canonical
+  // admin Tournament surface when this fixture was refreshed, so a future audit
+  // does not re-flag them:
+  //   • nav section/children — sidebar.tournament, sidebar.tournament-dashboard,
+  //     sidebar.tournament-list, tournament.bracket-types.view
+  //     (admin.registry.ts:165–176).
+  //   • canonical list/dashboard screens — admin-tournaments.view is the runtime
+  //     page gate (TournamentListPage.tsx:71, TournamentDashboardPage.tsx:45);
+  //     tournaments.edit / tournaments.delete gate the list actions
+  //     (TournamentListPage.tsx:71). The legacy-named trio is NOT orphaned — it
+  //     is the actual gate of the canonical screens and must stay.
+  //   • detail/hub actions — tournament.update / publish / delete / register /
+  //     manage / result.manage / view (TournamentDetailPage.tsx,
+  //     MatchesManager.tsx:137–138, Draw/Participants pages).
+  // No key was removed here: none was orphaned.
   const masterAdminWorkbenchKeys = new Set([
     'sidebar.tournament',
     'sidebar.tournament-dashboard',
@@ -1250,6 +1268,9 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (fro
     'org.tournaments.manage',
   ]);
 
+  // Org-portal-only keys — none may reveal the platform Tournament Workbench.
+  // tournaments.create / tournaments.create.name are live button/field gates of
+  // the canonical create flow (TournamentListPage.tsx:71, TournamentCreatePage.tsx).
   const orgPortalOnlyKeys = new Set(['org.sidebar.tournaments', 'org.tournaments.view', 'org.tournaments.create', 'org.tournaments.manage', 'tournaments.create', 'tournaments.create.name']);
 
   function findTournamentSection(nav: ResolvedNavItem[]) {
