@@ -149,6 +149,9 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   // Step 4B — GSK detection + authoritative stages + competition refresh.
   const isGsk = (tournament as any)?.format === 'group_stage_knockout';
   const managePerm = isOrg ? 'org.tournaments.manage' : 'tournament.manage';
+  // Authoritative result-action permission (Step 3E alignment): the bracket
+  // "Record Result" gate used the stale frontend-only `tournaments.enter_scores`.
+  const resultPerm = isOrg ? 'org.tournaments.result.manage' : 'tournament.result.manage';
   const { data: stages } = useQuery({
     queryKey: [`${keyRoot}-stages`, tournamentId],
     queryFn: () => getT((api as any).getStages, tournamentId),
@@ -651,7 +654,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                           >
                             {t('tournamentBracket.details', 'Details')}
                           </button>
-                          {can('tournaments.enter_scores') && m.match_id != null && m.status !== 'completed' && (
+                          {can(resultPerm) && m.match_id != null && m.status !== 'completed' && (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); navigate(`/matches/${m.match_id}/result`); }}
