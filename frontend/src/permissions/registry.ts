@@ -446,9 +446,13 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'audit.export', moduleSlug: 'audit', elementType: 'button', elementLabel: 'Export Audit Logs', componentPath: 'pages/admin/AuditLogPage.tsx' },
 
   // Tournament admin
-  { permissionKey: 'admin-tournaments.view', moduleSlug: 'tournaments', elementType: 'page', elementLabel: 'Tournaments Admin Page', componentPath: 'pages/admin/tournaments/TournamentAdminPage.tsx' },
-  { permissionKey: 'tournaments.edit', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Edit Tournament', componentPath: 'pages/admin/tournaments/TournamentAdminPage.tsx' },
-  { permissionKey: 'tournaments.delete', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Delete Tournament', componentPath: 'pages/admin/tournaments/TournamentAdminPage.tsx' },
+  // Step 5I-1 — F-02: componentPath retargeted from the deleted legacy admin
+  // tournament page (path no longer exists) to the canonical live admin tournament
+  // list, which is the actual owner of these three gates (`perms.page` /
+  // `perms.edit` / `perms.delete` in TournamentListPage.tsx).
+  { permissionKey: 'admin-tournaments.view', moduleSlug: 'tournaments', elementType: 'page', elementLabel: 'Tournaments Admin Page', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
+  { permissionKey: 'tournaments.edit', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Edit Tournament', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
+  { permissionKey: 'tournaments.delete', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Delete Tournament', componentPath: 'pages/admin/tournament/TournamentListPage.tsx' },
 
   // ==========================================================================
   // TOURNAMENTS MODULE
