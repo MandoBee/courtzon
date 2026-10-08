@@ -863,6 +863,15 @@ export class TournamentRepository {
     player2_name?: string | null;
     resource_name?: string | null;
     referee_name?: string | null;
+    /** Canonical contract (Step 3B) — additive stage/group/result context. */
+    stage_name?: string | null;
+    stage_order?: number | null;
+    stage_progression_format?: string | null;
+    group_name?: string | null;
+    /** Latest shared Match result id (match_result_records) for the shared Match. */
+    result_id?: number | null;
+    /** Latest shared Match result submission state (pending_confirmation|approved|disputed|withdrawn|no_result). */
+    result_status?: string | null;
   }>> {
     const [rows] = await getPool().query<RowData>(
       `SELECT tm.*, m.status AS shared_status, m.format_snapshot, m.rule_snapshot, m.booking_id,
@@ -871,7 +880,13 @@ export class TournamentRepository {
               tp1.name AS participant1_name,
               tp2.name AS participant2_name,
               r.name AS resource_name,
-              refu.full_name AS referee_name
+              refu.full_name AS referee_name,
+              st.name AS stage_name,
+              st.stage_order AS stage_order,
+              st.progression_format AS stage_progression_format,
+              g.name AS group_name,
+              (SELECT r1.id FROM match_result_records r1 WHERE r1.match_id = tm.match_id ORDER BY r1.id DESC LIMIT 1) AS result_id,
+              (SELECT r2.submission_status FROM match_result_records r2 WHERE r2.match_id = tm.match_id ORDER BY r2.id DESC LIMIT 1) AS result_status
        FROM tournament_matches tm
        LEFT JOIN matches m ON m.id = tm.match_id
        LEFT JOIN users p1 ON p1.id = tm.player1_id
@@ -881,11 +896,13 @@ export class TournamentRepository {
        LEFT JOIN resources r ON r.id = tm.resource_id
        LEFT JOIN referees ref ON ref.id = tm.referee_id
        LEFT JOIN users refu ON refu.id = ref.user_id
+       LEFT JOIN tournament_stages st ON st.id = tm.stage_id
+       LEFT JOIN tournament_groups g ON g.id = tm.group_id
        WHERE tm.tournament_id = ?
        ORDER BY tm.round, tm.bracket_position`,
       [tournamentId],
     );
-    return rows as Array<TournamentMatch & { shared_status?: string | null; format_snapshot?: unknown; rule_snapshot?: unknown; player1_name?: string | null; player2_name?: string | null; resource_name?: string | null; referee_name?: string | null }>;
+    return rows as Array<TournamentMatch & { shared_status?: string | null; format_snapshot?: unknown; rule_snapshot?: unknown; player1_name?: string | null; player2_name?: string | null; resource_name?: string | null; referee_name?: string | null; stage_name?: string | null; stage_order?: number | null; stage_progression_format?: string | null; group_name?: string | null; result_id?: number | null; result_status?: string | null }>;
   }
 
   /** G8 — how many bracket slots (matches) already exist for the tournament. */
