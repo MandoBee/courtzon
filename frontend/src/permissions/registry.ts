@@ -744,12 +744,11 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'tournament.competition.create', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Create Competition Category', componentPath: 'components/tournaments/CompetitionManager.tsx' },
   { permissionKey: 'tournament.competition.update', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Edit Competition Category', componentPath: 'components/tournaments/CompetitionManager.tsx' },
   { permissionKey: 'tournament.competition.deactivate', moduleSlug: 'tournament', elementType: 'button', elementLabel: 'Deactivate Competition Category', componentPath: 'components/tournaments/CompetitionManager.tsx' },
-  { permissionKey: 'tournament.result.manage', moduleSlug: 'tournament', elementType: 'action', elementLabel: 'Manage Match Results', componentPath: 'pages/admin/tournament/TournamentMatchesPage.tsx' },
+  { permissionKey: 'tournament.result.manage', moduleSlug: 'tournament', elementType: 'action', elementLabel: 'Manage Match Results', componentPath: 'components/tournaments/hub/MatchesManager.tsx' },
   { permissionKey: 'tournament.dashboard.view', moduleSlug: 'tournament', elementType: 'page', elementLabel: 'Tournament Dashboard', componentPath: 'pages/admin/tournament/TournamentDashboardPage.tsx' },
   { permissionKey: 'sidebar.tournament', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Section', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.tournament-dashboard', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Dashboard', componentPath: 'components/layout/AdminSidebar.tsx' },
   { permissionKey: 'sidebar.tournament-list', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament List', componentPath: 'components/layout/AdminSidebar.tsx' },
-  { permissionKey: 'sidebar.tournament-matches', moduleSlug: 'tournament', elementType: 'tab', elementLabel: 'Sidebar: Tournament Matches', componentPath: 'components/layout/AdminSidebar.tsx' },
 
   // ==========================================================================
   // LEAGUE MODULE (Sprint 8)

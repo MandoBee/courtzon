@@ -498,7 +498,6 @@ describe('Group 1B — Tournament navigation key invariants (.ts/.mjs parity)', 
     'sidebar.tournament',
     'sidebar.tournament-dashboard',
     'sidebar.tournament-list',
-    'sidebar.tournament-matches',
     'tournament.bracket-types.view',
   ];
   const orgPortalKeys = ['org.sidebar.tournaments', 'org.tournaments.view'];
@@ -550,7 +549,6 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (.ts
     'sidebar.tournament',
     'sidebar.tournament-dashboard',
     'sidebar.tournament-list',
-    'sidebar.tournament-matches',
   ];
   const workbenchRouteKeys = [
     'admin-tournaments.view',

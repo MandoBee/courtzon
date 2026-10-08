@@ -49,11 +49,13 @@ function setCurrentPath(path: string) {
 }
 
 /**
- * Step 5D — `/admin/tournaments` (legacy list) redirects to the canonical
- * `/admin/tournament/list` workbench. Renders the FULL App (real router +
- * real i18n) exactly like the org journal redirect test, and verifies the
- * destination's own permission gate stays authoritative — the redirect must
- * not bypass authorization.
+ * Step 5D + 5G — legacy tournament admin redirects, exercised against the FULL
+ * App (real router + real i18n), matching the org journal redirect test pattern:
+ *   • Step 5D — `/admin/tournaments` (legacy list) → `/admin/tournament/list`
+ *   • Step 5G — `/admin/tournament/matches` (legacy matches surface, now deleted)
+ *     → `/admin/tournament/list`
+ * The destination screen's own permission gate stays authoritative — the redirect
+ * must not bypass authorization (verified for admin and non-admin users).
  */
 describe('Legacy /admin/tournaments redirect', () => {
   beforeAll(() => {
@@ -151,7 +153,37 @@ describe('Legacy /admin/tournaments redirect', () => {
     // The sidebar still points admin users at the canonical workbench list.
     expect(paths).toContain('/admin/tournament/list');
     expect(paths).toContain('/admin/tournament/dashboard');
-    // No navigation entry references the legacy UI path.
+    // No navigation entry references the legacy UI paths.
     expect(paths).not.toContain('/admin/tournaments');
+    expect(paths).not.toContain('/admin/tournament/matches');
   });
+
+  it('6. /admin/tournament/matches now redirects to /admin/tournament/list (Step 5G)', async () => {
+    setCurrentPath('/admin/tournament/matches');
+    useAuthStore.setState({
+      user: makeUser({ roles: ['super_admin'], permissions: ['*'] }),
+      isAuthenticated: true,
+    } as any);
+
+    render(<App />);
+
+    await waitFor(() => expect(window.location.pathname).toBe('/admin/tournament/list'), { timeout: 15000 });
+    // The canonical list screen renders (heading), not the deleted matches page.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Tournaments' }, { timeout: 10000 })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Tournament Matches' })).toBeNull();
+  }, 30000);
+
+  it('7. matches redirect does not bypass authorization (non-admin is blocked)', async () => {
+    setCurrentPath('/admin/tournament/matches');
+    useAuthStore.setState({
+      user: makeUser({ roles: ['player'], permissions: [] }),
+      isAuthenticated: true,
+    } as any);
+
+    render(<App />);
+
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(window.location.pathname).not.toBe('/admin/tournament/list');
+    expect(screen.queryByRole('heading', { level: 1, name: 'Tournaments' })).toBeNull();
+  }, 30000);
 });

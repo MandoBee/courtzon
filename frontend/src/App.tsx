@@ -142,7 +142,6 @@ const DesignTokensPage = lazy(() => import('./pages/admin/design-tokens/DesignTo
 const TournamentDashboardPage = lazy(() => import('./pages/admin/tournament/TournamentDashboardPage'));
 const TournamentListAdminPage = lazy(() => import('./pages/admin/tournament/TournamentListPage'));
 const TournamentDetailAdminPage = lazy(() => import('./pages/admin/tournament/TournamentDetailPage'));
-const TournamentMatchesAdminPage = lazy(() => import('./pages/admin/tournament/TournamentMatchesPage'));
 const TournamentBracketTypesPage = lazy(() => import('./pages/admin/tournament/TournamentBracketTypesPage'));
 const TournamentParticipantsPage = lazy(() => import('./pages/admin/tournament/TournamentParticipantsPage'));
 const TournamentDrawPage = lazy(() => import('./pages/admin/tournament/TournamentDrawPage'));
@@ -784,7 +783,7 @@ function AppContent() {
             <Route path="tournament/list/:id/participants" element={<TournamentParticipantsPage mode="admin" />} />
             <Route path="tournament/list/:id/draw" element={<TournamentDrawPage mode="admin" />} />
             <Route path="tournament/list/:id/schedule" element={<TournamentSchedulePage mode="admin" />} />
-            <Route path="tournament/matches" element={<TournamentMatchesAdminPage />} />
+            <Route path="tournament/matches" element={<Navigate to="/admin/tournament/list" replace />} />
             <Route path="tournament/bracket-types" element={<TournamentBracketTypesPage />} />
             <Route path="match-results" element={<AdminMatchResultsPage />} />
             <Route path="matches" element={<AdminMatchesPage />} />

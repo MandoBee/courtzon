@@ -155,7 +155,7 @@ function canManageTournaments(templateSlug: string, permissionKey: string): bool
 
 // ── Group 1C — platform Tournament Admin Workbench (master-admin navigation) ──
 // master-admin is a genuine platform ADMIN; it must be able to REACH the existing
-// Tournament Admin Workbench screens (dashboard / list / matches / bracket-types)
+// Tournament Admin Workbench screens (dashboard / list / bracket-types)
 // through the normal sidebar navigation AND pass the existing route guards.
 // Only EXISTING Workbench keys are granted — no new keys, no role taxonomy change.
 // The singular `tournament.*` family IS the Workbench backend authorization; the
@@ -166,7 +166,6 @@ const TOURNAMENT_WORKBENCH_KEYS = new Set([
   'sidebar.tournament',
   'sidebar.tournament-dashboard',
   'sidebar.tournament-list',
-  'sidebar.tournament-matches',
   'admin-tournaments.view',
   'tournament.bracket-types.view',
   'tournament.bracket-types.manage',
