@@ -73,8 +73,21 @@ function rowByName(name: string): HTMLElement {
 beforeEach(() => {
   vi.clearAllMocks();
   __state.showToast.mockClear();
-  (api.get as any).mockResolvedValue({ data: BODIES });
+  (api.get as any).mockImplementation((url: string) => {
+    if (url === '/admin/bracket-types') return Promise.resolve({ data: BODIES });
+    if (typeof url === 'string' && url.startsWith('/admin/bracket-types/')) {
+      const id = Number(url.split('/').pop());
+      return Promise.resolve({
+        data: {
+          data: { ...SE, id, referenced_count: 3, active_references: 1, historical_references: 2, created_at: '2026-05-19T19:07:55.000Z' },
+        },
+      });
+    }
+    return Promise.resolve({ data: null });
+  });
   (api.put as any).mockResolvedValue({ data: {} });
+  (api.post as any).mockResolvedValue({ data: { data: { ...SE, id: 5, is_active: false } } });
+  (api.delete as any).mockResolvedValue({ data: { success: true } });
 });
 
 afterEach(() => {
@@ -186,8 +199,8 @@ describe('TournamentBracketTypesPage — Step 2A management UI', () => {
     await screen.findByText('Single Elimination');
     fireEvent.click(within(rowByName('Single Elimination')).getByRole('button', { name: 'View' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('Stored Schema')).toBeTruthy();
-    expect(within(dialog).getByText(/"seeding"/)).toBeTruthy();
+    expect(await within(dialog).findByText('Stored Schema')).toBeTruthy();
+    expect(await within(dialog).findByText(/"seeding"/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
 
     fireEvent.click(within(rowByName('Group Stage + Knockout')).getByRole('button', { name: 'View Configuration' }));
@@ -295,5 +308,288 @@ describe('TournamentBracketTypesPage — Step 2A management UI', () => {
     expect(JSON.stringify(metrics)).toContain('5');
     expect(JSON.stringify(metrics)).toContain('3');
     expect(JSON.stringify(metrics)).toContain('2');
+  });
+});
+
+describe('TournamentBracketTypesPage — Step 2B-2 CRUD', () => {
+  const openCreate = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Create Bracket Type' }));
+    return screen.findByRole('dialog');
+  };
+
+  it('1. Create button is enabled', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const btn = screen.getByRole('button', { name: 'Create Bracket Type' });
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('2. Create modal opens with the three fields', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    expect(within(d).getByLabelText('Name *')).toBeTruthy();
+    expect(within(d).getByLabelText('Slug *')).toBeTruthy();
+    expect(within(d).getByLabelText('Config Schema')).toBeTruthy();
+  });
+
+  it('3. required validation blocks submit', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    fireEvent.click(within(d).getByRole('button', { name: 'Create' }));
+    expect(within(d).getByText('Name is required.')).toBeTruthy();
+    expect(within(d).getByText('Slug is required.')).toBeTruthy();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('4. invalid JSON config rejected client-side', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    fireEvent.change(within(d).getByLabelText('Name *'), { target: { value: 'My Format' } });
+    fireEvent.change(within(d).getByLabelText('Slug *'), { target: { value: 'my-format' } });
+    fireEvent.change(within(d).getByLabelText('Config Schema'), { target: { value: '{ bad json' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Create' }));
+    expect(within(d).getByText('Config Schema must be valid JSON.')).toBeTruthy();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('5. valid create calls POST (slug lowercased) and closes modal', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    fireEvent.change(within(d).getByLabelText('Name *'), { target: { value: 'Speed Format' } });
+    fireEvent.change(within(d).getByLabelText('Slug *'), { target: { value: 'Speed-Format' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/admin/bracket-types', { name: 'Speed Format', slug: 'speed-format' }), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 3000 });
+  });
+
+  it('6. create success invalidates/refetches the list', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    fireEvent.change(within(d).getByLabelText('Name *'), { target: { value: 'X' } });
+    fireEvent.change(within(d).getByLabelText('Slug *'), { target: { value: 'x-format' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await waitFor(() => expect(__state.showToast).toHaveBeenCalledWith(expect.stringContaining('Bracket type created'), 'success'), { timeout: 3000 });
+  });
+
+  it('7. backend duplicate error is displayed inside the modal', async () => {
+    (api.post as any).mockRejectedValue({ isAxiosError: true, response: { data: { code: 'TOURNAMENT_BRACKET_DUPLICATE', message: 'dupe' } } });
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    fireEvent.change(within(d).getByLabelText('Name *'), { target: { value: 'X' } });
+    fireEvent.change(within(d).getByLabelText('Slug *'), { target: { value: 'swiss' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Create' }));
+    expect(await within(d).findByText('A bracket type with this slug already exists.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy(); // still open, values retained
+  });
+
+  it('8. backend unsupported error is displayed', async () => {
+    (api.post as any).mockRejectedValue({ isAxiosError: true, response: { data: { code: 'TOURNAMENT_BRACKET_ENGINE_UNSUPPORTED', message: 'x' } } });
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    fireEvent.change(within(d).getByLabelText('Name *'), { target: { value: 'X' } });
+    fireEvent.change(within(d).getByLabelText('Slug *'), { target: { value: 'weird-format' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Create' }));
+    expect(await within(d).findByText(/engine is not available/i)).toBeTruthy();
+  });
+
+  it('9. View fetches GET-by-ID and renders detail fields', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    fireEvent.click(within(rowByName('Single Elimination')).getByRole('button', { name: 'View' }));
+    const d = await screen.findByRole('dialog');
+    expect(await within(d).findByText('Creation Availability')).toBeTruthy();
+    expect(within(d).getByText('Active References')).toBeTruthy();
+    expect(within(d).getByText('Historical References')).toBeTruthy();
+    expect(await within(d).findByText(/"seeding"/)).toBeTruthy();
+    expect(api.get).toHaveBeenCalledWith('/admin/bracket-types/1');
+  });
+
+  it('10. View shows a loading state while detail is pending', async () => {
+    (api.get as any).mockImplementation((url: string) =>
+      url.startsWith('/admin/bracket-types/')
+        ? new Promise(() => {})
+        : Promise.resolve({ data: BODIES }),
+    );
+    renderPage();
+    await screen.findByText('Single Elimination');
+    fireEvent.click(within(rowByName('Single Elimination')).getByRole('button', { name: 'View' }));
+    const d = await screen.findByRole('dialog');
+    expect(d.querySelector('tbody')).toBeNull();
+    expect(d.querySelectorAll('.cz-skeleton').length).toBeGreaterThan(0);
+  });
+
+  it('13. View detail error state + retry', async () => {
+    (api.get as any).mockImplementation((url: string) =>
+      url.startsWith('/admin/bracket-types/')
+        ? Promise.reject({ message: 'down' })
+        : Promise.resolve({ data: BODIES }),
+    );
+    renderPage();
+    await screen.findByText('Single Elimination');
+    fireEvent.click(within(rowByName('Single Elimination')).getByRole('button', { name: 'View' }));
+    const d = await screen.findByRole('dialog');
+    expect(await within(d).findByText('Unable to load bracket type details.')).toBeTruthy();
+    // retry now resolves
+    (api.get as any).mockImplementation((url: string) =>
+      url.startsWith('/admin/bracket-types/')
+        ? Promise.resolve({ data: { data: { ...SE, id: 1, referenced_count: 3, active_references: 1, historical_references: 2 } } })
+        : Promise.resolve({ data: BODIES }),
+    );
+    fireEvent.click(within(d).getByRole('button', { name: 'Retry' }));
+    expect(await within(d).findByText('Stored Schema')).toBeTruthy();
+  });
+
+  it('14. Edit opens with slug read-only', async () => {
+    renderPage();
+    await screen.findByText('Round Robin');
+    fireEvent.click(within(rowByName('Round Robin')).getByRole('button', { name: 'Edit' }));
+    const d = await screen.findByRole('dialog');
+    expect(within(d).getByText('Edit Bracket Type')).toBeTruthy();
+    expect(within(d).getByText('round-robin')).toBeTruthy();
+  });
+
+  it('15. slug is never an editable control', async () => {
+    renderPage();
+    await screen.findByText('Round Robin');
+    fireEvent.click(within(rowByName('Round Robin')).getByRole('button', { name: 'Edit' }));
+    const d = await screen.findByRole('dialog');
+    expect(within(d).queryByLabelText('Slug')).toBeNull();
+    expect(within(d).queryByPlaceholderText(/slug/i)).toBeNull();
+  });
+
+  it('16. PUT payload contains name/config only (no slug)', async () => {
+    renderPage();
+    await screen.findByText('Round Robin');
+    fireEvent.click(within(rowByName('Round Robin')).getByRole('button', { name: 'Edit' }));
+    const d = await screen.findByRole('dialog');
+    fireEvent.change(within(d).getByLabelText('Name *'), { target: { value: 'Round Robin 2' } });
+    fireEvent.change(within(d).getByLabelText('Config Schema'), { target: { value: '{"advance":3}' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.put).toHaveBeenCalled(), { timeout: 3000 });
+    const call = (api.put as any).mock.calls.find((c: any[]) => c[0] === '/admin/bracket-types/3');
+    expect(call).toBeTruthy();
+    expect(call[1]).toEqual({ name: 'Round Robin 2', config_schema: '{"advance":3}' });
+    expect((call[1] as any).slug).toBeUndefined();
+  });
+
+  it('17. successful edit refreshes data', async () => {
+    renderPage();
+    await screen.findByText('Round Robin');
+    fireEvent.click(within(rowByName('Round Robin')).getByRole('button', { name: 'Edit' }));
+    const d = await screen.findByRole('dialog');
+    fireEvent.change(within(d).getByLabelText('Name *'), { target: { value: 'Round Robin 2' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2), { timeout: 3000 });
+  });
+
+  it('18. backend edit rejection keeps the modal open and shows the error', async () => {
+    (api.put as any).mockRejectedValue({ isAxiosError: true, response: { data: { code: 'TOURNAMENT_BRACKET_IN_USE', message: 'ref' } } });
+    renderPage();
+    await screen.findByText('Single Elimination');
+    fireEvent.click(within(rowByName('Single Elimination')).getByRole('button', { name: 'Edit' }));
+    const d = await screen.findByRole('dialog');
+    const nameInput = within(d).getByLabelText('Name *');
+    fireEvent.change(nameInput, { target: { value: 'Single Elim 2' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Save' }));
+    expect(await within(d).findByText('This format is in use and cannot be changed right now.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect((nameInput as HTMLInputElement).value).toBe('Single Elim 2');
+  });
+
+  it('19. Activate calls PUT is_active true', async () => {
+    renderPage();
+    await screen.findByText('Round Robin');
+    fireEvent.click(within(rowByName('Round Robin')).getByRole('button', { name: 'Activate' }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('/admin/bracket-types/3', { is_active: true }), { timeout: 3000 });
+  });
+
+  it('22. dependency error on deactivate shows a friendly toast', async () => {
+    (api.put as any).mockRejectedValue({ isAxiosError: true, response: { data: { code: 'TOURNAMENT_BRACKET_ENGINE_DEPENDENCY', message: 'dep' } } });
+    renderPage();
+    await screen.findByText('Single Elimination');
+    fireEvent.click(within(rowByName('Single Elimination')).getByRole('button', { name: 'Deactivate' }));
+    const d = await screen.findByRole('dialog');
+    fireEvent.click(within(d).getByRole('button', { name: 'Deactivate' }));
+    await waitFor(() => expect(__state.showToast).toHaveBeenCalledWith(expect.stringContaining('Deactivation is blocked'), 'error'), { timeout: 3000 });
+  });
+
+  it('23. removable (planned, zero-reference) rows show Remove', async () => {
+    renderPage();
+    await screen.findByText('Swiss System');
+    expect(within(rowByName('Swiss System')).getByRole('button', { name: 'Remove' })).toBeTruthy();
+    expect(within(rowByName('Double Elimination')).getByRole('button', { name: 'Remove' })).toBeTruthy();
+  });
+
+  it('24. canonical / executable rows do NOT show Remove', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    expect(within(rowByName('Single Elimination')).queryByRole('button', { name: 'Remove' })).toBeNull();
+    expect(within(rowByName('Round Robin')).queryByRole('button', { name: 'Remove' })).toBeNull();
+  });
+
+  it('25. GSK does not show remove', async () => {
+    renderPage();
+    await screen.findByText('Group Stage + Knockout');
+    const gskRow = rowByName('Group Stage + Knockout');
+    expect(within(gskRow).queryByRole('button', { name: 'Remove' })).toBeNull();
+    expect(within(gskRow).queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('26. remove shows a confirmation dialog', async () => {
+    renderPage();
+    await screen.findByText('Swiss System');
+    fireEvent.click(within(rowByName('Swiss System')).getByRole('button', { name: 'Remove' }));
+    const d = await screen.findByRole('dialog');
+    expect(within(d).getByText('Delete bracket type?')).toBeTruthy();
+    expect(within(d).getByText(/Swiss System/)).toBeTruthy();
+    expect(within(d).queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('27. DELETE request is sent after confirmation', async () => {
+    renderPage();
+    await screen.findByText('Swiss System');
+    fireEvent.click(within(rowByName('Swiss System')).getByRole('button', { name: 'Remove' }));
+    const d = await screen.findByRole('dialog');
+    fireEvent.click(within(d).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/admin/bracket-types/4'), { timeout: 3000 });
+  });
+
+  it('28. successful removal refreshes data + toast', async () => {
+    renderPage();
+    await screen.findByText('Swiss System');
+    fireEvent.click(within(rowByName('Swiss System')).getByRole('button', { name: 'Remove' }));
+    const d = await screen.findByRole('dialog');
+    fireEvent.click(within(d).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(__state.showToast).toHaveBeenCalledWith(expect.stringContaining('removed from active management'), 'success'), { timeout: 3000 });
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2), { timeout: 3000 });
+  });
+
+  it('29. backend in-use/canonical error on remove is displayed and stays open', async () => {
+    (api.delete as any).mockRejectedValue({ isAxiosError: true, response: { data: { code: 'TOURNAMENT_BRACKET_IN_USE', message: 'ref' } } });
+    renderPage();
+    await screen.findByText('Swiss System');
+    fireEvent.click(within(rowByName('Swiss System')).getByRole('button', { name: 'Remove' }));
+    const d = await screen.findByRole('dialog');
+    fireEvent.click(within(d).getByRole('button', { name: 'Remove' }));
+    expect(await within(d).findByText('This format is in use and cannot be changed right now.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('35. accessibility: create dialog is an accessible modal', async () => {
+    renderPage();
+    await screen.findByText('Single Elimination');
+    const d = await openCreate();
+    expect(d.getAttribute('role')).toBe('dialog');
+    expect(d.getAttribute('aria-modal')).toBe('true');
+    fireEvent.keyDown(d, { key: 'Escape', code: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

@@ -182,10 +182,70 @@ export const orgTournamentApi = {
     api.delete<any>(`/org/${orgId}/tournaments/${tournamentId}/competitions/${competitionId}`).then(r => r.data),
 };
 
-// Group 5B-SR — bracket type configuration (Super Admin management + shared create form)
+// ── Group 5B-SR — Bracket type configuration (Super Admin management + shared create form) ──
+
+export type BracketEngineCapability = 'ready' | 'planned' | 'unsupported';
+
+/**
+ * A DB-backed `tournament_bracket_types` row as returned by the admin API —
+ * enriched with the authoritative engine capability + creation predicate
+ * (Step 1 backend).
+ */
+export interface BracketTypeRow {
+  id: number;
+  name: string;
+  slug: string;
+  is_active: boolean;
+  config_schema: string | null;
+  created_at?: string;
+  referenced_count: number;
+  engine_capability: BracketEngineCapability;
+  creation_available: boolean;
+}
+
+/** GET /admin/bracket-types/:id detail (adds the active/historical usage split). */
+export interface BracketTypeDetail extends BracketTypeRow {
+  active_references: number;
+  historical_references: number;
+}
+
+/** Engine-registry composite capability (GSK) — never a DB row, never toggleable. */
+export interface BracketTypeRegistryEntry {
+  format: string;
+  name: string;
+  type: 'composite';
+  source: 'engine_registry';
+  engine_capability: BracketEngineCapability;
+  creation_available: boolean;
+  toggleable: false;
+  substrate?: string;
+  description?: string;
+}
+
+export interface BracketTypeAdminListResponse {
+  data: BracketTypeRow[];
+  registry: BracketTypeRegistryEntry[];
+}
+
+export interface CreateBracketTypePayload {
+  name: string;
+  slug: string;
+  config_schema?: string;
+}
+
+export interface UpdateBracketTypePayload {
+  name?: string;
+  config_schema?: string;
+  is_active?: boolean;
+}
+
 export const bracketTypeApi = {
   listActive: () => api.get('/bracket-types').then(r => r.data),
-  listAll: () => api.get('/admin/bracket-types').then(r => r.data),
+  listAll: (): Promise<BracketTypeAdminListResponse> => api.get('/admin/bracket-types').then(r => r.data),
+  getDetail: (id: number): Promise<BracketTypeDetail> => api.get(`/admin/bracket-types/${id}`).then(r => r.data?.data ?? r.data),
+  create: (payload: CreateBracketTypePayload) => api.post('/admin/bracket-types', payload).then(r => r.data),
+  update: (id: number, payload: UpdateBracketTypePayload) => api.put(`/admin/bracket-types/${id}`, payload).then(r => r.data),
+  remove: (id: number) => api.delete(`/admin/bracket-types/${id}`).then(r => r.data),
   setActive: (id: number, isActive: boolean) => api.put(`/admin/bracket-types/${id}`, { is_active: isActive }).then(r => r.data),
   getSportFormats: (sportId: number | string, bracketTypeId?: number | string) =>
     api.get(`/tournaments/sports/${sportId}/formats`, { params: bracketTypeId ? { bracket_type_id: bracketTypeId } : undefined }).then(r => r.data),
