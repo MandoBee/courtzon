@@ -610,10 +610,11 @@ export async function assignRefereeHandler(request: FastifyRequest, reply: Fasti
 
 // ── Group 5B-SR — Bracket type configuration ──
 
-/** Active bracket types (create form) — platform config reference data. */
+/** Active bracket types (create form) — platform config reference data, merged with
+ * the authoritative capability/creation contract (Step 5B) so the wizard never
+ * re-implements engine capability logic. */
 export async function listActiveBracketTypesHandler(_request: FastifyRequest, reply: FastifyReply) {
-  const types = await tournamentService.listBracketTypes(false);
-  return reply.send({ data: types });
+  return reply.send(await tournamentService.listBracketTypeOptions());
 }
 
 /**

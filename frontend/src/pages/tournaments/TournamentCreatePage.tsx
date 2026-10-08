@@ -6,7 +6,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../../i18n';
 import api from '../../services/api';
-import { orgTournamentApi } from '../../services/tournament';
+import { orgTournamentApi, type BracketTypeRow, type BracketTypeRegistryEntry } from '../../services/tournament';
 import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { useToast } from '../../components/ui/Toast';
@@ -59,14 +59,6 @@ export type TournamentCreateContextMode = 'admin' | 'org';
 interface Props {
   mode?: TournamentCreateContextMode;
   orgId?: string;
-}
-
-interface BracketTypeOption {
-  id: number;
-  name: string;
-  slug: string;
-  is_active: boolean | number;
-  config_schema: string | null;
 }
 
 interface OrganisationOption {
@@ -215,12 +207,16 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     return Array.isArray(raw) ? (raw as OrganisationOption[]) : [];
   }, [organisationList]);
 
-  const { data: bracketTypes } = useQuery({
+  const { data: bracketTypes, isLoading: bracketLoading, isError: bracketError } = useQuery({
     queryKey: ['bracket-types', effectiveOrgId],
     queryFn: () => orgTournamentApi.getBracketTypes(effectiveOrgId),
     enabled: hasOwningOrg,
   });
-  const bracketOptions: BracketTypeOption[] = bracketTypes?.data ?? [];
+  // Step 5B — the wizard consumes the AUTHORITATIVE bracket-type option contract
+  // (engine_capability / creation_available + GSK registry entry) from the
+  // backend; it never re-implements engine capability locally.
+  const bracketOptions: BracketTypeRow[] = bracketTypes?.data ?? [];
+  const bracketRegistry: BracketTypeRegistryEntry[] = bracketTypes?.registry ?? [];
 
   const { data: commissionConfig } = useQuery({
     queryKey: ['org-commission', effectiveOrgId],
@@ -470,38 +466,49 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     return ids;
   }, [values, isOrg, effectiveOrgId, eligibility]);
 
-  // ── Format cards (the five target formats; only engine-executable are submit-ready) ──
-  const formatCards: TournamentFormatCard[] = useMemo(() => {
-    const bySlug = (slug: string) => bracketOptions.find((b) => b.slug === slug);
-    const executable = (slug: string): TournamentFormatCard => {
-      const opt = bySlug(slug);
-      return {
-        slug,
-        key: slug,
-        name: slug === 'single-elimination' ? t('tournaments.formats.single', 'Single Elimination') : t('tournaments.formats.round_robin', 'Round Robin'),
-        executable: true,
-        dbId: opt?.id ?? null,
-        unavailable: !opt,
-      };
-    };
-    const planned = (slug: string | null, key: string, name: string): TournamentFormatCard => ({
-      slug,
-      key,
-      name,
-      executable: false,
-      dbId: null,
-    });
-    return [
-      executable('single-elimination'),
-      executable('round-robin'),
-      planned('double-elimination', 'double-elimination', t('tournaments.formats.double', 'Double Elimination')),
-      planned('swiss', 'swiss', t('tournaments.formats.swiss', 'Swiss System')),
-      (() => {
-        const se = bySlug('single-elimination'); // GSK knockout stage is single elimination (backend substrate)
-        return { slug: null, key: 'group-stage-knockout', name: t('tournaments.formats.gsk', 'Group Stage + Knockout'), executable: !!se, dbId: se?.id ?? null, unavailable: !se };
-      })(),
-    ];
-  }, [bracketOptions, t]);
+  // ── Format cards (Step 5B) — built ONLY from the authoritative backend option
+// contract. Executable cards come from rows where `engine_capability==='ready'`
+// AND `creation_available===true`; planned cards reflect backend `planned`
+// rows; GSK comes from the registry composite entry. No local capability logic.
+const formatCards: TournamentFormatCard[] = useMemo(() => {
+  const bySlug = (slug: string) => bracketOptions.find((b) => b.slug === slug);
+  const nameFor = (slug: string) => slug === 'single-elimination'
+    ? t('tournaments.formats.single', 'Single Elimination')
+    : t('tournaments.formats.round_robin', 'Round Robin');
+  const plannedName = (slug: string) => slug === 'double-elimination'
+    ? t('tournaments.formats.double', 'Double Elimination')
+    : t('tournaments.formats.swiss', 'Swiss System');
+
+  const cards: TournamentFormatCard[] = [];
+
+  for (const r of bracketOptions) {
+    if (r.engine_capability === 'ready' && r.creation_available) {
+      if (r.slug === 'single-elimination' || r.slug === 'round-robin') {
+        cards.push({ slug: r.slug, key: r.slug, name: nameFor(r.slug), executable: true, dbId: r.id });
+      }
+    }
+  }
+  for (const r of bracketOptions) {
+    if (r.engine_capability === 'planned') {
+      cards.push({ slug: r.slug, key: r.slug, name: plannedName(r.slug), executable: false, dbId: null });
+    }
+  }
+
+  // GSK composite — from the authoritative registry entry (no fake DB row).
+  const gsk = bracketRegistry.find((e) => e.format === 'group_stage_knockout');
+  const se = bySlug('single-elimination');
+  const gskAvailable = Boolean(gsk?.creation_available === true && se);
+  cards.push({
+    slug: null,
+    key: 'group-stage-knockout',
+    name: t('tournaments.formats.gsk', 'Group Stage + Knockout'),
+    executable: gskAvailable,
+    dbId: se?.id ?? null,
+    unavailable: !gskAvailable,
+  });
+
+  return cards;
+}, [bracketOptions, bracketRegistry, t]);
 
   const selectedBracketName = bracketOptions.find((b) => String(b.id) === String(getValues('bracketTypeId')))?.name ?? '';
   const selectedSportName = (Array.isArray(sports) ? sports : []).find((s: any) => String(s.id) === selectedSport)?.name ?? '';
@@ -614,6 +621,16 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
                   <p className="text-xs text-[var(--color-text-muted)]">
                     {t('tournaments.wizard.format.hint', 'The tournament structure. Only formats the engine can execute can be created today; planned formats are shown for the roadmap.')}
                   </p>
+                  {bracketLoading && (
+                    <p className="text-xs text-[var(--color-text-muted)]" data-testid="bracket-formats-loading">
+                      {t('tournaments.create.bracket_loading', 'Loading available formats…')}
+                    </p>
+                  )}
+                  {bracketError && (
+                    <p role="alert" className="text-xs text-[var(--color-error)]" data-testid="bracket-formats-error">
+                      {t('tournaments.create.bracket_error', 'Unable to load available formats. No format can be selected right now.')}
+                    </p>
+                  )}
                 </div>
                 <TournamentFormatSelector
                   cards={formatCards}

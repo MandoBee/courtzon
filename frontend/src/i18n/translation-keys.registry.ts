@@ -1969,6 +1969,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.wizard.step.review', defaultValue: 'Review & Create', moduleSlug: 'tournaments', elementType: 'tab', elementLabel: 'Wizard step: review' },
   { key: 'tournaments.wizard.continue', defaultValue: 'Continue', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Wizard continue button' },
   { key: 'tournaments.wizard.format.hint', defaultValue: 'The tournament structure. Only formats the engine can execute can be created today; planned formats are shown for the roadmap.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Format step hint' },
+  { key: 'tournaments.create.bracket_loading', defaultValue: 'Loading available formats…', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket formats loading' },
+  { key: 'tournaments.create.bracket_error', defaultValue: 'Unable to load available formats. No format can be selected right now.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Bracket formats load error' },
   { key: 'tournaments.wizard.format.org_required', defaultValue: 'Select the owning organisation to load available formats.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Format step org required hint' },
   { key: 'tournaments.wizard.format.outline', defaultValue: 'Tournament outline', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Format journey preview heading' },
   { key: 'tournaments.wizard.format.available', defaultValue: 'Available', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Format card available badge' },

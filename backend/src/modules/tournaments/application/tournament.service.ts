@@ -1114,6 +1114,40 @@ export class TournamentService {
   }
 
   /**
+   * Step 5B — authoritative reference-option payload for the CREATE WIZARD.
+   * Surfaces the ALREADY-EXISTING capability/creation data (same helpers the
+   * admin management list uses) so the wizard never re-implements engine
+   * capability logic. `data` = active rows enriched with `engine_capability` +
+   * `creation_available`; `registry` = the GSK composite entry (no DB row).
+   * Additive — existing fields/shape preserved.
+   */
+  async listBracketTypeOptions(): Promise<{
+    data: Array<Record<string, unknown>>;
+    registry: Array<Record<string, unknown>>;
+  }> {
+    const types = await tournamentRepository.listBracketTypes(true);
+    const data = types.map((bt) => ({
+      ...bt,
+      is_active: Number(bt.is_active) === 1,
+      engine_capability: bracketSlugCapability(bt.slug),
+      creation_available: bracketTypeCreationAvailable(bt.slug, Number(bt.is_active)),
+    }));
+    const seActive = data.some((t) => t.slug === 'single-elimination' && t.is_active === true);
+    const registry: Array<Record<string, unknown>> = [{
+      format: 'group_stage_knockout',
+      name: 'Group Stage + Knockout',
+      type: 'composite',
+      source: 'engine_registry',
+      engine_capability: 'ready',
+      creation_available: seActive,
+      toggleable: false,
+      substrate: 'single-elimination',
+      description: 'Composite format — group stage (round-robin) + single-elimination knockout. Rides the single-elimination bracket substrate; configuration via gsk_config / tournament stage config.',
+    }];
+    return { data, registry };
+  }
+
+  /**
    * Group 5B-SR — toggle a bracket type active/inactive. Deactivation is the
    * preferred lifecycle: referenced types are never destructively deleted.
    *

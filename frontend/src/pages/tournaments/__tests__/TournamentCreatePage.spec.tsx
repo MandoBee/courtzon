@@ -15,10 +15,16 @@ const __state = vi.hoisted(() => ({
     { id: 22, name: 'Padel' },
     { id: 21, name: 'Tennis' },
   ],
+  // Step 5B — authoritative backend option contract (capability + creation + GSK registry).
   bracketTypesPayload: {
     data: [
-      { id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null },
-      { id: 3, name: 'Round Robin', slug: 'round-robin', is_active: 1, config_schema: null },
+      { id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: true },
+      { id: 2, name: 'Double Elimination', slug: 'double-elimination', is_active: 1, config_schema: null, engine_capability: 'planned', creation_available: false },
+      { id: 3, name: 'Round Robin', slug: 'round-robin', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: true },
+      { id: 4, name: 'Swiss', slug: 'swiss', is_active: 1, config_schema: null, engine_capability: 'planned', creation_available: false },
+    ],
+    registry: [
+      { format: 'group_stage_knockout', name: 'Group Stage + Knockout', type: 'composite', source: 'engine_registry', engine_capability: 'ready', creation_available: true, toggleable: false, substrate: 'single-elimination', description: 'Group stage + knockout composite' },
     ],
   },
   commissionPayload: { commissionRate: 0, planName: 'Standard Club', currencyCode: 'EGP' },
@@ -306,6 +312,155 @@ describe('Creation Wizard — Format selector (engine capability states)', () =>
     expect(payload.gsk_config).toBeTruthy();
     expect(payload.gsk_config.groupStage.groupCount).toBe(8);
     expect(payload.gsk_config.knockout.startingRound).toBe('round_of_16');
+  });
+});
+
+describe('Creation Wizard — authoritative bracket capability (Step 5B alignment)', () => {
+  const goToFormat = async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    await screen.findByTestId('format-card-single-elimination');
+  };
+
+  it('loads authoritative format data — Single Elimination and Round Robin availability comes from backend capability', async () => {
+    await goToFormat();
+    expect(__state.orgApi.getBracketTypes).toHaveBeenCalledWith('6');
+    const se = screen.getByTestId('format-card-single-elimination') as HTMLButtonElement;
+    const rr = screen.getByTestId('format-card-round-robin') as HTMLButtonElement;
+    // engine_capability==='ready' + creation_available===true on the backend row → executable.
+    expect(se.disabled).toBe(false);
+    expect(rr.disabled).toBe(false);
+    expect(se.textContent).toContain('tournaments.wizard.format.available');
+  });
+
+  it('Single Elimination is not executable when backend capability says not creation-available', async () => {
+    __state.orgApi.getBracketTypes.mockResolvedValueOnce({
+      data: [
+        { id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: false },
+        { id: 3, name: 'Round Robin', slug: 'round-robin', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: true },
+      ],
+      registry: [
+        { format: 'group_stage_knockout', name: 'Group Stage + Knockout', type: 'composite', source: 'engine_registry', engine_capability: 'ready', creation_available: false, toggleable: false,
+          substrate: 'single-elimination', description: 'Needs SE substrate' },
+      ],
+    });
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    // No SE card is offered as executable; the format the backend marks unavailable is not selectable.
+    expect(await screen.findByTestId('format-card-round-robin')).toBeTruthy();
+    expect(screen.queryByTestId('format-card-single-elimination')).toBeNull();
+    // GSK is also unavailable (no single-elimination substrate) → not executable.
+    const gsk = screen.getByTestId('format-card-group-stage-knockout');
+    expect(gsk.getAttribute('aria-pressed')).toBe('false');
+    // Nothing executable selected → Continue refuses to advance.
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getByText('tournaments.create.validation.bracket_type')).toBeTruthy());
+  });
+
+  it('Round Robin availability comes from backend capability', async () => {
+    __state.orgApi.getBracketTypes.mockResolvedValueOnce({
+      data: [
+        { id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: true },
+        { id: 3, name: 'Round Robin', slug: 'round-robin', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: false },
+      ],
+      registry: [
+        { format: 'group_stage_knockout', name: 'Group Stage + Knockout', type: 'composite', source: 'engine_registry', engine_capability: 'ready', creation_available: true, toggleable: false, substrate: 'single-elimination' },
+      ],
+    });
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    expect(await screen.findByTestId('format-card-single-elimination')).toBeTruthy();
+    expect(screen.queryByTestId('format-card-round-robin')).toBeNull();
+  });
+
+  it('GSK availability comes from the authoritative registry entry', async () => {
+    await goToFormat();
+    const gsk = screen.getByTestId('format-card-group-stage-knockout') as HTMLButtonElement;
+    expect(gsk.disabled).toBe(false); // registry entry: engine_capability ready + creation_available true
+    fireEvent.click(gsk);
+    expect(await screen.findByTestId('gsk-config')).toBeTruthy();
+  });
+
+  it('Double Elimination is not executable when backend says planned', async () => {
+    await goToFormat();
+    const de = screen.getByTestId('format-card-double-elimination') as HTMLButtonElement;
+    expect(de.getAttribute('aria-pressed')).toBe('false');
+    expect(de.textContent).toContain('tournaments.wizard.format.engine_prep');
+    fireEvent.click(de);
+    expect(screen.getByTestId('format-planned-panel')).toBeTruthy();
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getByText('tournaments.create.validation.bracket_type')).toBeTruthy());
+  });
+
+  it('Swiss is not executable when backend says planned', async () => {
+    await goToFormat();
+    const swiss = screen.getByTestId('format-card-swiss') as HTMLButtonElement;
+    expect(swiss.getAttribute('aria-pressed')).toBe('false');
+    expect(swiss.textContent).toContain('tournaments.wizard.format.engine_prep');
+    fireEvent.click(swiss);
+    expect(screen.getByTestId('format-planned-panel')).toBeTruthy();
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getByText('tournaments.create.validation.bracket_type')).toBeTruthy());
+  });
+
+  it('an unknown registry entry does not become executable', async () => {
+    __state.orgApi.getBracketTypes.mockResolvedValueOnce({
+      data: [
+        { id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: true },
+        { id: 3, name: 'Round Robin', slug: 'round-robin', is_active: 1, config_schema: null, engine_capability: 'ready', creation_available: true },
+      ],
+      registry: [
+        { format: 'mystery_composite', name: 'Mystery', type: 'composite', source: 'engine_registry', engine_capability: 'unsupported', creation_available: false, toggleable: false },
+      ],
+    });
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    await screen.findByTestId('format-card-single-elimination');
+    // No authoritative group_stage_knockout registry entry → the card is present only as unavailable.
+    const gsk = screen.getByTestId('format-card-group-stage-knockout');
+    expect(gsk.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(gsk);
+    expect(screen.getByTestId('format-planned-panel')).toBeTruthy();
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getByText('tournaments.create.validation.bracket_type')).toBeTruthy());
+  });
+
+  it('retains no hard-coded engine capability logic in the page', async () => {
+    const { readFileSync } = require('node:fs');
+    const src = readFileSync('src/pages/tournaments/TournamentCreatePage.tsx', 'utf8');
+    expect(src).toContain('orgTournamentApi.getBracketTypes');
+    expect(src).toContain('engine_capability');
+    expect(src).toContain('creation_available');
+    expect(src).toContain('bracketRegistry');
+    // No fixed format list / local capability predicates remain.
+    expect(src).not.toMatch(/bracketOptions\s*=\s*\[/);
+    expect(src).not.toMatch(/executable\('single-elimination'\)/);
+    expect(src).not.toContain("planned('double-elimination'");
+    expect(src).not.toContain('isEngineSupported');
+  });
+
+  it('fail-safes when the capability API errors — nothing becomes selectable', async () => {
+    __state.orgApi.getBracketTypes.mockRejectedValueOnce(new Error('bracket types down'));
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    expect(await screen.findByTestId('bracket-formats-error')).toBeTruthy();
+    expect(screen.queryByTestId('format-card-single-elimination')).toBeNull();
+    fireEvent.click(continueBtn());
+    await waitFor(() => expect(screen.getByText('tournaments.create.validation.bracket_type')).toBeTruthy());
+  });
+
+  it('shows a loading state while the capability API is in flight', async () => {
+    __state.orgApi.getBracketTypes.mockImplementationOnce(() => new Promise(() => {}));
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    expect(await screen.findByTestId('bracket-formats-loading')).toBeTruthy();
+    expect(screen.queryByTestId('format-card-single-elimination')).toBeNull();
   });
 });
 

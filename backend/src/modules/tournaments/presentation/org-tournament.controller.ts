@@ -62,8 +62,8 @@ export async function rejectOrgRefundRequestHandler(request: FastifyRequest, rep
 // ── Group 5B-SR — org-scoped configuration reads (delegate to the SAME shared service) ──
 
 export async function listActiveBracketTypesHandler(_request: FastifyRequest, reply: FastifyReply) {
-  const types = await tournamentService.listBracketTypes(false);
-  return reply.send({ data: types });
+  // Step 5B — authoritative capability/creation contract for the wizard.
+  return reply.send(await tournamentService.listBracketTypeOptions());
 }
 
 export async function getOrgCommissionConfigHandler(request: FastifyRequest, reply: FastifyReply) {

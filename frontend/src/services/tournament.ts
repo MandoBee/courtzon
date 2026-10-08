@@ -163,7 +163,8 @@ export const orgTournamentApi = {
   cancelRegistration: (orgId: number | string, regId: number) => api.post(`/org/${orgId}/tournaments/registrations/${regId}/cancel`).then(r => r.data),
   confirmRegistration: (orgId: number | string, regId: number) => api.post(`/org/${orgId}/tournaments/registrations/${regId}/confirm`).then(r => r.data),
   // Group 5B-SR — org-scoped configuration reads (create form)
-  getBracketTypes: (orgId: number | string) => api.get(`/org/${orgId}/tournaments/bracket-types`).then(r => r.data),
+  getBracketTypes: (orgId: number | string): Promise<BracketTypeAdminListResponse> =>
+    api.get(`/org/${orgId}/tournaments/bracket-types`).then(r => r.data),
   getCommissionConfig: (orgId: number | string) => api.get(`/org/${orgId}/tournaments/commission-config`).then(r => r.data),
   getSportFormats: (orgId: number | string, sportId: number | string, bracketTypeId?: number | string) =>
     api.get(`/org/${orgId}/tournaments/sports/${sportId}/formats`, { params: bracketTypeId ? { bracket_type_id: bracketTypeId } : undefined }).then(r => r.data),

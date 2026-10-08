@@ -87,6 +87,35 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     expect(types.map((t) => t.slug)).toEqual(['single-elimination', 'double-elimination', 'round-robin', 'swiss']);
   });
 
+  it('1b. Step 5B — listBracketTypeOptions exposes the authoritative capability contract for the wizard', async () => {
+    repo.listBracketTypes.mockResolvedValue([SE, DE, RR, SW]);
+    const { data, registry } = await svc.listBracketTypeOptions();
+    // Every active row is enriched with the SAME authoritative capability helpers
+    // the management list uses — the wizard consumes these, not local logic.
+    expect(data).toHaveLength(4);
+    const se = data.find((t) => t.slug === 'single-elimination');
+    const de = data.find((t) => t.slug === 'double-elimination');
+    expect(se).toMatchObject({ engine_capability: 'ready', creation_available: true, is_active: true });
+    expect(de).toMatchObject({ engine_capability: 'planned', creation_available: false });
+    // GSK composite registry entry rides the single-elimination substrate.
+    expect(registry[0]).toMatchObject({
+      format: 'group_stage_knockout',
+      type: 'composite',
+      source: 'engine_registry',
+      engine_capability: 'ready',
+      creation_available: true,
+      toggleable: false,
+    });
+  });
+
+  it('1c. Step 5B — GSK registry availability tracks the SE substrate (create availability)', async () => {
+    repo.listBracketTypes.mockResolvedValue([{ ...SE, is_active: 0 }, RR]);
+    const { data, registry } = await svc.listBracketTypeOptions();
+    const se = data.find((t) => t.slug === 'single-elimination');
+    expect(se).toMatchObject({ engine_capability: 'ready', creation_available: false });
+    expect(registry[0].creation_available).toBe(false);
+  });
+
   it('2. frontend does NOT hardcode bracket types (create page reads the org-scoped API)', async () => {
     // The create page must load bracket types from the backend (DB-driven).
     // G11 Phase 3 — bracket types come through the owning organisation's

@@ -39,6 +39,7 @@ const service = vi.hoisted(() => ({
   startTournamentMatch: vi.fn(),
   completeTournamentMatch: vi.fn(),
   listBracketTypes: vi.fn(),
+  listBracketTypeOptions: vi.fn(),
   getOrgCommissionConfig: vi.fn(),
   listSportFormatsCascade: vi.fn(),
 }));
@@ -251,10 +252,15 @@ describe('org-tournament.controller (tenant isolation)', () => {
   });
 
   it('Group 5B-SR: bracket types + sport formats cascade are tenant-scoped org reads', async () => {
-    service.listBracketTypes.mockResolvedValue([{ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null }]);
+    service.listBracketTypeOptions.mockResolvedValue({
+      data: [{ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: true, engine_capability: 'ready', creation_available: true }],
+      registry: [{ format: 'group_stage_knockout', name: 'Group Stage + Knockout', type: 'composite', source: 'engine_registry', engine_capability: 'ready', creation_available: true, toggleable: false }],
+    });
     const btReply = res();
     await ctrl.listActiveBracketTypesHandler(req({ params: { orgId: String(ORG_A) } }), btReply);
     expect(btReply.sent.data).toHaveLength(1);
+    expect(btReply.sent.registry[0].format).toBe('group_stage_knockout');
+    expect(btReply.sent.data[0]).toMatchObject({ engine_capability: 'ready', creation_available: true });
 
     service.listSportFormatsCascade.mockResolvedValue([]);
     const fmtReply = res();
