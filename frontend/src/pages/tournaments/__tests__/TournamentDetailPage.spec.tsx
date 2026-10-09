@@ -461,7 +461,7 @@ describe('TournamentDetailPage â€” overview prediction line (no internal ids)', 
     expect(screen.getByText('completed')).toBeTruthy();
   });
 });
-describe('TournamentDetailPage — player result permission gate (Step 5A)', () => {
+describe('TournamentDetailPage ï¿½ player result permission gate (Step 5A)', () => {
   const LIVE_MATCH = {
     id: 11, round: 1, match_number: 1, bracket_position: 0,
     player1_id: 42, player1_name: 'Ali', player2_id: 43, player2_name: 'Sara',
@@ -501,5 +501,88 @@ describe('TournamentDetailPage — player result permission gate (Step 5A)', () =>
     const { readFileSync } = require('node:fs');
     const src = readFileSync('src/pages/tournaments/TournamentDetailPage.tsx', 'utf8');
     expect(src).not.toContain("can('tournaments.enter_scores')");
+  });
+});
+
+describe('TournamentDetailPage â€” F-02 query failure handling (UX-7)', () => {
+  /** Per-URL api.get override; unhandled URLs resolve to an empty list (never throw, never undefined). */
+  function overrideDetailApi(handlers: Record<string, () => Promise<unknown>>) {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      const hit = handlers[url];
+      return hit ? hit() : Promise.resolve({ data: { data: [] } });
+    });
+  }
+
+  it('shows an explicit load-error + Retry (never "Tournament not found") when the primary query fails', async () => {
+    overrideDetailApi({ '/tournaments/1': () => Promise.reject(new Error('Network Error')) });
+    renderPage();
+
+    expect(await screen.findByText('Unable to load tournament.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.queryByText('Tournament not found.')).toBeNull();
+  });
+
+  it('keeps "Tournament not found." for a genuine HTTP 404 response (no Retry)', async () => {
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.reject({ response: { status: 404, data: { message: 'Tournament not found' } } }),
+    });
+    renderPage();
+
+    expect(await screen.findByText('Tournament not found.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText('Unable to load tournament.')).toBeNull();
+  });
+
+  it('recovers via Retry after a primary-query failure', async () => {
+    let calls = 0;
+    overrideDetailApi({
+      '/tournaments/1': () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error('Network Error')) : Promise.resolve({ data: __state.tournament });
+      },
+    });
+    renderPage();
+
+    expect(await screen.findByText('Unable to load tournament.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Padel Open')).toBeTruthy();
+    expect(screen.queryByText('Unable to load tournament.')).toBeNull();
+  });
+
+  it('does not treat a participant-query failure as an empty list or as "not registered"', async () => {
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/participants': () => Promise.reject(new Error('Network Error')),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    // Failure is surfaced â€” never conflated with an empty roster.
+    expect(screen.getByText('Unable to load participants.')).toBeTruthy();
+    expect(screen.queryByText('No participants yet.')).toBeNull();
+    // Fabricated counts are avoided (header Players cell + ELO card).
+    expect(screen.queryByText('0/16')).toBeNull();
+    // With membership unknown, no Register/Your-registration/Refund affordances.
+    expect(screen.queryByText('Register & Pay')).toBeNull();
+    expect(screen.queryByText(/Your registration/)).toBeNull();
+    expect(screen.queryByText('Request Refund')).toBeNull();
+
+    // The Players tab surfaces the same failure.
+    clickTab('Players');
+    expect(await screen.findByText('Unable to load participants.')).toBeTruthy();
+    expect(screen.queryByText('No participants yet.')).toBeNull();
+  });
+
+  it('keeps the genuine empty state (no participants, no query error)', async () => {
+    __state.participants = [];
+    mockDetailApi();
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    expect(screen.getByText('No participants yet.')).toBeTruthy();
+    expect(screen.queryByText('Unable to load participants.')).toBeNull();
+    // A legitimately empty roster shows the real count and implies non-registration.
+    expect(screen.getByText('0/16')).toBeTruthy();
+    expect(screen.getByText('Register & Pay')).toBeTruthy();
   });
 });

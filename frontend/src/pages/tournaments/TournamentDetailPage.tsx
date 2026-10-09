@@ -73,7 +73,7 @@ export default function TournamentDetailPage() {
   // tournament hosts multiple ones; single/default tournaments need no click.
   const [selectedCompetitionId, setSelectedCompetitionId] = useState<number | undefined>(undefined);
 
-  const { data: tournament, isLoading } = useQuery({
+  const { data: tournament, isLoading, isError: tournamentError, error: tournamentQueryError, refetch: refetchTournament } = useQuery({
     queryKey: ['tournament', id],
     queryFn: () => api.get(`/tournaments/${id}`).then(r => r.data.data || r.data),
   });
@@ -93,7 +93,7 @@ export default function TournamentDetailPage() {
     queryFn: () => api.get(`/tournaments/${id}/standings`).then(r => r.data.data),
   });
 
-  const { data: participants } = useQuery({
+  const { data: participants, isLoading: loadingParticipants, isError: participantsError, refetch: refetchParticipants } = useQuery({
     queryKey: ['tournament', id, 'participants'],
     queryFn: () => api.get(`/tournaments/${id}/participants`).then(r => r.data.data),
   });
@@ -158,6 +158,24 @@ export default function TournamentDetailPage() {
   });
 
   if (isLoading) return <div className="space-y-4"><Skeleton width={300} height={28} /><SkeletonRow count={6} /></div>;
+  // F-02 — a fetch failure must not masquerade as "Tournament not found.".
+  // The backend responds HTTP 404 (NotFoundError → TOURNAMENT_NOT_FOUND) for a
+  // missing tournament, while transport/server failures have no response body,
+  // so a genuine not-found is preserved and only other failures show Retry.
+  if (tournamentError) {
+    if ((tournamentQueryError as unknown as { response?: { status?: number } })?.response?.status === 404) {
+      return <p className="text-[var(--color-text-muted)] text-center py-8">Tournament not found.</p>;
+    }
+    return (
+      <div className="text-center py-14">
+        <p className="text-sm text-[var(--color-error)]">Unable to load tournament.</p>
+        <button onClick={() => refetchTournament()}
+          className="mt-4 px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+          {t('common.retry')}
+        </button>
+      </div>
+    );
+  }
   if (!tournament) return <p className="text-[var(--color-text-muted)] text-center py-8">Tournament not found.</p>;
 
   const matchList = Array.isArray(matches) ? matches : [];
@@ -225,7 +243,7 @@ export default function TournamentDetailPage() {
               <a href={venue.mapsUrl} target="_blank" rel="noreferrer" className="block text-xs text-[var(--color-primary)] underline">View on Map</a>
             )}
           </div>
-          <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{participantList.length}/{tournament.max_participants}</span></div>
+          <div><span className="text-[var(--color-text-muted)]">Players:</span> <span className="font-medium">{participantsError ? '—' : `${participantList.length}/${tournament.max_participants}`}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Fee:</span> <span className="font-medium">{formatPrice(Number(tournament.entry_fee ?? 0), tournament.currency_code)}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Payment:</span> <span className="font-medium">{paymentMethodsLabel(registerPaymentMethods, Number(tournament.entry_fee ?? 0))}</span></div>
           <div><span className="text-[var(--color-text-muted)]">Registration deadline:</span> <span className="font-medium">{tournament.registration_deadline ? formatISODate(tournament.registration_deadline) : '—'}</span></div>
@@ -252,7 +270,7 @@ export default function TournamentDetailPage() {
             {myRegistration.seed_rank != null ? ` • Seed ${myRegistration.seed_rank}` : ''}
           </p>
         )}
-        {!myRegistration && ['published', 'registration_open'].includes(tournament.status) && (
+        {!myRegistration && !participantsError && ['published', 'registration_open'].includes(tournament.status) && (
           <Can permission="player.tournaments.register">
             <button onClick={() => setShowRegisterModal(true)} className="btn-primary text-sm">
               {registerPaymentMethods.length === 0 ? 'Register' : 'Register & Pay'}
@@ -298,7 +316,7 @@ export default function TournamentDetailPage() {
           <div><p className="text-xs text-[var(--color-text-muted)]">Top ELO</p><p className="text-lg font-bold text-[var(--color-text)]">—</p><p className="text-[10px] text-[var(--color-text-muted)]">After tournament</p></div>
           <div><p className="text-xs text-[var(--color-text-muted)]">Prize Pool</p><p className="text-lg font-bold text-yellow-600">{(Array.isArray(tournament.prizes) && tournament.prizes.length ? `${tournament.prizes.length} prize${tournament.prizes.length > 1 ? 's' : ''}` : tournament.prize_description) || '—'}</p></div>
           <div><p className="text-xs text-[var(--color-text-muted)]">Matches Played</p><p className="text-lg font-bold">{matchList.filter((m: any) => m.status === 'completed').length}</p></div>
-          <div><p className="text-xs text-[var(--color-text-muted)]">Registered Players</p><p className="text-lg font-bold">{participantList.length}</p></div>
+          <div><p className="text-xs text-[var(--color-text-muted)]">Registered Players</p><p className="text-lg font-bold">{participantsError ? '—' : participantList.length}</p></div>
         </div>
       </div>
 
@@ -321,7 +339,17 @@ export default function TournamentDetailPage() {
           </div>
           <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
             <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">Players</h2>
-            {participantList.length === 0 ? <p className="text-xs text-[var(--color-text-muted)]">No participants yet.</p> : (
+            {loadingParticipants ? (
+              <SkeletonRow count={2} />
+            ) : participantsError ? (
+              <div>
+                <p className="text-xs text-[var(--color-error)]">Unable to load participants.</p>
+                <button onClick={() => refetchParticipants()}
+                  className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : participantList.length === 0 ? <p className="text-xs text-[var(--color-text-muted)]">No participants yet.</p> : (
               <div className="flex flex-wrap gap-2">
                 {participantList.map((p: any) => (
                   <span key={p.id} className="px-2 py-1 text-xs bg-[var(--color-bg)] rounded-full capitalize">{p.player_name || `Player #${p.player_id}`} <span className="text-[var(--color-text-muted)]">(seed {p.seed_rank ?? '—'})</span></span>
@@ -479,7 +507,17 @@ export default function TournamentDetailPage() {
       {tab === 'players' && (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden">
           <h2 className="text-sm font-semibold text-[var(--color-text)] p-5 pb-0">Participants</h2>
-          {participantList.length === 0 ? (
+          {loadingParticipants ? (
+            <SkeletonRow count={3} />
+          ) : participantsError ? (
+            <div className="p-5">
+              <p className="text-xs text-[var(--color-error)]">Unable to load participants.</p>
+              <button onClick={() => refetchParticipants()}
+                className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : participantList.length === 0 ? (
             <p className="p-5 text-xs text-[var(--color-text-muted)]">No participants yet.</p>
           ) : (
             <table className="w-full text-sm">
