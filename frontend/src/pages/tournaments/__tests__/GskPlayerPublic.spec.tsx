@@ -90,9 +90,19 @@ vi.mock('../../../store/auth.store', () => ({ useAuthStore: (sel: any) => sel({ 
 
 import api from '../../../services/api';
 
-function mockApi(format: any = __state.gsk) {
+/**
+ * Stub the player/public API reads. `rejectFirstUrls` (optional) makes the
+ * matched URL reject on its FIRST call only — subsequent calls fall through to
+ * the real fixture, which is exactly the shape a Retry recovery takes.
+ */
+function mockApi(format: any = __state.gsk, rejectFirstUrls: string[] = []) {
   const tournament = format.format === 'group_stage_knockout' ? gskTournament : koTournament;
   (api.get as any).mockImplementation((url: string) => {
+    if (rejectFirstUrls.includes(url)) {
+      const idx = rejectFirstUrls.indexOf(url);
+      rejectFirstUrls.splice(idx, 1);
+      return Promise.reject(new Error('Network Error'));
+    }
     if (url === '/tournaments/1') return Promise.resolve({ data: { data: tournament } });
     if (url === '/tournaments/1/competitions') return Promise.resolve({ data: { data: [] } });
     if (url === '/tournaments/1/matches') return Promise.resolve({ data: { data: matches } });
@@ -371,5 +381,60 @@ describe('Step 4C/4E — regression: non-GSK behaviour preserved', () => {
     await screen.findByText('GSK Cup');
     expect(screen.getByTestId('public-bracket-heading').textContent).toBe('Bracket');
     publicShape.format = 'group_stage_knockout';
+  });
+});
+
+describe('Step 4C — TUX-04 player GSK dependent sub-tab error handling', () => {
+  const RETRY = 'common.retry';
+
+  it('groups: rejected standings query shows error + Retry, never the unavailable per-group state', async () => {
+    mockApi(__state.gsk, ['/tournaments/1/standings']);
+    renderPlayer();
+    await screen.findByText('GSK Cup');
+    clickTab('Groups');
+
+    expect(await screen.findByText('Unable to load standings.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+    expect(screen.queryByTestId('gsk-groups')).toBeNull();
+    expect(screen.queryByText('tournaments.hub.gsk.noStandings')).toBeNull();
+  });
+
+  it('groups: Retry recovers and renders the real per-group standings', async () => {
+    mockApi(__state.gsk, ['/tournaments/1/standings']);
+    renderPlayer();
+    await screen.findByText('GSK Cup');
+    clickTab('Groups');
+
+    expect(await screen.findByText('Unable to load standings.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+
+    expect(await screen.findByTestId('gsk-groups')).toBeTruthy();
+    expect(screen.queryByText('Unable to load standings.')).toBeNull();
+    expect(screen.getByText('Ali')).toBeTruthy();
+  });
+
+  it('qualification: rejected matches query shows error + Retry, never the incomplete state', async () => {
+    mockApi(__state.gsk, ['/tournaments/1/matches']);
+    renderPlayer();
+    await screen.findByText('GSK Cup');
+    clickTab('Qualification');
+
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+    expect(screen.queryByTestId('gsk-qual-incomplete')).toBeNull();
+  });
+
+  it('qualification: Retry recovers and restores the qualification view', async () => {
+    mockApi(__state.gsk, ['/tournaments/1/matches']);
+    renderPlayer();
+    await screen.findByText('GSK Cup');
+    clickTab('Qualification');
+
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+
+    expect(await screen.findByTestId('gsk-qualification')).toBeTruthy();
+    expect(screen.queryByText('Unable to load matches.')).toBeNull();
+    expect(screen.queryByTestId('gsk-qual-incomplete')).toBeNull();
   });
 });

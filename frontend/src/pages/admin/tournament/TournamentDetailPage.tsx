@@ -650,6 +650,14 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                     {t('common.retry', 'Retry')}
                   </button>
                 </div>
+              ) : matchesError ? (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <p className="text-sm text-[var(--color-error)]">Unable to load matches.</p>
+                  <button onClick={() => refetchMatches()}
+                    className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                    {t('common.retry', 'Retry')}
+                  </button>
+                </div>
               ) : (
                 <GskQualificationView
                   mode={mode}
@@ -668,6 +676,14 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                 <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
                   <p className="text-sm text-[var(--color-error)]">Unable to load stages.</p>
                   <button onClick={() => refetchStages()}
+                    className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                    {t('common.retry', 'Retry')}
+                  </button>
+                </div>
+              ) : matchesError ? (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <p className="text-sm text-[var(--color-error)]">Unable to load matches.</p>
+                  <button onClick={() => refetchMatches()}
                     className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
                     {t('common.retry', 'Retry')}
                   </button>

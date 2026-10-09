@@ -480,6 +480,14 @@ export default function TournamentDetailPage() {
                 {t('common.retry')}
               </button>
             </div>
+          ) : standingsError ? (
+            <div>
+              <p className="text-sm text-[var(--color-error)]">Unable to load standings.</p>
+              <button onClick={() => refetchStandings()}
+                className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
           ) : (
             <GskGroupsView
               groups={Array.isArray(gskGroups) ? gskGroups : []}
@@ -500,6 +508,14 @@ export default function TournamentDetailPage() {
             <div>
               <p className="text-sm text-[var(--color-error)]">Unable to load stages.</p>
               <button onClick={() => refetchStages()}
+                className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : matchesError ? (
+            <div>
+              <p className="text-sm text-[var(--color-error)]">Unable to load matches.</p>
+              <button onClick={() => refetchMatches()}
                 className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
                 {t('common.retry')}
               </button>

@@ -556,3 +556,89 @@ describe('Tournament Hub — bracket/GSK-groups error dependencies (UX-13 follow
     expect(screen.queryByText('Unable to load standings.')).toBeNull();
   });
 });
+
+describe('Tournament Hub — TUX-04 GSK dependent sub-tab matches error', () => {
+  const RETRY = 'common.retry';
+
+  function renderAdmin() {
+    return renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+  }
+
+  function gskTournament() {
+    return { ...__state.enrichedTournament, format: 'group_stage_knockout' };
+  }
+
+  function gskStages() {
+    return [
+      { id: 5, progression_format: 'round_robin', config: {} },
+      { id: 6, progression_format: 'knockout', config: {} },
+    ];
+  }
+
+  it('qualification: rejected matches query shows error + Retry, never the incomplete state', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getStages.mockResolvedValue(gskStages());
+    __state.adminApi.getMatches.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.qualification' }));
+
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+    expect(screen.queryByTestId('gsk-qual-incomplete')).toBeNull();
+    expect(screen.queryByTestId('gsk-qualification')).toBeNull();
+  });
+
+  it('qualification: Retry recovers and restores the qualification view', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getStages.mockResolvedValue(gskStages());
+    __state.adminApi.getMatches
+      .mockRejectedValueOnce(new Error('Network Error'))
+      .mockResolvedValueOnce([{ id: 1, stage_id: 5, status: 'completed' }]);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.qualification' }));
+
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+    expect(await screen.findByTestId('gsk-qualification')).toBeTruthy();
+    expect(screen.queryByText('Unable to load matches.')).toBeNull();
+    expect(screen.queryByTestId('gsk-qual-incomplete')).toBeNull();
+  });
+
+  it('knockout: rejected matches query shows error + Retry, never the "not generated" state', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getStages.mockResolvedValue(gskStages());
+    __state.adminApi.getMatches.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.knockout' }));
+
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+    expect(screen.queryByTestId('gsk-knockout-pending')).toBeNull();
+    expect(screen.queryByTestId('gsk-knockout')).toBeNull();
+  });
+
+  it('knockout: Retry recovers and restores the knockout view', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getStages.mockResolvedValue(gskStages());
+    __state.adminApi.getMatches
+      .mockRejectedValueOnce(new Error('Network Error'))
+      .mockResolvedValueOnce([
+        { id: 200, stage_id: 6, round: 1, round_name: 'Semi-final', bracket_position: 0, match_number: 1, player1_name: 'Ali', player2_name: 'Nour', status: 'scheduled' },
+      ]);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.knockout' }));
+
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+    expect(await screen.findByTestId('gsk-knockout')).toBeTruthy();
+    expect(screen.queryByText('Unable to load matches.')).toBeNull();
+  });
+});
