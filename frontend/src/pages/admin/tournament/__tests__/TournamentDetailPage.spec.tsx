@@ -263,4 +263,18 @@ describe('Tournament Hub — detail contract (UAT crash regression)', () => {
     await screen.findByText('Padel Test Tournament');
     expect(screen.getByText(/Legacy trophy text/)).toBeTruthy();
   });
+
+  it('renders the draft status pill with a readable foreground (F-01 regression)', async () => {
+    // gray-100 AND gray-700 both resolve to var(--color-border), so the old
+    // `text-gray-700` draft pill was invisible on its `bg-gray-100` background.
+    // gray-600 resolves to var(--color-text) — readable in light and dark themes.
+    const { container } = renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+
+    await screen.findByText('Padel Test Tournament');
+    const pill = Array.from(container.querySelectorAll<HTMLElement>('span'))
+      .find((el) => el.textContent === 'tournaments.status.draft');
+    expect(pill).toBeTruthy();
+    expect(pill!.className).toContain('text-gray-600');
+    expect(pill!.className).not.toContain('text-gray-700');
+  });
 });
