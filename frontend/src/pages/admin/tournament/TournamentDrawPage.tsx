@@ -46,25 +46,25 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const { data: tournament } = useQuery({
+  const { data: tournament, isError: tournamentError, refetch: refetchTournament } = useQuery({
     queryKey: ['tournament', tournamentId],
     queryFn: () => wrap(detailApi.getTournament, tournamentId),
   });
   const format = tournament?.format ?? null;
 
-  const { data: participantsData, isLoading } = useQuery({
+  const { data: participantsData, isLoading, isError: participantsError, refetch: refetchParticipants } = useQuery({
     queryKey: ['tournament-participants', tournamentId],
     queryFn: () => wrap(api.getParticipants, tournamentId),
   });
   const participants = Array.isArray(participantsData) ? participantsData : [];
 
-  const { data: draw } = useQuery({
+  const { data: draw, isError: drawError, refetch: refetchDraw } = useQuery({
     queryKey: ['tournament-draw', tournamentId],
     queryFn: () => wrap(api.getCurrentDraw, tournamentId),
   });
   const drawEntries = Array.isArray(draw?.entries) ? draw.entries : [];
 
-  const { data: validation } = useQuery({
+  const { data: validation, isError: validationError, refetch: refetchValidation } = useQuery({
     queryKey: ['tournament-draw-validation', tournamentId],
     queryFn: () => wrap(api.validateDraw, tournamentId),
     enabled: (draw?.entries?.length ?? 0) > 0,
@@ -210,7 +210,7 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
         </div>
         <div className="flex gap-2 flex-wrap">
           <Can permission={managePerm}>
-            <button onClick={() => generate.mutate()} disabled={locked || generate.isPending}
+            <button onClick={() => generate.mutate()} disabled={locked || drawError || generate.isPending}
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white disabled:opacity-50">
               {draw ? 'Re-Draw' : 'Generate Draw'}
             </button>
@@ -240,19 +240,39 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
         </div>
       )}
 
+      {validationError && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 flex items-center justify-between gap-2">
+          <p className="text-xs text-[var(--color-error)]">Unable to load draw validation.</p>
+          <button onClick={() => refetchValidation()}
+            className="text-xs font-medium text-[var(--color-primary)] underline">
+            {t('common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
           {/* Participant sidebar (drag sources) */}
           <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 h-fit">
             <h2 className="text-sm font-semibold mb-3">{t('tournaments.participants', 'Participants')}</h2>
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-              {participants.map((p: any) => (
-                <DraggableParticipant key={p.id} participant={p} placed={placed.has(Number(p.id))} disabled={locked} />
-              ))}
-              {unplaced.length === 0 && participants.length === 0 && (
-                <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.no_participants', 'No participants yet.')}</p>
-              )}
-            </div>
+            {participantsError ? (
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--color-error)]">Unable to load participants.</p>
+                <button onClick={() => refetchParticipants()}
+                  className="text-xs font-medium text-[var(--color-primary)] underline">
+                  {t('common.retry', 'Retry')}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {participants.map((p: any) => (
+                  <DraggableParticipant key={p.id} participant={p} placed={placed.has(Number(p.id))} disabled={locked} />
+                ))}
+                {unplaced.length === 0 && participants.length === 0 && (
+                  <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.no_participants', 'No participants yet.')}</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Draw board */}
@@ -262,18 +282,38 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
               <p className="text-[11px] text-[var(--color-text-muted)]">{t('tournaments.draw_seed_hint', 'Drag a participant onto a position. Seeds and participant identity are never changed.')}</p>
             </div>
 
-            {format == null && (
+            {tournamentError && (
+              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5">
+                <p className="text-sm text-[var(--color-error)]">Unable to load tournament.</p>
+                <button onClick={() => refetchTournament()}
+                  className="mt-3 text-sm font-medium text-[var(--color-primary)] underline">
+                  {t('common.retry', 'Retry')}
+                </button>
+              </div>
+            )}
+
+            {drawError && (
+              <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5">
+                <p className="text-sm text-[var(--color-error)]">Unable to load draw.</p>
+                <button onClick={() => refetchDraw()}
+                  className="mt-3 text-sm font-medium text-[var(--color-primary)] underline">
+                  {t('common.retry', 'Retry')}
+                </button>
+              </div>
+            )}
+
+            {!tournamentError && !drawError && format == null && (
               <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.draw_empty', 'Generate a draw to start placing participants.')}</p>
             )}
 
-            {format != null && !SUPPORTED.includes(format) && (
+            {!tournamentError && !drawError && format != null && !SUPPORTED.includes(format) && (
               <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5">
                 <p className="text-sm font-semibold text-[var(--color-text)]">{t('tournaments.unsupported_format', 'Unsupported bracket type')}</p>
                 <p className="text-xs text-[var(--color-text-muted)] mt-1">{t('tournaments.unsupported_format_hint', 'The "{{format}}" bracket is not yet implemented. No bracket is fabricated.', { format })}</p>
               </div>
             )}
 
-            {format === 'knockout' && (
+            {!tournamentError && !drawError && format === 'knockout' && (
               <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 overflow-x-auto">
                 <div className="flex gap-6 min-w-[720px]">
                   {knockoutRounds.map((r) => (
@@ -301,7 +341,7 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
               </div>
             )}
 
-            {format === 'round_robin' && (
+            {!tournamentError && !drawError && format === 'round_robin' && (
               <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 overflow-x-auto">
                 <div className="flex gap-6 min-w-[640px]">
                   {roundRobinRounds.map((r) => (
@@ -327,7 +367,7 @@ export default function TournamentDrawPage({ mode = 'admin', orgId: orgIdProp }:
             )}
 
             {/* Seeded protection zone */}
-            {drawEntries.length > 0 && (
+            {!tournamentError && !drawError && drawEntries.length > 0 && (
               <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 text-xs text-[var(--color-text-muted)]">
                 <span className="font-semibold">{t('tournaments.seed_protection', 'Seed protection:')}</span>{' '}
                 {t('tournaments.seed_protection_hint', 'Seeded participants hold the protected top positions in ascending seed order. Moving a seeded participant outside the protected zone is rejected unless explicitly overridden — the seed number is never changed.')}

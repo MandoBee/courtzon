@@ -4,6 +4,23 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentDrawPage from '../TournamentDrawPage';
 
+type DrawEntry = {
+  id: number;
+  participant_id: number;
+  position: number;
+  display_name: string;
+  seed_number: number | null;
+  placement_source: string;
+  overridden: number;
+};
+type CurrentDraw = {
+  id: number;
+  tournament_id: number;
+  attempt_number: number;
+  status: string;
+  entries: DrawEntry[];
+};
+
 const __state = vi.hoisted(() => ({
   userPermissions: ['*'] as string[],
   format: 'knockout' as string,
@@ -18,8 +35,9 @@ const __state = vi.hoisted(() => ({
       { id: 1, participant_id: 1, position: 0, display_name: 'Player A', seed_number: 1, placement_source: 'auto', overridden: 0 },
       { id: 2, participant_id: 2, position: 1, display_name: 'Player B', seed_number: null, placement_source: 'auto', overridden: 0 },
     ],
-  },
+  } as Partial<CurrentDraw> | null,
   validation: { valid: true } as { valid: boolean; message?: string },
+  errors: { tournament: false, participants: false, draw: false, validation: false } as Record<string, boolean>,
 }));
 
 vi.mock('../../../../services/api', () => ({
@@ -59,9 +77,13 @@ function renderPage() {
 
 function mockApi() {
   (api.get as any).mockImplementation((url: string) => {
+    if (__state.errors.validation && url.includes('/draw/validate')) return Promise.reject(new Error('validation failed'));
+    if (__state.errors.draw && url.includes('/draw') && !url.includes('/draw/validate')) return Promise.reject(new Error('draw failed'));
+    if (__state.errors.participants && url.includes('/participants')) return Promise.reject(new Error('participants failed'));
     if (url.includes('/draw/validate')) return Promise.resolve({ data: __state.validation });
     if (url.includes('/draw')) return Promise.resolve({ data: __state.currentDraw });
     if (url.includes('/participants')) return Promise.resolve({ data: __state.participants });
+    if (__state.errors.tournament && (url.includes('/admin/tournaments/1') || url.includes('/org/1/tournaments/1'))) return Promise.reject(new Error('tournament failed'));
     if (url.includes('/admin/tournaments/1') || url.includes(`/org/1/tournaments/1`)) return Promise.resolve({ data: { id: 1, format: __state.format } });
     return Promise.resolve({ data: {} });
   });
@@ -81,6 +103,7 @@ beforeEach(() => {
     ],
   };
   __state.validation = { valid: true };
+  __state.errors = { tournament: false, participants: false, draw: false, validation: false };
   mockApi();
 });
 
@@ -153,5 +176,88 @@ describe('TournamentDrawPage — bracket rendering contract (Part 4)', () => {
     renderPage();
     expect(await screen.findByText('Unsupported bracket type')).toBeTruthy();
     expect(screen.queryByText('Semi-final')).toBeNull();
+  });
+});
+
+describe('TournamentDrawPage — F-02 fetch-error states', () => {
+  it('tournament failure: shows error + Retry in the board area (never the "Generate a draw" empty hint) while the participant sidebar still renders; Retry recovers the board', async () => {
+    __state.errors.tournament = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load tournament.')).toBeTruthy();
+    // The failure must NOT masquerade as a fresh/no-draw state.
+    expect(screen.queryByText('Generate a draw to start placing participants.')).toBeNull();
+    expect(screen.queryByText('Semi-final')).toBeNull();
+    // Independent queries still render — participants sidebar stays available.
+    expect(screen.getByText('Pair Alpha')).toBeTruthy();
+    // Retry recovery restores the board.
+    __state.errors.tournament = false;
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText('Semi-final')).toBeTruthy();
+  });
+
+  it('participants failure: sidebar shows error + Retry (not "No participants yet.") while the draw board still renders; Retry recovers the list', async () => {
+    __state.errors.participants = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load participants.')).toBeTruthy();
+    expect(screen.queryByText('No participants yet.')).toBeNull();
+    // The board is draw-derived and must remain available.
+    expect(screen.getByText('Semi-final')).toBeTruthy();
+    // Retry recovery restores the sidebar participant list.
+    __state.errors.participants = false;
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText('Player P1 + Player P2')).toBeTruthy();
+  });
+
+  it('draw failure: shows error + Retry (never a fake empty bracket) while the sidebar still renders; Retry recovers the board', async () => {
+    __state.errors.draw = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load draw.')).toBeTruthy();
+    // The failure must NOT present a fabricated empty board (no slots, no structure).
+    expect(screen.queryByText('drop here')).toBeNull();
+    expect(screen.queryByText('Semi-final')).toBeNull();
+    // Generating on unknown draw state must be disabled — never a blind re-draw.
+    expect((screen.getByText('Generate Draw') as HTMLButtonElement).disabled).toBe(true);
+    // Independent queries still render — participants sidebar stays available.
+    expect(screen.getByText('Pair Alpha')).toBeTruthy();
+    // Retry recovery restores the draw board.
+    __state.errors.draw = false;
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText('Semi-final')).toBeTruthy();
+  });
+
+  it('validation failure: shows error + Retry while the board still renders; Retry re-validates', async () => {
+    __state.errors.validation = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load draw validation.')).toBeTruthy();
+    expect(screen.getByText('Semi-final')).toBeTruthy();
+    // Retry recovery re-runs validation and surfaces the warning again.
+    __state.errors.validation = false;
+    __state.validation = { valid: false, message: 'Seed violation detected.' };
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText(/Seed violation detected/)).toBeTruthy();
+  });
+
+  it('genuine empty (no draw yet + no participants) is preserved — no error text', async () => {
+    __state.currentDraw = null;
+    __state.participants = [];
+    renderPage();
+    // Real empty states keep their original copy:
+    expect(await screen.findByText('No participants yet.')).toBeTruthy();
+    // A genuine non-error empty board still renders its empty slots:
+    expect(screen.getAllByText('drop here').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Unable to load/)).toBeNull();
+    // And the draw query SUCCEEDED (legitimately absent) — Generate Draw must
+    // remain enabled so the operator can create the first draw.
+    const genBtn = screen.getByText('Generate Draw') as HTMLButtonElement;
+    expect(genBtn.disabled).toBe(false);
+  });
+
+  it('independent failures stack: tournament + draw each render their own error panel with Retry', async () => {
+    __state.errors.tournament = true;
+    __state.errors.draw = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load tournament.')).toBeTruthy();
+    expect(screen.getByText('Unable to load draw.')).toBeTruthy();
+    expect(screen.getAllByText('Retry').length).toBeGreaterThanOrEqual(2);
   });
 });
