@@ -9,6 +9,7 @@ import api from '../../services/api';
 import { orgTournamentApi, type BracketTypeRow, type BracketTypeRegistryEntry } from '../../services/tournament';
 import { Button, Input, Card } from '../../components/ui';
 import { Can } from '../../permissions/Can';
+import { useCan } from '../../hooks/useCan';
 import { useToast } from '../../components/ui/Toast';
 import { getErrorMessage } from '../../utils/errors';
 import { PrizeEditor, type PrizeEditorRow } from '../../components/tournaments/PrizeEditor';
@@ -103,6 +104,11 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { can } = useCan();
+  // TUX-07 — the Review-step submit is gated by the SAME backend key that
+  // guards `POST /org/:orgId/tournaments` (org.tournaments.create), so the UI
+  // never fabricates a submit the server would reject.
+  const canCreate = can('org.tournaments.create');
 
   // G11.18 Phase 3 — venue handling (location auto-captured by the map picker).
   const [venueMode, setVenueMode] = useState<'ORGANISATION_COURTS' | 'EXTERNAL_VENUE'>('ORGANISATION_COURTS');
@@ -288,6 +294,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   });
 
   const onSubmit = (data: TournamentForm) => {
+    // TUX-07 — fail-closed: an unauthorized submit (including an implicit
+    // Enter-key form submission) must never call the create endpoint.
+    if (!canCreate) {
+      showToast(t('tournaments.create.submit_permission_hint', 'You need the organisation "create tournament" permission to submit. Contact an administrator.'), 'warning');
+      return;
+    }
     if (!hasOwningOrg || !endpoint) {
       showToast(t('tournaments.create.validation.organisation_required'), 'error');
       return;
@@ -1043,17 +1055,24 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
               >
                 {t('tournaments.wizard.continue', 'Continue')} →
               </button>
+            ) : canCreate ? (
+              <Button
+                type="submit"
+                loading={createMutation.isPending}
+                disabled={!hasOwningOrg}
+                className="min-h-[44px]"
+              >
+                {t('tournaments.create.submit')}
+              </Button>
             ) : (
-              <Can permission="org.tournaments.create">
-                <Button
-                  type="submit"
-                  loading={createMutation.isPending}
-                  disabled={!hasOwningOrg}
-                  className="min-h-[44px]"
-                >
+              <div className="flex flex-col items-end gap-1.5">
+                <Button type="button" disabled className="min-h-[44px]">
                   {t('tournaments.create.submit')}
                 </Button>
-              </Can>
+                <p className="max-w-xs text-right text-xs text-[var(--color-text-muted)]">
+                  {t('tournaments.create.submit_permission_hint', 'You need the organisation "create tournament" permission to submit. Contact an administrator.')}
+                </p>
+              </div>
             )}
           </div>
         </form>

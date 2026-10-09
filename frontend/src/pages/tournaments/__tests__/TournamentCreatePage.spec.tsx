@@ -6,6 +6,7 @@ import TournamentCreatePage from '../TournamentCreatePage';
 
 const __state = vi.hoisted(() => ({
   userPermissions: ['*'] as string[],
+  toast: { showToast: vi.fn() },
   orgApi: {
     getBracketTypes: vi.fn(),
     getCommissionConfig: vi.fn(),
@@ -74,8 +75,12 @@ vi.mock('../../../permissions/Can', () => ({
   },
 }));
 
+vi.mock('../../../store/auth.store', () => ({
+  useAuthStore: (sel: (state: unknown) => unknown) => sel({ user: { id: 1, permissions: __state.userPermissions } }),
+}));
+
 vi.mock('../../../components/ui/Toast', () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => __state.toast,
 }));
 
 vi.mock('../../../components/ui', () => ({
@@ -312,6 +317,58 @@ describe('Creation Wizard — Format selector (engine capability states)', () =>
     expect(payload.gsk_config).toBeTruthy();
     expect(payload.gsk_config.groupStage.groupCount).toBe(8);
     expect(payload.gsk_config.knockout.startingRound).toBe('round_of_16');
+  });
+});
+
+describe('Creation Wizard — Review-step create permission (F-13 / TUX-07)', () => {
+  const noCreatePerms = ALL.filter((k) => k !== 'org.tournaments.create');
+
+  /** Walk a valid single-elimination tournament all the way to Review (Step 8 of 8). */
+  async function walkToReview() {
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Perm Cup' } });
+    await clickContinueAndAwait(2);
+    await clickSingleElimination();
+    await clickContinueAndAwait(3);
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+    await clickContinueAndAwait(4);
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5);
+    await clickContinueAndAwait(6);
+    await clickContinueAndAwait(7);
+    await clickContinueAndAwait(8);
+  }
+
+  it('shows a disabled submit + hint on Review without org.tournaments.create, and never submits', async () => {
+    renderPage(noCreatePerms);
+    await walkToReview();
+
+    const submit = screen.getByRole('button', { name: 'tournaments.create.submit' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    expect(screen.getByText('tournaments.create.submit_permission_hint')).toBeTruthy();
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(api.post).not.toHaveBeenCalled());
+  });
+
+  it('submit-handler guard blocks an unauthorized implicit submission (Enter key)', async () => {
+    const view = renderPage(noCreatePerms);
+    await walkToReview();
+
+    const form = view.container.querySelector('form') as HTMLFormElement;
+    expect(form).toBeTruthy();
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(api.post).not.toHaveBeenCalled());
+    expect(__state.toast.showToast).toHaveBeenCalledWith('tournaments.create.submit_permission_hint', 'warning');
+  });
+
+  it('authorized users keep the enabled submit and get no hint (regression)', async () => {
+    renderPage(ALL);
+    await walkToReview();
+
+    const submit = screen.getByRole('button', { name: 'tournaments.create.submit' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    expect(screen.queryByText('tournaments.create.submit_permission_hint')).toBeNull();
   });
 });
 

@@ -2100,6 +2100,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.create.generated_rules', defaultValue: 'Match Rules', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Generated tournament rules label' },
   { key: 'tournaments.create.generated_rules_empty', defaultValue: 'Select a sport and match rule set to preview the tournament rules.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Generated tournament rules empty state' },
   { key: 'tournaments.create.submit', defaultValue: 'Create Tournament', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Create submit button' },
+  { key: 'tournaments.create.submit_permission_hint', defaultValue: 'You need the organisation "create tournament" permission to submit. Contact an administrator.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Review step create-permission hint' },
   { key: 'tournaments.create.success', defaultValue: 'Tournament created successfully!', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Create success toast' },
   { key: 'tournaments.create.error', defaultValue: 'Failed to create tournament', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Create error toast' },
   { key: 'tournaments.create.validation.name', defaultValue: 'Name must be at least 2 characters', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Create name validation' },
