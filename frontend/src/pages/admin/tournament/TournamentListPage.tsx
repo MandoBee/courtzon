@@ -89,7 +89,7 @@ export default function TournamentListPage({ mode = 'admin', orgId }: Props) {
   if (search) params.search = search;
   if (statusFilter) params.status = statusFilter;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: [queryKeyRoot, params],
     queryFn: () => listTournaments(params),
   });
@@ -159,7 +159,18 @@ export default function TournamentListPage({ mode = 'admin', orgId }: Props) {
               {isLoading && (
                 <tr><td colSpan={8}><SkeletonRow count={5} /></td></tr>
               )}
-              {!isLoading && tournaments.length === 0 && (
+              {!isLoading && isError && (
+                <tr>
+                  <td colSpan={8} className="text-center py-8">
+                    <p className="text-sm text-[var(--color-error)]">{t('tournaments.list.load_error')}</p>
+                    <button onClick={() => refetch()}
+                      className="mt-4 px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                      {t('common.retry')}
+                    </button>
+                  </td>
+                </tr>
+              )}
+              {!isLoading && !isError && tournaments.length === 0 && (
                 <tr><td colSpan={8} className="text-center py-8 text-sm text-[var(--color-text-muted)]">{t('common.no_results')}</td></tr>
               )}
               {tournaments.map((tourn: any) => (

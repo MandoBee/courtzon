@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentListPage from '../TournamentListPage';
@@ -161,5 +161,34 @@ describe('TournamentListPage — Step 5D redirect destination stays permission-g
 
     expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
     expect(screen.getAllByText('tournaments.status.draft').length).toBeGreaterThan(0);
+  });
+});
+
+describe('TournamentListPage — F-02 error vs empty state (admin list)', () => {
+  it('shows the error state with Retry instead of No Results when the list request fails', async () => {
+    __state.adminApi.getTournaments.mockRejectedValueOnce(new Error('network down'));
+    renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
+
+    expect(await screen.findByText('tournaments.list.load_error')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'common.retry' })).toBeTruthy();
+    expect(screen.queryByText('common.no_results')).toBeNull();
+  });
+
+  it('recovers via Retry after a failed load and renders the list (F-02)', async () => {
+    __state.adminApi.getTournaments.mockRejectedValueOnce(new Error('network down'));
+    renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
+    expect(await screen.findByText('tournaments.list.load_error')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.retry' }));
+
+    expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
+    expect(screen.queryByText('tournaments.list.load_error')).toBeNull();
+  });
+
+  it('renders the legitimate empty state when the request succeeds with no tournaments (F-02)', async () => {
+    __state.adminApi.getTournaments.mockResolvedValueOnce({ data: [], total: 0, page: 1, limit: 20 });
+    renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
+
+    expect(await screen.findByText('common.no_results')).toBeTruthy();
   });
 });
