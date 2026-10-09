@@ -78,17 +78,17 @@ export default function TournamentDetailPage() {
     queryFn: () => api.get(`/tournaments/${id}`).then(r => r.data.data || r.data),
   });
 
-  const { data: competitions } = useQuery({
+  const { data: competitions, isError: competitionsError, refetch: refetchCompetitions } = useQuery({
     queryKey: ['tournament', id, 'competitions'],
     queryFn: () => api.get(`/tournaments/${id}/competitions`).then(r => r.data?.data ?? []),
   });
 
-  const { data: matches, isLoading: loadingMatches, isError: matchesError } = useQuery({
+  const { data: matches, isLoading: loadingMatches, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['tournament', id, 'bracket'],
     queryFn: () => api.get(`/tournaments/${id}/matches`).then(r => r.data.data),
   });
 
-  const { data: standings, isLoading: loadingStandings, isError: standingsError } = useQuery({
+  const { data: standings, isLoading: loadingStandings, isError: standingsError, refetch: refetchStandings } = useQuery({
     queryKey: ['tournament', id, 'standings'],
     queryFn: () => api.get(`/tournaments/${id}/standings`).then(r => r.data.data),
   });
@@ -104,12 +104,12 @@ export default function TournamentDetailPage() {
   // for `/tournaments/:id/*`). These are read-only GETs — no organizer actions.
   const isGsk = (tournament as any)?.format === 'group_stage_knockout';
   const canViewStages = can('tournament.view');
-  const { data: gskGroups } = useQuery({
+  const { data: gskGroups, isLoading: loadingGroups, isError: groupsError, refetch: refetchGroups } = useQuery({
     queryKey: ['tournament', id, 'groups'],
     queryFn: () => tournamentApi.getGroups(Number(id)),
     enabled: Boolean(id) && isGsk && canViewStages,
   });
-  const { data: gskStages } = useQuery({
+  const { data: gskStages, isLoading: loadingStages, isError: stagesError, refetch: refetchStages } = useQuery({
     queryKey: ['tournament', id, 'stages'],
     queryFn: () => tournamentApi.getStages(Number(id)),
     enabled: Boolean(id) && isGsk && canViewStages,
@@ -143,7 +143,7 @@ export default function TournamentDetailPage() {
   // keep constant order; participantList (post-guard derived) is not used here.
   const participantRaw = Array.isArray(participants) ? participants : [];
   const myRegistrationId = participantRaw.find((p: any) => Number(p.player_id) === Number(user?.id))?.registration_id ?? undefined;
-  const { data: myRefundRequest } = useQuery({
+  const { data: myRefundRequest, isLoading: loadingRefundRequest, isError: refundRequestError, refetch: refetchRefundRequest } = useQuery({
     queryKey: ['tournament', id, 'refund-request', myRegistrationId],
     queryFn: () => tournamentRefundApi.getMyRefundRequest(Number(myRegistrationId!)).then((r) => r.status ? r : null),
     enabled: Boolean(myRegistrationId),
@@ -282,7 +282,15 @@ export default function TournamentDetailPage() {
           <Can permission="tournaments.registration.refund-request">
             <div className="border-t border-[var(--color-border)] pt-3 mt-3 w-full">
               <p className="text-xs font-medium text-[var(--color-text)] mb-1">Registration Refund</p>
-              {myRefundRequest ? (
+              {loadingRefundRequest ? (
+                <p className="text-xs text-[var(--color-text-muted)]">{t('common.loading')}</p>
+              ) : refundRequestError ? (
+                <div>
+                  <p className="text-xs text-[var(--color-error)]">Unable to load refund request.</p>
+                  <button onClick={() => refetchRefundRequest()}
+                    className="mt-2 text-xs font-medium text-[var(--color-primary)] underline">{t('common.retry')}</button>
+                </div>
+              ) : myRefundRequest ? (
                 <p className="text-xs text-[var(--color-text-muted)]">
                   Status: <span className="capitalize font-semibold text-[var(--color-text)]">{String(myRefundRequest.status)}</span>
                   {myRefundRequest.rejection_reason ? ` — ${myRefundRequest.rejection_reason}` : ''}
@@ -315,7 +323,7 @@ export default function TournamentDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div><p className="text-xs text-[var(--color-text-muted)]">Top ELO</p><p className="text-lg font-bold text-[var(--color-text)]">—</p><p className="text-[10px] text-[var(--color-text-muted)]">After tournament</p></div>
           <div><p className="text-xs text-[var(--color-text-muted)]">Prize Pool</p><p className="text-lg font-bold text-yellow-600">{(Array.isArray(tournament.prizes) && tournament.prizes.length ? `${tournament.prizes.length} prize${tournament.prizes.length > 1 ? 's' : ''}` : tournament.prize_description) || '—'}</p></div>
-          <div><p className="text-xs text-[var(--color-text-muted)]">Matches Played</p><p className="text-lg font-bold">{matchList.filter((m: any) => m.status === 'completed').length}</p></div>
+          <div><p className="text-xs text-[var(--color-text-muted)]">Matches Played</p><p className="text-lg font-bold">{matchesError ? '—' : matchList.filter((m: any) => m.status === 'completed').length}</p></div>
           <div><p className="text-xs text-[var(--color-text-muted)]">Registered Players</p><p className="text-lg font-bold">{participantsError ? '—' : participantList.length}</p></div>
         </div>
       </div>
@@ -325,7 +333,15 @@ export default function TournamentDetailPage() {
         <div className="grid gap-6 md:grid-cols-2">
           <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
             <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">Match Summary</h2>
-            {matchList.length === 0 ? <p className="text-xs text-[var(--color-text-muted)]">No matches yet.</p> : (
+            {matchesError ? (
+              <div>
+                <p className="text-xs text-[var(--color-error)]">Unable to load matches.</p>
+                <button onClick={() => refetchMatches()}
+                  className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : matchList.length === 0 ? <p className="text-xs text-[var(--color-text-muted)]">No matches yet.</p> : (
               <div className="space-y-2">
                 {matchList.map((m: any, i: number) => (
                   <div key={m.id ?? i} className="flex items-center justify-between text-xs py-1 border-b border-[var(--color-border)] last:border-0">
@@ -383,8 +399,25 @@ export default function TournamentDetailPage() {
           {loadingMatches ? (
             <SkeletonRow count={5} />
           ) : matchesError ? (
-            <p className="text-sm text-[var(--color-error)] text-center py-8">Unable to load the bracket.</p>
+            <div className="text-center py-8">
+              <p className="text-sm text-[var(--color-error)]">Unable to load the bracket.</p>
+              <button onClick={() => refetchMatches()}
+                className="mt-4 px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
           ) : isGsk ? (
+            loadingStages ? (
+              <SkeletonRow count={5} />
+            ) : stagesError ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-[var(--color-error)]">Unable to load stages.</p>
+                <button onClick={() => refetchStages()}
+                  className="mt-4 px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : (
             <GskKnockoutPanel
               tournamentId={Number(id)}
               tournamentName={tournament.name}
@@ -407,6 +440,7 @@ export default function TournamentDetailPage() {
                 ) : null
               }
             />
+            )
           ) : (
             <TournamentBracket
               tournament={tournament}
@@ -436,11 +470,23 @@ export default function TournamentDetailPage() {
       {tab === 'groups' && isGsk && (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
           <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Groups</h2>
-          <GskGroupsView
-            groups={Array.isArray(gskGroups) ? gskGroups : []}
-            standings={standingList}
-            highlightRegistrationId={myRegistrationId}
-          />
+          {loadingGroups ? (
+            <SkeletonRow count={3} />
+          ) : groupsError ? (
+            <div>
+              <p className="text-sm text-[var(--color-error)]">Unable to load groups.</p>
+              <button onClick={() => refetchGroups()}
+                className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : (
+            <GskGroupsView
+              groups={Array.isArray(gskGroups) ? gskGroups : []}
+              standings={standingList}
+              highlightRegistrationId={myRegistrationId}
+            />
+          )}
         </div>
       )}
 
@@ -448,7 +494,19 @@ export default function TournamentDetailPage() {
       {tab === 'qualification' && isGsk && (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
           <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Qualification</h2>
-          <GskQualificationPanel groupStage={groupStage} groupMatches={groupMatches} />
+          {loadingStages ? (
+            <SkeletonRow count={3} />
+          ) : stagesError ? (
+            <div>
+              <p className="text-sm text-[var(--color-error)]">Unable to load stages.</p>
+              <button onClick={() => refetchStages()}
+                className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : (
+            <GskQualificationPanel groupStage={groupStage} groupMatches={groupMatches} />
+          )}
         </div>
       )}
 
@@ -459,7 +517,13 @@ export default function TournamentDetailPage() {
           {loadingMatches ? (
             <SkeletonRow count={5} />
           ) : matchesError ? (
-            <p className="text-sm text-[var(--color-error)] text-center py-8">Unable to load matches.</p>
+            <div className="text-center py-8">
+              <p className="text-sm text-[var(--color-error)]">Unable to load matches.</p>
+              <button onClick={() => refetchMatches()}
+                className="mt-4 px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
           ) : matchList.length === 0 ? (
             <p className="text-xs text-[var(--color-text-muted)] text-center py-8">No matches yet.</p>
           ) : (
@@ -479,7 +543,13 @@ export default function TournamentDetailPage() {
           {loadingStandings ? (
             <SkeletonRow count={5} />
           ) : standingsError ? (
-            <p className="p-5 text-xs text-[var(--color-error)]">Unable to load standings.</p>
+            <div className="p-5">
+              <p className="text-xs text-[var(--color-error)]">Unable to load standings.</p>
+              <button onClick={() => refetchStandings()}
+                className="mt-3 px-3 py-1.5 text-xs font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90">
+                {t('common.retry')}
+              </button>
+            </div>
           ) : standingList.length === 0 ? (
             <p className="p-5 text-xs text-[var(--color-text-muted)]">No standings available yet.</p>
           ) : (
@@ -541,6 +611,13 @@ export default function TournamentDetailPage() {
       <Modal open={showRegisterModal} onClose={() => setShowRegisterModal(false)}
         title="Register for Tournament" size="sm">
         <div className="space-y-4">
+          {competitionsError && (
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-error)] p-3">
+              <p className="text-xs text-[var(--color-error)]">Unable to load competitions.</p>
+              <button onClick={() => refetchCompetitions()}
+                className="mt-2 text-xs font-medium text-[var(--color-primary)] underline">{t('common.retry')}</button>
+            </div>
+          )}
           {multiple && (
             <div>
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Competition Category</label>
@@ -587,14 +664,14 @@ export default function TournamentDetailPage() {
                 )}
               </div>
               <button onClick={() => registerMutation.mutate(registerMethod)}
-                disabled={!registerMethod || registerMutation.isPending || (multiple && !selectedCompetitionId)}
+                disabled={!registerMethod || registerMutation.isPending || competitionsError || (multiple && !selectedCompetitionId)}
                 className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
                 {registerMutation.isPending ? 'Registering...' : 'Register & Pay'}
               </button>
             </>
           ) : (
             <button onClick={() => registerMutation.mutate('')}
-              disabled={registerMutation.isPending || (multiple && !selectedCompetitionId)}
+              disabled={registerMutation.isPending || competitionsError || (multiple && !selectedCompetitionId)}
               className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
               {registerMutation.isPending ? 'Registering...' : 'Register'}
             </button>

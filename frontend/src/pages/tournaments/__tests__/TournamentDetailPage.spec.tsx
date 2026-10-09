@@ -586,3 +586,286 @@ describe('TournamentDetailPage — F-02 query failure handling (UX-7)', () => {
     expect(screen.getByText('Register & Pay')).toBeTruthy();
   });
 });
+
+describe('TournamentDetailPage — F-02 remaining query failures (UX-12)', () => {
+  /** Per-URL api.get override; unhandled URLs resolve to an empty list. */
+  function overrideDetailApi(handlers: Record<string, () => Promise<unknown>>) {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      const hit = handlers[url];
+      return hit ? hit() : Promise.resolve({ data: { data: [] } });
+    });
+  }
+
+  // Deterministic base for these tests (the shared fixture is mutated elsewhere).
+  beforeEach(() => {
+    __state.tournament = {
+      ...__state.tournament,
+      format: 'knockout',
+      status: 'registration_open',
+      entry_fee: 800,
+      effective_registration_payment_methods: ['cash', 'card'],
+    };
+  });
+
+  it('matches failure: Overview + Matches + Bracket all surface error + Retry (never "No matches yet.")', async () => {
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/matches': () => Promise.reject(new Error('Network Error')),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    // Overview "Match Summary" must not masquerade as a genuine empty bracket.
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+    expect(screen.queryByText('No matches yet.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+
+    await clickTab('Matches');
+    expect(await screen.findByText('Unable to load matches.')).toBeTruthy();
+
+    await clickTab('Bracket');
+    expect(await screen.findByText('Unable to load the bracket.')).toBeTruthy();
+    expect(screen.queryByText('Bracket not yet generated.')).toBeNull();
+  });
+
+  it('matches failure recovers via Retry', async () => {
+    __state.matches = [{
+      id: 11, round: 1, match_number: 1, bracket_position: 0,
+      player1_id: 42, player1_name: 'Ali', player2_id: 43, player2_name: 'Sara',
+      winner_id: 42, status: 'completed', score_summary: '6-4 6-3', match_id: 77,
+    }];
+    let calls = 0;
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/matches': () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error('Network Error')) : Promise.resolve({ data: { data: __state.matches } });
+      },
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    await clickTab('Matches');
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('6-4 6-3')).toBeTruthy();
+  });
+
+  it('matches failure does not block standings (independent queries)', async () => {
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/matches': () => Promise.reject(new Error('Network Error')),
+      '/tournaments/1/standings': () => Promise.resolve({ data: { data: [{ id: 1, rank_position: 1, registration_id: 10, player_name: 'Ali', points: 3, wins: 1, losses: 0, games_won: 2, games_lost: 0 }] } }),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+    await clickTab('Standings');
+    expect(await screen.findByText('Ali')).toBeTruthy();
+    expect(screen.queryByText('Unable to load standings.')).toBeNull();
+  });
+
+  it('standings failure: error + Retry (never "No standings available yet.")', async () => {
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/standings': () => Promise.reject(new Error('Network Error')),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+    await clickTab('Standings');
+    expect(await screen.findByText('Unable to load standings.')).toBeTruthy();
+    expect(screen.queryByText('No standings available yet.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it('standings failure recovers via Retry', async () => {
+    let calls = 0;
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/standings': () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error('Network Error'))
+          : Promise.resolve({ data: { data: [{ id: 1, rank_position: 1, registration_id: 10, player_name: 'Ali', points: 3, wins: 1, losses: 0, games_won: 2, games_lost: 0 }] } });
+      },
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+    await clickTab('Standings');
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Ali')).toBeTruthy();
+  });
+
+  it('genuine empty matches/standings are preserved with no error', async () => {
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/matches': () => Promise.resolve({ data: { data: [] } }),
+      '/tournaments/1/standings': () => Promise.resolve({ data: { data: [] } }),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+    expect(await screen.findByText('No matches yet.')).toBeTruthy();
+    await clickTab('Standings');
+    expect(await screen.findByText('No standings available yet.')).toBeTruthy();
+    expect(screen.queryByText(/Unable to load/)).toBeNull();
+  });
+
+  it('competitions failure is never mistaken for an empty list; free registration is fail-closed with Retry', async () => {
+    __state.user = { id: 99, permissions: ['*'] }; // not a participant → Register offered
+    __state.tournament = { ...__state.tournament, entry_fee: 0, effective_registration_payment_methods: [] };
+    let calls = 0;
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/competitions': () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error('Network Error')) : Promise.resolve({ data: { data: [] } });
+      },
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    fireEvent.click(screen.getByText('Register'));
+    expect(await screen.findByText('Unable to load competitions.')).toBeTruthy();
+
+    const modalSubmit = () => screen.getAllByText('Register').pop() as HTMLButtonElement;
+    // Fail-closed: cannot submit while the competition categories are unknown.
+    expect(modalSubmit().disabled).toBe(true);
+
+    // Retry recovers the (genuinely empty) competition list and re-enables free registration.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.queryByText('Unable to load competitions.')).toBeNull());
+    await waitFor(() => expect(modalSubmit().disabled).toBe(false));
+  });
+
+  it('refund-request failure is surfaced with Retry and withholds the Request Refund action', async () => {
+    const me = { id: 10, player_id: 42, player_name: 'Ali', seed_rank: 1, status: 'registered', registered_at: '2026-09-01T00:00:00.000Z', registration_id: 10 };
+    __state.participants = [me];
+    let calls = 0;
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/participants': () => Promise.resolve({ data: { data: __state.participants } }),
+      '/tournaments/registrations/10/refund-request': () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error('Network Error')) : Promise.resolve({ data: { status: null } });
+      },
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    expect(await screen.findByText('Unable to load refund request.')).toBeTruthy();
+    // The current refund state is unknown — do not invite a duplicate submission.
+    expect(screen.queryByText('Request Refund')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Request Refund')).toBeTruthy();
+    expect(screen.queryByText('Unable to load refund request.')).toBeNull();
+  });
+
+  it('refund-request failure does not block matches (independent queries)', async () => {
+    const me = { id: 10, player_id: 42, player_name: 'Ali', seed_rank: 1, status: 'registered', registered_at: '2026-09-01T00:00:00.000Z', registration_id: 10 };
+    __state.participants = [me];
+    __state.matches = [{
+      id: 11, round: 1, match_number: 1, bracket_position: 0,
+      player1_id: 42, player1_name: 'Ali', player2_id: 43, player2_name: 'Sara',
+      winner_id: 42, status: 'completed', score_summary: '6-4 6-3', match_id: 77,
+    }];
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/participants': () => Promise.resolve({ data: { data: __state.participants } }),
+      '/tournaments/1/matches': () => Promise.resolve({ data: { data: __state.matches } }),
+      '/tournaments/registrations/10/refund-request': () => Promise.reject(new Error('Network Error')),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    expect(await screen.findByText('Unable to load refund request.')).toBeTruthy();
+    await clickTab('Matches');
+    expect(await screen.findByText('6-4 6-3')).toBeTruthy();
+  });
+
+  it('gskStages failure: Knockout + Qualification show error + Retry, never the false "not generated yet" states', async () => {
+    __state.tournament = { ...__state.tournament, format: 'group_stage_knockout' };
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/participants': () => Promise.resolve({ data: { data: [] } }),
+      '/admin/tournaments/1/groups': () => Promise.resolve({ data: [] }),
+      '/admin/tournaments/1/stages': () => Promise.reject(new Error('Network Error')),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    // Knockout tab must NOT claim the stage is genuinely absent.
+    await clickTab('Knockout');
+    expect(await screen.findByText('Unable to load stages.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-knockout-pending')).toBeNull();
+
+    // Qualification tab: unknown, not "pending".
+    await clickTab('Qualification');
+    expect(await screen.findByText('Unable to load stages.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-qual-pending')).toBeNull();
+
+    __state.tournament = { ...__state.tournament, format: 'knockout' };
+  });
+
+  it('gskStages failure recovers via Retry to the real knockout bracket', async () => {
+    __state.tournament = { ...__state.tournament, format: 'group_stage_knockout' };
+    const koMatch = { id: 200, round: 1, match_number: 1, bracket_position: 0, player1_id: 0, player1_name: 'Ali', player2_id: 0, player2_name: 'Nour', winner_id: 0, status: 'scheduled', score_summary: '', match_id: 902, stage_id: 6, round_name: 'Semi-final' };
+    __state.matches = [koMatch];
+    let calls = 0;
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/matches': () => Promise.resolve({ data: { data: __state.matches } }),
+      '/tournaments/1/participants': () => Promise.resolve({ data: { data: [] } }),
+      '/admin/tournaments/1/stages': () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error('Network Error'))
+          : Promise.resolve({ data: { data: [{ id: 5, progression_format: 'round_robin', config: {} }, { id: 6, progression_format: 'knockout', config: {} }] } });
+      },
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    await clickTab('Knockout');
+    expect(await screen.findByText('Unable to load stages.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByTestId('gsk-knockout')).toBeTruthy();
+    expect(screen.queryByText('Unable to load stages.')).toBeNull();
+
+    __state.tournament = { ...__state.tournament, format: 'knockout' };
+  });
+
+  it('gskGroups failure: Groups tab shows error + Retry, never the false "not generated yet" state', async () => {
+    __state.tournament = { ...__state.tournament, format: 'group_stage_knockout' };
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/participants': () => Promise.resolve({ data: { data: [] } }),
+      '/admin/tournaments/1/stages': () => Promise.resolve({ data: { data: [] } }),
+      '/admin/tournaments/1/groups': () => Promise.reject(new Error('Network Error')),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    await clickTab('Groups');
+    expect(await screen.findByText('Unable to load groups.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-groups-empty')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+
+    __state.tournament = { ...__state.tournament, format: 'knockout' };
+  });
+
+  it('gskGroups genuine empty is preserved ("Groups have not been generated yet.") with no error', async () => {
+    __state.tournament = { ...__state.tournament, format: 'group_stage_knockout' };
+    overrideDetailApi({
+      '/tournaments/1': () => Promise.resolve({ data: __state.tournament }),
+      '/tournaments/1/participants': () => Promise.resolve({ data: { data: [] } }),
+      '/admin/tournaments/1/stages': () => Promise.resolve({ data: { data: [] } }),
+      '/admin/tournaments/1/groups': () => Promise.resolve({ data: [] }),
+    });
+    renderPage();
+    await screen.findByText('Padel Open');
+
+    await clickTab('Groups');
+    expect(await screen.findByTestId('gsk-groups-empty')).toBeTruthy();
+    expect(screen.queryByText('Unable to load groups.')).toBeNull();
+
+    __state.tournament = { ...__state.tournament, format: 'knockout' };
+  });
+});
