@@ -103,6 +103,22 @@ describe('TournamentListPage — populated list contract (UAT "e is not a functi
     expect(screen.getAllByText('16').length).toBeGreaterThan(0);
   });
 
+  it('renders the draft status pill with a readable foreground (F-01 regression)', async () => {
+    // gray-100 AND gray-700 both resolve to var(--color-border), so the old
+    // `text-gray-700` draft pill was invisible on its `bg-gray-100` background.
+    // gray-600 resolves to var(--color-text) — readable in light and dark themes.
+    const { container } = renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
+
+    await screen.findByText('Padel Test Tournament');
+    // The status <select> option also carries the 'tournaments.status.draft'
+    // text, so narrow to the pill <span>.
+    const pill = Array.from(container.querySelectorAll<HTMLElement>('span'))
+      .find((el) => el.textContent === 'tournaments.status.draft');
+    expect(pill).toBeTruthy();
+    expect(pill!.className).toContain('text-gray-600');
+    expect(pill!.className).not.toContain('text-gray-700');
+  });
+
   it('org mode renders the same populated list without a crash', async () => {
     renderPage('/org/6/tournaments', '/org/:orgId/tournaments', <TournamentListPage mode="org" orgId="6" />);
 

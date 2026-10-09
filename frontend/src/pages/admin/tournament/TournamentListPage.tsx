@@ -10,7 +10,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { tournamentApi, orgTournamentApi } from '../../../services/tournament';
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700',
+  draft: 'bg-gray-100 text-gray-600',
   published: 'bg-blue-100 text-blue-700',
   registration_open: 'bg-green-100 text-green-700',
   registration_closed: 'bg-amber-100 text-amber-700',

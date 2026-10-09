@@ -104,6 +104,17 @@ describe('MatchCard — single score + winner/loser + initials', () => {
     // No crash and avatars still render (initials derive from the fallback label).
     expect(container.querySelectorAll('span[aria-hidden="true"]').length).toBeGreaterThan(0);
   });
+
+  it('renders the scheduled status pill with a readable foreground (F-01 regression)', () => {
+    // gray-100 AND gray-700 both resolve to var(--color-border), so the old
+    // `text-gray-700` foreground was invisible on the `bg-gray-100` pill.
+    // gray-600 resolves to var(--color-text) — readable in light and dark themes.
+    const scheduled = m({ id: 61, round: 1, player1_id: 10, player2_id: 11, player1_name: 'Alpha', player2_name: 'Bravo', status: 'scheduled' });
+    render(<MatchCard match={scheduled} />);
+    const pill = screen.getByText('scheduled');
+    expect(pill.className).toContain('text-gray-600');
+    expect(pill.className).not.toContain('text-gray-700');
+  });
 });
 
 describe('MatchDetailsDrawer — single score + winner', () => {

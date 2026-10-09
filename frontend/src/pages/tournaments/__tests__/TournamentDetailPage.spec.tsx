@@ -133,6 +133,22 @@ describe('TournamentDetailPage — player detail authoritative contract (Group 1
     expect(screen.queryByText('in_progress')).toBeNull();
   });
 
+  it('renders the draft status badge with a readable foreground (F-01 regression)', async () => {
+    // gray-100 AND gray-700 both resolve to var(--color-border), so the old
+    // `text-gray-700` draft badge was invisible on its `bg-gray-100` background.
+    // gray-600 resolves to var(--color-text): readable in light and dark themes.
+    __state.tournament = { ...__state.tournament, status: 'draft' };
+    renderPage();
+
+    await screen.findByText('Padel Open');
+    const pill = screen.getByText('draft');
+    expect(pill.className).toContain('text-gray-600');
+    expect(pill.className).not.toContain('text-gray-700');
+
+    // Restore the shared fixture default for the remaining tests.
+    __state.tournament = { ...__state.tournament, status: 'registration_open' };
+  });
+
   it('shows the current player registration status and seed', async () => {
     renderPage();
 

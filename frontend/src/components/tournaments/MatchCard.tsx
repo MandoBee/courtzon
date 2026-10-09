@@ -14,7 +14,7 @@ interface MatchCardProps {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  scheduled: 'bg-gray-100 text-gray-700',
+  scheduled: 'bg-gray-100 text-gray-600',
   pending: 'bg-amber-100 text-amber-700',
   pending_payment: 'bg-amber-100 text-amber-700',
   in_progress: 'bg-blue-100 text-blue-700',
