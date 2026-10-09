@@ -8,6 +8,7 @@ function lifecycleApi() {
   return {
     getTournament: vi.fn(),
     getGroups: vi.fn(),
+    getStages: vi.fn(),
     getMatches: vi.fn(),
     getStandings: vi.fn(),
     getRegistrations: vi.fn(),
@@ -130,6 +131,7 @@ beforeEach(() => {
   for (const api of [__state.adminApi, __state.orgApi] as any[]) {
     api.getTournament.mockResolvedValue(__state.enrichedTournament);
     api.getGroups.mockResolvedValue([]);
+    api.getStages.mockResolvedValue([]);
     api.getMatches.mockResolvedValue([]);
     api.getStandings.mockResolvedValue([]);
     api.getRegistrations.mockResolvedValue([]);
@@ -276,5 +278,281 @@ describe('Tournament Hub — detail contract (UAT crash regression)', () => {
     expect(pill).toBeTruthy();
     expect(pill!.className).toContain('text-gray-600');
     expect(pill!.className).not.toContain('text-gray-700');
+  });
+});
+
+/** Read a Hub KPI value from its label (label <p> + value <p> share one container). */
+function kpiValue(label: string): string | null {
+  const labelEl = screen.getByText(label);
+  const container = labelEl.parentElement as HTMLElement;
+  return container.querySelectorAll('p')[1]?.textContent ?? null;
+}
+
+describe('Tournament Hub — F-02 query error states (UX-13)', () => {
+  // The i18n mock returns the KEY for t(); Retry buttons therefore render 'common.retry'.
+  const RETRY = 'common.retry';
+
+  function renderAdmin() {
+    return renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+  }
+
+  it('tournament failure (non-404): error + Retry, never a blank Hub shell', async () => {
+    __state.adminApi.getTournament.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+
+    expect(await screen.findByText('Unable to load tournament.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+    expect(screen.queryByText('Tournament not found.')).toBeNull();
+    // The empty shell (tabs) must not render on a failed load.
+    expect(screen.queryByRole('tab', { name: 'tournaments.hub.matches' })).toBeNull();
+  });
+
+  it('tournament failure (HTTP 404): genuine not-found preserved, no Retry', async () => {
+    __state.adminApi.getTournament.mockRejectedValue({ response: { status: 404 } });
+    renderAdmin();
+
+    expect(await screen.findByText('Tournament not found.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: RETRY })).toBeNull();
+    expect(screen.queryByText('Unable to load tournament.')).toBeNull();
+  });
+
+  it('tournament failure recovers via Retry', async () => {
+    __state.adminApi.getTournament.mockRejectedValueOnce(new Error('Network Error'));
+    renderAdmin();
+
+    expect(await screen.findByText('Unable to load tournament.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+    expect(await screen.findByText('Padel Test Tournament')).toBeTruthy();
+  });
+
+  it('registrations failure: error + Retry and the participant KPI is not fabricated to 0', async () => {
+    __state.adminApi.getRegistrations.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+
+    expect(kpiValue('tournaments.hub.kpi.participants')).toBe('—');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.participants' }));
+    expect(await screen.findByText('Unable to load registrations.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('registrations failure recovers via Retry', async () => {
+    __state.adminApi.getRegistrations.mockRejectedValueOnce(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.participants' }));
+
+    expect(await screen.findByText('Unable to load registrations.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+    await waitFor(() => expect(screen.queryByText('Unable to load registrations.')).toBeNull());
+  });
+
+  it('standings failure: error + Retry in the Standings tab', async () => {
+    __state.adminApi.getStandings.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.standings' }));
+
+    expect(await screen.findByText('Unable to load standings.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('groups failure (non-GSK): error + Retry and Generate Groups is fail-closed', async () => {
+    __state.adminApi.getGroups.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+
+    expect(await screen.findByText('Unable to load groups.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+    const generate = screen.getByText('tournaments.generate_groups').closest('button') as HTMLButtonElement;
+    expect(generate.disabled).toBe(true);
+  });
+
+  it('groups failure (GSK): error + Retry, no false empty state, Generate Groups is fail-closed', async () => {
+    __state.adminApi.getTournament.mockResolvedValue({ ...__state.enrichedTournament, format: 'group_stage_knockout' });
+    __state.adminApi.getGroups.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+
+    expect(await screen.findByText('Unable to load groups.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-groups-empty')).toBeNull();
+    expect((screen.getByTestId('gsk-generate-groups') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('stages failure (GSK): qualification + knockout show error + Retry, never the false "not generated" panels', async () => {
+    __state.adminApi.getTournament.mockResolvedValue({ ...__state.enrichedTournament, format: 'group_stage_knockout' });
+    __state.adminApi.getStages.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+
+    // Generate groups is fail-closed while the stage configuration is unknown.
+    expect((screen.getByTestId('gsk-generate-groups') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.qualification' }));
+    expect(await screen.findByText('Unable to load stages.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-qual-pending')).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.knockout' }));
+    expect(await screen.findByText('Unable to load stages.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-knockout-pending')).toBeNull();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('stages failure recovers via Retry (GSK knockout renders the real panel)', async () => {
+    __state.adminApi.getTournament.mockResolvedValue({ ...__state.enrichedTournament, format: 'group_stage_knockout' });
+    __state.adminApi.getStages
+      .mockRejectedValueOnce(new Error('Network Error'))
+      .mockResolvedValue([
+        { id: 5, progression_format: 'round_robin', config: {} },
+        { id: 6, progression_format: 'knockout', config: {} },
+      ]);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.knockout' }));
+
+    expect(await screen.findByText('Unable to load stages.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+    expect(await screen.findByTestId('gsk-knockout')).toBeTruthy();
+    expect(screen.queryByText('Unable to load stages.')).toBeNull();
+  });
+
+  it('finances failure: error + Retry in the Finances tab', async () => {
+    __state.adminApi.getFinances.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    expect(await screen.findByText('Unable to load finances.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('refund-requests failure (org): error + Retry in Finances', async () => {
+    __state.refundApi.listOrgRequests.mockRejectedValue(new Error('Network Error'));
+    renderPage('/org/6/tournaments/1', '/org/:orgId/tournaments/:id', <TournamentDetailPage mode="org" orgId="6" />);
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    expect(await screen.findByText('Unable to load refund requests.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('preserves the existing matches error + Retry contract (MatchesManager)', async () => {
+    __state.adminApi.getMatches.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.matches' }));
+
+    expect(await screen.findByText('tournaments.match.load_error')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'tournaments.match.retry' })).toBeTruthy();
+  });
+
+  it('genuine empty registrations are preserved (no error)', async () => {
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.participants' }));
+
+    expect(screen.queryByText('Unable to load registrations.')).toBeNull();
+    expect(await screen.findByText('tournaments.player')).toBeTruthy();
+  });
+});
+
+describe('Tournament Hub — bracket/GSK-groups error dependencies (UX-13 follow-up)', () => {
+  // The i18n mock returns the KEY for t(); Retry buttons therefore render 'common.retry'.
+  const RETRY = 'common.retry';
+
+  function renderAdmin() {
+    return renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+  }
+  function gskTournament() {
+    return { ...__state.enrichedTournament, format: 'group_stage_knockout' };
+  }
+
+  it('registrations failure gates the non-GSK bracket with error + Retry (no empty-slot bracket)', async () => {
+    __state.adminApi.getRegistrations.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.bracket' }));
+
+    expect(await screen.findByText('Unable to load registrations.')).toBeTruthy();
+    // The bracket (empty or otherwise) must not render on a registrations failure.
+    expect(screen.queryByText('tournamentBracket.empty')).toBeNull();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('registrations failure recovers via Retry in the non-GSK bracket', async () => {
+    __state.adminApi.getRegistrations.mockRejectedValueOnce(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.bracket' }));
+
+    expect(await screen.findByText('Unable to load registrations.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+    await waitFor(() => expect(screen.queryByText('Unable to load registrations.')).toBeNull());
+    // Genuine empty bracket resumes (matches fixture is empty).
+    expect(await screen.findByText('tournamentBracket.empty')).toBeTruthy();
+  });
+
+  it('registrations failure gates the GSK knockout view (stages OK) with error + Retry', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getStages.mockResolvedValue([
+      { id: 5, progression_format: 'round_robin', config: {} },
+      { id: 6, progression_format: 'knockout', config: {} },
+    ]);
+    __state.adminApi.getRegistrations.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.knockout' }));
+
+    expect(await screen.findByText('Unable to load registrations.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-knockout')).toBeNull();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('standings failure gates the GSK Groups sub-tab with error + Retry (not a pending empty state)', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getGroups.mockResolvedValue([{ id: 10, name: 'A', advance_count: 2 }]);
+    __state.adminApi.getStandings.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+
+    expect(await screen.findByText('Unable to load standings.')).toBeTruthy();
+    expect(screen.queryByTestId('gsk-groups')).toBeNull();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+  });
+
+  it('standings failure recovers via Retry in GSK Groups', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getGroups.mockResolvedValue([{ id: 10, name: 'A', advance_count: 2 }]);
+    __state.adminApi.getStandings
+      .mockRejectedValueOnce(new Error('Network Error'))
+      .mockResolvedValue([{ id: 1, group_id: 10, rank_position: 1, player_name: 'Ali', points: 3, wins: 1, losses: 0 }]);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+
+    expect(await screen.findByText('Unable to load standings.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+    expect(await screen.findByTestId('gsk-groups')).toBeTruthy();
+    expect(screen.queryByText('Unable to load standings.')).toBeNull();
+  });
+
+  it('GSK Groups keeps the normal empty-standings behavior when the query succeeds', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getGroups.mockResolvedValue([{ id: 10, name: 'A', advance_count: 2 }]);
+    __state.adminApi.getStandings.mockResolvedValue([]);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+
+    expect(await screen.findByTestId('gsk-groups')).toBeTruthy();
+    expect(screen.queryByText('Unable to load standings.')).toBeNull();
   });
 });

@@ -104,7 +104,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
 
   // G11.3 — organisation official: pending registration refund requests
   // (financial.reconcile). Org-scoped; cross-org enforced server-side.
-  const { data: refundRequests } = useQuery({
+  const { data: refundRequests, isLoading: loadingRefunds, isError: refundsError, refetch: refetchRefunds } = useQuery({
     queryKey: ['tournament-refund-requests', orgId],
     queryFn: () => tournamentRefundApi.listOrgRequests(orgId!, 'pending').then((r) => r.data || []),
     enabled: Boolean(isOrg && orgId),
@@ -121,7 +121,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   });
 
   // Phase 2 — READ-ONLY tournament finances (authorized admin/org financial users only).
-  const { data: finances } = useQuery({
+  const { data: finances, isLoading: loadingFinances, isError: financesError, refetch: refetchFinances } = useQuery({
     queryKey: ['tournament-finances', isOrg ? `org-${orgId}` : 'admin', tournamentId],
     queryFn: async () => (isOrg && orgId ? orgTournamentApi.getFinances(orgId, tournamentId) : tournamentApi.getFinances(tournamentId)),
     enabled: !!tournamentId,
@@ -143,7 +143,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const getT = (fn: (...args: any[]) => any, ...a: any[]) =>
     isOrg && orgId ? fn(orgId, ...a) : fn(...a);
 
-  const { data: tournament, isLoading: loadingT } = useQuery({
+  const { data: tournament, isLoading: loadingT, isError: tournamentError, error: tournamentQueryError, refetch: refetchTournament } = useQuery({
     queryKey: [keyRoot, tournamentId],
     queryFn: () => getT(api.getTournament, tournamentId),
   });
@@ -154,7 +154,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   // Authoritative result-action permission: the bracket "Record Result" gate
   // requires `org.tournaments.result.manage` (org) / `tournament.result.manage`.
   const resultPerm = isOrg ? 'org.tournaments.result.manage' : 'tournament.result.manage';
-  const { data: stages } = useQuery({
+  const { data: stages, isLoading: loadingStages, isError: stagesError, refetch: refetchStages } = useQuery({
     queryKey: [`${keyRoot}-stages`, tournamentId],
     queryFn: () => getT((api as any).getStages, tournamentId),
     enabled: !!tournamentId && isGsk,
@@ -173,7 +173,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
-  const { data: groups, isLoading: loadingG } = useQuery({
+  const { data: groups, isLoading: loadingG, isError: groupsError, refetch: refetchGroups } = useQuery({
     queryKey: [`${keyRoot}-groups`, tournamentId],
     queryFn: () => getT(api.getGroups, tournamentId),
     enabled: activeTab === 'competition',
@@ -187,13 +187,13 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
     enabled: !!tournamentId,
   });
 
-  const { data: standings, isLoading: loadingS } = useQuery({
+  const { data: standings, isLoading: loadingS, isError: standingsError, refetch: refetchStandings } = useQuery({
     queryKey: [`${keyRoot}-standings`, tournamentId],
     queryFn: () => getT(api.getStandings, tournamentId),
     enabled: activeTab === 'standings' || (activeTab === 'competition' && isGsk),
   });
 
-  const { data: registrations, isLoading: loadingR } = useQuery({
+  const { data: registrations, isLoading: loadingR, isError: registrationsError, refetch: refetchRegistrations } = useQuery({
     queryKey: [`${keyRoot}-registrations`, tournamentId],
     queryFn: () => getT(api.getRegistrations, tournamentId),
   });
@@ -291,6 +291,24 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   }, [isOrg, orgId, t, isGsk]);
 
   if (loadingT) return <div className="p-6"><SkeletonRow count={3} /></div>;
+  // F-02 — a failed fetch must not masquerade as an empty/blank Hub shell.
+  // The backend responds HTTP 404 for a missing tournament; transport/server
+  // failures carry no status, so a genuine not-found is preserved while
+  // network/server errors always offer Retry.
+  if (tournamentError) {
+    if ((tournamentQueryError as unknown as { response?: { status?: number } })?.response?.status === 404) {
+      return <div className="p-6 text-center text-sm text-[var(--color-text-muted)]">Tournament not found.</div>;
+    }
+    return (
+      <div className="p-6 text-center">
+        <p className="text-sm text-[var(--color-error)]">Unable to load tournament.</p>
+        <button onClick={() => refetchTournament()}
+          className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {t('common.retry', 'Retry')}
+        </button>
+      </div>
+    );
+  }
 
   const status = tournament?.status as string | undefined;
 
@@ -348,10 +366,10 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
 
   const completedMatches = matchList.filter((m: any) => m.status === 'completed').length;
   const kpis: HubKpi[] = [
-    { key: 'participants', label: t('tournaments.hub.kpi.participants', 'Participants'), value: (registrations ?? []).length },
+    { key: 'participants', label: t('tournaments.hub.kpi.participants', 'Participants'), value: registrationsError ? '—' : (registrations ?? []).length },
     { key: 'capacity', label: t('tournaments.hub.kpi.capacity', 'Capacity'), value: tournament?.max_participants ?? tournament?.max_players ?? '—' },
-    { key: 'matches', label: t('tournaments.hub.kpi.matches', 'Matches'), value: matchList.length },
-    { key: 'completed', label: t('tournaments.hub.kpi.completed', 'Completed'), value: completedMatches },
+    { key: 'matches', label: t('tournaments.hub.kpi.matches', 'Matches'), value: matchesError ? '—' : matchList.length },
+    { key: 'completed', label: t('tournaments.hub.kpi.completed', 'Completed'), value: matchesError ? '—' : completedMatches },
   ];
 
   const meta = [
@@ -462,7 +480,15 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                   </button>
                 </Can>
               </div>
-              {loadingR ? <SkeletonRow count={3} /> : (
+              {loadingR ? <SkeletonRow count={3} /> : registrationsError ? (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <p className="text-sm text-[var(--color-error)]">Unable to load registrations.</p>
+                  <button onClick={() => refetchRegistrations()}
+                    className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                    {t('common.retry', 'Retry')}
+                  </button>
+                </div>
+              ) : (
                 <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
                   <table className="w-full text-sm">
                     <thead>
@@ -536,14 +562,32 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                   <button
                     type="button"
                     onClick={() => generateGskGroupsMutation.mutate()}
-                    disabled={!groupStage || (groups ?? []).length > 0 || generateGskGroupsMutation.isPending}
+                    disabled={!groupStage || groupsError || (groups ?? []).length > 0 || generateGskGroupsMutation.isPending}
                     className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 text-sm font-medium text-white disabled:opacity-50"
                     data-testid="gsk-generate-groups"
                   >
                     {generateGskGroupsMutation.isPending ? t('common.loading') : t('tournaments.generate_groups')}
                   </button>
                 </Can>
-                <GskGroupsView groups={groups ?? []} standings={standings ?? []} loading={loadingG} />
+                {groupsError ? (
+                  <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                    <p className="text-sm text-[var(--color-error)]">Unable to load groups.</p>
+                    <button onClick={() => refetchGroups()}
+                      className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                      {t('common.retry', 'Retry')}
+                    </button>
+                  </div>
+                ) : standingsError ? (
+                  <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                    <p className="text-sm text-[var(--color-error)]">Unable to load standings.</p>
+                    <button onClick={() => refetchStandings()}
+                      className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                      {t('common.retry', 'Retry')}
+                    </button>
+                  </div>
+                ) : (
+                  <GskGroupsView groups={groups ?? []} standings={standings ?? []} loading={loadingG} />
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -560,12 +604,21 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                         className="w-20 rounded border px-2 py-1 text-sm" min={1} />
                     </div>
                     <button onClick={() => generateGroupsMutation.mutate()}
-                      className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 py-1.5 text-sm text-white">
+                      disabled={groupsError || generateGroupsMutation.isPending}
+                      className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 py-1.5 text-sm text-white disabled:opacity-50">
                       {t('tournaments.generate_groups')}
                     </button>
                   </div>
                 </Can>
-                {loadingG ? <SkeletonRow count={3} /> : (
+                {loadingG ? <SkeletonRow count={3} /> : groupsError ? (
+                  <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                    <p className="text-sm text-[var(--color-error)]">Unable to load groups.</p>
+                    <button onClick={() => refetchGroups()}
+                      className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                      {t('common.retry', 'Retry')}
+                    </button>
+                  </div>
+                ) : (
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {(groups ?? []).map((g: any) => (
                       <div key={g.id} className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
@@ -589,41 +642,69 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
             )}
 
             {compTab === 'qualification' && isGsk && (
-              <GskQualificationView
-                mode={mode}
-                orgId={orgId}
-                tournamentId={tournamentId}
-                groupStage={groupStage}
-                groupMatches={matchList.filter((m: any) => Number(m.stage_id) === Number(groupStage?.id))}
-                canManage={can(managePerm)}
-                onDone={refreshCompetition}
-              />
+              loadingStages ? <SkeletonRow count={3} /> : stagesError ? (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <p className="text-sm text-[var(--color-error)]">Unable to load stages.</p>
+                  <button onClick={() => refetchStages()}
+                    className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                    {t('common.retry', 'Retry')}
+                  </button>
+                </div>
+              ) : (
+                <GskQualificationView
+                  mode={mode}
+                  orgId={orgId}
+                  tournamentId={tournamentId}
+                  groupStage={groupStage}
+                  groupMatches={matchList.filter((m: any) => Number(m.stage_id) === Number(groupStage?.id))}
+                  canManage={can(managePerm)}
+                  onDone={refreshCompetition}
+                />
+              )
             )}
 
             {compTab === 'knockout' && isGsk && (
-              <GskKnockoutView
-                mode={mode}
-                orgId={orgId}
-                tournamentId={tournamentId}
-                tournamentName={tournament?.name}
-                bracketTypeName={tournament?.bracket_type_name}
-                sportName={tournament?.sport_name}
-                status={tournament?.status}
-                groupStage={groupStage}
-                knockoutStage={knockoutStage}
-                matches={matchList}
-                participants={participantList}
-                currentUserId={user?.id}
-                canManage={can(managePerm)}
-                onMatchClick={setDetailsMatch}
-                onDone={refreshCompetition}
-                footer={(m) => (
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setDetailsMatch(m); }}
-                    className="text-[10px] text-[var(--color-primary)] hover:underline">
-                    {t('tournamentBracket.details', 'Details')}
+              loadingStages ? <SkeletonRow count={3} /> : stagesError ? (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <p className="text-sm text-[var(--color-error)]">Unable to load stages.</p>
+                  <button onClick={() => refetchStages()}
+                    className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                    {t('common.retry', 'Retry')}
                   </button>
-                )}
-              />
+                </div>
+              ) : registrationsError ? (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <p className="text-sm text-[var(--color-error)]">Unable to load registrations.</p>
+                  <button onClick={() => refetchRegistrations()}
+                    className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                    {t('common.retry', 'Retry')}
+                  </button>
+                </div>
+              ) : (
+                <GskKnockoutView
+                  mode={mode}
+                  orgId={orgId}
+                  tournamentId={tournamentId}
+                  tournamentName={tournament?.name}
+                  bracketTypeName={tournament?.bracket_type_name}
+                  sportName={tournament?.sport_name}
+                  status={tournament?.status}
+                  groupStage={groupStage}
+                  knockoutStage={knockoutStage}
+                  matches={matchList}
+                  participants={participantList}
+                  currentUserId={user?.id}
+                  canManage={can(managePerm)}
+                  onMatchClick={setDetailsMatch}
+                  onDone={refreshCompetition}
+                  footer={(m) => (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setDetailsMatch(m); }}
+                      className="text-[10px] text-[var(--color-primary)] hover:underline">
+                      {t('tournamentBracket.details', 'Details')}
+                    </button>
+                  )}
+                />
+              )
             )}
 
             {compTab === 'bracket' && !isGsk && (
@@ -640,7 +721,15 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                 </div>
                 {loadingM ? <SkeletonRow count={5} />
                   : matchesError ? <p className="py-8 text-center text-sm text-[var(--color-error)]">{t('tournamentBracket.error')}</p>
-                  : (
+                  : registrationsError ? (
+                    <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                      <p className="text-sm text-[var(--color-error)]">Unable to load registrations.</p>
+                      <button onClick={() => refetchRegistrations()}
+                        className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                        {t('common.retry', 'Retry')}
+                      </button>
+                    </div>
+                  ) : (
                     <TournamentBracket
                       tournament={tournament}
                       matches={matchList}
@@ -707,7 +796,15 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
         {/* ── STANDINGS ── */}
         {effectiveTab === 'standings' && (
           <div {...panelProps('standings')}>
-            {loadingS ? <SkeletonRow count={5} /> : (
+            {loadingS ? <SkeletonRow count={5} /> : standingsError ? (
+              <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                <p className="text-sm text-[var(--color-error)]">Unable to load standings.</p>
+                <button onClick={() => refetchStandings()}
+                  className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                  {t('common.retry', 'Retry')}
+                </button>
+              </div>
+            ) : (
               <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]">
                 <table className="w-full text-sm">
                   <thead>
@@ -744,7 +841,17 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
             <Can permission={financePerm}>
               <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
                 <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.finances', 'Tournament Finances')}</h3>
-                {finances ? (
+                {loadingFinances ? (
+                  <p className="text-xs text-[var(--color-text-muted)]">Loading finances…</p>
+                ) : financesError ? (
+                  <div>
+                    <p className="text-sm text-[var(--color-error)]">Unable to load finances.</p>
+                    <button onClick={() => refetchFinances()}
+                      className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                      {t('common.retry', 'Retry')}
+                    </button>
+                  </div>
+                ) : finances ? (
                   <>
                     <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
                       <div><p className="text-xs text-[var(--color-text-muted)]">Registration revenue</p><p className="font-medium">{finances?.revenue?.registration?.toFixed?.(2) ?? '—'}</p></div>
@@ -764,7 +871,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                     </p>
                   </>
                 ) : (
-                  <p className="text-xs text-[var(--color-text-muted)]">Loading finances…</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">No finance data available.</p>
                 )}
               </div>
             </Can>
@@ -789,7 +896,17 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
               <Can permission={financePerm}>
                 <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3">
                   <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.hub.refunds', 'Registration Refund Requests')}</h3>
-                  {(!refundRequests || refundRequests.length === 0) ? (
+                  {loadingRefunds ? (
+                    <p className="text-xs text-[var(--color-text-muted)]">Loading refund requests…</p>
+                  ) : refundsError ? (
+                    <div>
+                      <p className="text-sm text-[var(--color-error)]">Unable to load refund requests.</p>
+                      <button onClick={() => refetchRefunds()}
+                        className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+                        {t('common.retry', 'Retry')}
+                      </button>
+                    </div>
+                  ) : (!refundRequests || refundRequests.length === 0) ? (
                     <p className="text-xs text-[var(--color-text-muted)]">No pending refund requests.</p>
                   ) : (
                     <div className="space-y-2">
