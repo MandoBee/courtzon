@@ -13,7 +13,7 @@ export default function TournamentsPage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['my-tournaments'],
     queryFn: () => api.get('/my/tournaments').then((r) => r.data),
   });
@@ -62,6 +62,13 @@ export default function TournamentsPage() {
 
         {isLoading ? (
           <p className="text-sm text-[var(--color-text-muted)]">{t('common.loading')}</p>
+        ) : isError ? (
+          <Card>
+            <p className="text-sm text-[var(--color-error)]">{t('player.tournaments.load_error', 'Unable to load your tournaments.')}</p>
+            <Button onClick={() => refetch()} className="mt-4">
+              {t('common.retry', 'Retry')}
+            </Button>
+          </Card>
         ) : !data?.length ? (
           <Card>
             <p className="text-sm text-[var(--color-text-muted)]">{t('player.tournaments.no_tournaments') || 'No tournament registrations found.'}</p>

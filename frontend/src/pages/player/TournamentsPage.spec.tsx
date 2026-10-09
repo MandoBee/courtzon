@@ -104,3 +104,35 @@ describe('TournamentsPage — G11.8 player self-service cancellation', () => {
     expect(screen.queryAllByText('common.cancel').length).toBe(0);
   });
 });
+
+describe('TournamentsPage — F-02 query error handling (UX-14)', () => {
+  it('shows an explicit error + Retry (never the empty state) when the query fails', async () => {
+    __state.getMock.mockRejectedValue(new Error('Network Error'));
+    renderPage();
+
+    expect(await screen.findByText('Unable to load your tournaments.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    // A failed fetch must not masquerade as a legitimate empty roster.
+    expect(screen.queryByText('player.tournaments.no_tournaments')).toBeNull();
+  });
+
+  it('recovers via Retry (successful refetch renders the list)', async () => {
+    __state.getMock.mockRejectedValueOnce(new Error('Network Error'));
+    renderPage();
+
+    expect(await screen.findByText('Unable to load your tournaments.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Open Cup')).toBeTruthy();
+    expect(screen.queryByText('Unable to load your tournaments.')).toBeNull();
+  });
+
+  it('keeps the genuine empty state when the query succeeds with no registrations', async () => {
+    __state.getMock.mockResolvedValue({ data: [] });
+    renderPage();
+
+    expect(await screen.findByText('player.tournaments.no_tournaments')).toBeTruthy();
+    expect(screen.queryByText('Unable to load your tournaments.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+});
