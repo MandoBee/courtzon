@@ -96,6 +96,12 @@ describe('TournamentAwardsPage — G11.5 award management (G11 Phase 4)', () => 
     // Exactly ONE refund button (credited award only; the refunded award has none).
     const refundButtons = await waitFor(() => screen.getAllByRole('button', { name: /^Refund$/i }));
     expect(refundButtons.length).toBe(1);
+
+    // TUX-05 — the refunded status pill must use a readable foreground token
+    // (gray-600 → --color-text), never the low-contrast gray-500 on gray-100.
+    const refundedBadge = screen.getByText('refunded');
+    expect(refundedBadge.className).toContain('text-gray-600');
+    expect(refundedBadge.className).not.toContain('text-gray-500');
   });
 
   it('grant button is hidden for a holder without tournaments.awards.grant (authorization)', async () => {

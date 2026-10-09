@@ -9,16 +9,7 @@ import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
 import { tournamentApi, orgTournamentApi } from '../../../services/tournament';
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-600',
-  published: 'bg-blue-100 text-blue-700',
-  registration_open: 'bg-green-100 text-green-700',
-  registration_closed: 'bg-amber-100 text-amber-700',
-  running: 'bg-purple-100 text-purple-700',
-  completed: 'bg-teal-100 text-teal-700',
-  cancelled: 'bg-red-100 text-red-700',
-  archived: 'bg-gray-100 text-gray-500',
-};
+import { TOURNAMENT_STATUS_COLORS as STATUS_COLORS } from '../../../components/tournaments/statusBadges';
 
 const STATUS_ACTIONS: Record<string, { permission: 'edit' | 'delete'; labelKey: string; action: string }[]> = {
   draft: [{ permission: 'edit', labelKey: 'tournaments.action.publish', action: 'publish' }],

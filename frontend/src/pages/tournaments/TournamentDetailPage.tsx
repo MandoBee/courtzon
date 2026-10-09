@@ -27,16 +27,7 @@ import type { TournamentMatchNode } from '../../types/tournamentBracket';
 
 type Tab = 'overview' | 'bracket' | 'matches' | 'groups' | 'qualification' | 'standings' | 'players';
 
-const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-600',
-  published: 'bg-blue-100 text-blue-700',
-  registration_open: 'bg-green-100 text-green-700',
-  registration_closed: 'bg-amber-100 text-amber-700',
-  running: 'bg-purple-100 text-purple-700',
-  completed: 'bg-gray-100 text-gray-600',
-  cancelled: 'bg-red-100 text-red-700',
-  archived: 'bg-gray-100 text-gray-500',
-};
+import { PLAYER_TOURNAMENT_STATUS_BADGE as STATUS_BADGE } from '../../components/tournaments/statusBadges';
 
 /**
  * Group 3 — human-readable payment label from the backend's EFFECTIVE allowed

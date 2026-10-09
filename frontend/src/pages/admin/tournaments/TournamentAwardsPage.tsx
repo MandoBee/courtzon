@@ -270,7 +270,7 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
                     a.status === 'credited' ? 'bg-green-100 text-green-700'
-                    : a.status === 'refunded' ? 'bg-gray-100 text-gray-500'
+                    : a.status === 'refunded' ? 'bg-gray-100 text-gray-600'
                     : 'bg-yellow-100 text-yellow-700'
                   }`}>{a.status}</span>
                 </td>

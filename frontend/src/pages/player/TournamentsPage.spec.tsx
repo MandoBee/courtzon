@@ -76,7 +76,12 @@ describe('TournamentsPage — G11.8 player self-service cancellation', () => {
   it('hides Cancel when the tournament draw is locked (drawLocked=true)', async () => {
     renderPage();
     await screen.findByText('Locked Draw Cup');
-    expect(screen.getByText('player.tournaments.draw_locked')).toBeTruthy();
+    const lockedBadge = screen.getByText('player.tournaments.draw_locked');
+    expect(lockedBadge).toBeTruthy();
+    // TUX-05 — the draw-locked pill must use a readable foreground token
+    // (gray-600 → --color-text), never the low-contrast gray-500 on gray-100.
+    expect(lockedBadge.className).toContain('text-gray-600');
+    expect(lockedBadge.className).not.toContain('text-gray-500');
     const clicks = screen.queryAllByText('common.cancel');
     expect(clicks.length).toBe(1); // still only the Open Cup one
   });

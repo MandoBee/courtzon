@@ -705,3 +705,29 @@ describe('Tournament Hub — TUX-03 GSK qualification result persistence (Phase 
     expect(__state.adminApi.qualifyGsk).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Tournament Hub — TUX-05 status badge contrast', () => {
+  function renderAdmin() {
+    return renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+  }
+
+  it('renders the disqualified registration badge with a readable foreground (not bg==fg)', async () => {
+    // gray-100 and gray-700 BOTH resolve to var(--color-border), so the old
+    // `text-gray-700` disqualified pill was invisible on its `bg-gray-100`
+    // background. gray-600 resolves to var(--color-text) — theme-safe.
+    __state.adminApi.getRegistrations.mockResolvedValue([
+      { id: 1, player_id: 10, player_name: 'Ali', status: 'registered' },
+      { id: 4, player_id: 13, player_name: 'Lina', status: 'disqualified' },
+    ]);
+    const { container } = renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.participants' }));
+    await screen.findByText('tournaments.reg_status.disqualified');
+
+    const pill = Array.from(container.querySelectorAll<HTMLElement>('span'))
+      .find((el) => el.textContent === 'tournaments.reg_status.disqualified');
+    expect(pill).toBeTruthy();
+    expect(pill!.className).toContain('text-gray-600');
+    expect(pill!.className).not.toContain('text-gray-700');
+  });
+});

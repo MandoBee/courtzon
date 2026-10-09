@@ -92,7 +92,7 @@ export default function TournamentsPage() {
                           {reg.tournament_status}
                         </span>
                         {drawLocked && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                             {t('player.tournaments.draw_locked') || 'Draw locked'}
                           </span>
                         )}

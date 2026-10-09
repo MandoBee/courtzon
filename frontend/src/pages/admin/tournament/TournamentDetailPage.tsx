@@ -25,23 +25,7 @@ import { useAuthStore } from '../../../store/auth.store';
 import { useCan } from '../../../hooks/useCan';
 import type { TournamentMatchNode } from '../../../types/tournamentBracket';
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-600',
-  published: 'bg-blue-100 text-blue-700',
-  registration_open: 'bg-green-100 text-green-700',
-  registration_closed: 'bg-amber-100 text-amber-700',
-  running: 'bg-purple-100 text-purple-700',
-  completed: 'bg-teal-100 text-teal-700',
-  cancelled: 'bg-red-100 text-red-700',
-  archived: 'bg-gray-100 text-gray-500',
-};
-
-const REG_STATUS_COLORS: Record<string, string> = {
-  registered: 'bg-yellow-100 text-yellow-700',
-  confirmed: 'bg-green-100 text-green-700',
-  withdrawn: 'bg-red-100 text-red-700',
-  disqualified: 'bg-gray-100 text-gray-700',
-};
+import { TOURNAMENT_STATUS_COLORS as STATUS_COLORS, TOURNAMENT_REG_STATUS_COLORS as REG_STATUS_COLORS } from '../../../components/tournaments/statusBadges';
 
 type HubTab = 'overview' | 'participants' | 'competition' | 'matches' | 'standings' | 'finances' | 'settings';
 type CompetitionSubTab = 'categories' | 'groups' | 'qualification' | 'draw' | 'bracket' | 'knockout';
