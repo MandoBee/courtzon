@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from '../../../i18n';
-import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../../permissions/Can';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import { Button } from '../../../components/ui/Button';
 import { tournamentApi } from '../../../services/tournament';
 
 const cardClass = 'bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5';
@@ -11,16 +11,11 @@ const valueClass = 'text-2xl font-bold text-[var(--color-text)] mt-1';
 
 export default function TournamentDashboardPage() {
   const { t } = useTranslation();
-  const { showToast } = useToast();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['tournament-dashboard'],
     queryFn: () => tournamentApi.getDashboard(),
   });
-
-  if (error) {
-    showToast(t('tournaments.dashboard.load_error'), 'error');
-  }
 
   if (isLoading) {
     return (
@@ -28,6 +23,26 @@ export default function TournamentDashboardPage() {
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('tournaments.dashboard.title')}</h1>
         <SkeletonRow count={4} />
       </div>
+    );
+  }
+
+  // F-02 / TUX-01 — a failed fetch must never render the KPI grid with
+  // fabricated zero values. Surface an explicit, recoverable error instead.
+  // TUX-02 — the previous render-phase `showToast` side effect is removed;
+  // the failure is communicated once through this panel, never duplicated.
+  if (isError) {
+    return (
+      <Can permission="tournament.dashboard.view">
+        <div className="space-y-6">
+          <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('tournaments.dashboard.title')}</h1>
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+            <p className="text-sm text-[var(--color-error)]">{t('tournaments.dashboard.load_error')}</p>
+            <Button onClick={() => refetch()} loading={isFetching} className="mt-4">
+              {t('common.retry', 'Retry')}
+            </Button>
+          </div>
+        </div>
+      </Can>
     );
   }
 
@@ -42,7 +57,7 @@ export default function TournamentDashboardPage() {
   ];
 
   return (
-    <Can permission="admin-tournaments.view">
+    <Can permission="tournament.dashboard.view">
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('tournaments.dashboard.title')}</h1>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

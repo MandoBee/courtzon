@@ -1235,11 +1235,15 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (fro
   //   • nav section/children — sidebar.tournament, sidebar.tournament-dashboard,
   //     sidebar.tournament-list, tournament.bracket-types.view
   //     (admin.registry.ts:165–176).
-  //   • canonical list/dashboard screens — admin-tournaments.view is the runtime
-  //     page gate (TournamentListPage.tsx:71, TournamentDashboardPage.tsx:45);
-  //     tournaments.edit / tournaments.delete gate the list actions
-  //     (TournamentListPage.tsx:71). The legacy-named trio is NOT orphaned — it
-  //     is the actual gate of the canonical screens and must stay.
+  //   • canonical list screen — admin-tournaments.view is the runtime page gate
+  //     (TournamentListPage.tsx:71); tournaments.edit / tournaments.delete gate
+  //     the list actions (TournamentListPage.tsx:71). The legacy-named trio is
+  //     NOT orphaned — it is the actual gate of the canonical list screen and
+  //     must stay.
+  //   • canonical dashboard screen — gated by tournament.dashboard.view
+  //     (TournamentDashboardPage.tsx:35,60), matching the backend
+  //     GET /admin/tournaments/dashboard requirePermission guard and the
+  //     registry page key (registry.ts:752).
   //   • detail/hub actions — tournament.update / publish / delete / register /
   //     manage / result.manage / view (TournamentDetailPage.tsx,
   //     MatchesManager.tsx:137–138, Draw/Participants pages).
