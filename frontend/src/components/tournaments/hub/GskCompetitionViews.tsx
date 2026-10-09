@@ -102,8 +102,18 @@ export function GskGroupsView({ groups, standings, loading, highlightRegistratio
   );
 }
 
-export function GskQualificationView({ mode, orgId, tournamentId, groupStage, groupMatches, canManage, onDone }: {
-  mode: Mode; orgId?: string; tournamentId: number; groupStage: any | null; groupMatches: any[]; canManage: boolean; onDone: () => void;
+/**
+ * The qualification result shape returned by the backend `POST .../qualify`
+ * lifecycle route and cached by the hub (TUX-03 Phase 1). The `qualified` rows
+ * are the authoritative server-computed list — never derived in the frontend.
+ */
+export interface GskQualificationResultLike {
+  qualified?: unknown[];
+  totalQualified?: number;
+}
+
+export function GskQualificationView({ mode, orgId, tournamentId, groupStage, groupMatches, canManage, onDone, qualifiedResult, onQualified }: {
+  mode: Mode; orgId?: string; tournamentId: number; groupStage: any | null; groupMatches: any[]; canManage: boolean; onDone: () => void; qualifiedResult?: GskQualificationResultLike | null; onQualified?: (result: GskQualificationResultLike) => void;
 }) {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -112,7 +122,13 @@ export function GskQualificationView({ mode, orgId, tournamentId, groupStage, gr
 
   const mutation = useMutation({
     mutationFn: () => run(api.qualifyGsk, tournamentId, Number(groupStage?.id)),
-    onSuccess: () => { showToast(t('tournaments.hub.gsk.qualifiedToast', 'Qualification computed'), 'success'); onDone(); },
+    onSuccess: (data) => {
+      showToast(t('tournaments.hub.gsk.qualifiedToast', 'Qualification computed'), 'success');
+      // TUX-03 Phase 1 — lift the server result up to the hub so it survives a
+      // Competition sub-tab switch; the hub owns the authoritative copy.
+      onQualified?.(data as GskQualificationResultLike);
+      onDone();
+    },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -121,7 +137,7 @@ export function GskQualificationView({ mode, orgId, tournamentId, groupStage, gr
   }
   const cfg = (groupStage.config?.groupStage?.qualification) ?? {};
   const complete = groupMatches.length > 0 && groupMatches.every((m: any) => m.status === 'completed');
-  const result = mutation.data as { qualified?: any[]; totalQualified?: number } | undefined;
+  const result = (qualifiedResult ?? mutation.data) as GskQualificationResultLike | undefined;
   const rows = Array.isArray(result?.qualified) ? result!.qualified! : [];
   const groupCount = Number(groupStage.config?.groupStage?.groupCount ?? 0);
 

@@ -17,7 +17,7 @@ import { TournamentBracket } from '../../../components/tournaments/TournamentBra
 import { TournamentPrintView } from '../../../components/tournaments/TournamentPrintView';
 import { TournamentHero, type HubAction, type HubKpi, type HubPhase } from '../../../components/tournaments/hub/TournamentHero';
 import { TournamentTabs, panelId, tabId, type HubTabItem } from '../../../components/tournaments/hub/TournamentTabs';
-import { GskGroupsView, GskQualificationView, GskKnockoutView } from '../../../components/tournaments/hub/GskCompetitionViews';
+import { GskGroupsView, GskQualificationView, GskKnockoutView, type GskQualificationResultLike } from '../../../components/tournaments/hub/GskCompetitionViews';
 import { MatchesManager } from '../../../components/tournaments/hub/MatchesManager';
 import TournamentParticipantsPage from './TournamentParticipantsPage';
 import TournamentDrawPage from './TournamentDrawPage';
@@ -139,6 +139,11 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
   const [groupSize, setGroupSize] = useState(4);
   const [advanceCount, setAdvanceCount] = useState(2);
   const [nameDraft, setNameDraft] = useState('');
+
+  // TUX-03 Phase 1 — keep the last successful qualification result at the hub
+  // level so it survives a Competition sub-tab switch while the hub stays
+  // mounted. The result still comes from the authoritative server response.
+  const [qualificationResult, setQualificationResult] = useState<GskQualificationResultLike | null>(null);
 
   const getT = (fn: (...args: any[]) => any, ...a: any[]) =>
     isOrg && orgId ? fn(orgId, ...a) : fn(...a);
@@ -666,6 +671,8 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                   groupStage={groupStage}
                   groupMatches={matchList.filter((m: any) => Number(m.stage_id) === Number(groupStage?.id))}
                   canManage={can(managePerm)}
+                  qualifiedResult={qualificationResult}
+                  onQualified={setQualificationResult}
                   onDone={refreshCompetition}
                 />
               )

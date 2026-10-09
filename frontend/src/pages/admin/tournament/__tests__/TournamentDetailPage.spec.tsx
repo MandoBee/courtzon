@@ -19,6 +19,7 @@ function lifecycleApi() {
     cancelRegistration: vi.fn(),
     confirmRegistration: vi.fn(),
     generateGroups: vi.fn(),
+    qualifyGsk: vi.fn(),
     publish: vi.fn(),
     openRegistration: vi.fn(),
     closeRegistration: vi.fn(),
@@ -640,5 +641,67 @@ describe('Tournament Hub — TUX-04 GSK dependent sub-tab matches error', () => 
     fireEvent.click(screen.getByRole('button', { name: RETRY }));
     expect(await screen.findByTestId('gsk-knockout')).toBeTruthy();
     expect(screen.queryByText('Unable to load matches.')).toBeNull();
+  });
+});
+
+describe('Tournament Hub — TUX-03 GSK qualification result persistence (Phase 1)', () => {
+  function renderAdmin() {
+    return renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+  }
+
+  function gskTournament() {
+    return { ...__state.enrichedTournament, format: 'group_stage_knockout' };
+  }
+
+  function gskStages() {
+    return [
+      {
+        id: 5,
+        progression_format: 'round_robin',
+        config: {
+          format: 'group_stage_knockout',
+          groupStage: { groupCount: 2, participantsPerGroup: 2, qualification: { topPerGroup: 2, bestThirdPlaces: 0, ordering: 'rank' } },
+        },
+      },
+      { id: 6, progression_format: 'knockout', config: {} },
+    ];
+  }
+
+  it('keeps the qualified rows visible after switching Competition sub-tabs and back', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(gskTournament());
+    __state.adminApi.getStages.mockResolvedValue(gskStages());
+    __state.adminApi.getMatches.mockResolvedValue([{ id: 1, stage_id: 5, status: 'completed' }]);
+    __state.adminApi.qualifyGsk.mockResolvedValue({
+      tournamentId: 1,
+      stageId: 5,
+      qualified: [
+        { participantId: 10, qualificationRank: 1, qualificationType: 'group_position', groupRank: 1 },
+        { participantId: 11, qualificationRank: 2, qualificationType: 'group_position', groupRank: 1 },
+      ],
+      totalQualified: 2,
+    });
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.competition' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'tournaments.hub.qualification' }));
+
+    // Run qualification and render the authoritative server rows.
+    fireEvent.click(screen.getByTestId('gsk-qualify-button'));
+    expect(await screen.findByTestId('gsk-qualified')).toBeTruthy();
+    expect(screen.getByText('#1 · 10')).toBeTruthy();
+    expect(screen.getByText('#2 · 11')).toBeTruthy();
+    expect(__state.adminApi.qualifyGsk).toHaveBeenCalledTimes(1);
+
+    // Switch away from Qualification, then back — the result must survive the
+    // unmount of GskQualificationView because it now lives at the hub.
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.knockout' }));
+    await screen.findByTestId('gsk-knockout');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.qualification' }));
+
+    expect(await screen.findByTestId('gsk-qualified')).toBeTruthy();
+    expect(screen.getByText('#1 · 10')).toBeTruthy();
+    expect(screen.getByText('#2 · 11')).toBeTruthy();
+    // The server result is reused, not recomputed.
+    expect(__state.adminApi.qualifyGsk).toHaveBeenCalledTimes(1);
   });
 });
