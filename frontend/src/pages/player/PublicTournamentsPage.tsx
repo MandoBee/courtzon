@@ -1,14 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { publicTournamentApi } from '../../services/tournament';
-import { Card, Spinner } from '../../components/ui';
+import { Card, Spinner, Button } from '../../components/ui';
+import { useTranslation } from '../../i18n';
 
 /**
  * G11.16 — Public / anonymous tournament discovery LIST.
  * No authentication required. Backend returns ONLY is_public=1 tournaments.
  */
 export default function PublicTournamentsPage() {
-  const { data, isLoading, isError, error } = useQuery({
+  const { t } = useTranslation();
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['public-tournaments'],
     queryFn: () => publicTournamentApi.list(),
   });
@@ -31,6 +33,9 @@ export default function PublicTournamentsPage() {
             Failed to load public tournaments. Please try again later.
             {error ? ` (${(error as any)?.message ?? ''})` : ''}
           </p>
+          <Button onClick={() => refetch()} className="mt-4">
+            {t('common.retry', 'Retry')}
+          </Button>
         </Card>
       ) : !data || data.length === 0 ? (
         <Card>
