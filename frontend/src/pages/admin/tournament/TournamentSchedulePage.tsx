@@ -43,18 +43,18 @@ export default function TournamentSchedulePage({ mode = 'admin', orgId: orgIdPro
   const [scheduleTarget, setScheduleTarget] = useState<ScheduleTarget | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
-  const { data: tournament, isLoading: loadingT } = useQuery({
+  const { data: tournament, isLoading: loadingT, isError: tournamentError, refetch: refetchTournament } = useQuery({
     queryKey: ['tournament', tournamentId],
     queryFn: () => wrap(detailApi.getTournament, tournamentId),
   });
 
-  const { data: matchesData, isLoading: loadingM } = useQuery({
+  const { data: matchesData, isLoading: loadingM, isError: matchesError, refetch: refetchMatches } = useQuery({
     queryKey: ['tournament-matches', tournamentId],
     queryFn: () => wrap(detailApi.getMatches, tournamentId),
   });
   const matches = Array.isArray(matchesData) ? matchesData : [];
 
-  const { data: courtsData } = useQuery({
+  const { data: courtsData, isError: courtsError, refetch: refetchCourts } = useQuery({
     queryKey: ['tournament-courts', tournamentId],
     queryFn: () => wrap(pApi.getEligibleCourts, tournamentId),
   });
@@ -117,7 +117,16 @@ export default function TournamentSchedulePage({ mode = 'admin', orgId: orgIdPro
         <div>
           <h1 className="text-xl font-bold text-[var(--color-text)]">{t('tournaments.matches_schedule', 'Matches & Schedule')}</h1>
           <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            {t('tournaments.schedule_window', 'Tournament window')}: {tournament?.start_date?.slice(0, 10)} → {tournament?.end_date?.slice(0, 10) || '—'} • {tournament?.daily_start_time ? String(tournament.daily_start_time).slice(0, 5) : '—'}–{tournament?.daily_end_time ? String(tournament.daily_end_time).slice(0, 5) : '—'}
+            {tournamentError ? (
+              <>
+                <span className="text-[var(--color-error)]">Unable to load tournament.</span>{' '}
+                <button onClick={() => refetchTournament()} className="underline">{t('common.retry', 'Retry')}</button>
+              </>
+            ) : (
+              <>
+                {t('tournaments.schedule_window', 'Tournament window')}: {tournament?.start_date?.slice(0, 10)} → {tournament?.end_date?.slice(0, 10) || '—'} • {tournament?.daily_start_time ? String(tournament.daily_start_time).slice(0, 5) : '—'}–{tournament?.daily_end_time ? String(tournament.daily_end_time).slice(0, 5) : '—'}
+              </>
+            )}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -138,7 +147,17 @@ export default function TournamentSchedulePage({ mode = 'admin', orgId: orgIdPro
         </div>
       </div>
 
-      {!hasMatches && (
+      {matchesError && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5">
+          <p className="text-sm text-[var(--color-error)]">Unable to load matches.</p>
+          <button onClick={() => refetchMatches()}
+            className="mt-3 text-sm font-medium text-[var(--color-primary)] underline">
+            {t('common.retry', 'Retry')}
+          </button>
+        </div>
+      )}
+
+      {!hasMatches && !matchesError && (
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5">
           <p className="text-sm text-[var(--color-text)]">{t('tournaments.no_matches_generated', 'No matches generated yet. Lock the draw, then generate the match set.')}</p>
           <p className="text-xs text-[var(--color-text-muted)] mt-1">{t('tournaments.generate_hint', 'Only a LOCKED draw may produce the authoritative match schedule. Byes are created as bracket metadata — they never reserve a court.')}</p>
@@ -199,6 +218,17 @@ export default function TournamentSchedulePage({ mode = 'admin', orgId: orgIdPro
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {courtsError && (
+        <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4">
+          <h2 className="text-sm font-semibold mb-2">{t('tournaments.eligible_courts', 'Eligible Courts')}</h2>
+          <p className="text-sm text-[var(--color-error)]">Unable to load courts.</p>
+          <button onClick={() => refetchCourts()}
+            className="mt-2 text-xs font-medium text-[var(--color-primary)] underline">
+            {t('common.retry', 'Retry')}
+          </button>
         </div>
       )}
 
