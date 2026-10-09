@@ -64,27 +64,27 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
   // holders of tournaments.awards.view (grant/refund stay additionally gated).
   const canViewAwards = can('tournaments.awards.view');
 
-  const { data: tournament } = useQuery({
+  const { data: tournament, isError: tournamentError, refetch: refetchTournament } = useQuery({
     queryKey: ['admin-tournament', tournamentIdSafe],
     queryFn: () => tournamentApi.getTournament(tournamentIdSafe),
     enabled: Number.isFinite(tournamentIdSafe),
   });
 
-  const { data: awardsData } = useQuery({
+  const { data: awardsData, isError: awardsError, refetch: refetchAwards } = useQuery({
     queryKey: ['tournament-awards', tournamentIdSafe],
     queryFn: () => tournamentApi.getPrizeAwards(tournamentIdSafe),
     enabled: Number.isFinite(tournamentIdSafe) && canViewAwards,
   });
   const awards: AwardRow[] = Array.isArray(awardsData) ? awardsData : (awardsData?.data ?? []);
 
-  const { data: prizesData } = useQuery({
+  const { data: prizesData, isError: prizesError, refetch: refetchPrizes } = useQuery({
     queryKey: ['tournament-awardable-prizes', tournamentIdSafe],
     queryFn: () => tournamentApi.getAwardablePrizes(tournamentIdSafe),
     enabled: Number.isFinite(tournamentIdSafe) && canViewAwards,
   });
   const prizes: AwardablePrizeRow[] = Array.isArray(prizesData) ? prizesData : (prizesData?.data ?? []);
 
-  const { data: participantsData } = useQuery({
+  const { data: participantsData, isError: participantsError, refetch: refetchParticipants } = useQuery({
     queryKey: ['tournament-participants', tournamentIdSafe],
     queryFn: () => tournamentParticipantApi.getParticipants(tournamentIdSafe),
     enabled: Number.isFinite(tournamentIdSafe),
@@ -149,8 +149,20 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
         {t('tournaments.awards.title', 'Tournament Prize Awards')}
       </h1>
       <div className="mb-6 text-sm text-[var(--color-text-muted)]">
-        {tournament?.name ?? '—'}
-        {tournament?.currency_code ? ` · ${tournament.currency_code}` : ''}
+        {tournamentError ? (
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-[var(--color-error)]">Unable to load tournament.</span>
+            <button onClick={() => refetchTournament()}
+              className="text-sm font-medium text-[var(--color-primary)] underline">
+              {t('common.retry', 'Retry')}
+            </button>
+          </span>
+        ) : (
+          <>
+            {tournament?.name ?? '—'}
+            {tournament?.currency_code ? ` · ${tournament.currency_code}` : ''}
+          </>
+        )}
       </div>
 
       <Can permission="tournaments.awards.grant">
@@ -158,6 +170,24 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
           <h3 className="font-semibold text-[var(--color-text)] mb-3">
             {t('tournaments.awards.grant_title', 'Grant prize to a participant')}
           </h3>
+          {prizesError && (
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs text-[var(--color-error)]">Unable to load prizes.</p>
+              <button onClick={() => refetchPrizes()}
+                className="text-xs font-medium text-[var(--color-primary)] underline">
+                {t('common.retry', 'Retry')}
+              </button>
+            </div>
+          )}
+          {participantsError && (
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs text-[var(--color-error)]">Unable to load participants.</p>
+              <button onClick={() => refetchParticipants()}
+                className="text-xs font-medium text-[var(--color-primary)] underline">
+                {t('common.retry', 'Retry')}
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
             <div>
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
@@ -214,11 +244,23 @@ export default function TournamentAwardsPage({ tournamentId }: { tournamentId?: 
             </tr>
           </thead>
           <tbody>
-            {awards.length === 0 && (
+            {awardsError ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-6">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm text-[var(--color-error)]">Unable to load prize awards.</p>
+                    <button onClick={() => refetchAwards()}
+                      className="text-sm font-medium text-[var(--color-primary)] underline">
+                      {t('common.retry', 'Retry')}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ) : awards.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-8 text-sm text-[var(--color-text-muted)]">
                 {t('tournaments.awards.empty', 'No prize awards yet.')}
               </td></tr>
-            )}
+            ) : null}
             {awards.map((a) => (
               <tr key={a.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)]/30">
                 <td className="px-4 py-3">{a.placement ?? '—'}</td>
