@@ -53,13 +53,13 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   const [addMemberTarget, setAddMemberTarget] = useState<{ participantId: number } | null>(null);
   const [requestTarget, setRequestTarget] = useState<{ participantId: number; members: Member[] } | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: participantsError, refetch: refetchParticipants } = useQuery({
     queryKey: ['tournament-participants', tournamentId],
     queryFn: () => wrap(api.getParticipants, tournamentId),
   });
   const participants = Array.isArray(data) ? data : [];
 
-  const { data: draw } = useQuery({
+  const { data: draw, isError: drawError, refetch: refetchDraw } = useQuery({
     queryKey: ['tournament-draw', tournamentId],
     queryFn: () => wrap(api.getCurrentDraw, tournamentId),
   });
@@ -76,7 +76,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   // the selected competition explicitly (never an arbitrary one).
   const [waitlistCompetition, setWaitlistCompetition] = useState<number | ''>('');
 
-  const { data: waitlistData } = useQuery({
+  const { data: waitlistData, isError: waitlistError, refetch: refetchWaitlist } = useQuery({
     queryKey: ['tournament-waitlist', tournamentId, waitlistCompetition],
     queryFn: () => wrap(api.getWaitlist, tournamentId, waitlistCompetition === '' ? null : waitlistCompetition),
   });
@@ -86,15 +86,15 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   // owns more than one competition the operator MUST choose — the server rejects
   // an ambiguous promotion rather than filling an arbitrary category.
   const [promoteCompetition, setPromoteCompetition] = useState<number | ''>('');
-  const competitions = useQuery({
+  const { data: competitionsData, isError: competitionsError, refetch: refetchCompetitions } = useQuery({
     queryKey: ['tournament-competitions', tournamentId],
     queryFn: () => tournamentApi.listCompetitions(tournamentId),
     enabled: isOrg ? Boolean(orgId) : true,
   });
-  const competitionList: any[] = Array.isArray(competitions.data) ? competitions.data : [];
+  const competitionList: any[] = Array.isArray(competitionsData) ? competitionsData : [];
   const needsCompetitionChoice = competitionList.length > 1;
 
-  const { data: replacementData } = useQuery({
+  const { data: replacementData, isError: replacementError, refetch: refetchReplacement } = useQuery({
     queryKey: ['tournament-replacement-requests', tournamentId],
     queryFn: () => wrap(api.listReplacementRequests, tournamentId),
   });
@@ -241,7 +241,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-primary)] text-[var(--color-primary)]">
               {t('tournaments.create_team', 'Add Team')}
             </button>
-            <button onClick={() => generateDraw.mutate()} disabled={generateDraw.isPending || drawStatus === 'locked'}
+            <button onClick={() => generateDraw.mutate()} disabled={generateDraw.isPending || drawStatus === 'locked' || drawError}
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white disabled:opacity-50">
               {draw ? 'Re-Draw' : 'Generate Draw'}
             </button>
@@ -258,12 +258,30 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-4 text-sm">
-        <span className="text-[var(--color-text-muted)]">Draw status:</span>{' '}
-        <span className="font-semibold capitalize">{drawStatus}</span>
-        {draw?.attempt_number ? <span className="text-[var(--color-text-muted)]"> • attempt #{draw.attempt_number}</span> : null}
+        {drawError ? (
+          <>
+            <span className="text-[var(--color-error)]">Unable to load draw.</span>{' '}
+            <button onClick={() => refetchDraw()} className="underline">{t('common.retry', 'Retry')}</button>
+          </>
+        ) : (
+          <>
+            <span className="text-[var(--color-text-muted)]">Draw status:</span>{' '}
+            <span className="font-semibold capitalize">{drawStatus}</span>
+            {draw?.attempt_number ? <span className="text-[var(--color-text-muted)]"> • attempt #{draw.attempt_number}</span> : null}
+          </>
+        )}
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-x-auto">
+        {participantsError ? (
+          <div className="p-5">
+            <p className="text-sm text-[var(--color-error)]">Unable to load participants.</p>
+            <button onClick={() => refetchParticipants()}
+              className="mt-3 text-sm font-medium text-[var(--color-primary)] underline">
+              {t('common.retry', 'Retry')}
+            </button>
+          </div>
+        ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-[var(--color-text-muted)]">
@@ -356,6 +374,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
             })}
           </tbody>
         </table>
+        )}
       </div>
 
       {/* Group 7 — pending replacement requests */}
@@ -364,7 +383,15 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
           <h2 className="text-sm font-semibold">{t('tournaments.replacement_requests', 'Replacement Requests')} ({replacementRequests.length})</h2>
           <p className="text-[11px] text-[var(--color-text-muted)]">{t('tournaments.replacement_seed_hint', 'Replacing a member does not change the team\'s/pair\'s Tournament Seed.')}</p>
         </div>
-        {replacementRequests.length === 0 ? (
+        {replacementError ? (
+          <div className="px-4 pb-4">
+            <p className="text-xs text-[var(--color-error)]">Unable to load replacement requests.</p>
+            <button onClick={() => refetchReplacement()}
+              className="mt-2 text-xs font-medium text-[var(--color-primary)] underline">
+              {t('common.retry', 'Retry')}
+            </button>
+          </div>
+        ) : replacementRequests.length === 0 ? (
           <p className="px-4 pb-4 text-xs text-[var(--color-text-muted)]">{t('tournaments.replacement_requests_empty', 'No replacement requests.')}</p>
         ) : (
           <div className="overflow-x-auto">
@@ -455,6 +482,15 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
             </Can>
           </div>
         </div>
+        {competitionsError && (
+          <div className="px-4 pb-3 flex items-center justify-between gap-2">
+            <p className="text-xs text-[var(--color-error)]">Unable to load competitions.</p>
+            <button onClick={() => refetchCompetitions()}
+              className="text-xs font-medium text-[var(--color-primary)] underline">
+              {t('common.retry', 'Retry')}
+            </button>
+          </div>
+        )}
         {/* Explicit competition target for the promotion. */}
         {needsCompetitionChoice && (
           <div className="px-4 pb-3">
@@ -474,7 +510,15 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
             </select>
           </div>
         )}
-        {waitlist.length === 0 ? (
+        {waitlistError ? (
+          <div className="px-4 pb-4">
+            <p className="text-xs text-[var(--color-error)]">Unable to load waitlist.</p>
+            <button onClick={() => refetchWaitlist()}
+              className="mt-2 text-xs font-medium text-[var(--color-primary)] underline">
+              {t('common.retry', 'Retry')}
+            </button>
+          </div>
+        ) : waitlist.length === 0 ? (
           <p className="px-4 pb-4 text-xs text-[var(--color-text-muted)]">{t('tournaments.waitlist_empty', 'The waitlist is empty.')}</p>
         ) : (
           <table className="w-full text-sm">
@@ -505,7 +549,7 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
         )}
       </div>
 
-      {drawEntries.length > 0 && (
+      {!drawError && drawEntries.length > 0 && (
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-x-auto">
           <h2 className="text-sm font-semibold p-4 pb-0">{t('tournaments.draw_positions', 'Draw Positions')}</h2>
           <table className="w-full text-sm mt-2">

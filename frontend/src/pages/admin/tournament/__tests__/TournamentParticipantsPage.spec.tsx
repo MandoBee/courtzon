@@ -31,6 +31,10 @@ const __state = vi.hoisted(() => ({
   replacementRequests: [
     { id: 900, tournament_id: 1, participant_id: 4, outgoing_member_user_id: 40, replacement_user_id: 50, requested_by: 1, requested_at: '2026-09-01T00:00:00.000Z', status: 'pending', participant_name: 'Pair Alpha', outgoing_member_name: 'Player P1', replacement_user_name: 'Player P5', requested_by_name: 'Admin' },
   ],
+  errors: { participants: false, draw: false, waitlist: false, competitions: false, replacement: false } as Record<string, boolean>,
+  competitions: [] as Array<{ id: number; name: string }>,
+  emptyParticipants: false,
+  noDraw: false,
 }));
 
 vi.mock('../../../../services/api', () => ({
@@ -69,10 +73,16 @@ function renderPage() {
 
 function mockApi() {
   (api.get as any).mockImplementation((url: string) => {
+    if (__state.errors.replacement && url.includes('/replacement-requests')) return Promise.reject(new Error('replacement failed'));
+    if (__state.errors.waitlist && url.includes('/waitlist')) return Promise.reject(new Error('waitlist failed'));
+    if (__state.errors.draw && url.includes('/draw')) return Promise.reject(new Error('draw failed'));
+    if (__state.errors.competitions && url.includes('/competitions')) return Promise.reject(new Error('competitions failed'));
+    if (__state.errors.participants && url.includes('/participants')) return Promise.reject(new Error('participants failed'));
     if (url.includes('/replacement-requests')) return Promise.resolve({ data: __state.replacementRequests });
-    if (url.includes('/participants')) return Promise.resolve({ data: [...__state.participants, __state.pair] });
+    if (url.includes('/participants')) return Promise.resolve({ data: __state.emptyParticipants ? [] : [...__state.participants, __state.pair] });
     if (url.includes('/waitlist')) return Promise.resolve({ data: __state.waitlist });
-    if (url.includes('/draw')) return Promise.resolve({ data: __state.currentDraw });
+    if (url.includes('/draw')) return Promise.resolve({ data: __state.noDraw ? null : __state.currentDraw });
+    if (url.includes('/competitions')) return Promise.resolve({ data: __state.competitions });
     return Promise.resolve({ data: {} });
   });
 }
@@ -80,6 +90,10 @@ function mockApi() {
 beforeEach(() => {
   vi.clearAllMocks();
   __state.userPermissions = ['*'];
+  __state.errors = { participants: false, draw: false, waitlist: false, competitions: false, replacement: false };
+  __state.competitions = [];
+  __state.emptyParticipants = false;
+  __state.noDraw = false;
   mockApi();
 });
 
@@ -242,5 +256,110 @@ describe('TournamentParticipantsPage — pair/team management (Group 7)', () => 
     expect(screen.queryByText('Add Pair')).toBeNull();
     // Read-only surfaces still render.
     expect(screen.getByText('Player P5')).toBeTruthy();
+  });
+});
+
+describe('TournamentParticipantsPage — F-02 fetch-error states', () => {
+  it('participants failure: shows error + Retry instead of an empty table while independent sections still render; Retry recovers the list', async () => {
+    __state.errors.participants = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load participants.')).toBeTruthy();
+    // No fabricated empty table — the headers must not masquerade as a real list.
+    expect(screen.queryByText('Global Rating')).toBeNull();
+    expect(screen.queryByText('1650%')).toBeNull();
+    // Independent queries still render — waitlist, replacement requests, draw positions.
+    expect(screen.getByText('Player W1')).toBeTruthy();
+    expect(screen.getByText('Player P5')).toBeTruthy();
+    expect(screen.getByText('Draw Positions')).toBeTruthy();
+    // Retry recovery restores the participant list.
+    __state.errors.participants = false;
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText('1650%')).toBeTruthy();
+  });
+
+  it('draw failure: status banner shows error + Retry (never "Draw status: —"), positions hidden, and Generate Draw is disabled; Retry recovers', async () => {
+    __state.errors.draw = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load draw.')).toBeTruthy();
+    // The banner must not masquerade as an unknown-but-fine draw state.
+    expect(screen.queryByText(/Draw status:/)).toBeNull();
+    expect(screen.queryByText('Draw Positions')).toBeNull();
+    // generateDraw has always-replace semantics — no blind re-draw on unknown draw state.
+    expect((screen.getByText('Generate Draw') as HTMLButtonElement).disabled).toBe(true);
+    // Independent queries still render — participant list + waitlist stay available.
+    expect(screen.getAllByText('Player A').length).toBeGreaterThan(0);
+    expect(screen.getByText('1650%')).toBeTruthy();
+    expect(screen.getByText('Player W1')).toBeTruthy();
+    // Retry recovery restores the draw status + positions.
+    __state.errors.draw = false;
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText(/attempt #1/)).toBeTruthy();
+    expect(screen.getByText('Draw Positions')).toBeTruthy();
+  });
+
+  it('waitlist failure: shows error + Retry (never "The waitlist is empty.") while the participant table still renders; Retry recovers', async () => {
+    __state.errors.waitlist = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load waitlist.')).toBeTruthy();
+    expect(screen.queryByText('The waitlist is empty.')).toBeNull();
+    expect(screen.queryByText('Player W1')).toBeNull();
+    // Independent query still renders — participant list.
+    expect(screen.getAllByText('Player A').length).toBeGreaterThan(0);
+    // Retry recovery restores the waitlist rows.
+    __state.errors.waitlist = false;
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText('Player W1')).toBeTruthy();
+  });
+
+  it('replacement requests failure: shows error + Retry (never "No replacement requests."); Retry recovers', async () => {
+    __state.errors.replacement = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load replacement requests.')).toBeTruthy();
+    expect(screen.queryByText('No replacement requests.')).toBeNull();
+    expect(screen.queryByText('Player P5')).toBeNull();
+    // Independent query still renders — participant list.
+    expect(screen.getAllByText('Player A').length).toBeGreaterThan(0);
+    // Retry recovery restores the pending requests.
+    __state.errors.replacement = false;
+    fireEvent.click(screen.getByText('Retry'));
+    expect(await screen.findByText('Player P5')).toBeTruthy();
+  });
+
+  it('competitions failure: shows error + Retry while the waitlist still renders; Retry clears the banner', async () => {
+    __state.errors.competitions = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load competitions.')).toBeTruthy();
+    // The waitlist is independent of the competitions query and keeps rendering.
+    expect(screen.getByText('Player W1')).toBeTruthy();
+    // Retry recovery clears the banner.
+    __state.errors.competitions = false;
+    fireEvent.click(screen.getByText('Retry'));
+    await waitFor(() => expect(screen.queryByText('Unable to load competitions.')).toBeNull());
+  });
+
+  it('genuine empty results are preserved — no error text, original empty copy intact, Generate Draw enabled', async () => {
+    __state.emptyParticipants = true;
+    __state.waitlist = [];
+    __state.noDraw = true;
+    renderPage();
+    // Real empty states keep their original copy:
+    expect(await screen.findByText('The waitlist is empty.')).toBeTruthy();
+    expect(screen.queryByText(/Unable to load/)).toBeNull();
+    // A genuinely empty participant result still renders the table headers.
+    expect(screen.getByText('Global Rating')).toBeTruthy();
+    // A legitimately absent draw hides the positions section (no fabricated structure)…
+    expect(screen.queryByText('Draw Positions')).toBeNull();
+    // …and the draw query SUCCEEDED — Generate Draw stays enabled for the first draw.
+    const genBtn = screen.getByText('Generate Draw') as HTMLButtonElement;
+    expect(genBtn.disabled).toBe(false);
+  });
+
+  it('independent failures stack: participants + waitlist each render their own panel with Retry', async () => {
+    __state.errors.participants = true;
+    __state.errors.waitlist = true;
+    renderPage();
+    expect(await screen.findByText('Unable to load participants.')).toBeTruthy();
+    expect(screen.getByText('Unable to load waitlist.')).toBeTruthy();
+    expect(screen.getAllByText('Retry').length).toBeGreaterThanOrEqual(2);
   });
 });
