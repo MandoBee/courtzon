@@ -4,6 +4,7 @@ import api from '../../services/api';
 import { formatPrice } from '../../utils/currency';
 import { formatISODate } from '../../utils/formatDate';
 import { Card, Badge, Spinner } from '../../components/ui';
+import { useTranslation } from '../../i18n';
 
 const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
   draft: 'default',
@@ -17,7 +18,8 @@ const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger'
 };
 
 export default function TournamentListPage() {
-  const { data, isLoading } = useQuery({
+  const { t } = useTranslation();
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['tournaments'],
     queryFn: () => api.get('/tournaments?limit=50').then((r) => r.data),
   });
@@ -31,6 +33,18 @@ export default function TournamentListPage() {
       </div>
       {isLoading ? (
         <Spinner />
+      ) : isError ? (
+        <div className="text-center py-12">
+          <p className="text-sm text-[var(--color-error)]">
+            {t('tournaments.list.load_error', 'Unable to load tournaments.')}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="mt-4 px-4 py-2 text-sm font-medium bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] hover:opacity-90"
+          >
+            {t('common.retry')}
+          </button>
+        </div>
       ) : tournaments.length === 0 ? (
         <p className="text-center py-12 text-sm text-[var(--color-text-muted)]">No tournaments yet</p>
       ) : (

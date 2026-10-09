@@ -1845,6 +1845,7 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   // ── Tournament Module (list / detail / dashboard / matches / create) ──
   { key: 'common.all_statuses', defaultValue: 'All Statuses', moduleSlug: 'common', elementType: 'label', elementLabel: 'All statuses filter' },
   { key: 'tournaments.list.title', defaultValue: 'Tournaments', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Tournament list title' },
+  { key: 'tournaments.list.load_error', defaultValue: 'Unable to load tournaments.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Player tournament list load error' },
   { key: 'tournaments.new', defaultValue: 'New Tournament', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'New tournament button' },
   { key: 'tournaments.search', defaultValue: 'Search tournaments...', moduleSlug: 'tournaments', elementType: 'placeholder', elementLabel: 'Search placeholder' },
   { key: 'tournaments.code', defaultValue: 'Code', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Code column' },

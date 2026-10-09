@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentListPage from '../TournamentListPage';
@@ -71,5 +71,32 @@ describe('TournamentListPage — player list contract (Group 1B)', () => {
     expect(await screen.findByText('registration_open')).toBeTruthy();
     expect(screen.getByText(/Fee:/)).toBeTruthy();
     expect(screen.getByText(/Start:/)).toBeTruthy();
+  });
+
+  it('shows the error state with Retry instead of the empty message when the request fails (F-02)', async () => {
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('network down'));
+    renderPage();
+
+    expect(await screen.findByText('Unable to load tournaments.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.queryByText('No tournaments yet')).toBeNull();
+  });
+
+  it('recovers via Retry after a failed load and renders the tournament list (F-02)', async () => {
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('network down'));
+    renderPage();
+    expect(await screen.findByText('Unable to load tournaments.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Padel Open')).toBeTruthy();
+    expect(screen.queryByText('Unable to load tournaments.')).toBeNull();
+  });
+
+  it('renders the legitimate empty state when the request succeeds with no tournaments (F-02)', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({ data: { data: [], total: 0, page: 1, limit: 50 } });
+    renderPage();
+
+    expect(await screen.findByText('No tournaments yet')).toBeTruthy();
   });
 });
