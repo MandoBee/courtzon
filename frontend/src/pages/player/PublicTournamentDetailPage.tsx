@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { publicTournamentApi } from '../../services/tournament';
-import { Card, Spinner } from '../../components/ui';
+import { Card, Spinner, Button } from '../../components/ui';
+import { useTranslation } from '../../i18n';
 import { TournamentBracket } from '../../components/tournaments/TournamentBracket';
 import { MatchCard } from '../../components/tournaments/MatchCard';
 import { MatchDetailsDrawer } from '../../components/tournaments/MatchDetailsDrawer';
@@ -27,11 +28,13 @@ type GskTab = 'overview' | 'matches' | 'groups' | 'qualification' | 'knockout' |
 export default function PublicTournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const tid = Number(id);
+  // i18n aliased to `translate` because `t` is the local tournament data variable.
+  const { t: translate } = useTranslation();
   const [tab, setTab] = useState<GskTab>('overview');
   const [groupFilter, setGroupFilter] = useState<number | null>(null);
   const [drawerMatch, setDrawerMatch] = useState<TournamentMatchNode | null>(null);
 
-  const { data: t, isLoading, isError } = useQuery({
+  const { data: t, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['public-tournament', tid],
     queryFn: () => publicTournamentApi.get(tid),
     enabled: Number.isFinite(tid),
@@ -40,6 +43,24 @@ export default function PublicTournamentDetailPage() {
   if (isLoading || !Number.isFinite(tid)) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-10 flex justify-center"><Spinner /></div>
+    );
+  }
+  // F-02 — distinguish a genuine "not found / not public" (HTTP 404) from a
+  // transient network/server failure. The backend returns 404
+  // TOURNAMENT_NOT_FOUND for missing, private, draft, cancelled or archived
+  // tournaments; any other failure (transport, 5xx, no status) is recoverable
+  // and offers Retry instead of a misleading not-found state.
+  const errorStatus = (error as unknown as { response?: { status?: number } } | undefined)?.response?.status;
+  if (isError && errorStatus !== 404) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-10">
+        <Card>
+          <p className="text-sm text-[var(--color-error)]">Unable to load this tournament. Please try again.</p>
+          <Button onClick={() => refetch()} className="mt-4">
+            {translate('common.retry', 'Retry')}
+          </Button>
+        </Card>
+      </div>
     );
   }
   if (isError || !t) {
