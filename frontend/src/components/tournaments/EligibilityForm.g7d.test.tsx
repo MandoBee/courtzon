@@ -34,7 +34,7 @@ describe('G7-D EligibilityFormSection', () => {
     fireEvent.click(screen.getByRole('radio', { name: /Age Categories/ }));
     rerender(<EligibilityFormSection value={value} onChange={(v) => { value = v; }} />);
 
-    const u14 = screen.getByRole('button', { name: 'U14' });
+    const u14 = screen.getByRole('checkbox', { name: 'U14' });
     fireEvent.click(u14);
     rerender(<EligibilityFormSection value={value} onChange={(v) => { value = v; }} />);
     expect(value.ageMode).toBe('categories');
@@ -48,7 +48,7 @@ describe('G7-D EligibilityFormSection', () => {
       { wrapper: wrapper() },
     );
 
-    const masters40 = screen.getByRole('button', { name: '40+' });
+    const masters40 = screen.getByRole('checkbox', { name: '40+' });
     fireEvent.click(masters40);
 
     expect(value.ageCategoryIds).toEqual([4]);
@@ -77,7 +77,7 @@ describe('G7-D EligibilityFormSection', () => {
     expect(screen.getByText(/eligibility is locked/i)).toBeDefined();
     const openRadio = screen.getByRole('radio', { name: /Open Age/ });
     expect(openRadio).toBeDisabled();
-    const u14 = screen.getByRole('button', { name: 'U14' });
+    const u14 = screen.getByRole('checkbox', { name: 'U14' });
     expect(u14).toBeDisabled();
     const male = screen.getByRole('checkbox', { name: 'Male' });
     expect(male).toBeDisabled();

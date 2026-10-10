@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useTranslation } from '../../i18n';
 import {
   TOURNAMENT_AGE_YOUTH,
   TOURNAMENT_AGE_MASTERS,
+  TOURNAMENT_JUNIOR_EVEN,
+  TOURNAMENT_JUNIOR_ODD,
+  TOURNAMENT_SENIOR_MIN_AGES,
   TOURNAMENT_GENDER_OPTIONS,
   type TournamentAgeFamily,
 } from '../../lib/tournamentEligibility';
@@ -53,6 +57,8 @@ export default function EligibilityFormSection({ value, onChange, locked }: Prop
 
   const disabled = Boolean(locked);
 
+  const [juniorPattern, setJuniorPattern] = useState<'even' | 'odd'>('even');
+
   const toggleAge = (id: number, family: TournamentAgeFamily) => {
     if (disabled) return;
     const owned = TOURNAMENT_AGE_CATEGORIES_SELECTED(value, family);
@@ -62,6 +68,19 @@ export default function EligibilityFormSection({ value, onChange, locked }: Prop
     // Youth XOR Masters — each list is derived from its own family only, so
     // selecting any category implicitly drops the opposite family.
     onChange({ ...value, ageCategoryIds: next });
+  };
+
+  const switchPattern = (pattern: 'even' | 'odd') => {
+    if (disabled) return;
+    setJuniorPattern(pattern);
+    // Keep only selections still present in the new pattern (seniors untouched).
+    const patternIds = new Set(
+      (pattern === 'even' ? TOURNAMENT_JUNIOR_EVEN : TOURNAMENT_JUNIOR_ODD).map((c) => c.id),
+    );
+    onChange({
+      ...value,
+      ageCategoryIds: value.ageCategoryIds.filter((id) => patternIds.has(id) || TOURNAMENT_SENIOR_MIN_AGES.some((c) => c.id === id)),
+    });
   };
 
   const toggleGender = (g: 'male' | 'female' | 'mixed') => {
@@ -114,30 +133,56 @@ export default function EligibilityFormSection({ value, onChange, locked }: Prop
 
             {value.ageMode === 'categories' && (
               <div className="space-y-3">
+                <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                  <span className="text-xs text-[var(--color-text-muted)]">{t('tournaments.eligibility.age.pattern')}:</span>
+                  <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                    <input
+                      type="radio"
+                      name="junior-age-pattern"
+                      checked={juniorPattern === 'even'}
+                      onChange={() => switchPattern('even')}
+                      disabled={disabled}
+                    />
+                    {t('tournaments.eligibility.age.pattern.even')}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                    <input
+                      type="radio"
+                      name="junior-age-pattern"
+                      checked={juniorPattern === 'odd'}
+                      onChange={() => switchPattern('odd')}
+                      disabled={disabled}
+                    />
+                    {t('tournaments.eligibility.age.pattern.odd')}
+                  </label>
+                </div>
+                <p className="text-[11px] text-[var(--color-text-muted)]">{t('tournaments.eligibility.age.pattern_note')}</p>
                 <div className="flex flex-wrap gap-2 items-center">
                   <span className="text-xs text-[var(--color-text-muted)] w-full sm:w-auto">{t('tournaments.eligibility.age.youth')}:</span>
-                  {TOURNAMENT_AGE_YOUTH.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => toggleAge(c.id, 'youth')}
-                      className={`px-3 py-1 text-xs rounded-full border ${TOURNAMENT_AGE_CATEGORIES_SELECTED(value, 'youth').includes(c.id) ? 'bg-[var(--color-primary)] text-white border-transparent' : 'text-[var(--color-text-muted)]'}`}
-                    >
+                  {(juniorPattern === 'even' ? TOURNAMENT_JUNIOR_EVEN : TOURNAMENT_JUNIOR_ODD).map((c) => (
+                    <label key={c.id} className="flex items-center gap-1.5 text-sm text-[var(--color-text)]">
+                      <input
+                        type="checkbox"
+                        checked={TOURNAMENT_AGE_CATEGORIES_SELECTED(value, 'youth').includes(c.id)}
+                        onChange={() => toggleAge(c.id, 'youth')}
+                        disabled={disabled}
+                      />
                       {t(c.labelKey)}
-                    </button>
+                    </label>
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
                   <span className="text-xs text-[var(--color-text-muted)] w-full sm:w-auto">{t('tournaments.eligibility.age.masters')}:</span>
-                  {TOURNAMENT_AGE_MASTERS.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => toggleAge(c.id, 'masters')}
-                      className={`px-3 py-1 text-xs rounded-full border ${TOURNAMENT_AGE_CATEGORIES_SELECTED(value, 'masters').includes(c.id) ? 'bg-[var(--color-primary)] text-white border-transparent' : 'text-[var(--color-text-muted)]'}`}
-                    >
+                  {TOURNAMENT_SENIOR_MIN_AGES.map((c) => (
+                    <label key={c.id} className="flex items-center gap-1.5 text-sm text-[var(--color-text)]">
+                      <input
+                        type="checkbox"
+                        checked={TOURNAMENT_AGE_CATEGORIES_SELECTED(value, 'masters').includes(c.id)}
+                        onChange={() => toggleAge(c.id, 'masters')}
+                        disabled={disabled}
+                      />
                       {t(c.labelKey)}
-                    </button>
+                    </label>
                   ))}
                 </div>
               </div>

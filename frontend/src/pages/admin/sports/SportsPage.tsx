@@ -8,6 +8,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import { useCan } from '../../../hooks/useCan';
 import { useTranslation } from '../../../i18n';
 import SportFormatsPanel from './SportFormatsPanel';
+import SportFormatsSection from './SportFormatsSection';
 
 interface Sport {
   id: number;
@@ -42,6 +43,7 @@ export default function SportsPage() {
   const sports: Sport[] = data || [];
 
   const [tab, setTab] = useState<'sports' | 'formats'>('sports');
+  const [expandedConfig, setExpandedConfig] = useState<Record<number, boolean>>({});
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/sports', data),
@@ -266,6 +268,20 @@ export default function SportsPage() {
                   className="text-[var(--color-error)]">{t('common.delete')}</Button>
               </div>
             </div>
+            {(can('sports.formats.view') || can('sports.rule-sets.view')) && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setExpandedConfig((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
+                  className="text-xs font-medium text-[var(--color-primary)] underline"
+                >
+                  {expandedConfig[s.id]
+                    ? `− ${t('admin.sports.hide_formats', 'Hide Formats & Rule Sets')}`
+                    : `+ ${t('admin.sports.formats_tab', 'Formats & Rule Sets')}`}
+                </button>
+                {expandedConfig[s.id] && <SportFormatsSection sportId={s.id} />}
+              </div>
+            )}
           </div>
         ))}
         {!sports.length && (

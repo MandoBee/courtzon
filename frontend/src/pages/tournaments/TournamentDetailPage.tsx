@@ -60,9 +60,10 @@ export default function TournamentDetailPage() {
   const [printRequested, setPrintRequested] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerMethod, setRegisterMethod] = useState<'cash' | 'card' | ''>('');
-  // G11.18 Phase 2 — the player selects a competition category when the
-  // tournament hosts multiple ones; single/default tournaments need no click.
-  const [selectedCompetitionId, setSelectedCompetitionId] = useState<number | undefined>(undefined);
+  // Phase 1 — a player may register in MULTIPLE enabled competitions of one
+  // tournament; each competition registers independently (per-competition
+  // duplicate/capacity/waitlist/payment enforced by the backend).
+  const [selectedCompIds, setSelectedCompIds] = useState<number[]>([]);
 
   const { data: tournament, isLoading, isError: tournamentError, error: tournamentQueryError, refetch: refetchTournament } = useQuery({
     queryKey: ['tournament', id],
@@ -110,21 +111,64 @@ export default function TournamentDetailPage() {
 
   // Group 3 — player registration with the tournament's effective allowed
   // payment methods (Cash / Card). Free tournaments register without a method.
-  // G11.18 Phase 2 — the selected competitionId is sent to the registration API.
+  // Phase 1 — registers into EVERY selected competition sequentially; each
+  // registration is independent (the backend enforces per-competition
+  // duplicate prevention, capacity, waitlist and payment). A failure in one
+  // competition NEVER hides the successes in the others: results are collected
+  // per competition and reported precisely (success / partial / failed).
+  const isAlreadyRegistered = (e: any) => {
+    const code = String(e?.response?.data?.code ?? e?.response?.data?.errorCode ?? e?.code ?? '');
+    const message = String(e?.response?.data?.message ?? e?.message ?? '');
+    return code.includes('REGISTRATION_EXISTS') || /already registered/i.test(message);
+  };
+
   const registerMutation = useMutation({
-    mutationFn: (method: 'cash' | 'card' | '') =>
-      api.post(`/tournaments/${id}/register`, {
-        payment_method: method || undefined,
-        competition_id: selectedCompetitionId,
-      }).then(r => r.data),
-    onSuccess: () => {
-      showToast('Registered successfully!', 'success');
-      setShowRegisterModal(false);
-      setRegisterMethod('');
-      setSelectedCompetitionId(undefined);
+    mutationFn: async (method: 'cash' | 'card' | '') => {
+      // Single/empty competition lists keep the legacy call (competition_id
+      // omitted → backend resolves the default competition).
+      const compIds: Array<number | undefined> = compList.length > 1
+        ? selectedCompIds
+        : (compList.length ? [Number(compList[0].id)] : [undefined]);
+      const results: Array<{ competitionId?: number; ok: boolean; alreadyRegistered: boolean; message?: string; error?: any }> = [];
+      for (const competitionId of compIds) {
+        try {
+          await api.post(`/tournaments/${id}/register`, {
+            payment_method: method || undefined,
+            competition_id: competitionId,
+          });
+          results.push({ competitionId, ok: true, alreadyRegistered: false });
+        } catch (err: any) {
+          if (isAlreadyRegistered(err)) {
+            // Retry-safe: an already-existing registration from a previous
+            // attempt is a SUCCESS for this competition, never a duplicate.
+            results.push({ competitionId, ok: true, alreadyRegistered: true, error: err });
+          } else {
+            results.push({ competitionId, ok: false, alreadyRegistered: false, message: err?.response?.data?.message ?? 'Registration failed', error: err });
+          }
+        }
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      const succeeded = results.filter((r) => r.ok).length;
+      const failed = results.filter((r) => !r.ok);
       qc.invalidateQueries({ queryKey: ['tournament', id] });
       qc.invalidateQueries({ queryKey: ['tournament', id, 'participants'] });
       qc.invalidateQueries({ queryKey: ['my-tournaments'] });
+      if (failed.length === 0) {
+        showToast(
+          succeeded > 1 ? `Registered in ${succeeded} competitions` : 'Registered successfully!',
+          'success',
+        );
+      } else if (failed.length === results.length) {
+        showToast(translateEligibilityError(t, failed[0].error, failed[0].message ?? 'Registration failed'), 'error');
+      } else {
+        const failedLabels = failed.map((f) => (f.competitionId != null ? `#${f.competitionId}` : 'default')).join(', ');
+        showToast(`Registered in ${succeeded} competition(s); ${failed.length} failed (${failedLabels})`, 'warning');
+      }
+      setShowRegisterModal(false);
+      setRegisterMethod('');
+      setSelectedCompIds([]);
     },
     onError: (e: any) => showToast(translateEligibilityError(t, e, e?.response?.data?.message || 'Registration failed'), 'error'),
   });
@@ -195,9 +239,13 @@ export default function TournamentDetailPage() {
   // G11.18 Phase 2 — competition categories exposed to the registration flow.
   const compList = Array.isArray(competitions) ? (competitions as any[]) : [];
   const multiple = compList.length > 1;
-  const selectedComp = compList.find((c) => Number(c.id) === Number(selectedCompetitionId));
-  const displayFee = selectedComp ? Number(selectedComp.entry_fee ?? tournament.entry_fee ?? 0) : Number(tournament.entry_fee ?? 0);
-  const displayCurrency = selectedComp?.currency_code ?? tournament?.currency_code ?? 'EGP';
+  const selectedComps = compList.filter((c) => selectedCompIds.includes(Number(c.id)));
+  const displayFee = selectedComps.length
+    ? selectedComps.reduce((sum: number, c: any) => sum + Number(c.entry_fee ?? tournament.entry_fee ?? 0), 0)
+    : Number(tournament.entry_fee ?? 0);
+  const toggleCompetition = (id: number) =>
+    setSelectedCompIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const displayCurrency = selectedComps[0]?.currency_code ?? tournament?.currency_code ?? 'EGP';
   const venue = tournament?.venue || null;
   const venueAddress = [venue?.addressLine1, venue?.addressLine2, venue?.city].filter(Boolean).join(', ');
   const dailyWindow = tournament?.daily_start_time && tournament?.daily_end_time
@@ -627,19 +675,22 @@ export default function TournamentDetailPage() {
           )}
           {multiple && (
             <div>
-              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Competition Category</label>
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Competition Categories (select all you wish to enter)</label>
               <div className="space-y-2">
-                {compList.map((c) => (
-                  <label key={c.id} className="flex items-center justify-between gap-2 text-sm text-[var(--color-text)] border border-[var(--color-border)] rounded px-3 py-2">
-                    <span className="flex items-center gap-2">
-                      <input type="radio" name="regComp" value={c.id}
-                        checked={Number(selectedCompetitionId) === Number(c.id)}
-                        onChange={() => setSelectedCompetitionId(Number(c.id))} />
-                      <span>{c.name} <span className="text-xs text-[var(--color-text-muted)]">({String(c.competition_type || '').toUpperCase()})</span></span>
-                    </span>
-                    <span className="font-medium">{formatPrice(Number(c.entry_fee ?? 0), c.currency_code ?? 'EGP')}</span>
-                  </label>
-                ))}
+                {compList.map((c) => {
+                  const checked = selectedCompIds.includes(Number(c.id));
+                  return (
+                    <label key={c.id} className={`flex items-center justify-between gap-2 text-sm border rounded px-3 py-2 ${checked ? 'border-[var(--color-primary)] text-[var(--color-text)]' : 'border-[var(--color-border)] text-[var(--color-text)]'}`}>
+                      <span className="flex items-center gap-2">
+                        <input type="checkbox" name="regComp"
+                          checked={checked}
+                          onChange={() => toggleCompetition(Number(c.id))} />
+                        <span>{c.name} <span className="text-xs text-[var(--color-text-muted)]">({String(c.competition_type || '').toUpperCase()})</span></span>
+                      </span>
+                      <span className="font-medium">{formatPrice(Number(c.entry_fee ?? 0), c.currency_code ?? 'EGP')}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -671,14 +722,14 @@ export default function TournamentDetailPage() {
                 )}
               </div>
               <button onClick={() => registerMutation.mutate(registerMethod)}
-                disabled={!registerMethod || registerMutation.isPending || competitionsError || (multiple && !selectedCompetitionId)}
+                disabled={!registerMethod || registerMutation.isPending || competitionsError || (multiple && selectedCompIds.length === 0)}
                 className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
                 {registerMutation.isPending ? 'Registering...' : 'Register & Pay'}
               </button>
             </>
           ) : (
             <button onClick={() => registerMutation.mutate('')}
-              disabled={registerMutation.isPending || competitionsError || (multiple && !selectedCompetitionId)}
+              disabled={registerMutation.isPending || competitionsError || (multiple && selectedCompIds.length === 0)}
               className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
               {registerMutation.isPending ? 'Registering...' : 'Register'}
             </button>

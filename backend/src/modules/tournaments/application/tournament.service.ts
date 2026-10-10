@@ -5,6 +5,7 @@ import { competitionRepository } from '../infrastructure/repositories/competitio
 import { competitionService } from './competition.service.js';
 import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS, BRACKET_SLUG_TO_FORMAT, bracketSlugCapability, bracketTypeCreationAvailable } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
+import { resolveAgeCategories } from '../domain/tournament-age-catalog.js';
 import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType } from '../domain/tournament-aggregate.js';
 import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
 import { resolveKnockoutPlacements, toKnockoutMatchInput } from '../domain/knockout-placements.js';
@@ -466,10 +467,7 @@ export class TournamentService {
     const branch = t.branch_id ? await one('SELECT name FROM branches WHERE id = ?', [t.branch_id]) : null;
 
     const ageLabel = t.age_category_ids?.length
-      ? String((await pool.query<any[]>(
-          `SELECT GROUP_CONCAT(label_en SEPARATOR ', ') AS v FROM tournament_age_categories WHERE id IN (${(t.age_category_ids as number[]).map(() => '?').join(',')})`,
-          t.age_category_ids as number[],
-        ) as any)[0][0]?.v ?? '')
+      ? resolveAgeCategories(t.age_category_ids as number[]).map((c) => c.label_en).join(', ') || null
       : null;
 
     const levelLabel = t.level_ids?.length

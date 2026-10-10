@@ -6,6 +6,8 @@ import { getPool } from '../../../database/mysql.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { tournamentRealtimeScope } from './tournament-realtime-scope.js';
 import { tournamentEligibilityService } from './tournament-eligibility.service.js';
+import { normalizeEligibility } from '../domain/tournament-eligibility.js';
+import { enforcePairGenderRule } from '../domain/tournament-pair-gender.js';
 import { competitionService } from './competition.service.js';
 import { competitionRepository } from '../infrastructure/repositories/competition.repository.js';
 import { recordAudit } from '../../audit-log/index.js';
@@ -191,6 +193,30 @@ export class ParticipantMemberService {
 
   // ── Pair / Team creation ──
 
+  /**
+   * Re-validate the Competition gender rule for a PAIR participant after a
+   * composition-changing operation (member addition / member replacement).
+   * Uses a FRESH eligibility evaluation of the resulting active members — the
+   * pair rule can never be satisfied by stale snapshots.
+   */
+  private async assertPairGenderAfterChange(
+    t: Tournament,
+    participant: Pick<TournamentParticipant, 'participant_type' | 'competition_id'>,
+    activeUserIds: number[],
+    conn: import('mysql2/promise').PoolConnection,
+  ): Promise<void> {
+    if (participant.participant_type !== 'pair' || activeUserIds.length <= 1) return;
+    const competition = participant.competition_id != null
+      ? await competitionRepository.findById(Number(participant.competition_id), conn).catch(() => null)
+      : null;
+    const view = competition ? competitionService.eligibilityView(t, competition) : t;
+    const evaluation = await tournamentEligibilityService.evaluatePlayers(view, activeUserIds, { conn });
+    enforcePairGenderRule(
+      evaluation.members.map((m) => ({ userId: m.userId, playerGender: m.snapshot.playerGender })),
+      normalizeEligibility(view).genderCategories,
+    );
+  }
+
   /** Create a PAIR participant (exactly the configured pair size of active members). */
   async createPairParticipant(
     tournamentId: number,
@@ -270,6 +296,19 @@ export class ParticipantMemberService {
       bypassed: false,
       members: eligibilityEvaluation.members.map((m) => m.snapshot),
     };
+
+    // Phase 1 — server-authoritative pair gender rule (mixed ⇒ exactly one male
+    // + one female; men/women-exclusive competitions enforced) resolved from the
+    // frozen eligibility snapshots above — never client-supplied.
+    if (input.participantType === 'pair') {
+      const pairGenderCategories = normalizeEligibility(
+        competition ? competitionService.eligibilityView(t, competition) : t,
+      ).genderCategories;
+      enforcePairGenderRule(
+        eligibilityEvaluation.members.map((m) => ({ userId: m.userId, playerGender: m.snapshot.playerGender })),
+        pairGenderCategories,
+      );
+    }
 
     const conn = await getPool().getConnection();
     let participantId: number;
@@ -500,7 +539,12 @@ export class ParticipantMemberService {
       member_order: activeCount,
       conn,
     });
-    await this.syncMemberCache(participant.id!, conn);
+    const activeUserIds = await this.syncMemberCache(participant.id!, conn);
+    // Phase 1 — a PAIR whose composition becomes complete/complete-changed must
+    // satisfy the competition gender rule (e.g. mixed ⇒ one male + one female).
+    if (participant.participant_type === 'pair' && activeUserIds.length === requiredCount) {
+      await this.assertPairGenderAfterChange(t, participant, activeUserIds, conn);
+    }
   }
 
   /**
@@ -714,6 +758,9 @@ export class ParticipantMemberService {
       });
       await participantMemberRepository.markMemberReplaced(outgoing.id!, replacement, conn);
       const activeUserIds = await this.syncMemberCache(participantId, conn);
+      // Phase 1 — member replacement changes pair composition; re-validate the
+      // competition gender rule from a FRESH evaluation (rolling back on failure).
+      await this.assertPairGenderAfterChange(t, participant, activeUserIds, conn);
 
       // Participant identity/seed/draw position all preserved. The draw only
       // requires re-validation (never silent regeneration; locked draws stay).

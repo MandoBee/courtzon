@@ -329,6 +329,10 @@ export const ErrorCodes = {
   SPORT_RULE_SET_IN_USE: 'SPORT_RULE_SET_IN_USE',
   /** The submitted scoring/standings configuration is structurally invalid. */
   SPORT_RULES_INVALID: 'SPORT_RULES_INVALID',
+
+  // ── Tournament Phase 1 — doubles/mixed-doubles pair gender configuration ──
+  /** A pair participant violates the competition's gender rule (mixed ⇒ one male + one female; men/women exclusive). */
+  TOURNAMENT_PAIR_GENDER_INVALID: 'TOURNAMENT_PAIR_GENDER_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

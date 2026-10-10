@@ -2,6 +2,7 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { AppError } from '../../../shared/errors/app-error.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
+import { resolveAgeCategories } from '../domain/tournament-age-catalog.js';
 import type {
   Tournament,
   TournamentAgeCategory,
@@ -225,6 +226,10 @@ export class TournamentEligibilityService {
     }
 
     // Age category reference data (one family only — youth XOR masters, enforced).
+    // Phase 1: resolved from the APP-LOGIC catalog (which mirrors the seeded
+    // tournament_age_categories rows for ids 1–7 and defines the additional
+    // predefined junior/senior ids), so newly predefined categories need no
+    // database rows while preserving the exact YEAR-only age formula.
     let categories: TournamentAgeCategory[] = [];
     if (eligibility.ageMode === 'categories') {
       if (!Array.isArray(eligibility.ageCategoryIds) || eligibility.ageCategoryIds.length === 0) {
@@ -234,20 +239,7 @@ export class TournamentEligibilityService {
           'INVALID_AGE_CATEGORIES',
         );
       }
-      const [catRows] = await db.query<RowData>(
-        'SELECT * FROM tournament_age_categories WHERE id IN (?)',
-        [eligibility.ageCategoryIds],
-      );
-      categories = (catRows as Record<string, unknown>[]).map((c) => ({
-        id: Number(c.id),
-        slug: String(c.slug),
-        type: c.type as TournamentAgeCategory['type'],
-        min_age: c.min_age != null ? Number(c.min_age) : null,
-        max_age: c.max_age != null ? Number(c.max_age) : null,
-        label_en: String(c.label_en),
-        label_ar: String(c.label_ar),
-        is_active: Number(c.is_active),
-      }));
+      categories = resolveAgeCategories(eligibility.ageCategoryIds);
       assertSingleAgeCategoryFamily(categories);
     }
 

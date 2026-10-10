@@ -2,6 +2,7 @@ import { getPool } from '../../../../database/mysql.js';
 import { withTransaction } from '../../../../database/database.transaction.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { normalizeEligibility, buildDiscoveryAudienceSql, resolveDiscoveryAgeFilter, resolveDiscoveryGenderFilter } from '../../domain/tournament-eligibility.js';
+import { resolveAgeCategories } from '../../domain/tournament-age-catalog.js';
 import { computeStandings, parseReliableMatchScore, resolveTournamentStandingsTiebreakers } from '../../domain/tournament-aggregate.js';
 import { ConflictError } from '../../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../../shared/errors/error-codes.js';
@@ -369,14 +370,13 @@ export class TournamentRepository {
 
     let categories: Array<{ type: 'youth' | 'masters'; min_age: number | null; max_age: number | null }> = [];
     if (eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length > 0) {
-      const [catRows] = await getPool().query<RowData>(
-        'SELECT type, min_age, max_age FROM tournament_age_categories WHERE id IN (?) AND is_active = 1',
-        [eligibility.ageCategoryIds],
-      );
-      categories = (catRows as Record<string, unknown>[]).map((c) => ({
-        type: c.type as 'youth' | 'masters',
-        min_age: c.min_age != null ? Number(c.min_age) : null,
-        max_age: c.max_age != null ? Number(c.max_age) : null,
+      // Phase 1 — resolve from the app-logic catalog so the additional
+      // predefined junior/senior categories drive the same YEAR-only audience
+      // predicate without requiring database rows.
+      categories = resolveAgeCategories(eligibility.ageCategoryIds).map((c) => ({
+        type: c.type,
+        min_age: c.min_age,
+        max_age: c.max_age,
       }));
     }
 

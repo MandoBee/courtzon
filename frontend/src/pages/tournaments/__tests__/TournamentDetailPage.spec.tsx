@@ -60,8 +60,10 @@ vi.mock('../../../permissions/Can', () => ({
 }));
 
 vi.mock('../../../components/ui/Toast', () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => ({ showToast: toastSpy }),
 }));
+
+const toastSpy = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../store/auth.store', () => ({
   useAuthStore: (sel: any) => sel({ user: __state.user }),
@@ -102,6 +104,7 @@ function clickTab(label: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  toastSpy.mockClear();
   __state.userPermissions = ['*'];
   __state.user = { id: 42, permissions: [...__state.userPermissions] };
   mockDetailApi();
@@ -305,6 +308,79 @@ describe('TournamentDetailPage — registration payment methods (Group 3)', () =
     await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
     const payload = (api.post as any).mock.calls[0][1] as any;
     expect(payload.payment_method).toBe('card');
+  });
+
+  it('multi-competition: partial failure still reports the competitions that succeeded', async () => {
+    __state.user = { id: 99 };
+    __state.tournament = { ...__state.tournament, status: 'registration_open', entry_fee: 0, effective_registration_payment_methods: [] };
+    (api.get as any).mockImplementation((url: string) => {
+      if (url === '/tournaments/1/competitions') {
+        return Promise.resolve({
+          data: {
+            data: [
+              { id: 1, name: 'Singles', competition_type: 'singles', entry_fee: 0, currency_code: 'EGP' },
+              { id: 2, name: 'Doubles', competition_type: 'doubles', entry_fee: 0, currency_code: 'EGP' },
+            ],
+          },
+        });
+      }
+      if (url === '/tournaments/1') return Promise.resolve({ data: __state.tournament });
+      if (url === '/tournaments/1/participants') return Promise.resolve({ data: { data: __state.participants } });
+      if (url === '/tournaments/1/matches') return Promise.resolve({ data: { data: __state.matches } });
+      if (url === '/tournaments/1/standings') return Promise.resolve({ data: { data: __state.standings } });
+      return Promise.resolve({ data: {} });
+    });
+    (api.post as any).mockImplementation((url: string, body: any) => {
+      if (url === '/tournaments/1/register' && Number(body.competition_id) === 2) {
+        return Promise.reject({ response: { data: { message: 'Not eligible for Doubles', code: 'AGE_NOT_ELIGIBLE' } } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderPage();
+    await screen.findByText('Padel Open');
+    fireEvent.click(screen.getByText('Register'));
+    await screen.findByText(/select all you wish to enter/i);
+    const compBoxes = screen.getAllByRole('checkbox', { name: /Singles|Doubles/ });
+    expect(compBoxes.length).toBe(2);
+    fireEvent.click(compBoxes[0]); // Singles
+    fireEvent.click(compBoxes[1]); // Doubles
+
+    const submit = screen.getAllByText('Register').pop() as HTMLButtonElement;
+    fireEvent.click(submit);
+
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThanOrEqual(2));
+    // Both competitions were attempted (successful one NOT hidden by the failure).
+    const postedCompetitionIds = (api.post as any).mock.calls.map((c: any[]) => c[1]?.competition_id);
+    expect(postedCompetitionIds).toContain(1);
+    expect(postedCompetitionIds).toContain(2);
+    // Partial success is reported — the failure does not erase the success.
+    await waitFor(() => expect(toastSpy).toHaveBeenCalled());
+    const warned = toastSpy.mock.calls.some((c: any[]) => /Registered in 1 competition\(s\); 1 failed/.test(String(c[0])));
+    expect(warned).toBe(true);
+
+    // Restore shared fixture so later describe blocks are not polluted.
+    __state.tournament = { ...__state.tournament, entry_fee: 800, effective_registration_payment_methods: ['cash', 'card'] };
+    __state.user = { id: 42, permissions: ['*'] };
+  });
+
+  it('retry-safe: an ALREADY-REGISTERED response is treated as success, never a duplicate failure', async () => {
+    __state.user = { id: 99 };
+    __state.tournament = { ...__state.tournament, status: 'registration_open', entry_fee: 0, effective_registration_payment_methods: [] };
+    (api.post as any).mockRejectedValue({ response: { data: { code: 'TOURNAMENT_REGISTRATION_EXISTS', message: 'Already registered in this competition' } } });
+
+    renderPage();
+    await screen.findByText('Padel Open');
+    fireEvent.click(screen.getByText('Register'));
+    const submit = screen.getAllByText('Register').pop() as HTMLButtonElement;
+    fireEvent.click(submit);
+
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith(expect.stringContaining('Registered successfully'), expect.any(String)));
+
+    // Restore shared fixture so later describe blocks are not polluted.
+    __state.tournament = { ...__state.tournament, entry_fee: 800, effective_registration_payment_methods: ['cash', 'card'] };
+    __state.user = { id: 42, permissions: ['*'] };
   });
 });
 
