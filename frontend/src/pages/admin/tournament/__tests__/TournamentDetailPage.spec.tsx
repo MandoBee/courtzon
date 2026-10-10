@@ -63,6 +63,8 @@ const __state = vi.hoisted(() => ({
   participantApi: {} as any,
   orgParticipantApi: {} as any,
   refundApi: {} as any,
+  toast: { showToast: vi.fn() },
+  userPermissions: ['*'] as string[],
   enrichedTournament: {
     id: 1,
     name: 'Padel Test Tournament',
@@ -94,15 +96,18 @@ vi.mock('../../../../i18n', () => ({
 }));
 
 vi.mock('../../../../permissions/Can', () => ({
-  Can: ({ children }: any) => <>{children}</>,
+  Can: ({ permission, children }: any) => {
+    const perms: string[] = __state.userPermissions;
+    return perms.includes('*') || perms.includes(permission) ? <>{children}</> : null;
+  },
 }));
 
 vi.mock('../../../../store/auth.store', () => ({
-  useAuthStore: (sel: any) => sel({ user: { id: 1, permissions: ['*'] } }),
+  useAuthStore: (sel: any) => sel({ user: { id: 1, permissions: __state.userPermissions } }),
 }));
 
 vi.mock('../../../../components/ui/Toast', () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => __state.toast,
 }));
 
 function setApis() {
@@ -128,6 +133,7 @@ function renderPage(initialPath: string, routePath: string, element: React.React
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __state.userPermissions = ['*'];
   setApis();
   for (const api of [__state.adminApi, __state.orgApi] as any[]) {
     api.getTournament.mockResolvedValue(__state.enrichedTournament);
@@ -729,5 +735,142 @@ describe('Tournament Hub — TUX-05 status badge contrast', () => {
     expect(pill).toBeTruthy();
     expect(pill!.className).toContain('text-gray-600');
     expect(pill!.className).not.toContain('text-gray-700');
+  });
+});
+
+describe('Tournament Hub — R2-b competition-aware prizes (Finances tab)', () => {
+  // The i18n mock returns the KEY for t(); Retry buttons therefore render 'common.retry'.
+  const RETRY = 'common.retry';
+
+  const DUAL_COMPETITIONS = [
+    { id: 10, name: 'Singles', is_default: 1 },
+    { id: 11, name: 'Doubles', is_default: 0 },
+  ];
+
+  function tournamentWithPrizes() {
+    return {
+      ...__state.enrichedTournament,
+      currency_code: 'EGP',
+      prizes: [
+        { id: 1, placement: 1, competition_id: 10, prize_type: 'cash', amount: 10000, currency_code: 'EGP', display_order: 0 },
+        { id: 2, placement: 2, competition_id: 11, prize_type: 'silver', description: 'Silver medal', display_order: 1 },
+      ],
+    };
+  }
+
+  function renderAdmin() {
+    return renderPage('/admin/tournament/list/1', '/admin/tournament/list/:id', <TournamentDetailPage mode="admin" />);
+  }
+  function renderOrg() {
+    return renderPage('/org/6/tournaments/1', '/org/:orgId/tournaments/:id', <TournamentDetailPage mode="org" orgId="6" />);
+  }
+
+  it('admin: renders the prizes card and saves the full collection preserving competition_id', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(tournamentWithPrizes());
+    __state.adminApi.listCompetitions.mockResolvedValue(DUAL_COMPETITIONS);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    expect(await screen.findByTestId('tournament-prizes-card')).toBeTruthy();
+    // Scope selector appears only when >1 competition exists.
+    expect(await screen.findByLabelText('Prize #1 competition')).toBeTruthy();
+
+    const getCallsBefore = __state.adminApi.getTournament.mock.calls.length;
+    fireEvent.click(screen.getByTestId('prizes-save'));
+
+    await waitFor(() => expect(__state.adminApi.updateTournament).toHaveBeenCalledTimes(1));
+    const [id, payload] = __state.adminApi.updateTournament.mock.calls[0];
+    expect(id).toBe(1);
+    expect(payload.prizes).toHaveLength(2);
+    // Cash prize keeps its competition scope + amount; currency is server-resolved (omitted).
+    expect(payload.prizes[0]).toMatchObject({ placement: 1, competition_id: 10, prize_type: 'cash', amount: 10000 });
+    expect(payload.prizes[0].currency_code).toBeUndefined();
+    // Non-cash prize keeps its scope/description and never sends amount/currency.
+    expect(payload.prizes[1]).toMatchObject({ placement: 2, competition_id: 11, prize_type: 'silver', description: 'Silver medal' });
+    expect(payload.prizes[1].amount).toBeUndefined();
+    expect(payload.prizes[1].currency_code).toBeUndefined();
+
+    // Success toast + cache invalidation (active tournament query refetches).
+    expect(__state.toast.showToast).toHaveBeenCalledWith('tournaments.prizes.saved', 'success');
+    await waitFor(() => expect(__state.adminApi.getTournament.mock.calls.length).toBeGreaterThan(getCallsBefore));
+  });
+
+  it('org: loads competitions via orgTournamentApi and saves through the org update endpoint', async () => {
+    __state.orgApi.getTournament.mockResolvedValue(tournamentWithPrizes());
+    __state.orgApi.listCompetitions.mockResolvedValue(DUAL_COMPETITIONS);
+    renderOrg();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    expect(await screen.findByTestId('tournament-prizes-card')).toBeTruthy();
+    expect(__state.orgApi.listCompetitions).toHaveBeenCalledWith('6', 1);
+    // Wait until categories have loaded (Save is disabled while the query is pending).
+    expect(await screen.findByLabelText('Prize #1 competition')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('prizes-save'));
+    await waitFor(() => expect(__state.orgApi.updateTournament).toHaveBeenCalledTimes(1));
+    const [orgIdArg, idArg, payload] = __state.orgApi.updateTournament.mock.calls[0];
+    expect(orgIdArg).toBe('6');
+    expect(idArg).toBe(1);
+    expect(payload.prizes).toHaveLength(2);
+    expect(payload.prizes[1].competition_id).toBe(11);
+    expect(__state.adminApi.updateTournament).not.toHaveBeenCalled();
+  });
+
+  it('permission denial: without the update permission the prizes card is not rendered', async () => {
+    __state.userPermissions = ['admin-tournaments.view', 'financial.reconcile'];
+    __state.adminApi.getTournament.mockResolvedValue(tournamentWithPrizes());
+    __state.adminApi.listCompetitions.mockResolvedValue(DUAL_COMPETITIONS);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    // The read-only finances surface still renders…
+    expect(await screen.findByText('tournaments.finances')).toBeTruthy();
+    // …but the prize editor/save are denied.
+    expect(screen.queryByTestId('tournament-prizes-card')).toBeNull();
+    expect(screen.queryByTestId('prizes-save')).toBeNull();
+  });
+
+  it('competition load failure fails closed: error + retry, no save, no write', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(tournamentWithPrizes());
+    __state.adminApi.listCompetitions.mockRejectedValue(new Error('Network Error'));
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    expect(await screen.findByTestId('prizes-competitions-error')).toBeTruthy();
+    expect(screen.getByText('tournaments.prizes.competitions_error')).toBeTruthy();
+    expect(screen.getByRole('button', { name: RETRY })).toBeTruthy();
+    expect(screen.queryByTestId('prizes-save')).toBeNull();
+    expect(__state.adminApi.updateTournament).not.toHaveBeenCalled();
+  });
+
+  it('competition load failure recovers via Retry and restores the editor', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(tournamentWithPrizes());
+    __state.adminApi.listCompetitions
+      .mockRejectedValueOnce(new Error('Network Error'))
+      .mockResolvedValue(DUAL_COMPETITIONS);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    expect(await screen.findByTestId('prizes-competitions-error')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: RETRY }));
+
+    expect(await screen.findByTestId('prizes-save')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId('prizes-competitions-error')).toBeNull());
+  });
+
+  it('single competition: no scope selector is rendered (legacy editor behavior preserved)', async () => {
+    __state.adminApi.getTournament.mockResolvedValue(tournamentWithPrizes());
+    __state.adminApi.listCompetitions.mockResolvedValue([{ id: 10, name: 'Singles', is_default: 1 }]);
+    renderAdmin();
+    await screen.findByText('Padel Test Tournament');
+    fireEvent.click(screen.getByRole('tab', { name: 'tournaments.hub.finances' }));
+
+    expect(await screen.findByTestId('tournament-prizes-card')).toBeTruthy();
+    expect(screen.queryByLabelText('Prize #1 competition')).toBeNull();
   });
 });

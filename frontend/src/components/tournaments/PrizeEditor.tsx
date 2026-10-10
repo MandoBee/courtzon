@@ -4,10 +4,23 @@ export type PrizeType = 'cash' | 'gold' | 'silver' | 'bronze' | 'trophy' | 'gift
 
 export interface PrizeEditorRow {
   placement?: number | null;
+  /**
+   * G11.20 / R2-b — optional competition/category scope. `null`/`undefined`
+   * means "the tournament's default competition" (the backend trigger assigns
+   * it), preserving the exact legacy behaviour.
+   */
+  competition_id?: number | null;
   prize_type: PrizeType;
   description?: string;
   amount?: number | null;
   currency_code?: string | null;
+}
+
+/** Minimal competition descriptor required by the per-prize scope selector. */
+export interface PrizeEditorCompetition {
+  id: number;
+  name?: string | null;
+  is_default?: boolean | number | null;
 }
 
 interface PrizeEditorProps {
@@ -16,6 +29,12 @@ interface PrizeEditorProps {
   /** Existing prizes to edit (from the API). */
   value?: PrizeEditorRow[];
   onChange: (rows: PrizeEditorRow[]) => void;
+  /**
+   * Optional competition categories. The per-prize scope selector renders ONLY
+   * when MORE THAN ONE competition exists, so the creation wizard (which omits
+   * this prop) and single-competition tournaments keep the exact legacy editor.
+   */
+  competitions?: PrizeEditorCompetition[];
 }
 
 const PRIZE_TYPES: { value: PrizeType; label: string }[] = [
@@ -40,8 +59,13 @@ const PLACEMENT_LABELS: Record<string, string> = {
  * description only. Currency is always the authoritative tournament currency —
  * the user never enters it manually.
  */
-export function PrizeEditor({ currencyCode, value = [], onChange }: PrizeEditorProps) {
+export function PrizeEditor({ currencyCode, value = [], onChange, competitions = [] }: PrizeEditorProps) {
   const [rows, setRows] = useState<PrizeEditorRow[]>(value.length ? value : [{ prize_type: 'cash' }]);
+  // R2-b — the scope selector is only meaningful when a tournament owns more
+  // than one competition category. With 0/1 categories the editor is identical
+  // to the legacy single-competition editor (no selector, no competition_id).
+  const competitionOptions = Array.isArray(competitions) ? competitions : [];
+  const showCompetition = competitionOptions.length > 1;
 
   const updateRow = (index: number, patch: Partial<PrizeEditorRow>) => {
     const next = rows.map((r, i) => (i === index ? { ...r, ...patch } : r));
@@ -111,6 +135,22 @@ export function PrizeEditor({ currencyCode, value = [], onChange }: PrizeEditorP
               </select>
             </div>
           </div>
+
+          {showCompetition && (
+            <div>
+              <label className="block text-xs text-[var(--color-text-muted)] mb-1">Competition</label>
+              <select
+                aria-label={`Prize #${i + 1} competition`}
+                value={row.competition_id == null ? '' : String(row.competition_id)}
+                onChange={(e) => updateRow(i, { competition_id: e.target.value ? Number(e.target.value) : null })}
+                className="w-full px-2 py-1.5 rounded border border-[var(--color-border)] text-sm bg-[var(--color-surface)]">
+                <option value="">Default</option>
+                {competitionOptions.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name || `Competition #${c.id}`}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>

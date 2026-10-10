@@ -55,3 +55,63 @@ describe('PrizeEditor (Group 2)', () => {
     expect(last[0].amount).toBe(2500);
   });
 });
+
+describe('PrizeEditor — R2-b competition scope', () => {
+  const competitions = [
+    { id: 10, name: 'Singles', is_default: 1 },
+    { id: 11, name: 'Doubles', is_default: 0 },
+  ];
+
+  it('omitted competitions → no scope selector (creation-wizard backward compatibility)', () => {
+    render(<PrizeEditor currencyCode="EGP" value={[]} onChange={vi.fn()} />);
+    expect(screen.queryByText('Competition')).toBeNull();
+    expect(screen.queryByLabelText('Prize #1 competition')).toBeNull();
+  });
+
+  it('a single competition → no scope selector', () => {
+    render(<PrizeEditor currencyCode="EGP" value={[]} onChange={vi.fn()} competitions={[competitions[0]]} />);
+    expect(screen.queryByLabelText('Prize #1 competition')).toBeNull();
+  });
+
+  it('more than one competition → scope selector renders each category plus Default', () => {
+    render(<PrizeEditor currencyCode="EGP" value={[]} onChange={vi.fn()} competitions={competitions} />);
+    expect(screen.getByLabelText('Prize #1 competition')).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Default' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Singles' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Doubles' })).toBeTruthy();
+  });
+
+  it('preserves an existing competition_id and emits it on selection', () => {
+    const onChange = vi.fn();
+    render(
+      <PrizeEditor
+        currencyCode="EGP"
+        value={[{ prize_type: 'cash', amount: 500, competition_id: 10 }]}
+        onChange={onChange}
+        competitions={competitions}
+      />,
+    );
+    const select = screen.getByLabelText('Prize #1 competition') as HTMLSelectElement;
+    expect(select.value).toBe('10');
+
+    fireEvent.change(select, { target: { value: '11' } });
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as any[];
+    expect(last[0].competition_id).toBe(11);
+    expect(last[0].amount).toBe(500); // other prize fields preserved
+  });
+
+  it('selecting Default clears competition_id (null = default competition)', () => {
+    const onChange = vi.fn();
+    render(
+      <PrizeEditor
+        currencyCode="EGP"
+        value={[{ prize_type: 'cash', amount: 500, competition_id: 11 }]}
+        onChange={onChange}
+        competitions={competitions}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Prize #1 competition'), { target: { value: '' } });
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as any[];
+    expect(last[0].competition_id).toBeNull();
+  });
+});

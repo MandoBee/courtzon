@@ -9,6 +9,7 @@ import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Modal } from '../../../components/ui/Modal';
 import { GeneratedRules } from '../../../components/tournaments/GeneratedRules';
 import { PrizeList } from '../../../components/tournaments/PrizeList';
+import { PrizeEditor, type PrizeEditorRow, type PrizeEditorCompetition } from '../../../components/tournaments/PrizeEditor';
 import SponsorList from '../../../components/tournaments/SponsorList';
 import CompetitionManager from '../../../components/tournaments/CompetitionManager';
 import { tournamentApi, orgTournamentApi, tournamentRefundApi } from '../../../services/tournament';
@@ -47,6 +48,171 @@ export type TournamentDetailContextMode = 'admin' | 'org';
 interface Props {
   mode?: TournamentDetailContextMode;
   orgId?: string;
+}
+
+/** Map an API prize row → the editor's row shape (preserves competition_id + all fields). */
+function toPrizeEditorRows(prizes: unknown): PrizeEditorRow[] {
+  if (!Array.isArray(prizes)) return [];
+  return prizes.map((p: any) => ({
+    placement: p?.placement ?? null,
+    competition_id: p?.competition_id ?? null,
+    prize_type: (p?.prize_type ?? 'cash') as PrizeEditorRow['prize_type'],
+    description: p?.description ?? undefined,
+    amount: p?.amount ?? null,
+    currency_code: p?.currency_code ?? null,
+  }));
+}
+
+/**
+ * A pristine placeholder row (the editor's default new cash row with no data) is
+ * dropped on save. Every partially/fully filled row is preserved — including
+ * non-cash prizes that carry no description — so a replace-set save can never
+ * silently discard an existing prize.
+ */
+function isBlankPrizeRow(p: PrizeEditorRow): boolean {
+  return (
+    p.prize_type === 'cash' &&
+    p.amount == null &&
+    !p.description?.trim() &&
+    p.placement == null &&
+    p.competition_id == null
+  );
+}
+
+/**
+ * Serialize the editor's FULL row collection for the existing update endpoint
+ * (replace-set semantics). `competition_id` is preserved when present (omitted
+ * = the tournament's default competition). Cash prizes send `amount`; the
+ * server fills the authoritative currency. Non-cash prizes omit both `amount`
+ * and `currency_code` (the server normalises them to NULL) — sending literal
+ * `null` is rejected by the DTO, so omission is the correct contract.
+ */
+function serializePrizeRows(rows: PrizeEditorRow[]): Record<string, unknown>[] {
+  return rows
+    .filter((p) => Boolean(p.prize_type) && !isBlankPrizeRow(p))
+    .map((p) => {
+      const out: Record<string, unknown> = {
+        placement: p.placement ?? null,
+        prize_type: p.prize_type,
+      };
+      if (p.competition_id != null) out.competition_id = Number(p.competition_id);
+      const description = p.description?.trim();
+      if (description) out.description = description;
+      if (p.prize_type === 'cash') {
+        out.amount = p.amount != null ? Number(p.amount) : undefined;
+      }
+      return out;
+    });
+}
+
+interface TournamentPrizesCardProps {
+  mode: TournamentDetailContextMode;
+  orgId?: string;
+  tournamentId: number;
+  keyRoot: string;
+  tournament: any;
+}
+
+/**
+ * R2-b — competition-aware prize editor for the Hub Finances tab.
+ *
+ * Reuses the EXISTING update endpoint/permission for the active mode
+ * (`tournament.update` / `org.tournaments.update`). Competition categories load
+ * through the existing `tournamentApi.listCompetitions` (admin) /
+ * `orgTournamentApi.listCompetitions` (org). If the categories fail to load the
+ * card fails closed: it shows a clear error/hint and offers NO save, so prizes
+ * can never be written against an unknown/empty category set.
+ */
+function TournamentPrizesCard({ mode, orgId, tournamentId, keyRoot, tournament }: TournamentPrizesCardProps) {
+  const { t } = useTranslation();
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const isOrg = mode === 'org';
+  const updatePerm = isOrg ? 'org.tournaments.update' : 'tournament.update';
+  const currencyCode = tournament?.currency_code ?? null;
+
+  // Initialise ONCE from the complete server collection (incl. competition_id).
+  // This card only mounts after the tournament has loaded, so the initial value
+  // is the authoritative prize set, never a transient empty list.
+  const [rows, setRows] = useState<PrizeEditorRow[]>(() => toPrizeEditorRows(tournament?.prizes));
+
+  const {
+    data: competitions,
+    isLoading: loadingCompetitions,
+    isError: competitionsError,
+    refetch: refetchCompetitions,
+  } = useQuery({
+    queryKey: [`${keyRoot}-competitions`, tournamentId],
+    queryFn: () =>
+      isOrg && orgId
+        ? orgTournamentApi.listCompetitions(orgId, tournamentId)
+        : tournamentApi.listCompetitions(tournamentId),
+  });
+  const competitionList: PrizeEditorCompetition[] = Array.isArray(competitions) ? competitions : [];
+
+  const savePrizes = useMutation({
+    mutationFn: () => {
+      // Always submit the COMPLETE current collection (replace-set endpoint).
+      const payload = { prizes: serializePrizeRows(rows) };
+      return isOrg && orgId
+        ? orgTournamentApi.updateTournament(orgId, tournamentId, payload)
+        : tournamentApi.updateTournament(tournamentId, payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [keyRoot, tournamentId] });
+      showToast(t('tournaments.prizes.saved', 'Prizes updated'), 'success');
+    },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
+  return (
+    <Can permission={updatePerm}>
+      <div
+        className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-3"
+        data-testid="tournament-prizes-card"
+      >
+        <div>
+          <h3 className="font-semibold text-[var(--color-text)]">{t('tournaments.prizes.card_title', 'Prizes')}</h3>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            {t('tournaments.prizes.card_hint', 'Configure the prize for each category. Saving replaces the full prize list.')}
+          </p>
+        </div>
+
+        {competitionsError ? (
+          <div data-testid="prizes-competitions-error" className="space-y-2">
+            <p className="text-sm text-[var(--color-error)]">
+              {t('tournaments.prizes.competitions_error', 'Unable to load competition categories.')}
+            </p>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              {t('tournaments.prizes.competitions_error_hint', 'Prize editing is disabled until the categories load, to avoid assigning prizes to the wrong category.')}
+            </p>
+            <button
+              type="button"
+              onClick={() => refetchCompetitions()}
+              className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--color-primary)] px-3 text-xs font-medium text-white hover:opacity-90"
+            >
+              {t('common.retry', 'Retry')}
+            </button>
+          </div>
+        ) : (
+          <>
+            <PrizeEditor currencyCode={currencyCode} competitions={competitionList} value={rows} onChange={setRows} />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                data-testid="prizes-save"
+                onClick={() => savePrizes.mutate()}
+                disabled={loadingCompetitions || competitionsError || savePrizes.isPending}
+                className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {t('common.save', 'Save')}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Can>
+  );
 }
 
 /**
@@ -941,6 +1107,16 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
                 </div>
               </Can>
             )}
+
+            {/* R2-b — competition-aware prize editor. Reuses the existing
+                update endpoint + permission for the active mode. */}
+            <TournamentPrizesCard
+              mode={mode}
+              orgId={orgId}
+              tournamentId={tournamentId}
+              keyRoot={keyRoot}
+              tournament={tournament}
+            />
           </div>
         )}
 

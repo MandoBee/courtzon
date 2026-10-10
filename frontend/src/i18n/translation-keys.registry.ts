@@ -1947,6 +1947,12 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.hub.awards_hint', defaultValue: 'Grant and refund tournament prize awards.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Finances awards hint' },
   { key: 'tournaments.hub.open_awards', defaultValue: 'Open awards', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Finances open awards button' },
   { key: 'tournaments.hub.refunds', defaultValue: 'Registration Refund Requests', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Finances refund requests heading' },
+  // R2-b — competition-aware prize editor card (Hub Finances tab).
+  { key: 'tournaments.prizes.card_title', defaultValue: 'Prizes', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Finances prizes card heading' },
+  { key: 'tournaments.prizes.card_hint', defaultValue: 'Configure the prize for each category. Saving replaces the full prize list.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Finances prizes card hint' },
+  { key: 'tournaments.prizes.competitions_error', defaultValue: 'Unable to load competition categories.', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Finances prizes category load error' },
+  { key: 'tournaments.prizes.competitions_error_hint', defaultValue: 'Prize editing is disabled until the categories load, to avoid assigning prizes to the wrong category.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Finances prizes category load error hint' },
+  { key: 'tournaments.prizes.saved', defaultValue: 'Prizes updated', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Finances prizes saved toast' },
   { key: 'tournaments.awards.title', defaultValue: 'Prize Awards', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Awards heading' },
   { key: 'tournaments.entry_fee', defaultValue: 'Entry Fee', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Entry fee label' },
   { key: 'tournaments.registration_opens', defaultValue: 'Registration Opens', moduleSlug: 'tournaments', elementType: 'label', elementLabel: 'Registration opens label' },
