@@ -373,6 +373,8 @@ export interface TournamentPrize {
 /** Group 2 — client/API prize input (no internal id/timestamps). */
 export interface TournamentPrizeInput {
   placement?: number | null;
+  /** G11.20 — optional competition/category scope; omitted = the tournament's default competition. */
+  competition_id?: number | null;
   prize_type: TournamentPrizeType;
   description?: string | null;
   amount?: number | null;

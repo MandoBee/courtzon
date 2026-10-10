@@ -249,7 +249,8 @@ export class TournamentService {
       });
     }
     if (prizes.length > 0) {
-      await tournamentRepository.replacePrizes(id, prizes);
+      const scopedPrizes = await this.assertPrizeCompetitions(id, prizes);
+      await tournamentRepository.replacePrizes(id, scopedPrizes);
     }
     if (sponsors.length > 0) {
       await tournamentRepository.replaceSponsors(id, sponsors);
@@ -287,17 +288,23 @@ export class TournamentService {
    *  * display_order is deterministic (array index) unless explicitly supplied.
    */
   private normalisePrizes(prizes: TournamentPrizeInput[], authoritativeCurrency?: string): TournamentPrizeInput[] {
-    // G11.15 — one CASH prize per ranked placement (mirrors migration 185's
-    // DB-level unique index so the API returns a meaningful validation error
-    // instead of a raw duplicate-key failure). Non-cash prizes and non-ranked
-    // (placement NULL) cash prizes may repeat exactly as before.
-    const cashSeen = new Map<number, void>();
+    // G11.15 + R2-a — one CASH prize per ranked placement PER competition
+    // (mirrors migration 185's `uk_tprize_cash_competition_placement` unique
+    // index, keyed by tournament+competition+ranked placement, so the API
+    // returns a meaningful validation error instead of a raw duplicate-key
+    // failure). `competition_id` is used AS SUPPLIED here (null = "default"
+    // bucket); the service-level `assertPrizeCompetitions` re-checks against
+    // the resolved default competition once the tournament exists. Non-cash
+    // prizes and non-ranked (placement NULL) cash prizes may repeat exactly as
+    // before.
+    const cashSeen = new Map<string, void>();
     for (const p of prizes) {
       if (p.prize_type === 'cash' && p.placement != null) {
-        if (cashSeen.has(p.placement)) {
-          throw new ConflictError(`Multiple cash prizes configured for placement ${p.placement}`, ErrorCodes.TOURNAMENT_INVALID_PRIZE);
+        const key = `${p.competition_id ?? 'default'}:${p.placement}`;
+        if (cashSeen.has(key)) {
+          throw new ConflictError(`Multiple cash prizes configured for placement ${p.placement}${p.competition_id != null ? ` in competition #${p.competition_id}` : ''}`, ErrorCodes.TOURNAMENT_INVALID_PRIZE);
         }
-        cashSeen.set(p.placement, undefined);
+        cashSeen.set(key, undefined);
       }
     }
     return prizes.map((p, i) => {
@@ -315,6 +322,7 @@ export class TournamentService {
         }
         return {
           placement: p.placement ?? null,
+          competition_id: p.competition_id != null ? Number(p.competition_id) : null,
           prize_type: prizeType,
           description: p.description ?? null,
           amount,
@@ -324,6 +332,7 @@ export class TournamentService {
       }
       return {
         placement: p.placement ?? null,
+        competition_id: p.competition_id != null ? Number(p.competition_id) : null,
         prize_type: prizeType,
         description: p.description ?? null,
         amount: null,
@@ -331,6 +340,52 @@ export class TournamentService {
         display_order: p.display_order ?? i,
       };
     });
+  }
+
+  /**
+   * R2-a — competition-scoped prize validation, run once the tournament id
+   * exists (right before the prize rows are persisted).
+   *   * an explicitly supplied `competition_id` MUST belong to this tournament
+   *     (fail-closed 422, never a raw FK/database error);
+   *   * omitted `competition_id` resolves to the tournament's DEFAULT
+   *     competition for duplicate detection (the DB trigger fills the same
+   *     default on insert, so the two are interchangeable);
+   *   * one cash prize per ranked placement per EFFECTIVE competition — mirrors
+   *     `uk_tprize_cash_competition_placement` exactly, including the
+   *     omitted-vs-explicit-default unification the pure normaliser cannot see.
+   * Returns the prize set unchanged (omission is preserved for the trigger).
+   */
+  private async assertPrizeCompetitions(tournamentId: number, prizes: TournamentPrizeInput[]): Promise<TournamentPrizeInput[]> {
+    if (prizes.length === 0) return prizes;
+    const defaultComp = await competitionRepository.findDefaultByTournament(tournamentId);
+    const defaultId = defaultComp?.id != null ? Number(defaultComp.id) : null;
+    const cashSeen = new Map<string, boolean>();
+    for (const p of prizes) {
+      let effectiveCompId = defaultId;
+      if (p.competition_id != null) {
+        const competition = await competitionRepository.findById(Number(p.competition_id));
+        if (!competition || Number(competition.tournament_id) !== Number(tournamentId)) {
+          throw new AppError(
+            'Competition does not belong to this tournament',
+            422,
+            ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND,
+            { code: ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND, details: { competitionId: Number(p.competition_id) } },
+          );
+        }
+        effectiveCompId = Number(competition.id) ?? effectiveCompId;
+      }
+      if (p.prize_type === 'cash' && p.placement != null) {
+        const key = `${effectiveCompId ?? 'default'}:${p.placement}`;
+        if (cashSeen.has(key)) {
+          throw new ConflictError(
+            `Multiple cash prizes configured for placement ${p.placement}${effectiveCompId != null ? ` in competition #${effectiveCompId}` : ''}`,
+            ErrorCodes.TOURNAMENT_INVALID_PRIZE,
+          );
+        }
+        cashSeen.set(key, true);
+      }
+    }
+    return prizes;
   }
 
   /**
@@ -1530,8 +1585,9 @@ export class TournamentService {
     if (data.prizes !== undefined) {
       const effectiveCurrency = data.currency_code ?? current.currency_code;
       const prizes = this.normalisePrizes(data.prizes, effectiveCurrency);
-      await tournamentRepository.replacePrizes(id, prizes);
-      eventBusV2.emit('tournament:prizes-updated', { tournamentId: id, prizeCount: prizes.length, ...this.tournamentRealtimeScope(current) } as Record<string, unknown>, {
+      const scopedPrizes = await this.assertPrizeCompetitions(id, prizes);
+      await tournamentRepository.replacePrizes(id, scopedPrizes);
+      eventBusV2.emit('tournament:prizes-updated', { tournamentId: id, prizeCount: scopedPrizes.length, ...this.tournamentRealtimeScope(current) } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
       });
       delete (data as any).prizes;

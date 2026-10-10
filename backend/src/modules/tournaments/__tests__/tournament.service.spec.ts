@@ -91,6 +91,13 @@ vi.mock('../../organisations/application/current-subscription.service.js', () =>
 const matchServiceMock = vi.hoisted(() => ({ createForTournament: vi.fn() }));
 vi.mock('../../match/application/services/match.service.js', () => ({ matchService: matchServiceMock }));
 
+const competitionRepo = vi.hoisted(() => ({
+  findById: vi.fn(),
+  createDefault: vi.fn(),
+  findDefaultByTournament: vi.fn(),
+}));
+vi.mock('../infrastructure/repositories/competition.repository.js', () => ({ competitionRepository: competitionRepo }));
+
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
     id: 1, creator_id: 1, bracket_type_id: 1, format: 'round_robin',
@@ -630,5 +637,78 @@ describe('TournamentService — structured prizes (Group 2)', () => {
     repo.findPrizesByTournament.mockResolvedValue([{ id: 1, tournament_id: 1, placement: 1, prize_type: 'trophy', description: 'Cup', display_order: 0 }]);
     const detail = await svc.getByIdDetailed(1);
     expect(detail.prizes[0].prize_type).toBe('trophy');
+  });
+});
+
+describe('TournamentService — R2-a competition-scoped prizes', () => {
+  const svc = new TournamentService();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findBracketTypeById.mockResolvedValue({ id: 1, name: 'Single Elimination', slug: 'single-elimination', is_active: 1, config_schema: null });
+    commission.getCommissionRate.mockResolvedValue(null);
+    repo.findByCode.mockResolvedValue(null);
+    repo.create.mockResolvedValue(10);
+    repo.findById.mockResolvedValue(makeTournament({ id: 10 }));
+    mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
+    mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: {}, standingsRules: null });
+    competitionRepo.createDefault.mockResolvedValue(4);
+    competitionRepo.findDefaultByTournament.mockResolvedValue({ id: 4, tournament_id: 10, is_default: 1 });
+    competitionRepo.findById.mockImplementation(async (cid: number) => ({ id: cid, tournament_id: 10, is_default: 0 }));
+  });
+
+  it('accepts the same cash placement in two different competitions', async () => {
+    await svc.create(makeTournament({ prizes: [
+      { placement: 1, prize_type: 'cash', amount: 100, competition_id: 6 },
+      { placement: 1, prize_type: 'cash', amount: 200, competition_id: 7 },
+    ] } as any), 1);
+    expect(repo.replacePrizes).toHaveBeenCalledTimes(1);
+    const arg = repo.replacePrizes.mock.calls[0][1];
+    expect(arg).toEqual(expect.arrayContaining([
+      expect.objectContaining({ placement: 1, competition_id: 6 }),
+      expect.objectContaining({ placement: 1, competition_id: 7 }),
+    ]));
+  });
+
+  it('rejects a duplicate cash placement within the same competition', async () => {
+    await expect(svc.create(makeTournament({ prizes: [
+      { placement: 1, prize_type: 'cash', amount: 100, competition_id: 6 },
+      { placement: 1, prize_type: 'cash', amount: 200, competition_id: 6 },
+    ] } as any), 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PRIZE });
+    expect(repo.replacePrizes).not.toHaveBeenCalled();
+  });
+
+  it('rejects a competition belonging to another tournament with 422', async () => {
+    competitionRepo.findById.mockResolvedValue({ id: 99, tournament_id: 999, is_default: 0 });
+    await expect(svc.create(makeTournament({ prizes: [
+      { placement: 1, prize_type: 'cash', amount: 100, competition_id: 99 },
+    ] } as any), 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND, statusCode: 422 });
+  });
+
+  it('rejects an invalid competition id with 422 (never a raw FK error)', async () => {
+    competitionRepo.findById.mockResolvedValue(null);
+    await expect(svc.create(makeTournament({ prizes: [
+      { placement: 1, prize_type: 'cash', amount: 100, competition_id: 12345 },
+    ] } as any), 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND, statusCode: 422 });
+  });
+
+  it('unifies omitted competition_id with the default competition for duplicate detection', async () => {
+    await expect(svc.create(makeTournament({ prizes: [
+      { placement: 1, prize_type: 'cash', amount: 100 },
+      { placement: 1, prize_type: 'cash', amount: 200, competition_id: 4 },
+    ] } as any), 1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_INVALID_PRIZE });
+  });
+
+  it('allows the default competition and another competition to share a placement (omitted preserved)', async () => {
+    await svc.create(makeTournament({ prizes: [
+      { placement: 1, prize_type: 'cash', amount: 100 },
+      { placement: 1, prize_type: 'cash', amount: 200, competition_id: 6 },
+    ] } as any), 1);
+    expect(repo.replacePrizes).toHaveBeenCalledTimes(1);
+    const arg = repo.replacePrizes.mock.calls[0][1];
+    expect(arg).toEqual(expect.arrayContaining([
+      expect.objectContaining({ placement: 1, competition_id: null }),
+      expect.objectContaining({ placement: 1, competition_id: 6 }),
+    ]));
   });
 });

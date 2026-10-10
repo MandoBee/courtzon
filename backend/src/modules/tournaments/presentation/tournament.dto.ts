@@ -38,6 +38,8 @@ export const TournamentEligibilityInputSchema = z.object({
  */
 export const TournamentPrizeSchema = z.object({
   placement: z.number().int().positive().nullable().optional(),
+  /** G11.20 — optional competition/category scope; omitted = the tournament's default competition (legacy trigger behavior). */
+  competition_id: z.number().int().positive().optional(),
   prize_type: z.enum(['cash', 'gold', 'silver', 'bronze', 'trophy', 'gift', 'other']),
   description: z.string().max(255).optional(),
   amount: z.number().min(0).optional(),

@@ -722,6 +722,27 @@ export class TournamentRepository {
     await db.query('DELETE FROM tournament_prizes WHERE tournament_id = ?', [tournamentId]);
     for (let i = 0; i < prizes.length; i++) {
       const p = prizes[i];
+      // R2-a — persist `competition_id` ONLY when explicitly supplied. Omitting
+      // the column preserves the existing BEFORE-INSERT trigger
+      // (`trg_tprize_competition_id`) which assigns the tournament's DEFAULT
+      // competition — legacy behavior is untouched. NULL is NOT written here.
+      if (p.competition_id != null) {
+        await db.query(
+          `INSERT INTO tournament_prizes (tournament_id, competition_id, placement, prize_type, description, amount, currency_code, display_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            tournamentId,
+            Number(p.competition_id),
+            p.placement ?? null,
+            p.prize_type,
+            p.description ?? null,
+            p.amount ?? null,
+            p.currency_code ?? null,
+            p.display_order ?? i,
+          ],
+        );
+        continue;
+      }
       await db.query(
         `INSERT INTO tournament_prizes (tournament_id, placement, prize_type, description, amount, currency_code, display_order)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
