@@ -82,6 +82,7 @@ import { mobileRoutes } from "./modules/mobile/index.js";
 import { createPool, getPool } from "./database/mysql.js";
 import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
+import { getAppVersion, getBuildTime, getExpectedMigration, getGitCommit } from "./shared/utils/build-info.js";
 import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error.util.js";
 import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
@@ -488,16 +489,11 @@ app.get("/health/socket", async (_request, reply) => {
 });
 
 app.get("/health/version", async (_request, reply) => {
-  const { readFileSync } = await import('node:fs');
-  const read = (path: string, envKey: string) => {
-    try { return readFileSync(path, 'utf-8').trim(); }
-    catch { return process.env[envKey] || 'unknown'; }
-  };
   return reply.send({
-    buildTime: read('/app/build-time.txt', 'BUILD_TIME'),
-    gitCommit: read('/app/git-commit.txt', 'GIT_COMMIT'),
-    applicationVersion: read('/app/version.txt', 'APP_VERSION'),
-    expectedMigration: read('/app/expected-migration.txt', 'EXPECTED_MIGRATION'),
+    buildTime: getBuildTime(),
+    gitCommit: getGitCommit(),
+    applicationVersion: getAppVersion(),
+    expectedMigration: getExpectedMigration(),
     nodeVersion: process.version,
     user: process.getuid?.() ?? 'unknown',
     pid: process.pid,

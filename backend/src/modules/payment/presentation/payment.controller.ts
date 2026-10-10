@@ -4,6 +4,7 @@ import { reconciliationService } from '../application/reconciliation.service.js'
 import { recordAudit } from '../../audit-log/index.js';
 import { ChargeSchema, RefundPaymentSchema, ConfirmPaymentSchema } from './payment.dto.js';
 import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { getAppVersion, getExpectedMigration, getGitCommit } from '../../../shared/utils/build-info.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 
@@ -213,12 +214,7 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
     ? true
     : !!(process.env.PAYMOB_API_KEY && process.env.PAYMOB_SECRET && process.env.PAYMOB_HMAC_SECRET);
 
-  const { readFileSync } = await import('node:fs');
-  const read = (path: string, envKey: string) => {
-    try { return readFileSync(path, 'utf-8').trim(); }
-    catch { return process.env[envKey] || 'unknown'; }
-  };
-  const expectedMigration = read('/app/expected-migration.txt', 'EXPECTED_MIGRATION');
+  const expectedMigration = getExpectedMigration();
   const dbMigration = migrationRows[0]?.filename || 'none';
   const migrationSynced = expectedMigration !== 'unknown' ? dbMigration.includes(expectedMigration) || dbMigration === expectedMigration : null;
 
@@ -229,8 +225,8 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
 
   return reply.send({
     status: 'ok',
-    applicationVersion: read('/app/version.txt', 'APP_VERSION'),
-    gitCommit: read('/app/git-commit.txt', 'GIT_COMMIT'),
+    applicationVersion: getAppVersion(),
+    gitCommit: getGitCommit(),
     provider,
     gatewayConfigured,
     gatewayConnectivity,

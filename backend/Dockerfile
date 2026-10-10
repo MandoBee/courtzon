@@ -36,11 +36,15 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Build metadata — single layer for all runtime-generated files
+# Build metadata — single layer for all runtime-generated files.
+# GIT_COMMIT is the canonical value (compose passes it). SOURCE_COMMIT is the
+# build-arg name CI platforms (e.g. Coolify) commonly expose — used as a
+# fallback so /health/version can report the deployed commit without extra config.
 ARG GIT_COMMIT=unknown
+ARG SOURCE_COMMIT=unknown
 RUN date -u +"%Y-%m-%dT%H:%M:%SZ" > /app/build-time.txt \
   && node -e "console.log(require('./package.json').version)" > /app/version.txt \
-  && echo "$GIT_COMMIT" > /app/git-commit.txt \
+  && echo "$(if [ -n "$SOURCE_COMMIT" ] && [ "$GIT_COMMIT" = "unknown" ]; then echo "$SOURCE_COMMIT"; else echo "$GIT_COMMIT"; fi)" > /app/git-commit.txt \
   && (ls -1 database/migrations/*.sql 2>/dev/null | sort | tail -1 | xargs -I{} basename {} .sql | sed 's/^0*//' > /app/expected-migration.txt || echo "0" > /app/expected-migration.txt) \
   && chown -R appuser:appgroup /app
 
