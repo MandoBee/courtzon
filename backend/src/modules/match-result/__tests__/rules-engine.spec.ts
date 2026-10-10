@@ -165,3 +165,151 @@ describe('outcomeCountsForRating', () => {
     }
   });
 });
+
+describe('validateAndComputeFinal — Phase 1 deuce_rule / tiebreak enforcement', () => {
+  it('rejects an unknown deuce_rule value (fail closed)', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { sets: [{ home: 6, away: 4 }] } },
+        setsRules({ deuce_rule: 'sudden_death' as any }),
+      ),
+    ).toThrow(/Unsupported deuce_rule "sudden_death"/);
+  });
+
+  it('accepts golden_point and standard deuce configurations', () => {
+    const payload = { outcome: 'completed', score: { sets: [{ home: 7, away: 6 }, { home: 6, away: 3 }] } };
+    expect(validateAndComputeFinal(payload, setsRules({ margin: 1, deuce_rule: 'golden_point', tiebreak_at: 6, tiebreak_first_to: 7 })).winner).toBe('home');
+    expect(validateAndComputeFinal(payload, setsRules({ margin: 2, deuce_rule: 'standard', tiebreak_at: 6, tiebreak_first_to: 7 })).winner).toBe('home');
+  });
+
+  it('rejects a tiebreak threshold with no tiebreak_first_to (incomplete config)', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { sets: [{ home: 6, away: 4 }] } },
+        setsRules({ tiebreak_at: 6, tiebreak_first_to: undefined }),
+      ),
+    ).toThrow(/requires tiebreak_first_to so the tiebreak score can be validated/);
+  });
+
+  it('rejects tiebreak_first_to not greater than tiebreak_at', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { sets: [{ home: 6, away: 4 }] } },
+        setsRules({ tiebreak_at: 6, tiebreak_first_to: 6 }),
+      ),
+    ).toThrow(/tiebreak_first_to must be greater than tiebreak_at/);
+  });
+
+  it('rejects a set that reaches the tiebreak zone but is not a legal tiebreak score (8-6 with tiebreak at 6-6)', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { sets: [{ home: 8, away: 6 }] } },
+        setsRules({ margin: 2, tiebreak_at: 6, tiebreak_first_to: 7 }),
+      ),
+    ).toThrow(/Invalid set score 8-6/);
+  });
+
+  it('accepts the matching tiebreak set (7-6 with tiebreak at 6-6 to 7)', () => {
+    const res = validateAndComputeFinal(
+      { outcome: 'completed', score: { sets: [{ home: 7, away: 6 }, { home: 6, away: 3 }] } },
+      setsRules({ margin: 2, tiebreak_at: 6, tiebreak_first_to: 7 }),
+    );
+    expect(res.winner).toBe('home');
+    expect(res.scoreSummary).toBe('2-0 (7-6, 6-3)');
+  });
+
+  it('still accepts advantage sets when no tiebreak is configured (8-6 by margin 2)', () => {
+    const res = validateAndComputeFinal(
+      { outcome: 'completed', score: { sets: [{ home: 8, away: 6 }, { home: 6, away: 4 }] } },
+      setsRules({ margin: 2 }),
+    );
+    expect(res.winner).toBe('home');
+    expect(res.scoreSummary).toBe('2-0 (8-6, 6-4)');
+  });
+
+  it('rejects a level 6-6 set (cannot be decided by a 1-game margin)', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { sets: [{ home: 6, away: 6 }, { home: 6, away: 3 }] } },
+        setsRules({ margin: 1 }),
+      ),
+    ).toThrow(/Invalid set score 6-6/);
+  });
+});
+
+describe('validateAndComputeFinal — Phase 1 drawn knockout goals (extra_time / penalty_shootout)', () => {
+  it('resolves a level knockout score via the penalty shootout when configured', () => {
+    const rules = goalsRules({ draw_allowed: false, extra_time: true, penalty_shootout: true });
+    const res = validateAndComputeFinal(
+      { outcome: 'completed', score: { homeGoals: 1, awayGoals: 1, extraTime: true, penalties: { home: 4, away: 3 } } },
+      rules,
+    );
+    expect(res.winner).toBe('home');
+    expect(res.scoreSummary).toBe('1-1 (4-3 pens)');
+    expect(res.finalResult.sideOutcomes).toEqual({ home: 'win', away: 'loss' });
+    expect(res.finalResult.winner).toBe('home');
+  });
+
+  it('resolves the away side when the shootout favours away', () => {
+    const res = validateAndComputeFinal(
+      { outcome: 'completed', score: { homeGoals: 2, awayGoals: 2, penalties: { home: 2, away: 4 } } },
+      goalsRules({ draw_allowed: false, penalty_shootout: true }),
+    );
+    expect(res.winner).toBe('away');
+    expect(res.scoreSummary).toBe('2-2 (2-4 pens)');
+  });
+
+  it('rejects penalties when the format has no shootout configured', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { homeGoals: 1, awayGoals: 1, penalties: { home: 4, away: 3 } } },
+        goalsRules({ draw_allowed: false }),
+      ),
+    ).toThrow(/does not allow a penalty shootout/);
+  });
+
+  it('rejects a level penalty shootout', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { homeGoals: 1, awayGoals: 1, penalties: { home: 3, away: 3 } } },
+        goalsRules({ draw_allowed: false, penalty_shootout: true }),
+      ),
+    ).toThrow(/A penalty shootout cannot end level/);
+  });
+
+  it('rejects extra time that ends level without a shootout (insufficient contract)', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { homeGoals: 2, awayGoals: 2, extraTime: true } },
+        goalsRules({ draw_allowed: false, extra_time: true }),
+      ),
+    ).toThrow(/Extra time ended level with no penalty shootout/);
+  });
+
+  it('rejects extra time flagged but not configured for the format', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { homeGoals: 2, awayGoals: 2, extraTime: true } },
+        goalsRules({ draw_allowed: false }),
+      ),
+    ).toThrow(/Extra time is not configured for this format/);
+  });
+
+  it('rejects penalties on a non-drawn scoreline (contradictory evidence)', () => {
+    expect(() =>
+      validateAndComputeFinal(
+        { outcome: 'completed', score: { homeGoals: 2, awayGoals: 1, penalties: { home: 4, away: 3 } } },
+        goalsRules({ draw_allowed: false, penalty_shootout: true }),
+      ),
+    ).toThrow(/Penalties can only be used to break a draw/);
+  });
+
+  it('keeps a level score a draw when the format allows draws even with extra time flagged', () => {
+    const res = validateAndComputeFinal(
+      { outcome: 'completed', score: { homeGoals: 1, awayGoals: 1, extraTime: true } },
+      goalsRules({ draw_allowed: true }),
+    );
+    expect(res.winner).toBe('draw');
+    expect(res.finalResult.sideOutcomes).toEqual({ home: 'draw', away: 'draw' });
+  });
+});

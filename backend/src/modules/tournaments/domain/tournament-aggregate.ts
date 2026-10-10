@@ -696,6 +696,14 @@ export interface TournamentMatch {
   /** Joined (G8-D) — authoritative result classification for standings scoring:
    * 'win' | 'draw' | 'no_result'. Attached by the standings reader. */
   standingsOutcome?: 'win' | 'draw' | 'no_result' | null;
+  /**
+   * Phase 1 — reliable per-match scoring evidence derived ONLY from an approved
+   * `match_result_records.raw_result` + `rules_snapshot` (never invented, never
+   * extrapolated from the winner mirror). Absent/undefined → the match
+   * contributes ZERO games/sets/goals to standings, exactly the legacy
+   * behaviour before scoring derivation existed.
+   */
+  matchScore?: ReliableMatchScore | null;
   /** Joined (G8) — court reservation state via the shared Match → booking. */
   booking_id?: number | null;
   participant1_name?: string | null;
@@ -1108,6 +1116,243 @@ export function generateStageMatches(
 }
 
 /**
+ * Phase 1 — distinguished scoring evidence types the standings engine can count
+ * from approved match-result data. `parseReliableMatchScore` is the ONLY way a
+ * `matchScore` may be produced; the structure is never inferred.
+ */
+export type ReliableMatchScore =
+  | { structure: 'sets'; sets: Array<{ home: number; away: number }> }
+  | { structure: 'goals'; homeGoals: number; awayGoals: number };
+
+/**
+ * Phase 1 — derive per-match scoring evidence from an approved result record.
+ *
+ * Reliability contract:
+ *  - ONLY `raw_result` combined with the match's OWN frozen `rules_snapshot`
+ *    (which declares the score structure) is trusted. If the structure is
+ *    missing or unknown → `null` (no games/sets/goals counted for the match).
+ *  - A malformed set/goal value (non-integer or negative) rejects the WHOLE
+ *    match's scoring → `null` — never a partial count.
+ *  - Penalty-shootout scores are NOT folded into games/goals (a shootout is a
+ *    tie-break mechanism, not match scoring).
+ */
+export function parseReliableMatchScore(rawResult: unknown, rules: unknown): ReliableMatchScore | null {
+  if (!rawResult || typeof rawResult !== 'object') return null;
+  const raw = rawResult as { score?: unknown };
+  if (raw.score == null || typeof raw.score !== 'object') return null;
+  const score = raw.score as Record<string, unknown>;
+  const rulesObj = (rules ?? {}) as { score_structure?: unknown };
+
+  if (rulesObj.score_structure === 'sets' && Array.isArray(score.sets)) {
+    const sets: Array<{ home: number; away: number }> = [];
+    for (const item of score.sets) {
+      const s = (item ?? {}) as { home?: unknown; away?: unknown };
+      if (!Number.isInteger(s.home) || !Number.isInteger(s.away) || (s.home as number) < 0 || (s.away as number) < 0) {
+        return null;
+      }
+      sets.push({ home: s.home as number, away: s.away as number });
+    }
+    if (sets.length === 0) return null;
+    return { structure: 'sets', sets };
+  }
+
+  if (rulesObj.score_structure === 'goals') {
+    if (!Number.isInteger(score.homeGoals) || !Number.isInteger(score.awayGoals)
+      || (score.homeGoals as number) < 0 || (score.awayGoals as number) < 0) {
+      return null;
+    }
+    return { structure: 'goals', homeGoals: score.homeGoals as number, awayGoals: score.awayGoals as number };
+  }
+
+  return null;
+}
+
+/**
+ * Phase 1 — standings tie-break configuration model.
+ *
+ * Field vocabulary consumed by `computeStandings` (the ONLY valid fields):
+ *   points            → points (desc by default)
+ *   wins / draws / losses → raw counts
+ *   games_difference  → games_won − games_lost
+ *   games_won / games_lost → raw game counts (goal sports store goals here)
+ *   goal_difference   → alias of games_difference (goal sports)
+ *   goals_for / goals_against → alias of games_won / games_lost (goal sports)
+ *   sets_difference   → sets_won − sets_lost
+ *   sets_won / sets_lost → raw set counts
+ *   head_to_head      → points earned against the specific tied opponent
+ *
+ * `direction` is 'asc' | 'desc' — the ordering applied to the evaluated field.
+ */
+export interface StandingsTiebreakerRef {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
+/** Legacy / pre-configuration standings tie-breaks (points DESC, game
+ * difference DESC). Kept verbatim as the safe compatibility fallback for rule
+ * sets that carry no `standings_rules.tiebreakers`. */
+export const LEGACY_TIEBREAKERS: readonly StandingsTiebreakerRef[] = [
+  { field: 'points', direction: 'desc' },
+  { field: 'games_difference', direction: 'desc' },
+];
+
+/** Fields the standings engine can evaluate from the existing data model. */
+export const SUPPORTED_TIEBREAKER_FIELDS: ReadonlySet<string> = new Set([
+  'points', 'wins', 'losses', 'draws',
+  'games_difference', 'games_won', 'games_lost',
+  'sets_difference', 'sets_won', 'sets_lost',
+  'goal_difference', 'goals_for', 'goals_against',
+  'head_to_head',
+]);
+
+/**
+ * Unambiguous legacy aliases → canonical tie-break fields. The GSK fixture line
+ * `{ tiebreakers: ['points','game_difference'] }` uses the singular historical
+ * spelling; it is exactly the `games_difference` field (games_won − games_lost)
+ * evaluated by `tiebreakCompare`. Only fields that map to ONE canonical field
+ * are listed — anything else throws (never silently reinterpreted).
+ */
+const LEGACY_TIEBREAKER_FIELD_ALIASES: Readonly<Record<string, string>> = {
+  game_difference: 'games_difference',
+};
+
+/**
+ * Normalize a raw tie-breaker entry list (array of `{ field, direction }`
+ * objects and/or legacy string field names) into an ordered, validated list.
+ * Fail-closed: unknown fields, bad directions and duplicate fields raise (an
+ * unsupported configuration must never silently change ranking). Legacy string
+ * entries (e.g. `['points','game_difference']`) map to `{ field, direction:
+ * 'desc' }` — the historical ordering was always descending — but ONLY when the
+ * field is unambiguous (`SUPPORTED_TIEBREAKER_FIELDS`); unknown strings throw.
+ * An empty list → the LEGACY_TIEBREAKERS fallback so empty/legacy rule sets
+ * keep their historical ranking contract.
+ */
+function normalizeTiebreakerRefs(raw: unknown[]): StandingsTiebreakerRef[] {
+  const out: StandingsTiebreakerRef[] = [];
+  for (const entry of raw) {
+    if (typeof entry === 'string') {
+      const canonical = LEGACY_TIEBREAKER_FIELD_ALIASES[entry] ?? entry;
+      if (!SUPPORTED_TIEBREAKER_FIELDS.has(canonical)) {
+        throw new Error(`Unsupported standings tie-breaker field "${entry}"`);
+      }
+      pushTiebreaker(out, { field: canonical, direction: 'desc' });
+      continue;
+    }
+    if (entry == null || typeof entry !== 'object') {
+      throw new Error('Invalid standings tie-breaker configuration: each entry must be an object or a field name');
+    }
+    const e = entry as { field?: unknown; direction?: unknown };
+    if (typeof e.field !== 'string' || !SUPPORTED_TIEBREAKER_FIELDS.has(e.field)) {
+      throw new Error(`Unsupported standings tie-breaker field "${String(e.field)}"`);
+    }
+    if (e.direction !== 'asc' && e.direction !== 'desc') {
+      throw new Error(`Invalid standings tie-breaker direction "${String(e.direction)}" for field "${e.field}"`);
+    }
+    pushTiebreaker(out, { field: e.field, direction: e.direction });
+  }
+  return out.length > 0 ? out : [...LEGACY_TIEBREAKERS];
+}
+
+/** Append a tie-breaker ref, rejecting duplicate fields (order-matters config). */
+function pushTiebreaker(out: StandingsTiebreakerRef[], ref: StandingsTiebreakerRef): void {
+  if (out.some((o) => o.field === ref.field)) {
+    throw new Error(`Duplicate standings tie-breaker field "${ref.field}"`);
+  }
+  out.push(ref);
+}
+
+/**
+ * Phase 1 — resolve a raw `standings_rules.tiebreakers` value into an ordered,
+ * validated list. Accepts both the current `{ field, direction }` object form
+ * and the legacy string-array form (`['points','game_difference']`). Fail-
+ * closed: unknown fields, bad directions, duplicate fields and non-array values
+ * raise (an unsupported configuration must never silently change ranking).
+ * Missing/empty configuration → the LEGACY_TIEBREAKERS fallback so legacy rule
+ * sets keep their historical ranking contract.
+ */
+export function resolveStandingsTiebreakers(raw: unknown): StandingsTiebreakerRef[] {
+  if (raw == null) return [...LEGACY_TIEBREAKERS];
+  if (!Array.isArray(raw)) {
+    throw new Error('Invalid standings tie-breaker configuration: expected an array of { field, direction }');
+  }
+  return normalizeTiebreakerRefs(raw);
+}
+
+/**
+ * Phase 1 — extract the ordered tie-breaker list from a `standings_rules`
+ * value as stored in MySQL (JSON column). The column may arrive as a parsed
+ * object or an unparsed JSON string (mysql2 returns JSON columns as strings);
+ * both are accepted. Acceptable shapes:
+ *   `{ points: {...}, tiebreakers: [{ field, direction }, ...] }`
+ *   `{ tiebreakers: [...] }`
+ *   a JSON array (legacy snapshot storing just the tie-breaker entries)
+ *   a JSON string encoding any of the above
+ * Returns `null` when the value carries NO usable tie-breaker configuration
+ * (missing column, `null`, malformed JSON, empty list) — callers decide between
+ * a tournament-level source, frozen per-match snapshots, and the legacy
+ * default. Invalid CONTENT inside a present list still throws (fail-closed).
+ */
+export function extractStandingsTiebreakers(raw: unknown): StandingsTiebreakerRef[] | null {
+  let value: unknown = raw;
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  if (value == null) return null;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    return normalizeTiebreakerRefs(value);
+  }
+  if (typeof value === 'object') {
+    const t = (value as { tiebreakers?: unknown }).tiebreakers;
+    return extractStandingsTiebreakers(t ?? null);
+  }
+  return null;
+}
+
+/**
+ * Phase 1 — resolve the standings tie-breaker order for a tournament.
+ * Precedence:
+ *   1. the tournament's own rule set (`tournaments.rule_set_id` standings_rules)
+ *   2. the FROZEN standings rules of the contributing match result snapshots —
+ *      ALL of them must agree; a mixed configuration (per-match inconsistencies)
+ *      fails closed rather than silently ranking with an arbitrary subset
+ *   3. LEGACY_TIEBREAKERS
+ * Missing/null/malformed per-match snapshots are ignored (they carry no
+ * configuration to compare).
+ */
+export function resolveTournamentStandingsTiebreakers(
+  tournamentStandingsRules: unknown,
+  contributingMatchStandingsRules: unknown[],
+  tournamentId: number,
+): StandingsTiebreakerRef[] {
+  const tournamentList = extractStandingsTiebreakers(tournamentStandingsRules);
+  if (tournamentList != null) return tournamentList;
+
+  let selected: StandingsTiebreakerRef[] | null = null;
+  for (let i = 0; i < contributingMatchStandingsRules.length; i++) {
+    const refs = extractStandingsTiebreakers(contributingMatchStandingsRules[i]);
+    if (refs == null) continue;
+    if (selected == null) { selected = refs; continue; }
+    if (!tiebreakersEqual(selected, refs)) {
+      throw new Error(
+        `Mixed standings tie-breaker configuration in tournament ${tournamentId} — contributing match result snapshots disagree ` +
+        `("${selected.map((r) => r.field).join(', ')}" vs "${refs.map((r) => r.field).join(', ')}"); refusing to rank with an arbitrary subset`,
+      );
+    }
+  }
+  return selected ?? [...LEGACY_TIEBREAKERS];
+}
+
+/** Ordered deep-equality of two tie-breaker lists (order matters). */
+function tiebreakersEqual(a: StandingsTiebreakerRef[], b: StandingsTiebreakerRef[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].field !== b[i].field || a[i].direction !== b[i].direction) return false;
+  }
+  return true;
+}
+
+/**
  * G8-D — deterministic standings computation (the single standings authority).
  *
  * Scoring is RULES-DRIVEN per match: each contributing row carries the frozen
@@ -1120,28 +1365,95 @@ export function generateStageMatches(
  *
  * Legacy rows with no attached points/outcome fall back to the pre-G8-D
  * contract ({ win: 3, draw: 0, loss: 0 }, winner-based) so historical standings
- * stay reproducible. Ranking/tie-breaks are UNCHANGED (points desc, then game
- * difference). No new game/set calculation is introduced.
+ * stay reproducible.
+ *
+ * Phase 1 — games/sets/goals are derived ONLY from `match.matchScore` (approved
+ * result evidence). A match without reliable scoring evidence contributes zero
+ * games/sets/goals — nothing is invented. For goal-based structures the game
+ * columns carry goals (GF in games_won / GA in games_lost), which is exactly
+ * what the `goal_difference` / `goals_for` tie-break fields consume.
+ *
+ * Phase 1 — ranking applies the CONFIGURED tie-breakers in their configured
+ * order (`opts.tiebreakers`). When no list is supplied, LEGACY_TIEBREAKERS
+ * (points DESC → game difference DESC) preserves the historical contract.
+ * `head_to_head` compares points earned against the specific tied opponent;
+ * participants who never met tie (both 0). A stable sort (Node ≥ 11) keeps the
+ * deterministic participantIds order for otherwise-full ties.
  */
-export function computeStandings(matches: TournamentMatch[], participantIds: number[]): TournamentStanding[] {
-  const stats = new Map<number, { points: number; wins: number; losses: number; draws: number; games_won: number; games_lost: number }>();
+export function computeStandings(
+  matches: TournamentMatch[],
+  participantIds: number[],
+  opts: { tiebreakers?: StandingsTiebreakerRef[] } = {},
+): TournamentStanding[] {
+  const tiebreakers = opts.tiebreakers ?? LEGACY_TIEBREAKERS;
+
+  const stats = new Map<number, {
+    points: number; wins: number; losses: number; draws: number;
+    games_won: number; games_lost: number; sets_won: number; sets_lost: number;
+  }>();
 
   for (const pid of participantIds) {
-    stats.set(pid, { points: 0, wins: 0, losses: 0, draws: 0, games_won: 0, games_lost: 0 });
+    stats.set(pid, { points: 0, wins: 0, losses: 0, draws: 0, games_won: 0, games_lost: 0, sets_won: 0, sets_lost: 0 });
   }
+
+  // head-to-head: participant → opponent → points earned in direct meetings.
+  const h2h = new Map<number, Map<number, number>>();
+
+  const recordH2H = (from: number, to: number, pts: number): void => {
+    if (pts === 0) return;
+    let m = h2h.get(from);
+    if (!m) { m = new Map(); h2h.set(from, m); }
+    m.set(to, (m.get(to) ?? 0) + pts);
+  };
+
+  const applyScore = (target: { games_won: number; games_lost: number; sets_won: number; sets_lost: number }, side: 'home' | 'away', score: ReliableMatchScore): void => {
+    if (score.structure === 'sets') {
+      for (const set of score.sets) {
+        if (side === 'home') {
+          target.games_won += set.home;
+          target.games_lost += set.away;
+          if (set.home > set.away) target.sets_won += 1;
+          else if (set.away > set.home) target.sets_lost += 1;
+        } else {
+          target.games_won += set.away;
+          target.games_lost += set.home;
+          if (set.away > set.home) target.sets_won += 1;
+          else if (set.home > set.away) target.sets_lost += 1;
+        }
+      }
+      return;
+    }
+    // goals structure — games columns carry goals (GF/GA convention).
+    if (side === 'home') {
+      target.games_won += score.homeGoals;
+      target.games_lost += score.awayGoals;
+    } else {
+      target.games_won += score.awayGoals;
+      target.games_lost += score.homeGoals;
+    }
+  };
 
   for (const match of matches) {
     if (match.status !== 'completed') continue;
     const points = match.standingsPoints ?? { win: 3, draw: 0, loss: 0 };
     const outcome = match.standingsOutcome;
+    const score = match.matchScore ?? null;
 
     if (outcome === 'draw') {
       // Authoritative draw: both sides get draw points, draw counts increment
-      // (winner_id projection is null). No win/loss, no games.
+      // (winner_id projection is null); scoring evidence (if any) still counts.
       const p1 = stats.get(Number(match.player1_id));
       const p2 = stats.get(Number(match.player2_id));
-      if (p1) { p1.draws++; p1.points += points.draw; }
-      if (p2) { p2.draws++; p2.points += points.draw; }
+      if (p1) {
+        p1.draws++; p1.points += points.draw;
+        if (score) applyScore(p1, 'home', score);
+        recordH2H(Number(match.player1_id), Number(match.player2_id), points.draw);
+      }
+      if (p2) {
+        p2.draws++; p2.points += points.draw;
+        if (score) applyScore(p2, 'away', score);
+        recordH2H(Number(match.player2_id), Number(match.player1_id), points.draw);
+      }
       continue;
     }
 
@@ -1152,20 +1464,38 @@ export function computeStandings(matches: TournamentMatch[], participantIds: num
 
     // win/loss (authoritative winner or legacy winner-based fallback)
     if (!match.winner_id) continue;
-    const loserId = Number(match.player1_id) === Number(match.winner_id) ? Number(match.player2_id) : Number(match.player1_id);
+    const winnerId = Number(match.winner_id);
+    const p1 = Number(match.player1_id);
+    const p2 = Number(match.player2_id);
+    // The winner must be one of the two sides — otherwise the row is corrupt
+    // and must never be scored (no invented winner/loser attribution).
+    if (winnerId !== p1 && winnerId !== p2) continue;
+    const loserId = winnerId === p1 ? p2 : p1;
     if (!loserId) continue;
 
-    const winner = stats.get(Number(match.winner_id));
+    const winner = stats.get(winnerId);
     const loser = stats.get(loserId);
     if (!winner || !loser) continue;
 
     winner.wins++;
-    winner.games_won++;
     winner.points += points.win;
     loser.losses++;
-    loser.games_lost++;
     loser.points += points.loss;
+    if (score) {
+      applyScore(winner, winnerId === p1 ? 'home' : 'away', score);
+      applyScore(loser, winnerId === p1 ? 'away' : 'home', score);
+    }
+    recordH2H(winnerId, loserId, points.win);
+    recordH2H(loserId, winnerId, points.loss);
   }
+
+  const compare = (a: TournamentStanding, b: TournamentStanding): number => {
+    for (const tb of tiebreakers) {
+      const c = tiebreakCompare(a, b, tb, h2h);
+      if (c !== 0) return c;
+    }
+    return 0;
+  };
 
   return Array.from(stats.entries())
     .map(([registrationId, s]) => ({
@@ -1176,10 +1506,46 @@ export function computeStandings(matches: TournamentMatch[], participantIds: num
       draws: s.draws,
       games_won: s.games_won,
       games_lost: s.games_lost,
-      sets_won: 0,
-      sets_lost: 0,
+      sets_won: s.sets_won,
+      sets_lost: s.sets_lost,
       rank_position: 0,
     }))
-    .sort((a, b) => b.points - a.points || (b.games_won - b.games_lost) - (a.games_won - a.games_lost))
+    .sort(compare)
     .map((s, i) => ({ ...s, rank_position: i + 1 }));
+}
+
+function tiebreakCompare(
+  a: TournamentStanding,
+  b: TournamentStanding,
+  tb: StandingsTiebreakerRef,
+  h2h: ReadonlyMap<number, ReadonlyMap<number, number>>,
+): number {
+  let va: number;
+  let vb: number;
+  switch (tb.field) {
+    case 'head_to_head':
+      va = h2h.get(a.registration_id)?.get(b.registration_id) ?? 0;
+      vb = h2h.get(b.registration_id)?.get(a.registration_id) ?? 0;
+      break;
+    case 'points': va = a.points; vb = b.points; break;
+    case 'wins': va = a.wins; vb = b.wins; break;
+    case 'losses': va = a.losses; vb = b.losses; break;
+    case 'draws': va = a.draws; vb = b.draws; break;
+    case 'games_difference':
+    case 'goal_difference':
+      va = a.games_won - a.games_lost; vb = b.games_won - b.games_lost; break;
+    case 'games_won':
+    case 'goals_for':
+      va = a.games_won; vb = b.games_won; break;
+    case 'games_lost':
+    case 'goals_against':
+      va = a.games_lost; vb = b.games_lost; break;
+    case 'sets_difference': va = a.sets_won - a.sets_lost; vb = b.sets_won - b.sets_lost; break;
+    case 'sets_won': va = a.sets_won; vb = b.sets_won; break;
+    case 'sets_lost': va = a.sets_lost; vb = b.sets_lost; break;
+    default:
+      va = 0; vb = 0; // unreachable — resolveStandingsTiebreakers gates the vocabulary
+  }
+  if (va === vb) return 0;
+  return tb.direction === 'desc' ? vb - va : va - vb;
 }

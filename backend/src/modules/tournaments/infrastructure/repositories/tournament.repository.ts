@@ -2,7 +2,7 @@ import { getPool } from '../../../../database/mysql.js';
 import { withTransaction } from '../../../../database/database.transaction.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
 import { normalizeEligibility, buildDiscoveryAudienceSql, resolveDiscoveryAgeFilter, resolveDiscoveryGenderFilter } from '../../domain/tournament-eligibility.js';
-import { computeStandings } from '../../domain/tournament-aggregate.js';
+import { computeStandings, parseReliableMatchScore, resolveTournamentStandingsTiebreakers } from '../../domain/tournament-aggregate.js';
 import { ConflictError } from '../../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../../shared/errors/error-codes.js';
 import type { Tournament, TournamentRegistration, TournamentMatch, TournamentMatchResult, TournamentGroup, TournamentGroupMember, TournamentStandingRow, TournamentStage, TournamentPrize, TournamentPrizeInput, TournamentSponsor, TournamentSponsorInput, TournamentPlacement } from '../../domain/tournament-aggregate.js';
@@ -1284,6 +1284,8 @@ export class TournamentRepository {
       `SELECT tm.player1_id, tm.player2_id, tm.winner_id, tm.status, tm.match_id,
               mrr.submission_status AS result_status,
               mrr.final_result AS result_final,
+              mrr.raw_result AS result_raw,
+              mrr.rules_snapshot AS rules_snapshot,
               srs.standings_rules AS standings_rules
        FROM tournament_matches tm
        LEFT JOIN match_result_records mrr ON mrr.match_id = tm.match_id
@@ -1292,6 +1294,27 @@ export class TournamentRepository {
       matchParams,
     );
 
+    // Phase 1 — configured tie-breaker order. Source of truth is the
+    // tournament's own rule set (`tournaments.rule_set_id` standings_rules,
+    // which MySQL may return as a JSON string or a parsed object);
+    // tournaments without one fall back to the contributing matches' FROZEN
+    // standings rules (all must agree — a mixed configuration fails closed),
+    // then to the legacy default. Points stay per-match (G8-D) — only the
+    // tie-breaker ORDER is tournament scope.
+    let rawTournamentStandingsRules: unknown = null;
+    const [[tournRow]] = await db.query<RowData>('SELECT rule_set_id FROM tournaments WHERE id = ?', [tournamentId]);
+    if (tournRow && tournRow.rule_set_id != null) {
+      const [[ruleSetRow]] = await db.query<RowData>('SELECT standings_rules FROM sport_rule_sets WHERE id = ?', [tournRow.rule_set_id]);
+      rawTournamentStandingsRules = ruleSetRow?.standings_rules ?? null;
+    }
+
+    // Contributing (win/draw) matches' raw standings_rules, for the frozen-
+    // snapshot fallback + mixed-configuration detection.
+    const contributingStandingsRules: unknown[] = [];
+    // Game/set units must never mix within one ranking (goal sports store goals
+    // in the same game columns). Track the score structure of contributing
+    // approved scoring evidence and fail closed on a cross-structure mix.
+    let contributingScoreStructure: string | null = null;
     const matches = (rows as unknown[]).map((r) => {
       const row = r as any;
       const match = {
@@ -1307,6 +1330,10 @@ export class TournamentRepository {
       if (typeof resultFinal === 'string') { try { resultFinal = JSON.parse(resultFinal); } catch { resultFinal = null; } }
       let standingsRules: any = row.standings_rules;
       if (typeof standingsRules === 'string') { try { standingsRules = JSON.parse(standingsRules); } catch { standingsRules = null; } }
+      let rulesSnapshot: any = row.rules_snapshot;
+      if (typeof rulesSnapshot === 'string') { try { rulesSnapshot = JSON.parse(rulesSnapshot); } catch { rulesSnapshot = null; } }
+      let rawResult: any = row.result_raw;
+      if (typeof rawResult === 'string') { try { rawResult = JSON.parse(rawResult); } catch { rawResult = null; } }
 
       const points = standingsRules?.points ?? null;
       const hasWinner = match.winner_id != null;
@@ -1324,14 +1351,41 @@ export class TournamentRepository {
         match.standingsOutcome = 'no_result';
       }
       match.standingsPoints = points ?? { win: 3, draw: 0, loss: 0 };
+
+      // Phase 1 — derive games/sets/goals ONLY from an approved result record
+      // carrying a validated score. Unapproved / scoreless / legacy rows get no
+      // scoring evidence (matchScore stays null → zero games/sets counted).
+      if (resultStatus === 'approved' && resultFinal != null) {
+        match.matchScore = parseReliableMatchScore(rawResult, rulesSnapshot);
+      }
+
+      if (match.standingsOutcome === 'win' || match.standingsOutcome === 'draw') {
+        contributingStandingsRules.push(standingsRules ?? null);
+        if (match.matchScore != null) {
+          if (contributingScoreStructure == null) {
+            contributingScoreStructure = match.matchScore.structure;
+          } else if (contributingScoreStructure !== match.matchScore.structure) {
+            throw new Error(
+              `Mixed scoring structures in tournament ${tournamentId} — contributing approved results carry both ` +
+              `'${contributingScoreStructure}' and '${match.matchScore.structure}' score data; refusing to mix games and goals in one ranking`,
+            );
+          }
+        }
+      }
       return match;
     });
+
+    const tiebreakers = resolveTournamentStandingsTiebreakers(
+      rawTournamentStandingsRules,
+      contributingStandingsRules,
+      tournamentId,
+    );
 
     const contributing = matches.filter((m) => m.standingsOutcome === 'win' || m.standingsOutcome === 'draw');
     const participantIds = [...new Set(
       contributing.flatMap((m) => [Number(m.player1_id), Number(m.player2_id)]).filter((id) => Number.isSafeInteger(id) && id > 0),
     )];
-    const standings = computeStandings(matches, participantIds);
+    const standings = computeStandings(matches, participantIds, { tiebreakers });
 
     // Step 3B-5C fix — `tournament_standings.registration_id` is an FK to
     // `tournament_registrations.id`, but standings keys are the PRIMARY MEMBER
