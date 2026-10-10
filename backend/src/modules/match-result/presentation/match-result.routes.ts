@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './match-result.controller.js';
+import * as sportCtrl from './sport-config.admin.controller.js';
 
 export async function matchResultRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -19,7 +20,22 @@ export async function matchResultRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/sports/:sportId/formats', { preHandler: [requirePermission(['matches.view'])] }, ctrl.listSportRulesHandler);
   app.get('/sport-formats', { preHandler: [requirePermission(['matches.result.rules'])] }, ctrl.listFormatsHandler);
-  app.post('/admin/sport-formats/:formatId/rule-sets', { preHandler: [requirePermission(['matches.result.rules.manage'])] }, ctrl.createRuleSetHandler);
+
+  // ── Phase A — Super Admin sport format / rule-set management ──────────────
+  // Platform reference data: view keys are read-only, manage keys mutate.
+  // Creating/replacing scoring is done by appending a new immutable version
+  // (never editing one that history depends on).
+  app.get('/admin/sport-formats', { preHandler: [requirePermission(['sports.formats.view'])] }, sportCtrl.listFormatsHandler);
+  app.get('/admin/sport-formats/:id', { preHandler: [requirePermission(['sports.formats.view'])] }, sportCtrl.getFormatHandler);
+  app.post('/admin/sports/:sportId/formats', { preHandler: [requirePermission(['sports.formats.manage'])] }, sportCtrl.createFormatHandler);
+  app.put('/admin/sport-formats/:id', { preHandler: [requirePermission(['sports.formats.manage'])] }, sportCtrl.updateFormatHandler);
+  app.delete('/admin/sport-formats/:id', { preHandler: [requirePermission(['sports.formats.manage'])] }, sportCtrl.deleteFormatHandler);
+  app.get('/admin/sport-formats/:formatId/rule-sets', { preHandler: [requirePermission(['sports.rule-sets.view'])] }, sportCtrl.listRuleSetsHandler);
+  app.get('/admin/sport-rule-sets/:id', { preHandler: [requirePermission(['sports.rule-sets.view'])] }, sportCtrl.getRuleSetHandler);
+  app.post('/admin/sport-formats/:formatId/rule-sets', { preHandler: [requirePermission(['sports.rule-sets.manage'])] }, sportCtrl.createRuleSetHandler);
+  app.put('/admin/sport-rule-sets/:id', { preHandler: [requirePermission(['sports.rule-sets.manage'])] }, sportCtrl.updateRuleSetHandler);
+  app.post('/admin/sport-rule-sets/:id/activate', { preHandler: [requirePermission(['sports.rule-sets.manage'])] }, sportCtrl.activateRuleSetHandler);
+  app.post('/admin/sport-rule-sets/:id/deactivate', { preHandler: [requirePermission(['sports.rule-sets.manage'])] }, sportCtrl.deactivateRuleSetHandler);
 
   app.get('/admin/match-results', { preHandler: [requirePermission(['matches.result.manage'])] }, ctrl.listAdminResultsHandler);
   app.post('/admin/match-results/:resultId/resolve', { preHandler: [requirePermission(['matches.result.manage'])] }, ctrl.resolveDisputeHandler);

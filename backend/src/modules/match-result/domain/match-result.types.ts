@@ -69,6 +69,28 @@ export interface SportRuleSet {
   isDefault: boolean;
 }
 
+/**
+ * Phase A — Super Admin projections. The admin management surfaces need the
+ * owning sport name, the modelled `roster_size` (a real column that the
+ * consumer-facing {@link SportFormat} projection omits), and computed reference
+ * counts so the UI can never offer a destructive action the backend would
+ * reject (deleting/mutating versioned rule data that history depends on).
+ */
+export interface SportFormatAdmin extends SportFormat {
+  sportName: string;
+  rosterSize: number | null;
+  /** Number of rule-set versions that belong to this format. */
+  ruleSetCount: number;
+  /** Total rows (matches/tournaments/competitions/stages/results) referencing this format or any of its rule-set versions. */
+  referenceCount: number;
+}
+
+export interface SportRuleSetAdmin extends SportRuleSet {
+  /** Row count of historical data referencing this exact rule-set version. */
+  referenceCount: number;
+  createdAt?: string | null;
+}
+
 export interface ParticipantSlot {
   userId: number;
   side: ParticipantSide;

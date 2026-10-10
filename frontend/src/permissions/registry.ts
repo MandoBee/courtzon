@@ -340,6 +340,20 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'sports.edit.icon', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Icon Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
   { permissionKey: 'sports.edit.status', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Status Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
 
+  // Sport formats & rule sets (Phase A — Super Admin sport configuration)
+  { permissionKey: 'sports.formats.view', moduleSlug: 'sports', elementType: 'tab', elementLabel: 'View Sport Formats', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.formats.manage', moduleSlug: 'sports', elementType: 'button', elementLabel: 'Manage Sport Formats', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.formats.edit.name', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Format Name Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.formats.edit.format-type', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Format Type Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.formats.edit.players-per-side', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Format Players Per Side Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.formats.edit.roster-size', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Format Roster Size Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.formats.edit.description', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Format Description Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.rule-sets.view', moduleSlug: 'sports', elementType: 'tab', elementLabel: 'View Sport Rule Sets', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.rule-sets.manage', moduleSlug: 'sports', elementType: 'button', elementLabel: 'Manage Sport Rule Sets', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.rule-sets.edit.name', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Rule Set Name Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.rule-sets.edit.rules', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Rule Set Rules Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+  { permissionKey: 'sports.rule-sets.edit.standings-rules', moduleSlug: 'sports', elementType: 'field', elementLabel: 'Sport Rule Set Standings Rules Field', componentPath: 'pages/admin/sports/SportsPage.tsx' },
+
   // ==========================================================================
   // LOCALIZATION MODULE
   // ==========================================================================

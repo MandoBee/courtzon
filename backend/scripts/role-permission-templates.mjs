@@ -53,6 +53,11 @@ const ADMIN_ONLY_PREFIXES = [
   'sports.edit',
   'sports.create',
   'sports.delete',
+  // Phase A — platform sport configuration (formats + versioned rule sets) is a
+  // Super-Admin-only capability: it drives scoring for every sport/format, so no
+  // org or player role may hold these keys. master-admin receives them explicitly.
+  'sports.formats.',
+  'sports.rule-sets.',
   'amenities.',
   'support.',
   'coupons.admin',
@@ -137,6 +142,16 @@ const ORG_RESULT_MANAGE_ROLES = new Set(['org-admin', 'branch-mgr', 'resource-mg
 function canManageMatchResults(templateSlug, permissionKey) {
   return ORG_RESULT_MANAGE_ROLES.has(templateSlug)
     && (permissionKey === 'matches.result.manage' || permissionKey === 'matches.result.rules.manage');
+}
+
+// Phase A — Super Admin sport configuration (formats + versioned rule sets) is
+// a platform capability hidden behind ADMIN_ONLY_PREFIXES. Only master-admin
+// receives it explicitly (super_admin is handled separately = all permissions).
+// Org/player/referee roles are intentionally denied even the .view keys.
+const SPORT_CONFIG_PREFIXES = ['sports.formats.', 'sports.rule-sets.'];
+function canManageSportConfig(templateSlug, permissionKey) {
+  return templateSlug === 'master-admin'
+    && SPORT_CONFIG_PREFIXES.some((p) => permissionKey.startsWith(p));
 }
 
 // ── Tournament management is an organisation-ADMIN capability (Group 5B UAT) ──
@@ -793,6 +808,8 @@ if (templateSlug === 'master-admin') {
     // (tournament.* + admin-tournaments.view). Explicit grant BEFORE the
     // admin-only block, mirroring matches.result.manage / canManageTournaments.
     if (canAccessTournamentWorkbench(templateSlug, permissionKey)) return true;
+    // Phase A — platform sport configuration (formats + versioned rule sets).
+    if (canManageSportConfig(templateSlug, permissionKey)) return true;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;

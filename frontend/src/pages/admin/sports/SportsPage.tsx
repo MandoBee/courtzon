@@ -7,6 +7,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { getErrorMessage } from '../../../utils/errors';
 import { useCan } from '../../../hooks/useCan';
 import { useTranslation } from '../../../i18n';
+import SportFormatsPanel from './SportFormatsPanel';
 
 interface Sport {
   id: number;
@@ -39,6 +40,8 @@ export default function SportsPage() {
   });
 
   const sports: Sport[] = data || [];
+
+  const [tab, setTab] = useState<'sports' | 'formats'>('sports');
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/sports', data),
@@ -121,9 +124,38 @@ export default function SportsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('admin.sports.title')}</h1>
-        <Button onClick={() => { resetForm(); setShowForm(true); }}>+ {t('admin.sports.new_title')}</Button>
+        {tab === 'sports' && (
+          <Button onClick={() => { resetForm(); setShowForm(true); }}>+ {t('admin.sports.new_title')}</Button>
+        )}
       </div>
 
+      <div className="mb-6 flex flex-wrap gap-2 border-b border-[var(--color-border)] pb-3">
+        <button
+          type="button"
+          onClick={() => setTab('sports')}
+          className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
+            tab === 'sports' ? 'bg-[var(--color-primary)] text-[var(--color-primary-foreground,#fff)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+          }`}
+        >
+          {t('admin.sports.title')}
+        </button>
+        {(can('sports.formats.view') || can('sports.rule-sets.view')) && (
+          <button
+            type="button"
+            onClick={() => setTab('formats')}
+            className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
+              tab === 'formats' ? 'bg-[var(--color-primary)] text-[var(--color-primary-foreground,#fff)]' : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+            }`}
+          >
+            {t('admin.sports.formats_tab', 'Formats & Rule Sets')}
+          </button>
+        )}
+      </div>
+
+      {tab === 'formats' ? (
+        <SportFormatsPanel />
+      ) : (
+        <>
       {showForm && (
         <form onSubmit={handleSubmit}
           className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 mb-6 border">
@@ -255,6 +287,8 @@ export default function SportsPage() {
           </Can>
         </div>
       </Modal>
+      </>
+      )}
     </div>
   );
 }

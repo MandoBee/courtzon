@@ -319,6 +319,16 @@ export const ErrorCodes = {
   API_KEY_EXPIRED: 'API_KEY_EXPIRED',
   INVOICE_NOT_FOUND: 'INVOICE_NOT_FOUND',
   TAX_RATE_NOT_FOUND: 'TAX_RATE_NOT_FOUND',
+
+  // ── Sport config (Phase A — Super Admin sport formats / rule sets) ──
+  /** A format with this slug already exists under the same sport. */
+  SPORT_FORMAT_DUPLICATE: 'SPORT_FORMAT_DUPLICATE',
+  /** The format (or one of its rule-set versions) is referenced by history and cannot be deleted. */
+  SPORT_FORMAT_IN_USE: 'SPORT_FORMAT_IN_USE',
+  /** The rule-set version is referenced by history and its scoring cannot be modified in place. */
+  SPORT_RULE_SET_IN_USE: 'SPORT_RULE_SET_IN_USE',
+  /** The submitted scoring/standings configuration is structurally invalid. */
+  SPORT_RULES_INVALID: 'SPORT_RULES_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

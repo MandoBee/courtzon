@@ -12,7 +12,9 @@ import type {
   RawMatchResultPayload,
   ResultParticipantView,
   SportFormat,
+  SportFormatAdmin,
   SportRuleSet,
+  SportRuleSetAdmin,
 } from '../domain/match-result.types.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
@@ -901,6 +903,315 @@ export class MatchResultRepository {
       params,
     );
     return Number((res as any).affectedRows) > 0;
+  }
+
+  // ── Phase A — Super Admin sport format / rule-set management ───────────────
+  // `sport_formats` and `sport_rule_sets` are platform reference data. History
+  // preservation is mandatory: a rule-set version referenced by ANY
+  // match/tournament/competition/stage/result must never be mutated or deleted —
+  // a new version is created instead. Formats are deactivated (never
+  // destructively deleted while referenced).
+
+  /** Whether the owning sport row exists (clean 404 instead of raw FK error). */
+  async sportExists(sportId: number): Promise<boolean> {
+    const [rows] = await getPool().execute<RowData>('SELECT 1 FROM sports WHERE id = ? LIMIT 1', [sportId]);
+    return rows.length > 0;
+  }
+
+  /**
+   * Admin list: EVERY format (active + inactive) joined to its sport name, with
+   * the modelled `roster_size`, the number of rule-set versions, and the total
+   * reference count (the format itself plus every row referencing any of its
+   * rule-set versions). The reference count is the single source of truth that
+   * drives the safe-delete guard.
+   */
+  async listAdminFormats(sportId?: number): Promise<SportFormatAdmin[]> {
+    const pool = getPool();
+    const params: any[] = [];
+    let where = 'WHERE 1=1';
+    if (sportId) {
+      where += ' AND sf.sport_id = ?';
+      params.push(sportId);
+    }
+    const [rows] = await pool.execute<RowData>(
+      `SELECT sf.*, s.name AS sport_name,
+              (SELECT COUNT(*) FROM sport_rule_sets srs WHERE srs.format_id = sf.id) AS rule_set_count,
+              (
+                (SELECT COUNT(*) FROM matches m WHERE m.format_id = sf.id)
+                + (SELECT COUNT(*) FROM tournaments t WHERE t.match_format_id = sf.id)
+                + (SELECT COUNT(*) FROM tournament_competitions tc WHERE tc.match_format_id = sf.id)
+                + (SELECT COUNT(*) FROM tournament_stages ts WHERE ts.match_format_id = sf.id)
+                + (SELECT COUNT(*) FROM match_result_records mrr WHERE mrr.format_id = sf.id)
+                + (SELECT COUNT(*) FROM matches m2 JOIN sport_rule_sets srs2 ON srs2.id = m2.rule_set_id WHERE srs2.format_id = sf.id)
+                + (SELECT COUNT(*) FROM tournaments t2 JOIN sport_rule_sets srs3 ON srs3.id = t2.rule_set_id WHERE srs3.format_id = sf.id)
+                + (SELECT COUNT(*) FROM tournament_competitions tc2 JOIN sport_rule_sets srs4 ON srs4.id = tc2.rule_set_id WHERE srs4.format_id = sf.id)
+                + (SELECT COUNT(*) FROM tournament_stages ts2 JOIN sport_rule_sets srs5 ON srs5.id = ts2.rule_set_id WHERE srs5.format_id = sf.id)
+                + (SELECT COUNT(*) FROM match_result_records mrr2 JOIN sport_rule_sets srs6 ON srs6.id = mrr2.rule_set_id WHERE srs6.format_id = sf.id)
+              ) AS reference_count
+       FROM sport_formats sf
+       JOIN sports s ON s.id = sf.sport_id
+       ${where}
+       ORDER BY s.name ASC, sf.sport_id ASC, sf.is_default DESC, sf.name ASC`,
+      params,
+    );
+    return rows.map((r: any) => ({
+      id: Number(r.id),
+      sportId: Number(r.sport_id),
+      sportName: r.sport_name,
+      slug: r.slug,
+      name: r.name,
+      formatType: r.format_type,
+      playersPerSide: r.players_per_side != null ? Number(r.players_per_side) : null,
+      rosterSize: r.roster_size != null ? Number(r.roster_size) : null,
+      description: r.description,
+      isDefault: Boolean(r.is_default),
+      isActive: Boolean(r.is_active),
+      ruleSetCount: Number(r.rule_set_count),
+      referenceCount: Number(r.reference_count),
+    }));
+  }
+
+  async findAdminFormatById(formatId: number): Promise<SportFormatAdmin | null> {
+    const all = await this.listAdminFormats();
+    return all.find((f) => f.id === formatId) ?? null;
+  }
+
+  async findFormatBySportAndSlug(sportId: number, slug: string): Promise<{ id: number } | null> {
+    const [rows] = await getPool().execute<RowData>(
+      'SELECT id FROM sport_formats WHERE sport_id = ? AND slug = ? LIMIT 1',
+      [sportId, slug],
+    );
+    return rows.length ? { id: Number((rows[0] as any).id) } : null;
+  }
+
+  async createFormat(
+    input: {
+      sportId: number;
+      slug: string;
+      name: string;
+      formatType: 'singles' | 'doubles' | 'team';
+      playersPerSide: number | null;
+      rosterSize: number | null;
+      description: string | null;
+      isDefault: boolean;
+      isActive: boolean;
+      createdBy: number | null;
+    },
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const db = conn ?? getPool();
+    const [res] = await db.execute(
+      `INSERT INTO sport_formats
+         (sport_id, slug, name, format_type, players_per_side, roster_size, description, is_default, is_active, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.sportId,
+        input.slug,
+        input.name,
+        input.formatType,
+        input.playersPerSide,
+        input.rosterSize,
+        input.description,
+        input.isDefault ? 1 : 0,
+        input.isActive ? 1 : 0,
+        input.createdBy,
+      ],
+    );
+    return Number((res as any).insertId);
+  }
+
+  async updateFormat(
+    formatId: number,
+    fields: {
+      name?: string;
+      formatType?: 'singles' | 'doubles' | 'team';
+      playersPerSide?: number | null;
+      rosterSize?: number | null;
+      description?: string | null;
+      isDefault?: boolean;
+      isActive?: boolean;
+    },
+    conn?: PoolConnection,
+  ): Promise<void> {
+    const db = conn ?? getPool();
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (fields.name !== undefined) { sets.push('name = ?'); params.push(fields.name); }
+    if (fields.formatType !== undefined) { sets.push('format_type = ?'); params.push(fields.formatType); }
+    if (fields.playersPerSide !== undefined) { sets.push('players_per_side = ?'); params.push(fields.playersPerSide); }
+    if (fields.rosterSize !== undefined) { sets.push('roster_size = ?'); params.push(fields.rosterSize); }
+    if (fields.description !== undefined) { sets.push('description = ?'); params.push(fields.description); }
+    if (fields.isDefault !== undefined) { sets.push('is_default = ?'); params.push(fields.isDefault ? 1 : 0); }
+    if (fields.isActive !== undefined) { sets.push('is_active = ?'); params.push(fields.isActive ? 1 : 0); }
+    if (!sets.length) return;
+    params.push(formatId);
+    await db.execute(`UPDATE sport_formats SET ${sets.join(', ')} WHERE id = ?`, params);
+  }
+
+  /** Clear the default flag on every other format of a sport (single-default invariant). */
+  async unsetFormatDefaults(sportId: number, exceptFormatId: number, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.execute(
+      'UPDATE sport_formats SET is_default = 0 WHERE sport_id = ? AND id <> ? AND is_default = 1',
+      [sportId, exceptFormatId],
+    );
+  }
+
+  /** Hard delete — the service guards this behind a zero reference count (rule sets cascade). */
+  async deleteFormat(formatId: number, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.execute('DELETE FROM sport_formats WHERE id = ?', [formatId]);
+  }
+
+  async hasActiveRuleSet(formatId: number, conn?: PoolConnection): Promise<boolean> {
+    const db = conn ?? getPool();
+    const [rows] = await db.execute<RowData>(
+      'SELECT 1 FROM sport_rule_sets WHERE format_id = ? AND is_active = 1 LIMIT 1',
+      [formatId],
+    );
+    return rows.length > 0;
+  }
+
+  /** Rule-set versions of a format (newest first) with per-version reference counts. */
+  async listRuleSetsAdmin(formatId: number): Promise<SportRuleSetAdmin[]> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT srs.*,
+              (
+                (SELECT COUNT(*) FROM matches m WHERE m.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM tournaments t WHERE t.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM tournament_competitions tc WHERE tc.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM tournament_stages ts WHERE ts.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM match_result_records mrr WHERE mrr.rule_set_id = srs.id)
+              ) AS reference_count
+       FROM sport_rule_sets srs
+       WHERE srs.format_id = ?
+       ORDER BY srs.version DESC`,
+      [formatId],
+    );
+    return rows.map((r: any) => this.mapRuleSetAdmin(r));
+  }
+
+  async findRuleSetAdminById(ruleSetId: number): Promise<SportRuleSetAdmin | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT srs.*,
+              (
+                (SELECT COUNT(*) FROM matches m WHERE m.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM tournaments t WHERE t.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM tournament_competitions tc WHERE tc.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM tournament_stages ts WHERE ts.rule_set_id = srs.id)
+                + (SELECT COUNT(*) FROM match_result_records mrr WHERE mrr.rule_set_id = srs.id)
+              ) AS reference_count
+       FROM sport_rule_sets srs
+       WHERE srs.id = ?`,
+      [ruleSetId],
+    );
+    if (!rows.length) return null;
+    return this.mapRuleSetAdmin(rows[0] as any);
+  }
+
+  private mapRuleSetAdmin(r: any): SportRuleSetAdmin {
+    return {
+      id: Number(r.id),
+      formatId: Number(r.format_id),
+      version: Number(r.version),
+      name: r.name ?? null,
+      rules: typeof r.rules === 'string' ? JSON.parse(r.rules) : r.rules,
+      standingsRules: r.standings_rules ? (typeof r.standings_rules === 'string' ? JSON.parse(r.standings_rules) : r.standings_rules) : null,
+      isActive: Boolean(r.is_active),
+      isDefault: Boolean(r.is_default),
+      referenceCount: Number(r.reference_count),
+      createdAt: r.created_at ? String(r.created_at) : null,
+    };
+  }
+
+  /**
+   * Append a new immutable rule-set version. Version = MAX(version)+1 for the
+   * format. Always inserted INACTIVE — the caller activates explicitly so the
+   * "one active version per format" invariant is enforced in one place.
+   */
+  async createRuleSetVersion(
+    input: {
+      formatId: number;
+      name: string | null;
+      rules: unknown;
+      standingsRules: unknown | null;
+      isDefault: boolean;
+      createdBy: number | null;
+    },
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const db = conn ?? getPool();
+    const [maxRows] = await db.execute<RowData>(
+      'SELECT COALESCE(MAX(version),0) + 1 AS next_version FROM sport_rule_sets WHERE format_id = ?',
+      [input.formatId],
+    );
+    const version = Number((maxRows[0] as any).next_version);
+    const [res] = await db.execute(
+      `INSERT INTO sport_rule_sets (format_id, version, name, rules, standings_rules, is_active, is_default, created_by)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+      [
+        input.formatId,
+        version,
+        input.name,
+        JSON.stringify(input.rules),
+        input.standingsRules ? JSON.stringify(input.standingsRules) : null,
+        input.isDefault ? 1 : 0,
+        input.createdBy,
+      ],
+    );
+    return Number((res as any).insertId);
+  }
+
+  async updateRuleSet(
+    ruleSetId: number,
+    fields: {
+      name?: string | null;
+      rules?: unknown;
+      standingsRules?: unknown | null;
+      isDefault?: boolean;
+    },
+    conn?: PoolConnection,
+  ): Promise<void> {
+    const db = conn ?? getPool();
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (fields.name !== undefined) { sets.push('name = ?'); params.push(fields.name); }
+    if (fields.rules !== undefined) { sets.push('rules = ?'); params.push(JSON.stringify(fields.rules)); }
+    if (fields.standingsRules !== undefined) {
+      sets.push('standings_rules = ?');
+      params.push(fields.standingsRules === null ? null : JSON.stringify(fields.standingsRules));
+    }
+    if (fields.isDefault !== undefined) { sets.push('is_default = ?'); params.push(fields.isDefault ? 1 : 0); }
+    if (!sets.length) return;
+    params.push(ruleSetId);
+    await db.execute(`UPDATE sport_rule_sets SET ${sets.join(', ')} WHERE id = ?`, params);
+  }
+
+  /** Clear the default flag on every other rule set of a format. */
+  async unsetRuleSetDefaults(formatId: number, exceptRuleSetId: number, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.execute(
+      'UPDATE sport_rule_sets SET is_default = 0 WHERE format_id = ? AND id <> ? AND is_default = 1',
+      [formatId, exceptRuleSetId],
+    );
+  }
+
+  /**
+   * Activate/deactivate a rule-set version. Activating enforces the
+   * single-active-version invariant by clearing the flag on all sibling
+   * versions first (history snapshots are never touched — only the live
+   * resolution pointer moves).
+   */
+  async setRuleSetActive(formatId: number, ruleSetId: number, active: boolean, conn?: PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    if (active) {
+      await db.execute('UPDATE sport_rule_sets SET is_active = 0 WHERE format_id = ? AND id <> ?', [formatId, ruleSetId]);
+      await db.execute('UPDATE sport_rule_sets SET is_active = 1 WHERE id = ? AND format_id = ?', [ruleSetId, formatId]);
+    } else {
+      await db.execute('UPDATE sport_rule_sets SET is_active = 0 WHERE id = ? AND format_id = ?', [ruleSetId, formatId]);
+    }
   }
 }
 

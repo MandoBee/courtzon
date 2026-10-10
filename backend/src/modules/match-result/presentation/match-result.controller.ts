@@ -4,9 +4,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { matchResultService } from '../application/match-result.service.js';
 import { matchResultRepository } from '../infrastructure/match-result.repository.js';
 import {
-  CreateRuleSetBodySchema,
   DisputeBodySchema,
-  MatchFormatParamsSchema,
   MatchParamsSchema,
   OrgResultParamsSchema,
   RawMatchResultBodySchema,
@@ -194,20 +192,4 @@ export async function listSportRulesHandler(request: FastifyRequest, reply: Fast
 export async function listFormatsHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const data = await matchResultRepository.listFormats();
   reply.send({ data });
-}
-
-export async function createRuleSetHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const actorId = (request as any).userId;
-  const { formatId } = MatchFormatParamsSchema.parse(request.params);
-  const body = CreateRuleSetBodySchema.parse(request.body);
-  const ruleSetId = await matchResultRepository.createRuleSet({
-    formatId,
-    name: body.name ?? null,
-    rules: body.rules,
-    standingsRules: body.standingsRules ?? null,
-    isActive: body.isActive,
-    isDefault: body.isDefault,
-  });
-  await recordAudit({ actorId, action: 'match.rules.created', entityType: 'sport_rule_sets', entityId: ruleSetId, afterState: body as unknown as Record<string, unknown> });
-  reply.status(201).send({ data: { ruleSetId } });
 }
