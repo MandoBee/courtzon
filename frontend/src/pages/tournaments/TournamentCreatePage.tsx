@@ -614,7 +614,16 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                 </Can>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Can permission="tournaments.create.type">
-                    <Input label={t('tournaments.create.category', 'Category')} {...register('category')} />
+                    <div>
+                      <Input
+                        label={t('tournaments.create.category_label', 'Tournament Category')}
+                        placeholder={t('tournaments.create.category_placeholder', 'e.g. Open, Men’s Doubles, U18')}
+                        {...register('category')}
+                      />
+                      <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                        {t('tournaments.create.category_hint', 'Free-text label shown to players. Skill levels and age categories are set in Rules & Eligibility.')}
+                      </p>
+                    </div>
                   </Can>
                   <Can permission="tournaments.create.type">
                     <Input label={t('tournaments.create.season', 'Season')} {...register('season')} />
@@ -959,7 +968,7 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                   rows={[
                     { label: t('tournaments.create.organisation'), value: isOrg ? effectiveOrgId : values.organisationId || '-' },
                     { label: t('tournaments.create.name'), value: values.name || '-' },
-                    { label: t('tournaments.create.category', 'Category'), value: values.category || '-' },
+                    { label: t('tournaments.create.category_label', 'Tournament Category'), value: values.category || '-' },
                     { label: t('tournaments.create.season', 'Season'), value: values.season || '-' },
                   ]}
                 />

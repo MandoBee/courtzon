@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentListPage from '../TournamentListPage';
@@ -190,5 +190,23 @@ describe('TournamentListPage — F-02 error vs empty state (admin list)', () => 
     renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
 
     expect(await screen.findByText('common.no_results')).toBeTruthy();
+  });
+});
+
+describe('TournamentListPage — category filter (R1)', () => {
+  it('sends the ?category param and clearing restores the unfiltered request', async () => {
+    renderPage('/admin/tournament/list', '/admin/tournament/list', <TournamentListPage mode="admin" />);
+    await screen.findByText('Padel Test Tournament');
+
+    const filter = screen.getByPlaceholderText('tournaments.list.category_filter');
+    fireEvent.change(filter, { target: { value: 'Open' } });
+    await waitFor(() =>
+      expect(__state.adminApi.getTournaments).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'Open', page: 1 })),
+    );
+
+    fireEvent.change(filter, { target: { value: '' } });
+    await waitFor(() =>
+      expect(__state.adminApi.getTournaments).toHaveBeenLastCalledWith(expect.not.objectContaining({ category: 'Open' })),
+    );
   });
 });

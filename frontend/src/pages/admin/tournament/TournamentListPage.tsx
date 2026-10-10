@@ -73,12 +73,14 @@ export default function TournamentListPage({ mode = 'admin', orgId }: Props) {
   const [limit] = useState(20);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<{ name?: string; status?: string }>({});
 
   const params: Record<string, any> = { page, limit };
   if (search) params.search = search;
   if (statusFilter) params.status = statusFilter;
+  if (categoryFilter) params.category = categoryFilter;
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: [queryKeyRoot, params],
@@ -130,6 +132,9 @@ export default function TournamentListPage({ mode = 'admin', orgId }: Props) {
               <option key={s} value={s}>{t(`tournaments.status.${s}`)}</option>
             ))}
           </select>
+          <input value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+            placeholder={t('tournaments.list.category_filter')}
+            className="px-3 py-2 border rounded-[var(--radius-md)] text-sm bg-[var(--color-surface)] min-w-[180px]" />
         </div>
 
         <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] overflow-x-auto">

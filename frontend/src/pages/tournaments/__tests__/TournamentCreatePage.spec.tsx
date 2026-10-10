@@ -693,3 +693,30 @@ describe('Creation Wizard — motion & reduced motion', () => {
     expect(reducedBlock).toContain('.cz-wizard-panel');
   });
 });
+
+describe('Creation Wizard — Tournament Category (R1)', () => {
+  it('renders the clarified category field with helper text and shows the value on Review', async () => {
+    renderPage(ALL);
+    await screen.findByText('tournaments.create.name');
+
+    expect(screen.getByText('tournaments.create.category_label')).toBeTruthy();
+    expect(screen.getByText('tournaments.create.category_hint')).toBeTruthy();
+    const category = screen.getByPlaceholderText('tournaments.create.category_placeholder') as HTMLInputElement;
+    fireEvent.change(category, { target: { value: 'Open Men Doubles' } });
+
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Category Cup' } });
+    await clickContinueAndAwait(2);
+    await clickSingleElimination();
+    await clickContinueAndAwait(3);
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+    await clickContinueAndAwait(4);
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5);
+    await clickContinueAndAwait(6);
+    await clickContinueAndAwait(7);
+    await clickContinueAndAwait(8);
+
+    expect(screen.getByTestId('wizard-review')).toBeTruthy();
+    expect(screen.getByText('Open Men Doubles')).toBeTruthy();
+  });
+});
