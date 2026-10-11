@@ -82,7 +82,7 @@ import { mobileRoutes } from "./modules/mobile/index.js";
 import { createPool, getPool } from "./database/mysql.js";
 import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
-import { getAppVersion, getBuildTime, getExpectedMigration, getGitCommit } from "./shared/utils/build-info.js";
+import { getAppVersion, getBuildTime, getExpectedMigration, getGitCommitInfo } from "./shared/utils/build-info.js";
 import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error.util.js";
 import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
@@ -489,9 +489,18 @@ app.get("/health/socket", async (_request, reply) => {
 });
 
 app.get("/health/version", async (_request, reply) => {
+  const git = getGitCommitInfo();
   return reply.send({
     buildTime: getBuildTime(),
-    gitCommit: getGitCommit(),
+    // Report the actual deployed commit, with explicit provenance. `gitCommit`
+    // is only marked consistent when no available source contradicts it, so a
+    // stale value can never be presented silently as the running revision.
+    gitCommit: git.commit,
+    gitCommitSource: git.source,
+    gitCommitConsistent: git.consistent,
+    gitCommitMismatch: git.mismatch,
+    imageGitCommit: git.imageCommit,
+    platformGitCommit: git.platformCommit,
     applicationVersion: getAppVersion(),
     expectedMigration: getExpectedMigration(),
     nodeVersion: process.version,

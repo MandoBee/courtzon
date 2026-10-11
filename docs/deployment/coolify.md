@@ -108,6 +108,28 @@ redis-server --maxmemory 512mb --maxmemory-policy noeviction --appendonly yes --
 GET /health/live
 ```
 
+**Build revision / deployment metadata:**
+
+`/health/version` reports the actual commit of the running container. The
+canonical value is Coolify's per-deploy `SOURCE_COMMIT`, which Coolify always
+exposes to the **running container** (and to the build only when enabled).
+`docker-compose.yml` forwards it as a build arg and into the container.
+
+- **Do NOT** define a `GIT_COMMIT` variable in the Coolify UI. A manually
+  maintained/stale `GIT_COMMIT` is exactly what caused `/health/version` to
+  report an old commit; it is no longer trusted over `SOURCE_COMMIT`.
+- **Recommended (one-time, optional):** in the backend application go to
+  **Advanced → Build → Source commit availability** and enable
+  **Available during build**. This bakes `SOURCE_COMMIT` into
+  `/app/git-commit.txt` inside the image as well as exposing it at runtime. Not
+  required for correctness — runtime `SOURCE_COMMIT` is authoritative — but it
+  makes the image self-describing.
+- Verify after deploy:
+  `curl https://api.courtzon.cloud/health/version | jq '{gitCommit, gitCommitSource, gitCommitConsistent, gitCommitMismatch}'`
+  → `gitCommit` equals the deployed SHA, `gitCommitConsistent: true`,
+  `gitCommitMismatch: false`. If `gitCommitConsistent` is `false`, the source
+  fields identify which layer disagrees instead of silently reporting an old SHA.
+
 **Environment variables:**
 
 ```env

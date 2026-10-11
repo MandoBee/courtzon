@@ -4,16 +4,35 @@ import { readFileSync } from 'node:fs';
  * Build/runtime metadata resolution for operational endpoints
  * (`GET /health/version`, and the payment gateway diagnostics endpoint).
  *
- * Why this exists: the image bakes `/app/git-commit.txt` from the `GIT_COMMIT`
- * Docker build arg. When a CI/CD platform (e.g. Coolify) builds the image
- * WITHOUT passing that arg, the file contains the literal "unknown" — and the
- * previous inline resolver returned it verbatim, MASKING any valid runtime value
- * (e.g. a commit SHA exposed via environment). This resolver treats empty and
- * "unknown" as absent, then falls back to runtime environment variables, so the
- * deployed commit is observable whenever the platform exposes it.
+ * Revision provenance (root-cause fix for stale deployment metadata):
+ *   - The deployment platform (Coolify) always exposes `SOURCE_COMMIT` to the
+ *     RUNNING container — the exact commit the platform deployed. Coolify
+ *     excludes it from the image build by default, so a value that is true at
+ *     runtime must never be overridden by a commit baked into the image.
+ *   - `GIT_COMMIT` was historically baked from a manually maintained env var and
+ *     could be reported even when it was stale. It is now only a last-resort
+ *     fallback and is never treated as corroborated.
+ *
+ * Precedence for the commit reported by the running container:
+ *   1. platform runtime commit (SOURCE_COMMIT → GITHUB_SHA → COMMIT_SHA)
+ *   2. commit baked into the image (`/app/git-commit.txt`)
+ *   3. legacy `GIT_COMMIT` runtime env (not corroborated)
+ *   4. the literal 'unknown'
+ * A lower-priority source that disagrees with the chosen value is surfaced via
+ * `mismatch`. Agreement of all available sources is reported as `consistent` —
+ * a consistency check only, never proof of build provenance.
  */
 
 const UNKNOWN = 'unknown';
+
+/** Platform-supplied, per-deploy commit variables (authoritative at runtime). */
+const PLATFORM_COMMIT_ENV_KEYS = ['SOURCE_COMMIT', 'GITHUB_SHA', 'COMMIT_SHA'] as const;
+
+/** Legacy/manual commit variable — accepted only as a last resort. */
+const LEGACY_COMMIT_ENV_KEYS = ['GIT_COMMIT'] as const;
+
+/** Path of the commit file baked into the image at build time. */
+export const IMAGE_GIT_COMMIT_FILE = '/app/git-commit.txt';
 
 function clean(value: string | undefined | null): string | null {
   const v = (value ?? '').trim();
@@ -42,14 +61,104 @@ export function readBuildValue(filePath: string, envKeys: string[]): string {
   return UNKNOWN;
 }
 
-/** Commit SHA of the running build (baked file → runtime env → 'unknown'). */
+function readBakedCommit(filePath: string): string {
+  try {
+    return clean(readFileSync(filePath, 'utf-8')) ?? UNKNOWN;
+  } catch {
+    return UNKNOWN;
+  }
+}
+
+function readFirstEnv(keys: readonly string[]): { value: string; key: string } | null {
+  for (const key of keys) {
+    const value = clean(process.env[key]);
+    if (value) return { value, key };
+  }
+  return null;
+}
+
+export type GitCommitSource = 'platform' | 'image' | 'legacy-env' | 'unknown';
+
+export interface GitCommitInfo {
+  /** Authoritative commit of the running container, or 'unknown'. */
+  commit: string;
+  /** Which source produced `commit`. */
+  source: GitCommitSource;
+  /** Commit baked into the image, or 'unknown'. */
+  imageCommit: string;
+  /** Commit supplied by the platform at runtime, or 'unknown'. */
+  platformCommit: string;
+  /**
+   * True when `commit` is known and no available lower-priority source disagrees
+   * with it. This is a consistency check only — it does NOT verify that the
+   * running artifact was built from that revision and is not proof of build
+   * provenance (a platform-supplied runtime value is a claim, not proof).
+   */
+  consistent: boolean;
+  /** True when a lower-priority source reports a different commit. */
+  mismatch: boolean;
+}
+
+/**
+ * Resolve the running container's commit together with its provenance.
+ * The platform-supplied runtime commit wins over anything baked into the image,
+ * so a stale build arg can never masquerade as the deployed revision.
+ */
+export function getGitCommitInfo(filePath: string = IMAGE_GIT_COMMIT_FILE): GitCommitInfo {
+  const imageCommit = readBakedCommit(filePath);
+  const platform = readFirstEnv(PLATFORM_COMMIT_ENV_KEYS);
+  const legacy = readFirstEnv(LEGACY_COMMIT_ENV_KEYS);
+
+  if (platform) {
+    const contradicting = [imageCommit, legacy?.value].filter(
+      (v): v is string => !!v && v !== UNKNOWN && v !== platform.value,
+    );
+    return {
+      commit: platform.value,
+      source: 'platform',
+      imageCommit,
+      platformCommit: platform.value,
+      consistent: contradicting.length === 0,
+      mismatch: contradicting.length > 0,
+    };
+  }
+
+  if (imageCommit !== UNKNOWN) {
+    const contradictsImage = !!legacy && legacy.value !== imageCommit;
+    return {
+      commit: imageCommit,
+      source: 'image',
+      imageCommit,
+      platformCommit: UNKNOWN,
+      consistent: !contradictsImage,
+      mismatch: contradictsImage,
+    };
+  }
+
+  if (legacy) {
+    return {
+      commit: legacy.value,
+      source: 'legacy-env',
+      imageCommit,
+      platformCommit: UNKNOWN,
+      consistent: false,
+      mismatch: false,
+    };
+  }
+
+  return {
+    commit: UNKNOWN,
+    source: 'unknown',
+    imageCommit,
+    platformCommit: UNKNOWN,
+    consistent: false,
+    mismatch: false,
+  };
+}
+
+/** Commit SHA of the running build (platform → image → legacy env → 'unknown'). */
 export function getGitCommit(): string {
-  return readBuildValue('/app/git-commit.txt', [
-    'GIT_COMMIT',
-    'SOURCE_COMMIT',
-    'GITHUB_SHA',
-    'COMMIT_SHA',
-  ]);
+  return getGitCommitInfo().commit;
 }
 
 /** Build timestamp of the running image. */

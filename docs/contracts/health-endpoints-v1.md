@@ -26,6 +26,11 @@
 {
   "buildTime": "2026-07-04T16:21:00Z",
   "gitCommit": "6c23f740589d4b21f052e449d173310e7097c4f4",
+  "gitCommitSource": "platform",
+  "gitCommitConsistent": true,
+  "gitCommitMismatch": false,
+  "imageGitCommit": "unknown",
+  "platformGitCommit": "6c23f740589d4b21f052e449d173310e7097c4f4",
   "applicationVersion": "1.0.0",
   "expectedMigration": "10_deduplicate_gateway_ref_index",
   "nodeVersion": "v22.22.3",
@@ -37,6 +42,18 @@
 ```
 - All string fields fall back to `"unknown"` when unavailable
 - `expectedMigration`: highest migration filename (e.g. `"10_deduplicate_gateway_ref_index"`)
+- `gitCommit`: actual commit of the running container. Resolution precedence is
+  platform runtime commit (`SOURCE_COMMIT` → `GITHUB_SHA` → `COMMIT_SHA`) →
+  commit baked into the image → legacy `GIT_COMMIT` → `"unknown"`.
+- `gitCommitSource`: where `gitCommit` came from —
+  `"platform"` | `"image"` | `"legacy-env"` | `"unknown"`.
+- `gitCommitConsistent`: `true` when `gitCommit` is known **and** no available
+  lower-priority source disagrees with it. Always `false` when unknown. This is
+  a consistency check only — it does **not** verify that the running artifact was
+  built from that revision and is not proof of build provenance.
+- `gitCommitMismatch`: `true` when a lower-priority source reports a different
+  commit (e.g. a stale image bake). `imageGitCommit` / `platformGitCommit`
+  expose both raw values for diagnosis.
 
 ---
 

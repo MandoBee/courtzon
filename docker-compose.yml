@@ -58,7 +58,11 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        # Build revision: the per-deploy commit supplied by the deployment
+        # platform (Coolify: SOURCE_COMMIT) for the exact revision being built.
+        # A manually maintained GIT_COMMIT is deliberately NOT forwarded here —
+        # a stale value is what caused /health/version to report an old commit.
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
     container_name: courtzon-backend
     restart: unless-stopped
     ports:
@@ -85,6 +89,11 @@ services:
       # value (or unset) as unknown and FAIL-CLOSED for LOCAL_DOCKER_ONLY
       # migrations, so they can never reach production.
       COURTZON_MIGRATION_ENV: ${COURTZON_MIGRATION_ENV:-local}
+      # Deployed Git revision. Coolify exposes SOURCE_COMMIT to the running
+      # container; forwarding it explicitly lets /health/version report the
+      # actual deployed commit even though Coolify excludes it from the image
+      # build by default. Never hardcode a literal SHA here.
+      SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
     depends_on:
       mysql:
         condition: service_healthy

@@ -37,14 +37,19 @@ COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Build metadata — single layer for all runtime-generated files.
-# GIT_COMMIT is the canonical value (compose passes it). SOURCE_COMMIT is the
-# build-arg name CI platforms (e.g. Coolify) commonly expose — used as a
-# fallback so /health/version can report the deployed commit without extra config.
-ARG GIT_COMMIT=unknown
+# SOURCE_COMMIT is the canonical value: it is the per-deploy revision the CI/CD
+# platform (e.g. Coolify) supplies for the exact commit being built. GIT_COMMIT
+# is retained only as a backwards-compatible fallback for direct builds that
+# still pass it; it is never preferred over SOURCE_COMMIT, so a stale manually
+# maintained value can no longer overwrite the real one.
 ARG SOURCE_COMMIT=unknown
+ARG GIT_COMMIT=unknown
 RUN date -u +"%Y-%m-%dT%H:%M:%SZ" > /app/build-time.txt \
   && node -e "console.log(require('./package.json').version)" > /app/version.txt \
-  && echo "$(if [ -n "$SOURCE_COMMIT" ] && [ "$GIT_COMMIT" = "unknown" ]; then echo "$SOURCE_COMMIT"; else echo "$GIT_COMMIT"; fi)" > /app/git-commit.txt \
+  && _commit="unknown" \
+  && if [ -n "$SOURCE_COMMIT" ] && [ "$SOURCE_COMMIT" != "unknown" ]; then _commit="$SOURCE_COMMIT"; \
+     elif [ -n "$GIT_COMMIT" ] && [ "$GIT_COMMIT" != "unknown" ]; then _commit="$GIT_COMMIT"; fi \
+  && printf '%s' "$_commit" > /app/git-commit.txt \
   && (ls -1 database/migrations/*.sql 2>/dev/null | sort | tail -1 | xargs -I{} basename {} .sql | sed 's/^0*//' > /app/expected-migration.txt || echo "0" > /app/expected-migration.txt) \
   && chown -R appuser:appgroup /app
 

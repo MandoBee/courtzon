@@ -194,7 +194,7 @@
 |----|----------|-------|---------------|
 | DKR-01 | 🛑 | `docker compose build` succeeds for changed services | Run build in CI |
 | DKR-02 | 🛑 | Dockerfile includes HEALTHCHECK instruction | Check `HEALTHCHECK --interval=30s ...` in Dockerfile |
-| DKR-03 | ⚠️ | Build args passed for `GIT_COMMIT` in `docker-compose.yml` for backend service | Check `build.args` section |
+| DKR-03 | ⚠️ | Build revision passed as `SOURCE_COMMIT` build arg in `docker-compose.yml` for backend service (no manual `GIT_COMMIT`) | Check `build.args` section |
 | DKR-04 | ⚠️ | Resource limits set in `docker-compose.yml` for new services | Check `deploy.resources.limits` and `reservations` |
 
 ---

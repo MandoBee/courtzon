@@ -19,14 +19,14 @@
 
 ## Deploy
 
-- [ ] **Build**: `docker compose build backend frontend --build-arg GIT_COMMIT=$(git rev-parse HEAD)`
+- [ ] **Build**: `SOURCE_COMMIT=$(git rev-parse HEAD) docker compose build backend frontend`
 - [ ] **Deploy**: `docker compose up -d`
 - [ ] **Wait for healthy**: `docker compose ps` shows all services `(healthy)`
 
 ## Post-Deploy Verification
 
 - [ ] **/health/live**: `curl /health/live | jq .status` → `"ok"`
-- [ ] **/health/version**: `curl /health/version | jq .gitCommit` → matches deploy SHA
+- [ ] **/health/version**: `curl /health/version | jq '{gitCommit, gitCommitSource, gitCommitConsistent, gitCommitMismatch}'` → `gitCommit` matches the deploy SHA, `gitCommitConsistent` is `true`, `gitCommitMismatch` is `false`
 - [ ] **/payments/health**: `curl /payments/health` (with admin token)
   - `gatewayConfigured` → `true`
   - `gatewayConnectivity` → `"ok"`
