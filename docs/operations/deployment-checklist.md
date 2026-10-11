@@ -9,6 +9,7 @@
 - [ ] **Check migrations**: Compare `ls database/migrations/*.sql | sort | tail -1` with `SELECT filename FROM migration_history ORDER BY id DESC LIMIT 1`
 - [ ] **Git status**: `git status` — must be clean, on master, up to date with origin
 - [ ] **Environment validation**: Verify `.env` has all required variables (compare with `.env.example`)
+- [ ] **Build metadata (Coolify)**: backend app → **Advanced → Build → Source commit availability** = **Available during build** (required so the image bakes the real commit); no stale `GIT_COMMIT` variable defined
 
 ## Gateway Validation
 
@@ -26,7 +27,7 @@
 ## Post-Deploy Verification
 
 - [ ] **/health/live**: `curl /health/live | jq .status` → `"ok"`
-- [ ] **/health/version**: `curl /health/version | jq '{gitCommit, gitCommitSource, gitCommitConsistent, gitCommitMismatch}'` → `gitCommit` matches the deploy SHA, `gitCommitConsistent` is `true`, `gitCommitMismatch` is `false`
+- [ ] **/health/version**: `curl /health/version | jq '{gitCommit, gitCommitSource, gitCommitConsistent, gitCommitMismatch, imageGitCommit, platformGitCommit}'` → `gitCommit` matches the deploy SHA, `gitCommitConsistent` is `true`, `gitCommitMismatch` is `false`. Under the current Coolify configuration expect `gitCommitSource: "image"`, `imageGitCommit` equal to the deploy SHA, and `platformGitCommit: "unknown"` (runtime platform metadata is not available)
 - [ ] **/payments/health**: `curl /payments/health` (with admin token)
   - `gatewayConfigured` → `true`
   - `gatewayConnectivity` → `"ok"`

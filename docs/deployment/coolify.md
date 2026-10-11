@@ -110,25 +110,35 @@ GET /health/live
 
 **Build revision / deployment metadata:**
 
-`/health/version` reports the actual commit of the running container. The
-canonical value is Coolify's per-deploy `SOURCE_COMMIT`, which Coolify always
-exposes to the **running container** (and to the build only when enabled).
-`docker-compose.yml` forwards it as a build arg and into the container.
+`/health/version` reports the commit of the running container together with its
+provenance. The canonical value is Coolify's per-deploy `SOURCE_COMMIT`, but in
+the currently verified production configuration Coolify supplies it **at build
+time only** ("Available during build") and does **not** provide it to the
+running container. Correctness therefore relies on the commit baked into the
+Docker image (`gitCommitSource: "image"`), and `platformGitCommit` reports
+`"unknown"`.
 
-- **Do NOT** define a `GIT_COMMIT` variable in the Coolify UI. A manually
-  maintained/stale `GIT_COMMIT` is exactly what caused `/health/version` to
-  report an old commit; it is no longer trusted over `SOURCE_COMMIT`.
-- **Recommended (one-time, optional):** in the backend application go to
+- **Required (one-time):** in the backend application go to
   **Advanced → Build → Source commit availability** and enable
   **Available during build**. This bakes `SOURCE_COMMIT` into
-  `/app/git-commit.txt` inside the image as well as exposing it at runtime. Not
-  required for correctness — runtime `SOURCE_COMMIT` is authoritative — but it
-  makes the image self-describing.
+  `/app/git-commit.txt` inside the image. Without it the image reports
+  `"unknown"` and `/health/version` cannot identify the deployed revision.
+- **Do NOT** define a `GIT_COMMIT` variable in the Coolify UI. A manually
+  maintained/stale `GIT_COMMIT` is exactly what caused `/health/version` to
+  report an old commit; a real build-time `SOURCE_COMMIT` is always preferred
+  over it, and `GIT_COMMIT` is no longer trusted as the running revision.
+- `docker-compose.yml` also forwards `SOURCE_COMMIT` into the container
+  environment; when Coolify does not supply a runtime value this resolves to
+  the literal `"unknown"`, which the backend treats as absent. Never hardcode a
+  SHA here.
 - Verify after deploy:
-  `curl https://api.courtzon.cloud/health/version | jq '{gitCommit, gitCommitSource, gitCommitConsistent, gitCommitMismatch}'`
+  `curl https://api.courtzon.cloud/health/version | jq '{gitCommit, gitCommitSource, gitCommitConsistent, gitCommitMismatch, imageGitCommit, platformGitCommit}'`
   → `gitCommit` equals the deployed SHA, `gitCommitConsistent: true`,
-  `gitCommitMismatch: false`. If `gitCommitConsistent` is `false`, the source
-  fields identify which layer disagrees instead of silently reporting an old SHA.
+  `gitCommitMismatch: false`. Under the current Coolify configuration expect
+  `gitCommitSource: "image"`, `imageGitCommit` equal to the deployed SHA, and
+  `platformGitCommit: "unknown"`. If `gitCommitConsistent` is `false`, the
+  source fields identify which layer disagrees instead of silently reporting an
+  old SHA.
 
 **Environment variables:**
 

@@ -54,6 +54,13 @@
 - `gitCommitMismatch`: `true` when a lower-priority source reports a different
   commit (e.g. a stale image bake). `imageGitCommit` / `platformGitCommit`
   expose both raw values for diagnosis.
+- **Expected production state (verified configuration):** Coolify supplies
+  `SOURCE_COMMIT` at **build time only** and does not expose it to the running
+  container, so `/health/version` normally returns `gitCommitSource: "image"`
+  with `imageGitCommit` equal to the deployed commit, `gitCommitConsistent: true`,
+  `gitCommitMismatch: false`, and `platformGitCommit: "unknown"`. A
+  `gitCommitSource` of `"platform"` (or a non-`"unknown"` `platformGitCommit`)
+  would indicate that Coolify has begun exposing runtime commit metadata.
 
 ---
 

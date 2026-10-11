@@ -143,7 +143,7 @@ Redis starts with: `--maxmemory 512mb --maxmemory-policy noeviction --appendonly
 
 | Arg | Used By | Description |
 |-----|---------|-------------|
-| `GIT_COMMIT` | Backend | Build metadata (git commit hash) |
+| `SOURCE_COMMIT` | Backend | Build revision (deployed git commit hash); `GIT_COMMIT` remains a legacy fallback and is not forwarded by Compose |
 | `VITE_PAYMOB_PUBLIC_KEY` | Frontend | Paymob iframe key |
 | `VITE_FEATURE_AUTH_TEMPORARY_PASSWORD_RESET_ENABLED` | Frontend | Feature flag |
 
