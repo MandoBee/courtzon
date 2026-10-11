@@ -99,4 +99,17 @@ describe('TournamentListPage — player list contract (Group 1B)', () => {
 
     expect(await screen.findByText('No tournaments yet')).toBeTruthy();
   });
+
+  it('Phase A — listing request and rendering are unchanged; no Category/Season filter is introduced', async () => {
+    renderPage();
+    expect(await screen.findByText('Padel Open')).toBeTruthy();
+
+    // The player list keeps its existing single request contract.
+    expect(api.get).toHaveBeenCalledWith('/tournaments?limit=50');
+
+    // No Tournament Category or Season filter control exists on the list.
+    expect(screen.queryByText(/Tournament Category/i)).toBeNull();
+    expect(screen.queryByText(/^Season$/i)).toBeNull();
+    expect(screen.queryByPlaceholderText(/category/i)).toBeNull();
+  });
 });

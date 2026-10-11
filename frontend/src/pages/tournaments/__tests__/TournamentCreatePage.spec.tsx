@@ -626,6 +626,9 @@ describe('Creation Wizard — review & submit', () => {
     expect(url).toBe('/org/6/tournaments');
     expect(url).not.toContain('/admin/tournaments');
     expect(payload.name).toBe('UAT Wizard Cup');
+    // Phase A — Category & Season are no longer part of the create payload.
+    expect('category' in payload).toBe(false);
+    expect('season' in payload).toBe(false);
     expect(payload.bracket_type_id).toBe(1);
     expect(payload.format).toBe('knockout');
     expect(payload.gsk_config).toBeUndefined();
@@ -656,8 +659,11 @@ describe('Creation Wizard — permissions', () => {
   it('only renders Basics fields the user is permitted to configure', async () => {
     renderPage(['org.tournaments.create', 'tournaments.create.name']);
     expect(await screen.findByText('tournaments.create.name')).toBeTruthy();
-    // Category/season are gated by tournaments.create.type.
-    expect(screen.queryByText('tournaments.create.category')).toBeNull();
+    // Description is gated by tournaments.create.description (absent from this role).
+    expect(screen.queryByText('tournaments.create.description')).toBeNull();
+    // Phase A — Tournament Category & Season are removed from the wizard entirely,
+    // independent of any permission.
+    expect(screen.queryByText('tournaments.create.category_label')).toBeNull();
     expect(screen.queryByText('tournaments.create.season')).toBeNull();
   });
 
@@ -694,29 +700,45 @@ describe('Creation Wizard — motion & reduced motion', () => {
   });
 });
 
-describe('Creation Wizard — Tournament Category (R1)', () => {
-  it('renders the clarified category field with helper text and shows the value on Review', async () => {
+describe('Creation Wizard — Phase A: Category & Season removed', () => {
+  it('does not render Tournament Category or Season on the Basics step', async () => {
     renderPage(ALL);
     await screen.findByText('tournaments.create.name');
 
-    expect(screen.getByText('tournaments.create.category_label')).toBeTruthy();
-    expect(screen.getByText('tournaments.create.category_hint')).toBeTruthy();
-    const category = screen.getByPlaceholderText('tournaments.create.category_placeholder') as HTMLInputElement;
-    fireEvent.change(category, { target: { value: 'Open Men Doubles' } });
+    // The field, its helper text, its placeholder and the Season input are all gone.
+    expect(screen.queryByText('tournaments.create.category_label')).toBeNull();
+    expect(screen.queryByText('tournaments.create.category_hint')).toBeNull();
+    expect(screen.queryByPlaceholderText('tournaments.create.category_placeholder')).toBeNull();
+    expect(screen.queryByText('tournaments.create.season')).toBeNull();
+  });
 
-    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Category Cup' } });
+  it('preserves existing wizard validation and advances exactly as before', async () => {
+    renderPage(ALL);
+    // Required name is still enforced on Basics.
+    fireEvent.click(continueBtn());
+    expect(await screen.findByText('tournaments.create.validation.name')).toBeTruthy();
+    // With a valid name, Basics still advances to Format.
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Phase A Cup' } });
     await clickContinueAndAwait(2);
-    await clickSingleElimination();
-    await clickContinueAndAwait(3);
-    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
-    await clickContinueAndAwait(4);
-    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
-    await clickContinueAndAwait(5);
-    await clickContinueAndAwait(6);
-    await clickContinueAndAwait(7);
-    await clickContinueAndAwait(8);
+    expect(await screen.findByTestId('format-card-single-elimination')).toBeTruthy();
+  });
 
+  it('does not show Category or Season on the Review step', async () => {
+    renderPage(ALL);
+    await walkTo(7);
     expect(screen.getByTestId('wizard-review')).toBeTruthy();
-    expect(screen.getByText('Open Men Doubles')).toBeTruthy();
+    expect(screen.queryByText('tournaments.create.category_label')).toBeNull();
+    expect(screen.queryByText('tournaments.create.season')).toBeNull();
+  });
+
+  it('submit payload omits category and season entirely', async () => {
+    renderPage(ALL);
+    await walkTo(7);
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
+
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [, payload] = (api.post as any).mock.calls[0] as [string, any];
+    expect('category' in payload).toBe(false);
+    expect('season' in payload).toBe(false);
   });
 });
