@@ -200,6 +200,12 @@ async function cleanupAll() {
   await pool.execute(`DELETE FROM tournament_registrations WHERE id IN (${regIds.length ? regIds.join(',') : 0})`);
   await pool.execute(`DELETE FROM tournaments WHERE id IN (${tournamentIds.length ? tournamentIds.join(',') : 0})`);
   await pool.execute(`DELETE FROM accounting_event_mapping_lines WHERE account_id IN (SELECT id FROM chart_of_accounts WHERE organisation_id IN (${ORG}, ${ORG_2}))`);
+  // Late-async guard (mirrors tournament-cash-accounting.g11-2): re-purge
+  // general_ledger rows referencing the ORG COA IMMEDIATELY before dropping it.
+  // An accounting posting that lands asynchronously during this cleanup (e.g.
+  // emitted by a previous test's event after its waitFor concluded) would
+  // otherwise trip the fk_gl_account FK when chart_of_accounts is deleted.
+  await pool.execute(`DELETE gl FROM general_ledger gl JOIN chart_of_accounts c ON c.id = gl.account_id WHERE c.organisation_id IN (${ORG}, ${ORG_2})`);
   await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id IN (${ORG}, ${ORG_2})`);
   await pool.execute(`DELETE FROM organisation_subscriptions WHERE organisation_id IN (${ORG}, ${ORG_2})`);
   await pool.execute(`DELETE FROM subscription_plan_rates WHERE plan_id = ${PLAN}`);
@@ -266,8 +272,17 @@ describe('G11.3 — tournament FULL refund (request → approval → execution)'
     expect(result.refunded).toBe(true);
 
     // Payment + registration state.
-    const [payRows] = await pool.execute<RowData>('SELECT payment_status FROM payment_transactions WHERE id=?', [pid]);
-    expect((payRows as any[])[0].payment_status).toBe('refunded');
+    // `approveRefundRequest` flips payment_transactions.payment_status →
+    // 'refunded' asynchronously (event-driven), so wait for it rather than
+    // asserting immediately.
+    await waitFor(
+      async () => {
+        const [payRows] = await pool.execute<RowData>('SELECT payment_status FROM payment_transactions WHERE id=?', [pid]);
+        return (payRows as any[])[0]?.payment_status;
+      },
+      (status) => status === 'refunded',
+      `payment:${pid} status → refunded`,
+    );
     const [regRows] = await pool.execute<RowData>('SELECT payment_status, status FROM tournament_registrations WHERE id=?', [regId]);
     expect((regRows as any[])[0].payment_status).toBe('refunded');
     expect((regRows as any[])[0].status).toBe('withdrawn');

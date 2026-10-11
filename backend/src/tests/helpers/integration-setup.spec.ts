@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 // Keep this isolated — the harness module imports the app's DB pool at load.
 vi.mock('../../database/mysql.js', () => ({ closePool: vi.fn() }));
 
-import { buildSchemaSetupCommands } from './integration-setup.js';
+import { buildSchemaSetupCommands, buildAccountingPeriodSetupStep } from './integration-setup.js';
 
 describe('integration harness schema setup (regression: migrate.js --fresh --seed)', () => {
   it('never passes the unsupported --seed flag to any setup command', () => {
@@ -42,5 +42,26 @@ describe('integration harness schema setup (regression: migrate.js --fresh --see
       expect(s.args[0]).toContain('seed.js');
       expect(s.args).toContain('--seed-file');
     }
+  });
+
+  it('opens a platform accounting period for the run date as a test-only extra step', () => {
+    const step = buildAccountingPeriodSetupStep(33060, { mysqlBin: 'mysql', businessDate: '2026-10-11' });
+    expect(step.cmd).toBe('mysql');
+    expect(step.expectFail).toBeUndefined();
+    const sql = step.args.join(' ');
+    expect(sql).toContain('courtzon_test');
+    expect(sql).toContain('accounting_periods');
+    // Platform period (NULL organisation) for the whole business month.
+    expect(sql).toContain('(NULL, 2026, 10,');
+    expect(sql).toContain("'2026-10-01'");
+    expect(sql).toContain("'2026-10-31'");
+  });
+
+  it('derives the business month for a single-digit month without zero-padding the period number', () => {
+    const step = buildAccountingPeriodSetupStep(33060, { mysqlBin: 'mysql', businessDate: '2026-03-05' });
+    const sql = step.args.join(' ');
+    expect(sql).toContain('(NULL, 2026, 3,');
+    expect(sql).toContain("'2026-03-01'");
+    expect(sql).toContain("'2026-03-31'");
   });
 });

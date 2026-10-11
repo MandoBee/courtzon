@@ -122,6 +122,39 @@ export function buildSchemaSetupCommands(
   ];
 }
 
+/**
+ * Test-only step: open a PLATFORM accounting period (organisation_id IS NULL)
+ * covering the current business date in the fresh test container, so accounting
+ * integration specs can resolve a posting period on the date they actually run
+ * (the baseline/seed reference data ships no periods). The Testcontainers DB is
+ * ephemeral, so no cleanup is required.
+ *
+ * The business date mirrors the platform default timezone used by
+ * `shared/utils/business-date.ts` (Africa/Cairo) when no `system_settings`
+ * timezone is set — the value a fresh baseline+seed container resolves.
+ *
+ * Exported pure for a focused harness regression test.
+ */
+export function buildAccountingPeriodSetupStep(
+  mysqlPort: number,
+  opts: { mysqlBin?: string; businessDate?: string } = {},
+): SchemaSetupStep {
+  const mysqlBin = opts.mysqlBin ?? process.env.MYSQL_BIN ?? 'mysql';
+  const businessDate = opts.businessDate
+    ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());
+  const [year, month] = businessDate.split('-').map(Number);
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const sql =
+    `INSERT INTO accounting_periods `
+    + `(organisation_id, fiscal_year, period_number, start_date, end_date, status) `
+    + `VALUES (NULL, ${year}, ${month}, '${start}', '${end}', 'open');`;
+  return {
+    cmd: mysqlBin,
+    args: ['-h127.0.0.1', `-P${mysqlPort}`, '-uroot', '-ptest', 'courtzon_test', '-e', sql],
+  };
+}
+
 function runStep(step: SchemaSetupStep, opts: { cwd: string; env: NodeJS.ProcessEnv }): Promise<number | null> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(step.cmd, step.args, {
@@ -159,6 +192,11 @@ export async function runSchema(mysqlPort: number): Promise<void> {
   for (const step of buildSchemaSetupCommands(mysqlPort, { projectRoot })) {
     await runStep(step, { cwd: projectRoot, env });
   }
+
+  // Test-only: open a platform accounting period covering the run's business
+  // date so GL-posting integrations can resolve a period (a fresh schema has
+  // none). Ephemeral container — no cleanup needed.
+  await runStep(buildAccountingPeriodSetupStep(mysqlPort), { cwd: projectRoot, env });
 }
 
 export async function stopContainers(): Promise<void> {
