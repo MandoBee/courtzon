@@ -130,6 +130,9 @@ vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repos
 }));
 
 // ── Import after mocks ──
+vi.mock('../../settlement/application/gateway-settlement.service.js', () => ({
+  gatewaySettlementService: { detachPaymentTransaction: vi.fn(async () => ({ changed: false, paymentDetached: false, lineReleased: false, paymentId: 0, settlementId: null, lineId: null, releasedAmounts: null, before: null, after: null })) },
+}));
 import { marketplaceService } from '../application/marketplace.service.js';
 import { marketplaceRepository as repo } from '../infrastructure/repositories/marketplace.repository.js';
 

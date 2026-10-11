@@ -31,6 +31,9 @@ vi.mock('../../financial/application/position.service.js', () => ({
   },
 }));
 
+vi.mock('../../settlement/application/gateway-settlement.service.js', () => ({
+  gatewaySettlementService: { detachPaymentTransaction: vi.fn(async () => ({ changed: false, paymentDetached: false, lineReleased: false, paymentId: 0, settlementId: null, lineId: null, releasedAmounts: null, before: null, after: null })) },
+}));
 import { marketplaceService } from '../application/marketplace.service.js';
 
 beforeEach(() => {

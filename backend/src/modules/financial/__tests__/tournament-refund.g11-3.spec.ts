@@ -128,9 +128,9 @@ describe('G11.3 — refund service contract (guard order, no partial refunds, no
   });
 
   it('payment-scoped settlement detach is used, never batch reversal', () => {
-    expect(svc).toContain('detachPaymentSettlement(paymentId, conn)');
-    const repo = be('src/modules/tournaments/infrastructure/repositories/tournament.repository.ts');
-    expect(repo).toContain('gateway_settlement_id IS NOT NULL');
+    expect(svc).toContain('gatewaySettlementService.detachPaymentTransaction(paymentId, conn)');
+    const settlementService = be('src/modules/settlement/application/gateway-settlement.service.ts');
+    expect(settlementService).toContain('gateway_settlement_id IS NOT NULL');
     expect(svc).not.toContain('gatewaySettlementService.reverse');
   });
 

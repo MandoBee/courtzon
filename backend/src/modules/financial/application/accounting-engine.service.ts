@@ -39,6 +39,14 @@ export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string
   marketplace_wallet_payment: { shipping: '2400' },
   marketplace_merchant_refund: { shipping: '2400' },
   marketplace_wallet_refund: { shipping: '2400' },
+  // SETTLED marketplace merchant refund (after gateway settlement): paid out of
+  // Bank/Cash. No DB mapping rows exist for this event_type — the FULL concept
+  // set resolves from code to the SAME accounts the unsettled refund uses, with
+  // cash_bank (1120) replacing payment_clearing (1100). The gateway fee (5210)
+  // is deliberately NOT mapped — a refund never credits the fee.
+  marketplace_merchant_refund_settled: {
+    merchant_payable: '2202', platform_commission: '4160', tax_liability: '2300', cash_bank: '1120',
+  },
   // New cash events have no DB mapping rows at all — resolve the full concept set
   // from code (platform_commission → 4160, marketplace_receivable → 1161).
   marketplace_cash_commission: { marketplace_receivable: '1161', platform_commission: '4160' },

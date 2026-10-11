@@ -46,6 +46,27 @@ export interface GatewayEligibleTransaction {
   netAmount: number | null;
 }
 
+/** Pre/post snapshot of a payment-scoped settlement dismantle (audit metadata). */
+export interface SettlementHeaderSnapshot {
+  gross: number | null;
+  fee: number | null;
+  net: number | null;
+  transactionCount: number | null;
+}
+
+/** Result of detachPaymentTransaction — released amounts + batch pre/post header. */
+export interface SettlementDismantleResult {
+  changed: boolean;
+  paymentDetached: boolean;
+  lineReleased: boolean;
+  paymentId: number;
+  settlementId: number | null;
+  lineId: number | null;
+  releasedAmounts: { gross: number | null; fee: number | null; net: number | null } | null;
+  before: SettlementHeaderSnapshot | null;
+  after: SettlementHeaderSnapshot | null;
+}
+
 /**
  * Admin "Receive Gateway Settlement" — records that CourtZon has actually
  * received/collected the funds for previously-paid card/online customer
@@ -455,6 +476,147 @@ export const gatewaySettlementService = {
       }
       throw err;
     }
+  },
+
+  /**
+   * Payment-scoped settlement dismantle (the G11.4 primitive, now SHARED by the
+   * tournament and marketplace refunds). Detaches ONLY the given payment from
+   * its ACTIVE batch line and decrements the batch header by exactly that
+   * line's amounts; the HISTORY rows (gateway_settlements +
+   * gateway_settlement_transactions) are preserved.
+   *
+   *   - locks the payment row, the ACTIVE line and the batch header (FOR UPDATE)
+   *   - verifies the line really belongs to this payment
+   *   - releases `active_payment_transaction_id` (the uk_gst_active_payment
+   *     pointer) so the payment becomes settleable again inside a NEW batch,
+   *     keeping the history row forever
+   *   - decrements the header (gross / fee / net / transaction_count) with
+   *     GREATEST underflow guards so the header always represents the ACTIVE
+   *     remainder
+   *   - clears the payment's gateway_settlement_id / gateway_settled_at
+   *
+   * Posts NO accounting journal — the refund event itself posts the settled
+   * (Cr 1120) or clearing (Cr 1100) leg. A later `reverse()` operates only on
+   * ACTIVE lines, so a released (refunded) payment can never be reversed again
+   * through its original batch.
+   *
+   * IDEMPOTENT: a replay finds no active line (and/or no linkage) and changes
+   * nothing; the header is only decremented when THIS call actually released
+   * the line.
+   */
+  async detachPaymentTransaction(paymentId: number, conn?: mysql.PoolConnection): Promise<SettlementDismantleResult> {
+    const db = conn ?? getPool();
+    const result: SettlementDismantleResult = {
+      changed: false, paymentDetached: false, lineReleased: false,
+      paymentId, settlementId: null, lineId: null,
+      releasedAmounts: null, before: null, after: null,
+    };
+
+    // 1. Lock the payment row (the same row a concurrent refund locks, so two
+    //    concurrent dismantles serialize here).
+    const [paymentRows] = await db.execute<RowData>(
+      `SELECT id, gateway_settlement_id
+       FROM payment_transactions WHERE id = ? FOR UPDATE`,
+      [paymentId],
+    );
+    const payment = (paymentRows as any[])[0];
+    if (!payment) return result;
+
+    // 2. Locate the ACTIVE settlement line for this payment. Only a line that
+    //    is still ACTIVE is counted by the batch header, so only that line is
+    //    released and decremented.
+    const [lineRows] = await db.execute<RowData>(
+      `SELECT id, gateway_settlement_id, payment_transaction_id,
+              gross_amount, gateway_fee_amount, net_amount
+       FROM gateway_settlement_transactions
+       WHERE active_payment_transaction_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [paymentId],
+    );
+    const line = (lineRows as any[])[0];
+
+    if (line) {
+      // 3. Lock the batch header, then verify ownership.
+      const [headerRows] = await db.execute<RowData>(
+        `SELECT id, gross_amount, gateway_fee_amount, net_amount, transaction_count, settlement_status
+         FROM gateway_settlements WHERE id = ? FOR UPDATE`,
+        [line.gateway_settlement_id],
+      );
+      const header = (headerRows as any[])[0];
+      if (header) {
+        if (Number(line.payment_transaction_id) !== paymentId) {
+          throw new Error(`Settlement line ${line.id} does not belong to payment ${paymentId} — dismantle aborted`);
+        }
+        if (header.settlement_status === 'reversed') {
+          // A reversed batch was already un-settled by reverse(); nothing to
+          // dismantle and the header must not change.
+          result.settlementId = Number(line.gateway_settlement_id);
+          result.lineId = Number(line.id);
+        } else {
+          const removedGross = round2(line.gross_amount);
+          const removedFee = round2(line.gateway_fee_amount);
+          const removedNet = round2(line.net_amount);
+
+          result.settlementId = Number(line.gateway_settlement_id);
+          result.lineId = Number(line.id);
+          result.releasedAmounts = { gross: removedGross, fee: removedFee, net: removedNet };
+          result.before = {
+            gross: round2(header.gross_amount),
+            fee: round2(header.gateway_fee_amount),
+            net: round2(header.net_amount),
+            transactionCount: Number(header.transaction_count || 0),
+          };
+
+          // 4. Release the active pointer — the history row is preserved.
+          const [rel] = await db.execute<mysql.ResultSetHeader>(
+            `UPDATE gateway_settlement_transactions
+             SET active_payment_transaction_id = NULL
+             WHERE id = ? AND active_payment_transaction_id = ?`,
+            [line.id, paymentId],
+          );
+          if ((rel as any).affectedRows === 1) {
+            // 5. Reduce the header to its ACTIVE remainder.
+            await db.execute<mysql.ResultSetHeader>(
+              `UPDATE gateway_settlements
+               SET gross_amount = GREATEST(gross_amount - ?, 0),
+                   gateway_fee_amount = GREATEST(gateway_fee_amount - ?, 0),
+                   net_amount = GREATEST(net_amount - ?, 0),
+                   transaction_count = GREATEST(transaction_count - 1, 0)
+               WHERE id = ?`,
+              [removedGross, removedFee, removedNet, line.gateway_settlement_id],
+            );
+            const [afterRows] = await db.execute<RowData>(
+              'SELECT gross_amount, gateway_fee_amount, net_amount, transaction_count FROM gateway_settlements WHERE id = ?',
+              [line.gateway_settlement_id],
+            );
+            const after = (afterRows as any[])[0];
+            result.after = {
+              gross: round2(after?.gross_amount),
+              fee: round2(after?.gateway_fee_amount),
+              net: round2(after?.net_amount),
+              transactionCount: Number(after?.transaction_count || 0),
+            };
+            result.lineReleased = true;
+            result.changed = true;
+          }
+        }
+      }
+    }
+
+    // 6. Detach the payment linkage (guarded → idempotent). Independent of the
+    //    line release so a payment that was never in an ACTIVE line is still
+    //    correctly un-settled.
+    const [det] = await db.execute<mysql.ResultSetHeader>(
+      `UPDATE payment_transactions
+       SET gateway_settlement_id = NULL, gateway_settled_at = NULL, updated_at = NOW()
+       WHERE id = ? AND gateway_settlement_id IS NOT NULL`,
+      [paymentId],
+    );
+    result.paymentDetached = (det as any).affectedRows > 0;
+    if (result.paymentDetached) result.changed = true;
+
+    return result;
   },
 
   async list(filters: { page?: number; limit?: number; status?: string }): Promise<{ data: any[]; total: number }> {

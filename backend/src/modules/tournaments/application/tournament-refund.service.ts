@@ -6,6 +6,7 @@ import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { tournamentRefundRequestRepository } from '../infrastructure/repositories/tournament-refund-request.repository.js';
+import { gatewaySettlementService } from '../../settlement/application/gateway-settlement.service.js';
 import { emitTournamentScoped } from './tournament-realtime-scope.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
@@ -130,7 +131,7 @@ class TournamentRefundService {
     // reversal). G11.4 completes it: the active settlement line is released,
     // the batch header is reduced, the payment is detached, nothing is deleted.
     if (paymentRow.gateway_settlement_id != null && Number(paymentRow.gateway_settlement_id) !== 0) {
-      const dismantle = await tournamentRepository.detachPaymentSettlement(paymentId, conn);
+      const dismantle = await gatewaySettlementService.detachPaymentTransaction(paymentId, conn);
       log.info({ paymentId, registrationId, settlementId: dismantle.settlementId, lineId: dismantle.lineId, lineReleased: dismantle.lineReleased }, 'Tournament refund: payment-scoped settlement dismantle performed');
       await recordAudit({
         actorId,

@@ -235,6 +235,17 @@ export class ReconciliationService {
     }
     run.itemsChecked += tournamentChecks.itemsChecked;
 
+    // ── 5c. G11.4-settled-refund — MARKETPLACE order payment ↔ settlement checks ──
+    // STRICTLY REPORT-ONLY (same rule as the tournament checks above).
+    const marketplaceChecks = await this.runMarketplaceChecks(pool, dateFilter, dateFilter2, limit);
+    for (const issue of marketplaceChecks.issues) {
+      run.issues.push(issue);
+      if (issue.status === 'CRITICAL') run.criticalCount++;
+      else if (issue.status === 'WARNING') run.warningCount++;
+      else run.infoCount++;
+    }
+    run.itemsChecked += marketplaceChecks.itemsChecked;
+
     // ── 6. Auto-fix: gateway_paid_local_pending ────────────────────────
     if (options.autoFix) {
       for (const issue of run.issues) {
@@ -463,6 +474,124 @@ export class ReconciliationService {
         Number(r.payment_id),
         `Tournament payment ${r.payment_id} (registration ${r.registration_id}) points at settlement ${r.gateway_settlement_id} but its line ${r.line_id} is in batch ${r.line_settlement_id} and is ${r.active_payment_transaction_id === null ? 'RELEASED' : 'active'}`,
         'The batch and the payment disagree. Run the gateway settlement reconciliation for the full picture before acting.',
+      );
+    }
+
+    return { issues, itemsChecked };
+  }
+
+  /**
+   * 5c. MARKETPLACE order ↔ payment ↔ settlement checks — the G11.4 settled-refund
+   * model applied to Marketplace card orders. REPORT-ONLY (never autoFixed): a
+   * ledger/batch discrepancy is a human decision.
+   */
+  private async runMarketplaceChecks(
+    pool: Pool,
+    dateFilter: string,
+    dateFilter2: string,
+    limit: string,
+  ): Promise<{ issues: ReconciliationIssue[]; itemsChecked: number }> {
+    const issues: ReconciliationIssue[] = [];
+    let itemsChecked = 0;
+    const push = (
+      type: string,
+      status: CheckStatus,
+      entityType: string,
+      entityId: number,
+      detail: string,
+      recommendation: string,
+    ) => issues.push({ type, status, entityType, entityId, detail, recommendation, autoFixable: false });
+
+    // 5c-1. Gateway-settled Marketplace order payment with no settlement history line.
+    const [settledNoHistory] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.order_id, pt.gateway_settlement_id
+       FROM payment_transactions pt
+       WHERE pt.reference_type = 'order'
+         AND pt.gateway_settlement_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM gateway_settlement_transactions gst
+           WHERE gst.payment_transaction_id = pt.id
+         )
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (settledNoHistory as any[]).length;
+    for (const r of settledNoHistory as any[]) {
+      push(
+        'marketplace_settled_payment_missing_lineage',
+        'CRITICAL',
+        'payment_transaction',
+        Number(r.payment_id),
+        `Marketplace payment ${r.payment_id} (order ${r.order_id}) points at gateway settlement ${r.gateway_settlement_id} but has NO settlement line at all`,
+        'The batch cannot be reconciled or reversed for this payment. Re-create the line from the gateway statement or clear the linkage.',
+      );
+    }
+
+    // 5c-2. Refunded Marketplace order payment that was gateway-settled but has NO
+    // settled-refund posting (`marketplace_merchant_refund_settled`). A completed
+    // batch moved the funds to 1120, so the refund must come out of the bank —
+    // booking it against 1100 leaves a phantom negative clearing balance.
+    const [settledRefundMissingVariant] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.order_id, pt.amount
+       FROM payment_transactions pt
+       WHERE pt.reference_type = 'order'
+         AND pt.payment_status = 'refunded'
+         AND EXISTS (
+           SELECT 1 FROM gateway_settlement_transactions gst
+           JOIN gateway_settlements gs ON gs.id = gst.gateway_settlement_id
+           WHERE gst.payment_transaction_id = pt.id
+             AND gs.settlement_status = 'completed'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM ledger_entries le
+           WHERE le.source_type = 'marketplace' AND le.source_id = pt.order_id
+             AND le.event_type = 'marketplace_merchant_refund_settled'
+         )
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (settledRefundMissingVariant as any[]).length;
+    for (const r of settledRefundMissingVariant as any[]) {
+      push(
+        'marketplace_settled_refund_missing_variant',
+        'CRITICAL',
+        'payment_transaction',
+        Number(r.payment_id),
+        `Marketplace payment ${r.payment_id} (order ${r.order_id}, ${r.amount}) was REFUNDED after gateway settlement but has NO settled-refund posting — the refund was booked against clearing (1100) instead of Bank/Cash (1120)`,
+        'Post the settled refund (marketplace_merchant_refund_settled: Dr 2202/4160 / Cr 1120) and clear the phantom 1100 movement. Do not auto-fix.',
+      );
+    }
+
+    // 5c-3. Settled Marketplace refund whose GL disagrees with the expected
+    // bank/clearing movement. The settled variant CREDITS 1120 by the gross
+    // (refund paid out of the bank) and never touches 1100 — so the expected
+    // state is bank_credit == gross AND clearing net == 0.
+    const [refundBankClearing] = await pool.execute<any[]>(
+      `SELECT pt.id AS payment_id, pt.order_id, pt.amount,
+              COALESCE(SUM(CASE WHEN c.code = '1100' THEN gl.credit - gl.debit ELSE 0 END), 0) AS clearing_net,
+              COALESCE(SUM(CASE WHEN c.code = '1120' THEN gl.credit - gl.debit ELSE 0 END), 0) AS bank_credit
+       FROM payment_transactions pt
+       JOIN ledger_entries le
+         ON le.source_type = 'marketplace'
+        AND le.source_id = pt.order_id
+        AND le.event_type = 'marketplace_merchant_refund_settled'
+       JOIN general_ledger gl ON gl.ledger_entry_id = le.id
+       JOIN chart_of_accounts c ON c.id = gl.account_id
+       WHERE pt.reference_type = 'order'
+       GROUP BY pt.id, pt.order_id, pt.amount
+       ORDER BY pt.id DESC ${limit}`,
+    );
+    itemsChecked += (refundBankClearing as any[]).length;
+    for (const r of refundBankClearing as any[]) {
+      const clearingNet = Math.round(Number(r.clearing_net) * 100) / 100;
+      const bankCredit = Math.round(Number(r.bank_credit) * 100) / 100;
+      const gross = Math.round(Number(r.amount) * 100) / 100;
+      if (bankCredit === gross && clearingNet === 0) continue;
+      push(
+        'marketplace_settled_refund_bank_clearing_inconsistent',
+        'CRITICAL',
+        'payment_transaction',
+        Number(r.payment_id),
+        `Marketplace payment ${r.payment_id} (order ${r.order_id}, ${gross}) has a settled refund but bank credit is ${bankCredit} and 1100 net movement is ${clearingNet} (expected ${gross} and 0)`,
+        'The settled refund must credit 1120 by the gross and never touch 1100. Investigate the journal before any further settlement.',
       );
     }
 

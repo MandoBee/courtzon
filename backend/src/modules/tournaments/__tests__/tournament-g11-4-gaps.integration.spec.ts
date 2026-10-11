@@ -464,15 +464,14 @@ describe('GAP 2 — dismantle idempotency across COMMITTED transactions', () => 
     return { tid, regId, pid, settlementId: Number(batch.settlement.id) };
   }
 
-  /** Runs detachPaymentSettlement in its OWN committed transaction (the real unit of work). */
+  /** Runs the payment-scoped dismantle in its OWN committed transaction (the real unit of work). */
   async function dismantleOnce(paymentId: number): Promise<any> {
     const { getPool } = await import('../../../database/mysql.js');
-    const { tournamentRepository } = await import('../infrastructure/repositories/tournament.repository.js');
     const conn = await getPool().getConnection();
     let committed = false;
     try {
       await conn.beginTransaction();
-      const res = await tournamentRepository.detachPaymentSettlement(paymentId, conn);
+      const res = await gatewaySettlementService.detachPaymentTransaction(paymentId, conn);
       await conn.commit();
       committed = true;
       return res;
@@ -622,8 +621,6 @@ describe('GAP 3 — concurrent dismantle vs settlement creation', () => {
   it('a dismantle racing a settlement creation leaves exactly one consistent outcome', async () => {
     const { pid } = await paidTournamentPayment();
     const { getPool } = await import('../../../database/mysql.js');
-    const { tournamentRepository } = await import('../infrastructure/repositories/tournament.repository.js');
-
     // Both sides start from the SAME unsettled state and race on the payment row.
     const createAttempt = gatewaySettlementService.create({
       paymentTransactionIds: [pid], settledBy: OFFICIAL, notes: 'G11.4 gap 3 race 2',
@@ -634,7 +631,7 @@ describe('GAP 3 — concurrent dismantle vs settlement creation', () => {
       let committed = false;
       try {
         await conn.beginTransaction();
-        const res = await tournamentRepository.detachPaymentSettlement(pid, conn);
+        const res = await gatewaySettlementService.detachPaymentTransaction(pid, conn);
         await conn.commit();
         committed = true;
         return { ok: true, value: res };

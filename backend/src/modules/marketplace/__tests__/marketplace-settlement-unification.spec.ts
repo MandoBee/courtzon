@@ -47,6 +47,9 @@ vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repos
   financialEntitlementRepository: { findBySourceIds: vi.fn(async () => []), create: vi.fn(async () => 1), update: vi.fn(async () => true) },
 }));
 
+vi.mock('../../settlement/application/gateway-settlement.service.js', () => ({
+  gatewaySettlementService: { detachPaymentTransaction: vi.fn(async () => ({ changed: false, paymentDetached: false, lineReleased: false, paymentId: 0, settlementId: null, lineId: null, releasedAmounts: null, before: null, after: null })) },
+}));
 import { marketplaceService } from '../application/marketplace.service.js';
 import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
 import { buildEntitlementInputs } from '../../financial/application/marketplace-entitlement-calc.js';

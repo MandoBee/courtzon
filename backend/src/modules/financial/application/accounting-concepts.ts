@@ -116,6 +116,15 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
     credit: ['payment_clearing'],
   },
+  // SETTLED marketplace merchant refund — after the card payment entered a
+  // COMPLETED gateway batch, the refund is paid out of Bank/Cash (1120); the
+  // clearing account (1100) stays untouched (the G11.4 settled-refund model
+  // applied to marketplace orders). Same reversal concepts as
+  // marketplace_merchant_refund, with `cash_bank` replacing `payment_clearing`.
+  marketplace_merchant_refund_settled: {
+    debit: ['merchant_payable', 'platform_commission', 'tax_liability'],
+    credit: ['cash_bank'],
+  },
   // Wallet-funded marketplace refund — credit wallet_liability, not
   // payment_clearing (card clearing asset was never debited for wallet orders).
   marketplace_wallet_refund: {

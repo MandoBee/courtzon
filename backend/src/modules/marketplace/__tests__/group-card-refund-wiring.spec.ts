@@ -48,6 +48,9 @@ vi.mock('../../audit-log/index.js', () => ({ recordAudit: vi.fn() }));
 vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: { emit: mockEmit, on: vi.fn() } }));
 vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repository.js', () => ({}));
 vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({ marketplaceRepository: repoMock }));
+vi.mock('../../settlement/application/gateway-settlement.service.js', () => ({
+  gatewaySettlementService: { detachPaymentTransaction: vi.fn(async () => ({ changed: false, paymentDetached: false, lineReleased: false, paymentId: 0, settlementId: null, lineId: null, releasedAmounts: null, before: null, after: null })) },
+}));
 
 const GROUP_PT = { id: 777, amount: '1000.00', payment_method: 'card', gateway_reference: 'mock_grp_1' };
 const SINGLE_ORDER_PT = { id: 500, amount: '300.00', payment_method: 'card', gateway_reference: 'mock_1' };

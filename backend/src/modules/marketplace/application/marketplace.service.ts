@@ -15,6 +15,7 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 import { financialEntitlementRepository } from '../../financial/infrastructure/repositories/financial-entitlement.repository.js';
+import { gatewaySettlementService } from '../../settlement/application/gateway-settlement.service.js';
 
 const log = createModuleLogger('marketplace');
 
@@ -1558,6 +1559,14 @@ export const marketplaceService = {
       const gatewayAmount = order.checkout_group_id
         ? Number((paymentTxn as any).amount || amount)
         : amount;
+
+      // G11.4-style PAYMENT-SCOPED detach (shared settlement API): if this card
+      // payment was already received into a COMPLETED gateway batch, remove ONLY
+      // this payment from the active batch BEFORE refunding so the refund books
+      // against Bank/Cash (1120), the 1100 clearing balance stays untouched, and
+      // a later batch reversal can never re-reverse the refunded payment. The
+      // durable HISTORY rows are preserved.
+      await gatewaySettlementService.detachPaymentTransaction(paymentTxn.id);
 
       // Gateway refund failure must surface (throw) — swallowing it let the
       // order claim refunded while the gateway kept the payment (W4).

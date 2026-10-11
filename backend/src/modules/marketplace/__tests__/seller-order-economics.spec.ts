@@ -44,6 +44,9 @@ vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: { emit: vi.fn
 vi.mock('../infrastructure/repositories/marketplace.repository.js', () => ({ marketplaceRepository: repoMock }));
 vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repository.js', () => ({ financialEntitlementRepository: entitlementRepoMock }));
 
+vi.mock('../../settlement/application/gateway-settlement.service.js', () => ({
+  gatewaySettlementService: { detachPaymentTransaction: vi.fn(async () => ({ changed: false, paymentDetached: false, lineReleased: false, paymentId: 0, settlementId: null, lineId: null, releasedAmounts: null, before: null, after: null })) },
+}));
 import { marketplaceService } from '../application/marketplace.service.js';
 
 function round2(n: number) { return Math.round(n * 100) / 100; }

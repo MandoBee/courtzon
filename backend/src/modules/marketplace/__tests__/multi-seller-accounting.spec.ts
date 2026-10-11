@@ -54,6 +54,9 @@ vi.mock('../../financial/infrastructure/repositories/financial-entitlement.repos
   financialEntitlementRepository: { findBySourceIds: vi.fn(async () => []), create: vi.fn(async () => 1), update: vi.fn(async () => true) },
 }));
 
+vi.mock('../../settlement/application/gateway-settlement.service.js', () => ({
+  gatewaySettlementService: { detachPaymentTransaction: vi.fn(async () => ({ changed: false, paymentDetached: false, lineReleased: false, paymentId: 0, settlementId: null, lineId: null, releasedAmounts: null, before: null, after: null })) },
+}));
 import { marketplaceService } from '../application/marketplace.service.js';
 
 // â”€â”€ helpers â”€â”€
@@ -281,18 +284,18 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     ]));
   }
 
-  it('CARD delivery — legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
+  it('CARD delivery â€” legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
     seedConfirmedOrder('card');
     await marketplaceService._recordDeliveryFinancials(6001);
 
-    // The legacy transactions/transaction_entries double-post is retired — the
+    // The legacy transactions/transaction_entries double-post is retired â€” the
     // canonical Accounting Engine is the single source of truth.
     expect(mockCreateTransaction).not.toHaveBeenCalled();
     expect(mockCreateEntries).not.toHaveBeenCalled();
     expect(repoMock.updateCashCollectionStatus).toHaveBeenCalledWith(6001, 'held_by_courtzon');
   });
 
-  it('CASH delivery — legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
+  it('CASH delivery â€” legacy path retired: only cash-collection status, NO legacy transaction/entries', async () => {
     seedConfirmedOrder('cash');
     await marketplaceService._recordDeliveryFinancials(6001);
 
@@ -314,7 +317,7 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     }));
   });
 
-  it('multi-seller delivery — legacy path retired: NO legacy transaction/entries, status-only per order', async () => {
+  it('multi-seller delivery â€” legacy path retired: NO legacy transaction/entries, status-only per order', async () => {
     const mk = (id: number, sellerId: number, subtotal: number, ship: number) => {
       const o: any = {
         id, buyer_id: 777, status: 'delivered', subtotal, shipping_cost: ship,
@@ -331,7 +334,7 @@ describe('accounting: confirm + delivery journals (example: 1000 / 60 / 10%)', (
     repoMock.findOrderById.mockResolvedValueOnce(mk(7002, 20, 300, 30));
     await marketplaceService._recordDeliveryFinancials(7002);
 
-    // Legacy delivery journal removed — canonical engine posts per seller-order.
+    // Legacy delivery journal removed â€” canonical engine posts per seller-order.
     expect(mockCreateEntries).not.toHaveBeenCalled();
     expect(mockCreateTransaction).not.toHaveBeenCalled();
     expect(repoMock.updateCashCollectionStatus).toHaveBeenCalledTimes(2);
@@ -371,7 +374,7 @@ describe('cancellation affects correct sibling orders', () => {
     const cancelled = [...new Set(repoMock.updateOrderStatus.mock.calls.filter((c: any[]) => c[1] === 'cancelled').map((c: any[]) => c[0]))];
     expect(cancelled.sort()).toEqual([8001, 8002]);
 
-    // Phase 2 Step 5: reversal ledger entries removed — stock restoration via restoreStock
+    // Phase 2 Step 5: reversal ledger entries removed â€” stock restoration via restoreStock
     expect(repoMock.restoreStock.mock.calls.length).toBeGreaterThanOrEqual(2);
     const restoredProducts = new Set(repoMock.restoreStock.mock.calls.map((c: any[]) => c[0]));
     expect(restoredProducts).toEqual(new Set([1, 2]));

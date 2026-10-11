@@ -827,14 +827,13 @@ describe('G11.4 — R-1/R-2: refund of an already gateway-settled CARD payment',
     const batch = await gatewaySettle([pidA, pidB]);
     const settlementId = Number(batch.settlement.id);
 
-    // Release A's line directly through the repository (the dismantle path, minus
-    // a refund) so the batch holds one released + one active line.
-    const { tournamentRepository } = await import('../infrastructure/repositories/tournament.repository.js');
+    // Release A's line directly through the shared settlement service (the dismantle
+    // path, minus a refund) so the batch holds one released + one active line.
     const conn = await (await import('../../../database/mysql.js')).getPool().getConnection();
     let committed = false;
     try {
       await conn.beginTransaction();
-      const res = await tournamentRepository.detachPaymentSettlement(pidA, conn);
+      const res = await gatewaySettlementService.detachPaymentTransaction(pidA, conn);
       expect(res.lineReleased).toBe(true);
       expect(res.changed).toBe(true);
       expect(Number(res.releasedAmounts!.gross)).toBe(GROSS);
@@ -843,7 +842,7 @@ describe('G11.4 — R-1/R-2: refund of an already gateway-settled CARD payment',
       expect(Number(res.after!.gross)).toBe(GROSS);
       expect(Number(res.after!.transactionCount)).toBe(1);
       // A second dismantle in the SAME transaction is idempotent: no second release.
-      const again = await tournamentRepository.detachPaymentSettlement(pidA, conn);
+      const again = await gatewaySettlementService.detachPaymentTransaction(pidA, conn);
       expect(again.lineReleased).toBe(false);
       expect(Number(res.after!.gross)).toBe(GROSS);
       await conn.commit();

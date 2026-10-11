@@ -499,23 +499,47 @@ describe('Marketplace Accounting Model — Multi-Book (CourtZon + Organization)'
     await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
   });
 
-  it('K4. CARD REFUND — reverses clearing (1100) AND merchant payable/commission; no bank impact', async () => {
-    const { postMarketplacePaymentAccounting, postMarketplaceRefundAccounting, postGatewaySettlementAccounting } = await import('../application/accounting-event.listener.js') as any;
+  it('K4. CARD REFUND after gateway settlement — approved invariant: 1100 unchanged, refund booked to 1120', async () => {
+    const { postMarketplacePaymentAccounting, postMarketplaceRefundAccounting } = await import('../application/accounting-event.listener.js') as any;
+    const { gatewaySettlementService } = await import('../../settlement/application/gateway-settlement.service.js');
     const clearingId = await accountId('1100');
     const bankId = await accountId('1120');
     const payableId = await accountId('2202');
     const revenueId = await accountId('4160');
     const orderA = await insertOrder({ sellerId: orgA, subtotal: 850, shipping: 50, commission: 42.50 });
-    await postMarketplacePaymentAccounting(orderA, 'card', 'EGP');
-    await postGatewaySettlementAccounting(orderA, 900, 'EGP'); // settled
-    await postMarketplaceRefundAccounting(orderA, 'EGP');      // then refunded
 
-    // Refund reverses the original clearing credit (Cr 1100) and the org book.
-    // Clearing net = 0 (payment Dr 900, settlement Cr 900, refund Cr 900 + ... wait:
-    // refund posts Cr 1100 (marketplace_merchant_refund credit payment_clearing)
-    // but settlement already Cr'd 1100 — so clearing ends net DR 900 - CR 1800 =
-    // -900, which is economically correct: the refunded gross was already settled
-    // to bank. Assert balance and org-book symmetry instead of a naive zero.
+    // Real paid card payment, settled through the SHARED gateway-settlement API.
+    await pool.execute(
+      `INSERT IGNORE INTO payment_methods (id, slug, name, description, processing_fee_pct, processing_fee_fixed, requires_approval, is_active, sort_order)
+       SELECT 3, 'card', 'Credit/Debit Card', 'Pay securely', 2.50, 1.00, 0, 1, 3 FROM DUAL
+       WHERE NOT EXISTS (SELECT 1 FROM payment_methods WHERE slug = 'card')`,
+    );
+    const [pay] = await pool.execute<mysql.ResultSetHeader>(
+      `INSERT INTO payment_transactions
+         (user_id, order_id, reference_type, reference_id, payment_method, gateway_provider, gateway_reference, amount, currency, payment_status, paid_at, trace_id)
+       VALUES (1, ?, 'order', ?, 'card', 'mock', ?, 900, 'EGP', 'paid', NOW(), UUID())`,
+      [orderA, orderA, `mp_k4_${Date.now()}`],
+    );
+    const pid = Number((pay as any).insertId);
+    const created = await gatewaySettlementService.create({ paymentTransactionIds: [pid], settledBy: 1, notes: 'mp-model-k4-settled' });
+    const settlementId = Number(created?.settlement?.id);
+    expect(settlementId).toBeGreaterThan(0);
+
+    await postMarketplacePaymentAccounting(orderA, 'card', 'EGP');
+    await postMarketplaceRefundAccounting(orderA, 'EGP', pid); // settled → Cr 1120
+
+    // APPROVED POLICY (2026-10-11): after gateway settlement the refund leaves 1100
+    // UNCHANGED and is recorded against 1120 (Cr 1120 gross). The gateway fee
+    // (2.5% + E£1.00 on 900 = 23.50) is non-refundable, so bank nets to −fee.
+    const clearing = await bookSums(clearingId, orderA, null);
+    const clearingSettle = await settlementSums(clearingId, settlementId, null);
+    // 1100: payment Dr 900, settlement Cr 900, refund MUST NOT add a 1100 leg.
+    expect(clearing.debit - clearingSettle.credit - clearing.credit).toBe(0);
+    const bank = await bookSums(bankId, orderA, null);
+    const bankSettle = await settlementSums(bankId, settlementId, null);
+    // 1120: settlement Dr 876.50, refund Cr 900 → bank = −23.50 (net − gross = −fee).
+    expect(bankSettle.debit - bank.credit).toBeCloseTo(-23.50, 2);
+
     const bal = await orderBalance(orderA);
     expect(bal.d).toBe(bal.c);
     // Org book fully netted to zero by the refund reversal.
@@ -525,6 +549,12 @@ describe('Marketplace Accounting Model — Multi-Book (CourtZon + Organization)'
     }
     const orgRecvA = await orgAccountId(orgA, '1161');
     expect((await bookSums(orgRecvA, orderA, orgA)).debit - (await bookSums(orgRecvA, orderA, orgA)).credit).toBe(0);
+
+    // Cleanup: payment linkage → settlement → payment → order.
+    await pool.execute(`UPDATE payment_transactions SET gateway_settlement_id = NULL WHERE id = ?`, [pid]);
+    await pool.execute(`DELETE FROM gateway_settlement_transactions WHERE gateway_settlement_id = ?`, [settlementId]);
+    await pool.execute(`DELETE FROM gateway_settlements WHERE id = ?`, [settlementId]);
+    await pool.execute(`DELETE FROM payment_transactions WHERE id = ?`, [pid]);
     await pool.execute(`DELETE FROM order_items WHERE order_id=?`, [orderA]);
     await pool.execute(`DELETE FROM orders WHERE id=?`, [orderA]);
   });

@@ -104,10 +104,10 @@ describe('G11.4 — settled-refund accounting concept (R-1: bank leg, non-refund
 });
 
 describe('G11.4 — R-2 payment-scoped settlement dismantle', () => {
-  const repo = be('src/modules/tournaments/infrastructure/repositories/tournament.repository.ts');
+  const settlementServiceSrc = be('src/modules/settlement/application/gateway-settlement.service.ts');
 
   it('the dismantle releases the active line under a row lock and keeps the history row', () => {
-    const fn = method(repo, 'async detachPaymentSettlement(paymentId: number, conn?: PoolConnection)', '  ');
+    const fn = method(settlementServiceSrc, 'async detachPaymentTransaction(paymentId: number, conn?: mysql.PoolConnection): Promise<SettlementDismantleResult> {', '  ');
     // Find the ACTIVE line by the uk_gst_active_payment identity, FOR UPDATE.
     expect(fn).toContain('WHERE active_payment_transaction_id = ?');
     // Only the ACTIVE POINTER is cleared — the line row itself is never deleted.
@@ -117,7 +117,7 @@ describe('G11.4 — R-2 payment-scoped settlement dismantle', () => {
   });
 
   it('the dismantle reduces the header to its ACTIVE remainder with underflow guards', () => {
-    const fn = method(repo, 'async detachPaymentSettlement(paymentId: number, conn?: PoolConnection)', '  ');
+    const fn = method(settlementServiceSrc, 'async detachPaymentTransaction(paymentId: number, conn?: mysql.PoolConnection): Promise<SettlementDismantleResult> {', '  ');
     expect(fn).toContain('UPDATE gateway_settlements');
     expect(fn).toContain('gross_amount = GREATEST(gross_amount - ?, 0)');
     expect(fn).toContain('gateway_fee_amount = GREATEST(gateway_fee_amount - ?, 0)');
@@ -126,7 +126,7 @@ describe('G11.4 — R-2 payment-scoped settlement dismantle', () => {
   });
 
   it('the dismantle locks payment, header and line, and verifies ownership before mutating', () => {
-    const fn = method(repo, 'async detachPaymentSettlement(paymentId: number, conn?: PoolConnection)', '  ');
+    const fn = method(settlementServiceSrc, 'async detachPaymentTransaction(paymentId: number, conn?: mysql.PoolConnection): Promise<SettlementDismantleResult> {', '  ');
     expect(fn).toContain('FROM payment_transactions WHERE id = ? FOR UPDATE');
     expect(fn).toContain('FROM gateway_settlements WHERE id = ? FOR UPDATE');
     expect(fn).toContain('does not belong to payment');
@@ -134,7 +134,7 @@ describe('G11.4 — R-2 payment-scoped settlement dismantle', () => {
   });
 
   it('the dismantle posts NO accounting journal and returns pre/post header snapshots for audit', () => {
-    const fn = method(repo, 'async detachPaymentSettlement(paymentId: number, conn?: PoolConnection)', '  ');
+    const fn = method(settlementServiceSrc, 'async detachPaymentTransaction(paymentId: number, conn?: mysql.PoolConnection): Promise<SettlementDismantleResult> {', '  ');
     expect(fn).not.toContain('postAccountingEvent');
     expect(fn).not.toContain('postGatewaySettlement');
     expect(fn).toContain('result.before = {');
@@ -143,7 +143,7 @@ describe('G11.4 — R-2 payment-scoped settlement dismantle', () => {
   });
 
   it('the dismantle is idempotent: the header is only reduced when THIS call released the line', () => {
-    const fn = method(repo, 'async detachPaymentSettlement(paymentId: number, conn?: PoolConnection)', '  ');
+    const fn = method(settlementServiceSrc, 'async detachPaymentTransaction(paymentId: number, conn?: mysql.PoolConnection): Promise<SettlementDismantleResult> {', '  ');
     expect(fn).toContain('WHERE id = ? AND active_payment_transaction_id = ?');
     expect(fn).toContain('if ((rel as any).affectedRows === 1) {');
     // Payment detach stays a guarded UPDATE (idempotent by construction).
@@ -152,7 +152,7 @@ describe('G11.4 — R-2 payment-scoped settlement dismantle', () => {
 
   it('the refund service keeps the G11.3 call site and audits the dismantle inside the transaction', () => {
     const svc = be('src/modules/tournaments/application/tournament-refund.service.ts');
-    expect(svc).toContain('detachPaymentSettlement(paymentId, conn)');
+    expect(svc).toContain('detachPaymentTransaction(paymentId, conn)');
     expect(svc).not.toContain('gatewaySettlementService.reverse');
     expect(svc).toContain("action: 'TOURNAMENT.SETTLEMENT_DISMANTLED'");
     expect(svc).toContain('beforeState:');

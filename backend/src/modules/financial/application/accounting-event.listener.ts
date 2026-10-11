@@ -443,7 +443,7 @@ async function postGatewaySettlementReversalAccounting(
   );
 }
 
-async function postMarketplaceRefundAccounting(orderId: number, currency: string): Promise<void> {
+async function postMarketplaceRefundAccounting(orderId: number, currency: string, paymentId?: number): Promise<void> {
   const orderIds = await resolveCheckoutOrderIds(orderId);
   for (const oid of orderIds) {
     const econ = await resolveOrderEconomics(oid);
@@ -454,26 +454,39 @@ async function postMarketplaceRefundAccounting(orderId: number, currency: string
     // Reverse the CourtZon book (merchant payable control + commission + tax)
     // and the organization book.
     const isWallet = econ.paymentMethod === 'wallet';
-    const eventType = isWallet ? 'marketplace_wallet_refund' : 'marketplace_merchant_refund';
+    // G11.4-style settled detection for CARD refunds: once this order's card
+    // payment entered a COMPLETED gateway batch, the refund is paid out of the
+    // bank (Cr 1120) and 1100 must stay untouched. The DURABLE settlement
+    // history is authoritative — never `payment_transactions.gateway_settlement_id`,
+    // which the payment-scoped detach clears before the refund runs.
+    const wasSettled = !isWallet && paymentId
+      ? await tournamentPaymentWasGatewaySettled(paymentId)
+      : false;
+    const eventType = isWallet ? 'marketplace_wallet_refund'
+      : wasSettled ? 'marketplace_merchant_refund_settled'
+      : 'marketplace_merchant_refund';
     const totalPayable = Math.round((econ.merchantNet + econ.shipping) * 100) / 100;
+    const conceptAmounts: Record<string, number> = {
+      merchant_payable: totalPayable,
+      platform_commission: econ.commission,
+      tax_liability: econ.tax,
+      ...(isWallet ? { wallet_liability: econ.grossAmount }
+        : wasSettled ? { cash_bank: econ.grossAmount }
+        : { payment_clearing: econ.grossAmount }),
+    };
     await postAccountingEvent(
       eventType, 'marketplace', oid, null,
-      {
-        merchant_payable: totalPayable,
-        platform_commission: econ.commission,
-        tax_liability: econ.tax,
-        payment_clearing: isWallet ? 0 : econ.grossAmount,
-        wallet_liability: isWallet ? econ.grossAmount : 0,
-      },
+      conceptAmounts,
       currency,
-      `Order #${oid} refunded (custody reversal)`,
+      `Order #${oid} refunded (custody reversal${wasSettled ? ' — settled cash leg' : ''})`,
       undefined,
       {
         merchant_payable: null,
         platform_commission: null,
-        payment_clearing: null,
         tax_liability: null,
-        wallet_liability: null,
+        ...(isWallet ? { wallet_liability: null }
+          : wasSettled ? { cash_bank: null }
+          : { payment_clearing: null }),
       },
     );
     await postOrganisationBookReversalAccounting(econ, currency, oid);
@@ -2520,8 +2533,11 @@ export function registerAccountingEventListeners(): void {
 
       // ── Marketplace order refund → custody-correct reversal ──
       // Reverse merchant payable + commission + tax, not generic revenue_contra.
+      // For CARD refunds the variant is settled-unaware: pass the paymentId so
+      // postMarketplaceRefundAccounting can pick the bank (1120) leg when the
+      // payment was received into a completed gateway batch.
       if (referenceType === 'order') {
-        await postMarketplaceRefundAccounting(Number(referenceId), currency);
+        await postMarketplaceRefundAccounting(Number(referenceId), currency, Number(data.paymentId) || undefined);
         return;
       }
 
