@@ -9,6 +9,7 @@ import { tournamentEligibilityService } from './tournament-eligibility.service.j
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import { enforcePairGenderRule } from '../domain/tournament-pair-gender.js';
 import { competitionService } from './competition.service.js';
+import { enforcePlayerEventLimit } from './registration-limit.js';
 import { competitionRepository } from '../infrastructure/repositories/competition.repository.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/app-error.js';
@@ -332,6 +333,11 @@ export class ParticipantMemberService {
         await this.assertMemberEligible(t, tournamentId, userId, { conn, competition });
       }
 
+      // Phase 3 — every member must be within their own per-player event limit.
+      // Checked under the tournament-row lock BEFORE any insert so a pair/team
+      // with an over-limit member fails atomically (nothing partial is written).
+      await enforcePlayerEventLimit(t, tournamentId, conn, members);
+
       // One authoritative registration (the participant entry). Payment stays
       // tied to this single entry — never a separate payment per team member.
       const primaryUserId = members[0];
@@ -445,6 +451,9 @@ export class ParticipantMemberService {
     try {
       await conn.beginTransaction();
       await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+      // Phase 3 — adding a member makes them a participant in the event; check
+      // their own per-player limit under the same lock before the write.
+      await enforcePlayerEventLimit(t, tournamentId, conn, [userId]);
       await this.addMemberTransactional(tournamentId, participantId, userId, conn);
       await conn.commit();
     } catch (err) {

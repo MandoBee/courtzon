@@ -99,6 +99,8 @@ export const CreateTournamentSchema = z.object({
   registration_payment_methods: RegistrationPaymentMethodsSchema.optional(),
   /** Group 6 — when full and enabled, new registrations enter a FIFO waitlist. */
   waitlist_enabled: z.boolean().optional().default(false),
+  /** Phase 3 — max events a player may enter in this tournament; NULL = unlimited (default). */
+  max_events_per_player: z.number().int().min(1).nullable().optional(),
   // Commission is ALWAYS derived server-side from the organisation's active
   // subscription/plan (Group 5B-SR). The field is intentionally NOT part of the
   // schema — zod strips any client-supplied commission_rate so it can never
@@ -181,6 +183,8 @@ export const UpdateTournamentSchema = z.object({
   price_type: z.enum(['FREE', 'FIXED', 'MEMBERS_ONLY']).optional(),
   registration_payment_methods: RegistrationPaymentMethodsSchema.optional(),
   waitlist_enabled: z.boolean().optional(),
+  /** Phase 3 — max events per player; omit = unchanged, explicit null = unlimited. */
+  max_events_per_player: z.number().int().min(1).nullable().optional(),
   // commission_rate is immutable once a tournament is created — it is the
   // historical economic snapshot of the rate in force at creation (Group 5B-SR).
   // Not part of the schema: updates can never change it.

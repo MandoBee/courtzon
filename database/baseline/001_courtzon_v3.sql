@@ -6196,6 +6196,7 @@ CREATE TABLE `tournaments` (
   `tournament_type` enum('community') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'community' COMMENT 'Organisation-owned competition type. CourtZon never owns a tournament — an organisation always does.',
   `max_participants` int unsigned NOT NULL,
   `max_teams` int unsigned DEFAULT NULL,
+  `max_events_per_player` int unsigned DEFAULT NULL COMMENT 'Max events a player may enter in this tournament; NULL = unlimited (default)',
   `min_participants` int unsigned NOT NULL DEFAULT '2',
   `entry_fee` decimal(12,2) NOT NULL DEFAULT '0.00',
   `registration_fee` decimal(12,2) NOT NULL DEFAULT '0.00',

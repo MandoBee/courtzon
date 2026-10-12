@@ -25,6 +25,7 @@ import type { PoolConnection } from 'mysql2/promise';
 import { withTransaction, runProvidedTransaction } from '../../../database/database.transaction.js';
 import { tournamentEligibilityService } from './tournament-eligibility.service.js';
 import { mapRegistrationDuplicateError } from './registration-duplicate.js';
+import { enforcePlayerEventLimit } from './registration-limit.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
 import { formatSportRules } from '../../match-result/application/rules/format-rules.js';
@@ -2186,6 +2187,10 @@ export class TournamentService {
       // atomic in ONE transaction: rollback leaves no registration, no
       // participant and no snapshot. Payments run AFTER the commit below.
       await runProvidedTransaction(conn, async () => {
+        // Phase 3 — serialize per tournament and enforce the per-player event
+        // limit BEFORE writing (count + insert share this transaction + lock).
+        await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+        await enforcePlayerEventLimit(t, tournamentId, conn, [userId]);
         id = await tournamentRepository.createRegistration({
           tournament_id: tournamentId,
           competition_id: competition?.id ?? null,

@@ -40,6 +40,7 @@ type TournamentForm = {
   ruleSetId?: string;
   maxParticipants: string;
   minParticipants?: string;
+  maxEventsPerPlayer?: string;
   entryFee?: string;
   startDate: string;
   endDate?: string;
@@ -150,6 +151,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
           ruleSetId: z.string().optional(),
           maxParticipants: z.string().min(1, t('tournaments.create.validation.max_players')),
           minParticipants: z.string().optional(),
+          maxEventsPerPlayer: z
+            .string()
+            .optional()
+            .refine((v) => v === undefined || v === '' || (Number(v) >= 1 && Number.isInteger(Number(v))), {
+              message: t('tournaments.create.validation.events_limit', 'Must be a positive integer, or leave blank for unlimited'),
+            }),
           entryFee: z.string().optional(),
           startDate: z.string().min(1, t('tournaments.create.validation.start_date')),
           endDate: z.string().optional(),
@@ -184,6 +191,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       organisationId: isOrg ? (orgId ?? '') : '',
       bracketTypeId: '',
       maxParticipants: '16',
+      maxEventsPerPlayer: '',
     },
   });
 
@@ -333,6 +341,9 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       rule_set_id: data.ruleSetId ? Number(data.ruleSetId) : undefined,
       max_participants: Number(data.maxParticipants),
       min_participants: data.minParticipants ? Number(data.minParticipants) : 2,
+      max_events_per_player: data.maxEventsPerPlayer === '' || data.maxEventsPerPlayer == null
+        ? null
+        : Number(data.maxEventsPerPlayer),
       entry_fee: data.entryFee ? Number(data.entryFee) : 0,
       registration_payment_methods: paymentMethods.length ? paymentMethods : ['cash', 'card'],
       currency_code: undefined,
@@ -719,6 +730,17 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                   <Can permission="tournaments.create.max-participants">
                     <Input label={t('tournaments.create.max_players')} type="number" min={2} {...register('maxParticipants')} error={errors.maxParticipants?.message} />
                   </Can>
+                  {/** Phase 3 — per-player event limit (blank = unlimited). */}
+                  <Can permission="tournaments.create.max-participants">
+                    <Input
+                      label={t('tournaments.create.max_events_per_player')}
+                      type="number"
+                      min={1}
+                      placeholder={t('tournaments.create.max_events_unlimited', 'Unlimited')}
+                      {...register('maxEventsPerPlayer')}
+                      error={errors.maxEventsPerPlayer?.message}
+                    />
+                  </Can>
                   <Can permission="tournaments.create.min-participants">
                     <Input label={t('tournaments.create.min_players')} type="number" min={1} {...register('minParticipants')} error={errors.minParticipants?.message} />
                   </Can>
@@ -970,6 +992,7 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                   rows={[
                     { label: t('tournaments.create.max_players'), value: values.maxParticipants || '-' },
                     { label: t('tournaments.create.min_players'), value: values.minParticipants || '-' },
+                    { label: t('tournaments.create.max_events_per_player'), value: values.maxEventsPerPlayer && values.maxEventsPerPlayer !== '' ? values.maxEventsPerPlayer : t('tournaments.create.max_events_unlimited', 'Unlimited') },
                     { label: t('tournaments.create.registration_opens'), value: values.registrationOpens || '-' },
                     { label: t('tournaments.create.registration_closes'), value: values.registrationCloses || '-' },
                   ]}

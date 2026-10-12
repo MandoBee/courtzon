@@ -18,6 +18,7 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { emitTournamentScoped } from './tournament-realtime-scope.js';
 import { tournamentEligibilityService } from './tournament-eligibility.service.js';
 import { competitionService } from './competition.service.js';
+import { enforcePlayerEventLimit } from './registration-limit.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ratingRepository } from '../../match-result/infrastructure/rating.repository.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
@@ -811,6 +812,12 @@ export class ParticipantDrawService {
       }
       await participantDrawRepository.updateParticipantStatus(head.id!, 'active', conn);
       await participantDrawRepository.updateParticipantWaitingOrder(head.id!, null, conn);
+      // Phase 3 — promotion turns a waitlisted entry into an ACTIVE event for its
+      // members; check each member's per-player limit under the tournament lock
+      // (count + the registered-status flip below share this transaction).
+      if (headMembers.length > 0) {
+        await enforcePlayerEventLimit(t, tournamentId, conn, headMembers);
+      }
       if (head.registration_id != null) {
         await tournamentRepository.updateRegistrationStatus(head.registration_id, 'registered', undefined, conn);
         await tournamentRepository.updateRegistrationWaitingOrder(head.registration_id, null, conn);

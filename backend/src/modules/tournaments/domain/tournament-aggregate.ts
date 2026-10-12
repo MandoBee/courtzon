@@ -453,6 +453,8 @@ export interface Tournament {
   tournament_type?: string;
   max_participants: number;
   max_teams?: number;
+  /** Phase 3 — max events a player may enter in this tournament; NULL/absent = unlimited (default). */
+  max_events_per_player?: number | null;
   min_participants?: number;
   entry_fee?: number;
   registration_fee?: number;

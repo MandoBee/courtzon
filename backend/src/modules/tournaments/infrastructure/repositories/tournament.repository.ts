@@ -380,8 +380,8 @@ export class TournamentRepository {
     if (data.tournament_type != null && data.tournament_type !== 'community') {
       throw new Error(`Tournament repository invariant violated: unsupported tournament_type "${data.tournament_type}" — expected "community"`);
     }
-    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, venue_type, venue_name, venue_address, venue_city, venue_country, latitude, longitude, place_id, venue_contact, maps_url, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids)
-                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, venue_type, venue_name, venue_address, venue_city, venue_country, latitude, longitude, place_id, venue_contact, maps_url, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids, max_events_per_player)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const [result] = await getPool().query<ResultSet>(sql, [
       data.creator_id, data.organisation_id, data.branch_id ?? null,
       data.venue_type ?? null, data.venue_name ?? null, data.venue_address ?? null, data.venue_city ?? null,
@@ -410,6 +410,7 @@ export class TournamentRepository {
       this.stringifyEligibilityArray(data.age_category_ids),
       this.stringifyEligibilityArray(data.gender_categories as unknown as string[]),
       this.stringifyEligibilityArray(data.level_ids),
+      data.max_events_per_player ?? null,
     ]);
     return (result as any).insertId;
   }
@@ -426,7 +427,7 @@ export class TournamentRepository {
       'latitude', 'longitude', 'place_id', 'venue_contact', 'maps_url',
       'bracket_type_id', 'format', 'category', 'season',
       'sport_id', 'match_format_id', 'rule_set_id', 'name', 'code', 'description',
-      'max_participants', 'max_teams', 'min_participants', 'entry_fee', 'registration_fee',
+      'max_participants', 'max_teams', 'max_events_per_player', 'min_participants', 'entry_fee', 'registration_fee',
       'currency_code', 'price_type', 'registration_payment_methods', 'waitlist_enabled', 'prize_description',
       'status', 'is_public', 'registration_opens', 'registration_closes',
       'start_date', 'end_date', 'daily_start_time', 'daily_end_time',
@@ -568,6 +569,37 @@ export class TournamentRepository {
       [tournamentId],
     );
     return (rows as Record<string, unknown>[]).map((r) => this.mapRegistrationRow(r));
+  }
+
+  /**
+   * Phase 3 — count the DISTINCT ACTIVE event registrations a player holds in a
+   * tournament, across ALL competitions.
+   *
+   * Counting rule (verified joins against the real schema):
+   *   - a registration counts once per player when `registrations.player_id`
+   *     equals the player (Singles, and the pair/team primary), OR
+   *   - the player is a row in `tournament_participant_members.user_id`
+   *     (the non-primary members of a pair/team), joined through the
+   *     participant's registration.
+   *   - `COUNT(DISTINCT r.id)` guarantees a registration that carries the player
+   *     in BOTH representations is counted exactly once.
+   *   - Only `status IN ('registered','confirmed')` consume allowance: `waiting`
+   *     (waitlist — no slot), `withdrawn` (released by successful pre-start
+   *     cancellation), `disqualified` (released) do not.
+   */
+  async countActiveEventRegistrationsForPlayer(tournamentId: number, playerId: number, conn?: PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      `SELECT COUNT(DISTINCT r.id) AS c
+       FROM tournament_registrations r
+       LEFT JOIN tournament_participants p ON p.registration_id = r.id
+       LEFT JOIN tournament_participant_members m ON m.participant_id = p.id
+       WHERE r.tournament_id = ?
+         AND r.status IN ('registered', 'confirmed')
+         AND (r.player_id = ? OR m.user_id = ?)`,
+      [tournamentId, playerId, playerId],
+    );
+    return Number((rows as any[])[0]?.c ?? 0);
   }
 
   async findRegistrationsByPlayer(userId: number): Promise<TournamentRegistration[]> {
