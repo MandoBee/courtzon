@@ -54,6 +54,13 @@ const pdRepo = vi.hoisted(() => ({
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdRepo }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
+vi.mock('../../../database/database.transaction.js', () => ({
+  withTransaction: (fn: any) => fn(pool),
+  runProvidedTransaction: (_conn: any, fn: any) => fn(),
+  onAfterCommit: vi.fn(),
+  isInTransaction: () => true,
+  flushAfterCommitHooks: vi.fn(),
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
@@ -117,14 +124,14 @@ describe('Group 3 — Tournament registration payment-method configuration', () 
   it('1. Cash-only configuration is persisted and effective (Cash only)', async () => {
     repo.findById.mockResolvedValue(makeTournament({ id: 10, registration_payment_methods: ['cash'] }));
     await svc.create(makeTournament({ registration_payment_methods: ['cash'] }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash'] }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash'] }), expect.anything());
     const eff = await svc.resolveEffectiveRegistrationPaymentMethods({ organisation_id: undefined, registration_payment_methods: ['cash'] });
     expect(eff).toEqual(['cash']);
   });
 
   it('2. Card-only configuration is persisted and effective (Card only)', async () => {
     await svc.create(makeTournament({ registration_payment_methods: ['card'] }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['card'] }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['card'] }), expect.anything());
     const eff = await svc.resolveEffectiveRegistrationPaymentMethods({ organisation_id: undefined, registration_payment_methods: ['card'] });
     expect(eff).toEqual(['card']);
   });
@@ -132,7 +139,7 @@ describe('Group 3 — Tournament registration payment-method configuration', () 
   it('3. Both configuration is persisted and effective', async () => {
     await svc.create(makeTournament({ registration_payment_methods: ['card', 'cash'] }), 1);
     // Order is normalised deterministically: cash before card.
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash', 'card'] }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash', 'card'] }), expect.anything());
     const eff = await svc.resolveEffectiveRegistrationPaymentMethods({ organisation_id: undefined, registration_payment_methods: ['cash', 'card'] });
     expect(eff).toEqual(['cash', 'card']);
   });
@@ -161,13 +168,13 @@ describe('Group 3 — Tournament registration payment-method configuration', () 
 
   it('8. duplicate methods are normalised (no duplicates, deterministic order)', async () => {
     await svc.create(makeTournament({ registration_payment_methods: ['card', 'cash', 'cash'] as any }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash', 'card'] }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash', 'card'] }), expect.anything());
   });
 
   it('9. backward-compatible default: missing/legacy config resolves to both methods', async () => {
     // Create without any config → both methods.
     await svc.create(makeTournament({ registration_payment_methods: undefined }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash', 'card'] }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ registration_payment_methods: ['cash', 'card'] }), expect.anything());
     // Legacy row (NULL JSON in DB) → read as both methods via getById/getByIdDetailed.
     repo.findById.mockResolvedValue(makeTournament({ registration_payment_methods: null as any }));
     const t = await svc.getById(10);

@@ -78,6 +78,16 @@ vi.mock('../../notifications/application/scheduler.service.js', () => ({
   tournamentReminderJobId: (tournamentId: number, userId: number) => `tournament-reminder-${tournamentId}-${userId}`,
 }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
+// Step 4A — `create()` now wraps its write set in `withTransaction`. Unit tests
+// run without a real pool, so the transaction is faked onto the mock pool; the
+// repositories are mocked and ignore the connection.
+vi.mock('../../../database/database.transaction.js', () => ({
+  withTransaction: (fn: any) => fn(pool),
+  runProvidedTransaction: (_conn: any, fn: any) => fn(),
+  onAfterCommit: vi.fn(),
+  isInTransaction: () => true,
+  flushAfterCommitHooks: vi.fn(),
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
@@ -186,7 +196,7 @@ describe('Group 4 — registration deadline validation', () => {
 describe('Group 4 — daily playing window validation', () => {
   it('6. accepts a valid daily window (start < end)', async () => {
     await svc.create(makeTournament({ start_date: '2026-12-01', daily_start_time: '09:00:00', daily_end_time: '21:00:00' }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ daily_start_time: '09:00:00', daily_end_time: '21:00:00' }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ daily_start_time: '09:00:00', daily_end_time: '21:00:00' }), expect.anything());
   });
 
   it('7. rejects a daily window with start >= end', async () => {

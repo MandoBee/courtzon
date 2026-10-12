@@ -89,8 +89,9 @@ export class CompetitionRepository {
     return rows.length ? (rows[0] as TournamentCompetition) : null;
   }
 
-  async findByTournament(tournamentId: number): Promise<TournamentCompetition[]> {
-    const [rows] = await getPool().query<RowData>(
+  async findByTournament(tournamentId: number, conn?: import('mysql2/promise').PoolConnection): Promise<TournamentCompetition[]> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       'SELECT * FROM tournament_competitions WHERE tournament_id = ? ORDER BY is_default DESC, id ASC',
       [tournamentId],
     );

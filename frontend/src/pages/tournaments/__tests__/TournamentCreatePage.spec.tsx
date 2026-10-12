@@ -645,6 +645,157 @@ describe('Creation Wizard — review & submit', () => {
     expect(payload.commission_rate).toBeUndefined();
   });
 
+  it('Step 4B — a multi-competition split hides prize entry, explains per-competition assignment, and sends no prizes', async () => {
+    renderPage(ALL);
+    // Walk to the Rules & Eligibility step (displayed step 5).
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'UAT Split Cup' } });
+    await clickContinueAndAwait(2); // Format
+    await clickSingleElimination();
+    await clickContinueAndAwait(3); // Participants
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+    await clickContinueAndAwait(4); // Schedule
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5); // Rules & Eligibility
+
+    // Request a per-gender age-category split: Male U14 + Female U14 → exactly 2 competitions.
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.age.categories.title'));
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.gender.male'));
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.gender.female'));
+    const u14Boxes = screen.getAllByLabelText('tournaments.eligibility.age.categories.u14');
+    expect(u14Boxes.length).toBe(2); // one per gender block (male, then female)
+    fireEvent.click(u14Boxes[0]);
+    fireEvent.click(u14Boxes[1]);
+
+    await clickContinueAndAwait(6); // Payments
+    await clickContinueAndAwait(7); // Prizes
+    // Prize entry is NOT offered — the localized explanation is shown instead.
+    expect(screen.getByText('tournaments.wizard.prizes.multi_title')).toBeTruthy();
+    expect(screen.getByText('tournaments.wizard.prizes.multi_note')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('e.g. 1st place prize')).toBeNull();
+    await clickContinueAndAwait(8); // Review
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
+
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [url, payload] = (api.post as any).mock.calls[0] as [string, any];
+    expect(url).toBe('/org/6/tournaments');
+    // A requested split is signalled explicitly …
+    expect(payload.generate_competitions).toBe(true);
+    // … every planned competition carries its stable addressing key …
+    expect(Array.isArray(payload.competitions)).toBe(true);
+    expect(payload.competitions.length).toBe(2);
+    for (const c of payload.competitions) {
+      expect(typeof c.key).toBe('string');
+      expect(c.key.length).toBeGreaterThan(0);
+    }
+    expect(new Set(payload.competitions.map((c: any) => c.key)).size).toBe(2);
+    // … and no untargeted prizes are sent (assigned per competition after creation).
+    expect(payload.prizes).toBeUndefined();
+  });
+
+  it('Step 4B — a single generated competition keeps the prize editor', async () => {
+    renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Single Comp Cup' } });
+    await clickContinueAndAwait(2); // Format
+    await clickSingleElimination();
+    await clickContinueAndAwait(3); // Participants
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+    await clickContinueAndAwait(4); // Schedule
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5); // Rules & Eligibility
+
+    // One gender + one age category → exactly ONE generated competition.
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.age.categories.title'));
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.gender.male'));
+    const singleU14 = screen.getAllByLabelText('tournaments.eligibility.age.categories.u14');
+    expect(singleU14.length).toBe(1); // only the male block is shown
+    fireEvent.click(singleU14[0]);
+
+    await clickContinueAndAwait(6); // Payments
+    await clickContinueAndAwait(7); // Prizes
+    // Single competition → the legacy prize editor is retained.
+    expect(screen.queryByText('tournaments.wizard.prizes.multi_note')).toBeNull();
+    expect(screen.getByPlaceholderText('e.g. 1st place prize')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'tournaments.wizard.prizes.multi_clear' })).toBeNull();
+  });
+
+  it('Step 4B — entering prizes in single mode, then switching to a multi-competition split, never silently discards them', async () => {
+    renderPage(ALL);
+    // Walk to Prizes (displayed step 7) in legacy/single mode and enter a prize.
+    await walkTo(6);
+    fireEvent.change(screen.getByPlaceholderText('e.g. 1st place prize'), { target: { value: 'Champion prize' } });
+
+    // Back to Rules & Eligibility (displayed step 5) and request a 2-competition split.
+    fireEvent.click(backBtn());
+    await screen.findByText('Step 6 of 8');
+    fireEvent.click(backBtn());
+    await screen.findByText('Step 5 of 8');
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.age.categories.title'));
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.gender.male'));
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.gender.female'));
+    const u14Boxes = screen.getAllByLabelText('tournaments.eligibility.age.categories.u14');
+    expect(u14Boxes.length).toBe(2);
+    fireEvent.click(u14Boxes[0]);
+    fireEvent.click(u14Boxes[1]);
+
+    await clickContinueAndAwait(6); // Payments
+    await clickContinueAndAwait(7); // Prizes
+    // Prize entry is hidden, the explanation is shown, and the entered prize is
+    // still tracked (explicit warning + Clear button — nothing auto-discarded).
+    expect(screen.getByText('tournaments.wizard.prizes.multi_note')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('e.g. 1st place prize')).toBeNull();
+    expect(screen.getByText('tournaments.wizard.prizes.multi_existing')).toBeTruthy();
+    const clearBtn = screen.getByRole('button', { name: 'tournaments.wizard.prizes.multi_clear' });
+    expect(clearBtn).toBeTruthy();
+
+    // Explicit transition: the user clears the retained prizes.
+    fireEvent.click(clearBtn);
+    expect(screen.queryByText('tournaments.wizard.prizes.multi_existing')).toBeNull();
+
+    // Continue and submit: no untargeted prizes are sent.
+    await clickContinueAndAwait(8); // Review
+    expect(screen.getByText('tournaments.wizard.prizes.multi_review')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [, payload] = (api.post as any).mock.calls[0] as [string, any];
+    expect(payload.prizes).toBeUndefined();
+    expect(payload.competitions.length).toBe(2);
+  });
+
+  it('Step 4B — switching back to single-competition mode restores the prize editor with retained prizes', async () => {
+    renderPage(ALL);
+    await walkTo(6);
+    fireEvent.change(screen.getByPlaceholderText('e.g. 1st place prize'), { target: { value: 'Champion prize' } });
+
+    // Switch to a 2-competition split.
+    fireEvent.click(backBtn());
+    await screen.findByText('Step 6 of 8');
+    fireEvent.click(backBtn());
+    await screen.findByText('Step 5 of 8');
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.age.categories.title'));
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.gender.male'));
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.gender.female'));
+    const u14Boxes = screen.getAllByLabelText('tournaments.eligibility.age.categories.u14');
+    fireEvent.click(u14Boxes[0]);
+    fireEvent.click(u14Boxes[1]);
+    await clickContinueAndAwait(6); // Payments
+    await clickContinueAndAwait(7); // Prizes
+    // Split mode: prizes retained, not silently dropped.
+    expect(screen.getByText('tournaments.wizard.prizes.multi_existing')).toBeTruthy();
+
+    // Back to Rules and revert to the legacy open-age single competition.
+    fireEvent.click(backBtn());
+    await screen.findByText('Step 6 of 8');
+    fireEvent.click(backBtn());
+    await screen.findByText('Step 5 of 8');
+    fireEvent.click(screen.getByLabelText('tournaments.eligibility.age.open'));
+    await clickContinueAndAwait(6); // Payments
+    await clickContinueAndAwait(7); // Prizes
+    // The prize editor is back and still holds the entered prize.
+    expect(screen.queryByText('tournaments.wizard.prizes.multi_note')).toBeNull();
+    const desc = screen.getByPlaceholderText('e.g. 1st place prize') as HTMLInputElement;
+    expect(desc.value).toBe('Champion prize');
+  });
+
   it('surfaces backend validation errors on the review screen', async () => {
     __state.postError = new Error('Server rejected the tournament');
     renderPage(ALL);

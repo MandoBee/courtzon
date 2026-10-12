@@ -38,6 +38,16 @@ const commission = vi.hoisted(() => ({ getCommissionRate: vi.fn(), getCurrentSub
 
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
+// Step 4A — `create()` now wraps its write set in `withTransaction`. Unit tests
+// run without a real pool, so the transaction is faked onto the mock pool; the
+// repositories are mocked and ignore the connection.
+vi.mock('../../../database/database.transaction.js', () => ({
+  withTransaction: (fn: any) => fn(pool),
+  runProvidedTransaction: (_conn: any, fn: any) => fn(),
+  onAfterCommit: vi.fn(),
+  isInTransaction: () => true,
+  flushAfterCommitHooks: vi.fn(),
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
@@ -166,7 +176,7 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     repo.findBracketTypeById.mockResolvedValue(RR);
     commission.getCommissionRate.mockResolvedValue({ rate: 10, rateType: 'percentage' });
     await svc.create(makeTournament({ organisation_id: 1001, entry_fee: 50 }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 10 }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 10 }), expect.anything());
   });
 
   it('6. client-supplied commissionRate cannot override the subscription commission', async () => {
@@ -177,14 +187,14 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     const body = parsed.CreateTournamentSchema.parse({ ...makeTournament({ commission_rate: 0, organisation_id: 1001 }), name: 'X', start_date: '2026-10-01' });
     expect(body).not.toHaveProperty('commission_rate');
     await svc.create(makeTournament({ organisation_id: 1001, commission_rate: 0 }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 10 }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 10 }), expect.anything());
   });
 
   it('7. tournament stores historical commission_rate at creation', async () => {
     repo.findBracketTypeById.mockResolvedValue(RR);
     commission.getCommissionRate.mockResolvedValue({ rate: 7, rateType: 'percentage' });
     await svc.create(makeTournament({ organisation_id: 1001 }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 7 }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 7 }), expect.anything());
   });
 
   it('8. later subscription changes do not alter an existing tournament commission', async () => {
@@ -195,7 +205,7 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     const dto = await import('../presentation/tournament.dto.js');
     const updateBody = dto.UpdateTournamentSchema.parse({ name: 'Renamed' });
     expect(updateBody).not.toHaveProperty('commission_rate');
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 7 }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 7 }), expect.anything());
   });
 
   it('9. organisation A cannot read organisation B commission config (tenant-scoped endpoint)', async () => {
@@ -267,6 +277,7 @@ describe('Group 5B-SR — Bracket type configuration', () => {
         rule_set_id: 1,
         rules: expect.stringContaining('Padel'),
       }),
+      expect.anything(),
     );
     const rulesArg = (repo.create.mock.calls[0][0] as any).rules;
     expect(rulesArg).not.toContain('No outside coaching');
@@ -279,7 +290,7 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     repo.findBracketTypeById.mockResolvedValue(RR);
     commission.getCommissionRate.mockResolvedValue({ rate: 5, rateType: 'percentage' });
     await svc.create(makeTournament({ organisation_id: 2002 }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 2002 }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 2002 }), expect.anything());
   });
 
   it('18. G11 Phase 3 — an org-less (platform) creation is refused; commission always comes from the owning organisation', async () => {
@@ -295,7 +306,7 @@ describe('Group 5B-SR — Bracket type configuration', () => {
     // organisation's subscription-derived snapshot.
     commission.getCommissionRate.mockResolvedValue({ rate: 7.5, rateType: 'percentage' });
     await svc.create(makeTournament(), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 7.5, tournament_type: 'community' }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ commission_rate: 7.5, tournament_type: 'community' }), expect.anything());
   });
 
   it('19. bracket type update toggles active state with audit', async () => {

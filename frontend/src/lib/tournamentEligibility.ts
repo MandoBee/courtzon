@@ -86,6 +86,95 @@ export const TOURNAMENT_GENDER_OPTIONS: ReadonlyArray<{ value: 'male' | 'female'
   { value: 'mixed', labelKey: 'tournaments.eligibility.gender.mixed' },
 ] as const;
 
+/**
+ * Phase 4 Step 1 — independent gender-specific age selections (frontend-only).
+ *
+ * Male and female selections each carry their OWN junior Even/Odd pattern and their
+ * OWN set of age-category ids (youth of that pattern + seniors). These selections
+ * live in the tournament-eligibility FORM VALUE only (persisted across wizard
+ * steps); the backend payload still receives the UNION through
+ * `eligibilityAgeCategoryIds`, preserving today's global-array contract until the
+ * per-gender competition split lands in a later step.
+ */
+
+export type GenderJuniorPattern = 'even' | 'odd';
+
+/** One gender's independent age selection. */
+export interface GenderAgeSelection {
+  /** Junior Even/Odd pattern for THIS gender (seniors are pattern-independent). */
+  pattern: GenderJuniorPattern;
+  /** Full age-category selection: juniors of `pattern` + any senior ids. */
+  ageCategoryIds: number[];
+}
+
+/** Male/female independent selections; null = not configured (yet). */
+export type GenderAgeSelectionMap = {
+  male: GenderAgeSelection | null;
+  female: GenderAgeSelection | null;
+};
+
+const JUNIOR_PATTERN_ID_SET: Record<GenderJuniorPattern, ReadonlySet<number>> = {
+  even: new Set(TOURNAMENT_JUNIOR_EVEN.map((c) => c.id)),
+  odd: new Set(TOURNAMENT_JUNIOR_ODD.map((c) => c.id)),
+};
+
+const SENIOR_AGE_CATEGORY_IDS = new Set(TOURNAMENT_SENIOR_MIN_AGES.map((c) => c.id));
+
+/** True when `id` is a junior category that belongs to the given pattern. */
+export function isJuniorInPattern(id: number, pattern: GenderJuniorPattern): boolean {
+  return JUNIOR_PATTERN_ID_SET[pattern].has(id);
+}
+
+/** True when `id` is a senior (masters) minimum-age category. */
+export function isSeniorAgeCategory(id: number): boolean {
+  return SENIOR_AGE_CATEGORY_IDS.has(id);
+}
+
+/** Deterministic, de-duplicated, ascending age-category id array. */
+export function sortAgeIds(ids: ReadonlyArray<number>): number[] {
+  return [...new Set(ids.map(Number).filter(Number.isSafeInteger))].sort((a, b) => a - b);
+}
+
+/**
+ * Normalize a gender age selection for a given pattern: keeps only junior ids
+ * that exist in that pattern plus every senior id (seniors are shared), dropping
+ * any other/family-mixed juniors. Mirrors the legacy `switchPattern` semantics.
+ */
+export function normalizeGenderSelection(
+  pattern: GenderJuniorPattern,
+  ids: ReadonlyArray<number>,
+): GenderAgeSelection {
+  return {
+    pattern,
+    ageCategoryIds: sortAgeIds(ids.filter((id) => isJuniorInPattern(id, pattern) || isSeniorAgeCategory(id))),
+  };
+}
+
+/**
+ * The age-category ids the BACKEND payload should carry: the union of the
+ * global/mixed block and every active gender-specific block. Empty (or
+ * non-categories mode) keeps the legacy "open age" meaning.
+ */
+export function eligibilityAgeCategoryIds(value: {
+  ageMode?: string | null;
+  ageCategoryIds?: ReadonlyArray<number> | null;
+  perGender?: Partial<GenderAgeSelectionMap> | null;
+}): number[] {
+  if (value.ageMode !== 'categories') return [];
+  const sets = [...(value.ageCategoryIds ?? [])];
+  for (const key of ['male', 'female'] as const) {
+    const sel = value.perGender?.[key];
+    if (sel) sets.push(...sel.ageCategoryIds);
+  }
+  return sortAgeIds(sets);
+}
+
+/** True when at least one gender-specific age block is active (male or female). */
+export function hasGenderSpecificAge(value: { genderCategories?: ReadonlyArray<string> }): boolean {
+  const set = new Set(value.genderCategories ?? []);
+  return set.has('male') || set.has('female');
+}
+
 export function ageCategoryLabelKey(id: number): string {
   return TOURNAMENT_AGE_CATEGORIES.find((c) => c.id === Number(id))?.labelKey ?? 'tournaments.eligibility.age.categories.unknown';
 }

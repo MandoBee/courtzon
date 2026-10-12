@@ -478,7 +478,7 @@ describe('G9-A — progression consumes the corrected G8 Round-1 target wiring',
         progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null, target_side: 'player1' } },
     ];
     repo.findMatches.mockImplementation(async () => slots.map((s) => ({ ...s })));
-    repo.findBracketSlot.mockImplementation(async (_tid: number, round: number, pos: number) => {
+    repo.findBracketSlot.mockImplementation(async (_tid: number, _competitionId: number, round: number, pos: number) => {
       const s = slots.find((x) => x.round === round && x.bracket_position === pos);
       return s ? { ...s } : null;
     });
@@ -714,7 +714,7 @@ describe('G9-B — participant-aware tournament progression', () => {
         progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null, target_side: 'player2' } },
     ];
     repo.findMatches.mockImplementation(async () => slots.map((s) => ({ ...s })));
-    repo.findBracketSlot.mockImplementation(async (_tid: number, round: number, pos: number) => {
+    repo.findBracketSlot.mockImplementation(async (_tid: number, _competitionId: number, round: number, pos: number) => {
       const s = slots.find((x) => x.round === round && x.bracket_position === pos);
       return s ? { ...s } : null;
     });
@@ -1173,7 +1173,7 @@ describe('G9-D2 — post-start withdrawal lone-slot resolution', () => {
       participant1_id: null, participant2_id: null, player1_id: null, player2_id: null,
       progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
     });
-    repo.findBracketSlot.mockImplementation(async (_tid: number, round: number, pos: number) => {
+    repo.findBracketSlot.mockImplementation(async (_tid: number, _competitionId: number, round: number, pos: number) => {
       if (round === 2 && pos === 0) return slot31;
       if (round === 3 && pos === 0) return slot61;
       return null;
@@ -1438,7 +1438,7 @@ describe('G9-D3 — ACTIVE-only progression/result eligibility (M10)', () => {
       participant1_id: null, participant2_id: null, player1_id: null, player2_id: null,
       progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
     });
-    repo.findBracketSlot.mockImplementation(async (_tid: number, round: number, pos: number) => {
+    repo.findBracketSlot.mockImplementation(async (_tid: number, _competitionId: number, round: number, pos: number) => {
       if (round === 2 && pos === 0) return slot31;
       if (round === 3 && pos === 0) return slot61;
       return null;

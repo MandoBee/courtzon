@@ -244,7 +244,10 @@ beforeEach(() => {
   repo.findById.mockImplementation(async (id: number) => state.tournaments.get(Number(id)) ?? null);
   repo.findMatchBySharedMatchId.mockImplementation(async (matchId: number) =>
     matchId === SOURCE_SHARED_MATCH ? slot(SOURCE_SLOT) : null);
-  repo.findBracketSlot.mockImplementation(async (_tid: number, _round: number, pos: number) =>
+  // Step 3B — findBracketSlot is competition-scoped: (tournamentId, competitionId,
+  // round, bracketPosition). The old 3-arg mock signature mapped the competition
+  // id onto `round`, so every lookup missed and correction detection failed.
+  repo.findBracketSlot.mockImplementation(async (_tid: number, _competitionId: number, _round: number, pos: number) =>
     pos === 0 ? slot(TARGET_SLOT) : null);
   repo.findStages.mockResolvedValue([]);
   repo.updateMatch.mockImplementation(async (id: number, patch: Record<string, any>) => {

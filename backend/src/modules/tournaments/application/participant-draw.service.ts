@@ -23,6 +23,17 @@ import { recordAudit } from '../../audit-log/index.js';
 import { ratingRepository } from '../../match-result/infrastructure/rating.repository.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
 import { getPool } from '../../../database/mysql.js';
+import { runProvidedTransaction } from '../../../database/database.transaction.js';
+
+/**
+ * Participant row shape used by draw (re)generation — the competition-scoped
+ * participant list joined with its seed + current draw position.
+ */
+type DrawParticipant = TournamentParticipant & {
+  display_name?: string | null; seed_number?: number | null; seed_source?: string | null;
+  rating_snapshot?: number | null; rating_matches_played?: number | null; seed_assigned_by?: number | null;
+  seed_assigned_at?: string | null; seed_reason?: string | null; draw_position?: number | null; draw_placement_source?: string | null;
+};
 
 /**
  * Group 5 — Participant, Seeding & Draw foundation (approved continuation).
@@ -53,7 +64,14 @@ export class ParticipantDrawService {
       const playerId = reg.player_id ?? reg.user_id;
       if (playerId == null) continue;
       const existing = await participantDrawRepository.findParticipantByRegistration(tournamentId, reg.id!);
-      if (existing) continue;
+      if (existing) {
+        // Step 3C — repair a missing singleton member row for an individual
+        // participant materialized by an older path (before the registration fix).
+        // Idempotent: an existing active member row leaves the participant intact,
+        // and pair/team rosters are never touched here.
+        await this.ensureIndividualMemberRow(existing);
+        continue;
+      }
       const participantId = await participantDrawRepository.createParticipant({
         tournament_id: tournamentId,
         competition_id: reg.competition_id ?? null,
@@ -87,6 +105,88 @@ export class ParticipantDrawService {
       }
     }
     return created;
+  }
+
+  /**
+   * Step 3C — guarantee the authoritative singleton member row for an INDIVIDUAL
+   * participant. This is the membership the progression engine reads to resolve a
+   * winner (`resolveParticipantEntity`); a participant that only carries the
+   * `member_user_ids` JSON cache cannot advance an approved result.
+   *
+   * Scoped to `participant_type = 'individual'`: pair/team participants own their
+   * roster through the participant-member service and are never modified here.
+   * Idempotent — a participant that already has an ACTIVE member row is left
+   * unchanged, so repeated syncs can never create duplicate membership.
+   */
+  private async ensureIndividualMemberRow(participant: TournamentParticipant): Promise<boolean> {
+    if (participant.participant_type !== 'individual') return false;
+    if (participant.status !== 'active') return false;
+    const cached = Array.isArray(participant.member_user_ids) ? participant.member_user_ids : [];
+    const userId = cached.length > 0 ? Number(cached[0]) : (participant.player_id != null ? Number(participant.player_id) : null);
+    if (userId == null || !Number.isSafeInteger(userId) || userId <= 0) return false;
+    if (participant.id == null) return false;
+    const { participantMemberRepository } = await import('../infrastructure/repositories/participant-member.repository.js');
+    const existing = await participantMemberRepository.findMember(participant.id, userId);
+    if (existing) return false;
+    await participantMemberRepository.addMember({
+      tournament_id: Number(participant.tournament_id),
+      participant_id: participant.id,
+      user_id: userId,
+      member_order: 0,
+    });
+    return true;
+  }
+
+  /**
+   * Step 3E — narrowly-scoped, idempotent legacy repair invoked from the
+   * result-approval progression path.
+   *
+   * A participant materialized BEFORE Step 3C can carry a locked draw and an
+   * approved result but NO authoritative member row, so winner resolution
+   * (`resolveParticipantEntity`) fails closed. The caller passes ONLY the
+   * participant ids of the source match it is about to resolve; membership is
+   * NEVER inferred from bracket coordinates or from another competition's
+   * participants.
+   *
+   * Reuses the Step 3C materialization rule (`ensureIndividualMemberRow`):
+   * individual + active only, the singleton member derived solely from the
+   * participant's own `member_user_ids` cache. Pair/team participants, inactive
+   * participants, and any participant that already carries membership history
+   * (active, left or replaced) are never touched — a departed/replaced roster is
+   * never resurrected.
+   *
+   * Idempotent: a second call for the same participant is a no-op because the
+   * repaired row is then present.
+   */
+  async repairMissingIndividualMemberRow(
+    tournamentId: number,
+    participantIds: Array<number | null | undefined>,
+  ): Promise<number> {
+    const ids = Array.from(new Set(
+      participantIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
+    ));
+    if (ids.length === 0) return 0;
+    const { participantMemberRepository } = await import('../infrastructure/repositories/participant-member.repository.js');
+    let repaired = 0;
+    for (const participantId of ids) {
+      const participant = await participantDrawRepository.findParticipantById(participantId);
+      if (!participant) continue;
+      // The participant MUST belong to the tournament being progressed.
+      if (Number(participant.tournament_id) !== Number(tournamentId)) continue;
+      // Step 3C scope: individual + active only. Pair/team participants and
+      // inactive participants are never repaired here.
+      if (participant.participant_type !== 'individual') continue;
+      if (participant.status !== 'active') continue;
+      // Never touch a participant that already has ANY membership row: an active
+      // row means membership exists; a left/replaced row means a member departed
+      // and must never be resurrected.
+      const existingMembers = await participantMemberRepository.listMembersByParticipant(participantId);
+      if (existingMembers.length > 0) continue;
+      if (await this.ensureIndividualMemberRow(participant)) repaired += 1;
+    }
+    return repaired;
   }
 
   /** Participants joined with their authoritative seed + current draw position + live global rating. */
@@ -289,42 +389,70 @@ export class ParticipantDrawService {
     if (current && current.status === 'locked') {
       throw new ConflictError('The draw is locked and cannot be regenerated', ErrorCodes.TOURNAMENT_DRAW_LOCKED);
     }
-    const participants = competition
-      ? await participantDrawRepository.listParticipantsByCompetition(tournamentId, Number(competition.id))
-      : await participantDrawRepository.listParticipantsByTournament(tournamentId);
-    if (participants.length < 2) {
-      throw new ConflictError('At least 2 participants are required to generate a draw', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
-    }
 
-    const attempt = await participantDrawRepository.getNextDrawAttempt(tournamentId, scopedCompetitionId);
-    const seed = drawSeed ?? Date.now();
+    // Phase 4 Step 3B — ATOMIC draw (re)generation. Clearing the prior current
+    // draw, reading the next attempt, inserting the new draw and ALL its entries
+    // share ONE transaction under the tournament-row lock — the same locking
+    // pattern used by registration, promotion and match generation. An injected
+    // or constraint failure mid-entry rolls back the WHOLE attempt: no partial
+    // current draw, no partially inserted entries, and the previous current draw
+    // is never cleared. Other competitions' draws are untouched (all operations
+    // here are scoped to `scopedCompetitionId`).
+    const conn = await getPool().getConnection();
+    let drawId: number | null = null;
+    let attempt = 1;
+    let drawSeedValue = 0;
+    let order: DrawParticipant[] = [];
+    try {
+      await runProvidedTransaction(conn, async () => {
+        await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+        const participants = competition
+          ? await participantDrawRepository.listParticipantsByCompetition(tournamentId, Number(competition.id), conn)
+          : await participantDrawRepository.listParticipantsByTournament(tournamentId);
+        if (participants.length < 2) {
+          throw new ConflictError('At least 2 participants are required to generate a draw', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
+        }
 
-    // Placement rule (foundation): seeded participants hold the protected top
-    // positions in ascending seed order; unseeded participants are seeded-
-    // shuffled into the remaining positions. Re-draw with a different draw_seed
-    // reshuffles unseeded placements while seeds stay authoritative.
-    const seeded = participants
-      .filter((p) => p.seed_number != null)
-      .sort((a, b) => Number(a.seed_number) - Number(b.seed_number));
-    const unseeded = participants.filter((p) => p.seed_number == null);
-    const shuffledUnseeded = seededShuffle(unseeded, seed);
-    const order = [...seeded, ...shuffledUnseeded];
+        attempt = await participantDrawRepository.getNextDrawAttempt(tournamentId, scopedCompetitionId, conn);
+        drawSeedValue = drawSeed ?? Date.now();
 
-    await participantDrawRepository.clearCurrentDraws(tournamentId, scopedCompetitionId);
-    const drawId = await participantDrawRepository.createDraw({
-      tournament_id: tournamentId,
-      competition_id: scopedCompetitionId,
-      attempt_number: attempt,
-      draw_seed: seed,
-      generated_by: actorId,
-    });
-    for (let i = 0; i < order.length; i++) {
-      await participantDrawRepository.createDrawEntry({
-        draw_id: drawId,
-        participant_id: order[i].id!,
-        position: i,
-        placement_source: 'auto',
+        // Placement rule (foundation): seeded participants hold the protected top
+        // positions in ascending seed order; unseeded participants are seeded-
+        // shuffled into the remaining positions. Re-draw with a different draw_seed
+        // reshuffles unseeded placements while seeds stay authoritative.
+        const seeded = participants
+          .filter((p) => p.seed_number != null)
+          .sort((a, b) => Number(a.seed_number) - Number(b.seed_number));
+        const unseeded = participants.filter((p) => p.seed_number == null);
+        const shuffledUnseeded = seededShuffle(unseeded, drawSeedValue);
+        order = [...seeded, ...shuffledUnseeded];
+
+        await participantDrawRepository.clearCurrentDraws(tournamentId, scopedCompetitionId, conn);
+        drawId = await participantDrawRepository.createDraw({
+          tournament_id: tournamentId,
+          competition_id: scopedCompetitionId,
+          attempt_number: attempt,
+          draw_seed: drawSeedValue,
+          generated_by: actorId,
+          conn,
+        });
+        for (let i = 0; i < order.length; i++) {
+          await participantDrawRepository.createDrawEntry({
+            draw_id: drawId!,
+            participant_id: order[i].id!,
+            position: i,
+            placement_source: 'auto',
+            conn,
+          });
+        }
       });
+    } finally {
+      conn.release();
+    }
+    if (drawId == null) {
+      // Unreachable in practice — the transaction either commits with a draw id
+      // or throws. Fail closed rather than proceeding with a null draw.
+      throw new ConflictError('Draw generation did not produce a draw', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
     }
 
     await recordAudit({
@@ -332,7 +460,7 @@ export class ParticipantDrawService {
       action: attempt > 1 ? 'TOURNAMENT.DRAW_REGENERATED' : 'TOURNAMENT.DRAW_GENERATED',
       entityType: 'tournament_draw',
       entityId: drawId,
-      afterState: { attempt_number: attempt, draw_seed: seed, competition_id: scopedCompetitionId, participants: order.length },
+      afterState: { attempt_number: attempt, draw_seed: drawSeedValue, competition_id: scopedCompetitionId, participants: order.length },
     });
 
     const draw = await this.getDrawWithEntries(drawId);
@@ -345,7 +473,7 @@ export class ParticipantDrawService {
       tournamentId,
       competitionId: scopedCompetitionId,
       attemptNumber: attempt,
-      drawSeed: seed,
+      drawSeed: drawSeedValue,
       status: 'draft',
     } as Record<string, unknown>, t, drawScopeUserIds);
     return draw;

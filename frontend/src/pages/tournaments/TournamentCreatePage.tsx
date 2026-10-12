@@ -15,6 +15,8 @@ import { getErrorMessage } from '../../utils/errors';
 import { PrizeEditor, type PrizeEditorRow } from '../../components/tournaments/PrizeEditor';
 import SponsorEditor, { type SponsorEditorRow } from '../../components/tournaments/SponsorEditor';
 import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFormValue } from '../../components/tournaments/EligibilityFormSection';
+import { buildCompetitionSeeds, isSplitRequested, validateSplitEligibility } from '../../lib/competitionGeneration';
+import { ageCategoryLabelKey, eligibilityAgeCategoryIds, hasGenderSpecificAge } from '../../lib/tournamentEligibility';
 import MapLocationPicker, { type PickedLocation } from '../../components/map/MapLocationPicker';
 import { CreateWizardStepper, type WizardStepItem } from '../../components/tournaments/wizard/CreateWizardStepper';
 import { TournamentFormatSelector, type TournamentFormatCard } from '../../components/tournaments/wizard/TournamentFormatSelector';
@@ -286,6 +288,40 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   };
   const [eligibility, setEligibility] = useState<TournamentEligibilityFormValue>(EMPTY_ELIGIBILITY);
 
+  // Phase 4 Step 2 — planned competitions: one per eligible gender × age/level
+  // group (see `buildCompetitionSeeds`). These are created atomically WITH the
+  // tournament (NO legacy default competition) so every group owns an
+  // independent draw. Empty when the eligibility does not split into groups.
+  const selectedFormatType = formatGroups.find((g) => String(g.format.id) === selectedFormat)?.format.formatType;
+  // Explicit when the sport format type is known; null → the seed payload omits
+  // `competition_type` and the backend inherits its resolved default format
+  // (the same derivation the legacy default-competition path uses — never a
+  // silent 'singles').
+  const competitionType = selectedFormatType === 'team' ? 'team' : selectedFormatType === 'doubles' ? 'doubles' : selectedFormatType != null ? 'singles' : null;
+  const plannedCompetitions = useMemo(
+    () => buildCompetitionSeeds({
+      ageMode: eligibility.ageMode,
+      ageCategoryIds: eligibilityAgeCategoryIds(eligibility),
+      genderCategories: eligibility.genderCategories,
+      levelIds: eligibility.levelIds,
+      perGender: eligibility.perGender,
+      competitionType,
+      ageLabel: (id) => t(ageCategoryLabelKey(id), 'Category'),
+      levelLabel: (id) => `${t('tournaments.eligibility.level', 'Level')} ${id}`,
+    }),
+    // `t` is stable per bundle; `eligibility`/`competitionType` drive the output.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [eligibility, competitionType, t],
+  );
+
+  // Phase 4 Step 4B — whether the CURRENT selection generates MORE THAN ONE
+  // competition, derived from the SAME `buildCompetitionSeeds` output that becomes
+  // the create payload (never approximated from `generate_competitions`, which
+  // also covers a single-group split). With >1 competitions no single/default
+  // competition can own a wizard prize, so prize entry is replaced by an
+  // explanatory notice; per-competition prizes are assigned after creation.
+  const willGenerateMultipleCompetitions = plannedCompetitions.length > 1;
+
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post(endpoint as string, data),
     onSuccess: (res) => {
@@ -308,19 +344,33 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       showToast(t('tournaments.create.validation.organisation_required'), 'error');
       return;
     }
-    if (eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length === 0) {
+    if (eligibilityAgeCategoryIds(eligibility).length === 0 && eligibility.ageMode === 'categories') {
       showToast(t('tournaments.eligibility.age.validation'), 'error');
       return;
     }
-    const structuredPrizes = prizes
-      .filter((p) => p.prize_type && (p.description?.trim() || (p.prize_type === 'cash' && p.amount != null)))
-      .map((p) => ({
-        placement: p.placement ?? null,
-        prize_type: p.prize_type,
-        description: p.description?.trim() || undefined,
-        amount: p.prize_type === 'cash' ? p.amount ?? undefined : undefined,
-        currency_code: p.prize_type === 'cash' ? undefined : undefined,
-      }));
+    // Step 2B — a requested gender/age split must never silently fall back to the
+    // legacy default: every selected gender needs its own configured age block.
+    if (!validateSplitEligibility(eligibility).ok) {
+      showToast(t('tournaments.eligibility.age.per_gender.missing'), 'error');
+      return;
+    }
+    // Phase 4 Step 4B — with more than one generated competition the wizard never
+    // offers prize entry and never sends untargeted prizes: the backend would
+    // (correctly) reject them with TOURNAMENT_COMPETITION_REQUIRED, and silently
+    // assigning them to an arbitrary competition is forbidden. Competition-scoped
+    // prizes are assigned after creation. With 0/1 competitions the legacy
+    // single/default (or unambiguous single) flow is unchanged.
+    const structuredPrizes = willGenerateMultipleCompetitions
+      ? []
+      : prizes
+          .filter((p) => p.prize_type && (p.description?.trim() || (p.prize_type === 'cash' && p.amount != null)))
+          .map((p) => ({
+            placement: p.placement ?? null,
+            prize_type: p.prize_type,
+            description: p.description?.trim() || undefined,
+            amount: p.prize_type === 'cash' ? p.amount ?? undefined : undefined,
+            currency_code: p.prize_type === 'cash' ? undefined : undefined,
+          }));
     const sponsorPayload = sponsors
       .map((s, i) => ({
         name: s.name?.trim(),
@@ -364,10 +414,35 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       longitude: externalVenue?.longitude ?? undefined,
       place_id: externalVenue?.placeId ?? undefined,
       age_mode: eligibility.ageMode,
-      age_category_ids: eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length ? eligibility.ageCategoryIds : undefined,
+      age_category_ids: eligibilityAgeCategoryIds(eligibility).length ? eligibilityAgeCategoryIds(eligibility) : undefined,
       gender_categories: eligibility.genderCategories.length ? eligibility.genderCategories : undefined,
       level_ids: eligibility.levelIds.length ? eligibility.levelIds : undefined,
-      prize_description: data.prizeDescription || undefined,
+      // Phase 4 Step 2 — generate one competition per eligible group ATOMICALLY
+      // with the tournament (replaces the legacy broad default). Empty/absent →
+      // legacy single default competition.
+      ...(plannedCompetitions.length > 0
+        ? {
+            competitions: plannedCompetitions.map((p) => ({
+              key: p.key,
+              ...(p.competition_type != null ? { competition_type: p.competition_type } : {}),
+              name: p.name,
+              age_mode: p.age_mode ?? null,
+              age_category_ids: p.age_category_ids,
+              gender_categories: p.gender_categories,
+              level_ids: p.level_ids,
+            })),
+          }
+        : {}),
+      // Step 2B — explicit split-generation request: the backend FAILS instead
+      // of silently creating the legacy default when requests splitting but no
+      // competitions were generated. Omitted for legacy no-split creations.
+      // Step 4A — the age signal is the SAME NORMALISED UNION fed to
+      // `buildCompetitionSeeds` (per-gender selections live in `perGender`, so the
+      // raw `eligibility.ageCategoryIds` is empty for a purely per-gender split —
+      // using it would silently drop the explicit split request and let the
+      // backend fall back to the broad legacy default).
+      ...(isSplitRequested({ ...eligibility, ageCategoryIds: eligibilityAgeCategoryIds(eligibility) }) ? { generate_competitions: true } : {}),
+      prize_description: willGenerateMultipleCompetitions ? undefined : (data.prizeDescription || undefined),
       prizes: structuredPrizes.length ? structuredPrizes : undefined,
       sponsors: sponsorPayload.length ? sponsorPayload : undefined,
     });
@@ -438,7 +513,12 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
         clearErrors('dailyEndTime');
       }
     }
-    if (idx === 4 && eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length === 0) {
+    if (idx === 4 && eligibility.ageMode === 'categories' && eligibilityAgeCategoryIds(eligibility).length === 0) {
+      ok = false;
+    }
+    // Step 2B — a split requested with missing per-gender configuration must not
+    // advance (prevents the unsafe legacy-default fallback on submit).
+    if (idx === 4 && !validateSplitEligibility(eligibility).ok) {
       ok = false;
     }
     if (idx === 5) {
@@ -478,7 +558,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     if (!!values.bracketTypeId) ids.push('format');
     if (!!values.maxParticipants) ids.push('participants');
     if (!!values.startDate) ids.push('schedule');
-    if (!(eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length === 0)) ids.push('rules');
+    if (!(eligibility.ageMode === 'categories' && eligibilityAgeCategoryIds(eligibility).length === 0)) ids.push('rules');
     ids.push('payments', 'prizes', 'review');
     return ids;
   }, [values, isOrg, effectiveOrgId, eligibility]);
@@ -539,7 +619,11 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
     parts.push(eligibility.ageMode === 'categories'
       ? t('tournaments.eligibility.open_or_categories.age.categories', 'Age categories')
       : t('tournaments.eligibility.open_or_categories.age.open', 'All ages'));
-    if (eligibility.genderCategories.length) parts.push(eligibility.genderCategories.join(', '));
+    if (eligibility.ageMode === 'categories' && hasGenderSpecificAge(eligibility)) {
+      parts.push(t('tournaments.eligibility.age.per_gender', 'Independent per-gender age categories'));
+    } else if (eligibility.genderCategories.length) {
+      parts.push(eligibility.genderCategories.join(', '));
+    }
     if (eligibility.levelIds.length) parts.push(t('tournaments.wizard.review.level_restricted', 'Level-restricted'));
     return parts.join(' · ');
   })();
@@ -846,8 +930,16 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
             {step === 4 && (
               <>
                 <EligibilityFormSection value={eligibility} onChange={setEligibility} />
-                {eligibility.ageMode === 'categories' && eligibility.ageCategoryIds.length === 0 && (
+                {plannedCompetitions.length > 0 && (
+                  <p className="text-xs text-[var(--color-text-muted)]" role="note">
+                    {t('tournaments.create.categories.info', 'A separate competition is created for every eligible group, and each competition has its own independent draw.')}
+                  </p>
+                )}
+                {eligibility.ageMode === 'categories' && eligibilityAgeCategoryIds(eligibility).length === 0 && (
                   <p className="text-xs text-[var(--color-error)]" role="alert">{t('tournaments.eligibility.age.validation')}</p>
+                )}
+                {!validateSplitEligibility(eligibility).ok && (
+                  <p className="text-xs text-[var(--color-error)]" role="alert">{t('tournaments.eligibility.age.per_gender.missing')}</p>
                 )}
 
                 <Can permission="tournaments.create.rules">
@@ -932,14 +1024,47 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
             {/* ─────────────── STEP 7 · PRIZES & SPONSORS ─────────────── */}
             {step === 6 && (
               <>
-                <Can permission="tournaments.create.prize">
-                  <Input label={t('tournaments.create.prize')} {...register('prizeDescription')} />
-                </Can>
-                <Can permission="tournaments.create.prize">
-                  <div className={subCardCls}>
-                    <PrizeEditor currencyCode={orgCurrency} value={prizes} onChange={setPrizes} />
-                  </div>
-                </Can>
+                {willGenerateMultipleCompetitions ? (
+                  <Can permission="tournaments.create.prize">
+                    <div className={subCardCls}>
+                      <p className="text-sm font-medium text-[var(--color-text)]">
+                        {t('tournaments.wizard.prizes.multi_title', 'Prizes are assigned after creation')}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)]">
+                        {t('tournaments.wizard.prizes.multi_note', 'This tournament will generate more than one competition, so prizes cannot be configured during creation. After the tournament is created, assign prizes to each competition from the tournament management page.')}
+                      </p>
+                      {prizes.length > 0 && (
+                        <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--color-warning)] bg-[var(--color-warning-bg)]/40 p-3">
+                          <p className="text-xs text-[var(--color-text)]">
+                            {t('tournaments.wizard.prizes.multi_existing', 'You entered prizes before switching to a multi-competition tournament. They cannot be attached to a specific competition during creation, so they will not be saved.')}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setPrizes([])}
+                            className="mt-2 text-xs px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-bg)]"
+                          >
+                            {t('tournaments.wizard.prizes.multi_clear', 'Clear entered prizes')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </Can>
+                ) : (
+                  <>
+                    <Can permission="tournaments.create.prize">
+                      <Input label={t('tournaments.create.prize')} {...register('prizeDescription')} />
+                    </Can>
+                    <Can permission="tournaments.create.prize">
+                      <div className={subCardCls}>
+                        <PrizeEditor
+                          currencyCode={orgCurrency}
+                          value={prizes}
+                          onChange={setPrizes}
+                        />
+                      </div>
+                    </Can>
+                  </>
+                )}
                 <Can permission="tournaments.create.prize">
                   <div className={subCardCls}>
                     <SponsorEditor value={sponsors} onChange={setSponsors} />
@@ -1018,7 +1143,15 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                   title={t('tournaments.wizard.review.rules', 'Rules & Eligibility')}
                   complete={completed.includes('rules')}
                   onEdit={() => goTo(4)}
-                  rows={[{ label: t('tournaments.wizard.review.eligibility', 'Eligibility'), value: eligibilitySummary }]}
+                  rows={[
+                    { label: t('tournaments.wizard.review.eligibility', 'Eligibility'), value: eligibilitySummary },
+                    {
+                      label: t('tournaments.create.categories.review', 'Categories'),
+                      value: plannedCompetitions.length
+                        ? t('tournaments.create.categories.count', '{count} generated', { count: String(plannedCompetitions.length) })
+                        : t('tournaments.create.categories.default', 'Single default category'),
+                    },
+                  ]}
                 />
                 <ReviewSection
                   title={t('tournaments.wizard.review.payments', 'Payments')}
@@ -1035,7 +1168,7 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                   complete
                   onEdit={() => goTo(6)}
                   rows={[
-                    { label: t('tournaments.wizard.review.prizes', 'Prizes'), value: prizes.length ? `${prizes.length}` : t('tournaments.wizard.review.none', 'None') },
+                    { label: t('tournaments.wizard.review.prizes', 'Prizes'), value: willGenerateMultipleCompetitions ? t('tournaments.wizard.prizes.multi_review', 'Assigned after creation') : (prizes.length ? `${prizes.length}` : t('tournaments.wizard.review.none', 'None')) },
                     { label: t('tournaments.wizard.review.sponsors', 'Sponsors'), value: sponsors.length ? `${sponsors.length}` : t('tournaments.wizard.review.none', 'None') },
                   ]}
                 />

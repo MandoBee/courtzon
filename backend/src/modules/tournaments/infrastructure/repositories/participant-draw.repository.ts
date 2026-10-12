@@ -105,12 +105,17 @@ export class ParticipantDrawRepository {
    * G11.18 Phase 3 — active participants WITHIN ONE competition (a Singles draw
    * never includes Doubles/Teams participants and vice versa).
    */
-  async listParticipantsByCompetition(tournamentId: number, competitionId: number): Promise<Array<TournamentParticipant & {
+  async listParticipantsByCompetition(
+    tournamentId: number,
+    competitionId: number,
+    conn?: import('mysql2/promise').PoolConnection,
+  ): Promise<Array<TournamentParticipant & {
     display_name?: string | null; seed_number?: number | null; seed_source?: string | null;
     rating_snapshot?: number | null; rating_matches_played?: number | null; seed_assigned_by?: number | null;
     seed_assigned_at?: string | null; seed_reason?: string | null; draw_position?: number | null; draw_placement_source?: string | null;
   }>> {
-    const [rows] = await getPool().query<RowData>(
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       `SELECT p.*,
               (SELECT u.full_name FROM users u
                 WHERE u.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(p.member_user_ids, '$[0]')) AS UNSIGNED)) AS display_name,
@@ -358,8 +363,9 @@ export class ParticipantDrawRepository {
 
   // ── Draws ──
 
-  async clearCurrentDraws(tournamentId: number, competitionId?: number | null): Promise<void> {
-    await getPool().query(
+  async clearCurrentDraws(tournamentId: number, competitionId?: number | null, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query(
       competitionId != null
         ? 'UPDATE tournament_draws SET is_current = 0 WHERE tournament_id = ? AND competition_id = ? AND is_current = 1'
         : 'UPDATE tournament_draws SET is_current = 0 WHERE tournament_id = ? AND is_current = 1',
@@ -373,8 +379,10 @@ export class ParticipantDrawRepository {
     attempt_number: number;
     draw_seed: number;
     generated_by?: number | null;
+    conn?: import('mysql2/promise').PoolConnection;
   }): Promise<number> {
-    const [result] = await getPool().query<ResultSet>(
+    const db = data.conn ?? getPool();
+    const [result] = await db.query<ResultSet>(
       `INSERT INTO tournament_draws (tournament_id, competition_id, attempt_number, draw_seed, generated_by, status, validation_status, is_current)
        VALUES (?, ?, ?, ?, ?, 'draft', 'valid', 1)`,
       [data.tournament_id, data.competition_id ?? null, data.attempt_number, data.draw_seed, data.generated_by ?? null],
@@ -383,8 +391,9 @@ export class ParticipantDrawRepository {
   }
 
   /** Next draw attempt WITHIN one competition (per-competition namespace). */
-  async getNextDrawAttempt(tournamentId: number, competitionId?: number | null): Promise<number> {
-    const [rows] = await getPool().query<RowData>(
+  async getNextDrawAttempt(tournamentId: number, competitionId?: number | null, conn?: import('mysql2/promise').PoolConnection): Promise<number> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       competitionId != null
         ? 'SELECT COALESCE(MAX(attempt_number), 0) + 1 AS next_attempt FROM tournament_draws WHERE tournament_id = ? AND competition_id = ?'
         : 'SELECT COALESCE(MAX(attempt_number), 0) + 1 AS next_attempt FROM tournament_draws WHERE tournament_id = ?',
@@ -447,8 +456,10 @@ export class ParticipantDrawRepository {
     placement_source?: string;
     overridden?: boolean;
     moved_by?: number | null;
+    conn?: import('mysql2/promise').PoolConnection;
   }): Promise<number> {
-    const [result] = await getPool().query<ResultSet>(
+    const db = data.conn ?? getPool();
+    const [result] = await db.query<ResultSet>(
       `INSERT INTO tournament_draw_entries (draw_id, participant_id, position, placement_source, overridden, moved_by, moved_at)
        VALUES (?, ?, ?, ?, ?, ?, ${data.moved_by != null ? 'NOW()' : 'NULL'})`,
       [

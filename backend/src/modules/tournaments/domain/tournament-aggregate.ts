@@ -375,6 +375,12 @@ export interface TournamentPrizeInput {
   placement?: number | null;
   /** G11.20 — optional competition/category scope; omitted = the tournament's default competition. */
   competition_id?: number | null;
+  /**
+   * Phase 4 Step 4A — stable client key of a GENERATED competition (matches
+   * `competitions[].key`). Resolved server-side to a persisted `competition_id`
+   * before the prize row is written; never persisted itself.
+   */
+  competition_key?: string | null;
   prize_type: TournamentPrizeType;
   description?: string | null;
   amount?: number | null;

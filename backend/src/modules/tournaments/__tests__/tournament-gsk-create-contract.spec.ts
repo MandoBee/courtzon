@@ -100,6 +100,16 @@ vi.mock('../../audit-log/index.js', () => ({ recordAudit: vi.fn() }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: { emit: vi.fn() } }));
 const pool = vi.hoisted(() => ({ query: vi.fn(async () => [[]]), execute: vi.fn(async () => [[]]), getConnection: vi.fn(async () => ({ query: vi.fn(async () => [[]]), execute: vi.fn(async () => [[]]), release: vi.fn() })) }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
+// Step 4A — `create()` now wraps its write set in `withTransaction`. Unit tests
+// run without a real pool, so the transaction is faked onto the mock pool; the
+// repositories are mocked and ignore the connection.
+vi.mock('../../../database/database.transaction.js', () => ({
+  withTransaction: (fn: any) => fn(pool),
+  runProvidedTransaction: (_conn: any, fn: any) => fn(),
+  onAfterCommit: vi.fn(),
+  isInTransaction: () => true,
+  flushAfterCommitHooks: vi.fn(),
+}));
 vi.mock('../../organisations/application/current-subscription.service.js', () => ({ getCommissionRate: vi.fn(async () => null), getCurrentSubscription: vi.fn(async () => ({ exists: false, planName: null })) }));
 vi.mock('../../match/application/services/match.service.js', () => ({ matchService: { createForTournament: vi.fn() } }));
 vi.mock('../../match-result/infrastructure/rating.repository.js', () => ({ ratingRepository: { getRating: vi.fn() } }));

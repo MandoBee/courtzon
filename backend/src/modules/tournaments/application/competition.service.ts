@@ -62,14 +62,14 @@ export class CompetitionService {
   async resolveCompetition(
     tournamentId: number,
     competitionId: number,
-    opts: { organisationId?: number | null } = {},
+    opts: { organisationId?: number | null; conn?: import('mysql2/promise').PoolConnection } = {},
   ): Promise<TournamentCompetition> {
-    const competition = await competitionRepository.findById(Number(competitionId));
+    const competition = await competitionRepository.findById(Number(competitionId), opts.conn);
     if (!competition || Number(competition.tournament_id) !== Number(tournamentId)) {
       throw new NotFoundError('Competition', ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND);
     }
     if (opts.organisationId != null) {
-      const t = await tournamentRepository.findById(Number(tournamentId));
+      const t = await tournamentRepository.findById(Number(tournamentId), opts.conn);
       if (!t || Number(t.organisation_id ?? null) !== Number(opts.organisationId)) {
         throw new NotFoundError('Competition', ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND);
       }
@@ -97,9 +97,10 @@ export class CompetitionService {
   async resolveRegistrationCompetition(
     tournamentId: number,
     competitionId?: number | null,
+    conn?: import('mysql2/promise').PoolConnection,
   ): Promise<TournamentCompetition | null> {
     if (competitionId != null) {
-      return this.resolveCompetition(tournamentId, competitionId);
+      return this.resolveCompetition(tournamentId, competitionId, { conn });
     }
     // A null result = legacy fallback: the row has NO competition identifiers
     // (pre-Phase-2 data or a unit/mock environment). Every downstream value then
@@ -107,7 +108,7 @@ export class CompetitionService {
     // competition on insert — byte-identical pre-Phase-2 behavior.
     let competitions: TournamentCompetition[];
     try {
-      competitions = (await competitionRepository.findByTournament(Number(tournamentId))) ?? [];
+      competitions = (await competitionRepository.findByTournament(Number(tournamentId), conn)) ?? [];
     } catch {
       return null;
     }

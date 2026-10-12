@@ -84,6 +84,13 @@ const ratingSvc = vi.hoisted(() => ({ resolveOverallPercent: vi.fn() }));
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdRepo }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
+vi.mock('../../../database/database.transaction.js', () => ({
+  withTransaction: (fn: any) => fn(pool),
+  runProvidedTransaction: (_conn: any, fn: any) => fn(),
+  onAfterCommit: vi.fn(),
+  isInTransaction: () => true,
+  flushAfterCommitHooks: vi.fn(),
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));

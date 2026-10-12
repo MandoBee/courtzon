@@ -81,6 +81,16 @@ const pdRepo = vi.hoisted(() => ({
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../infrastructure/repositories/participant-draw.repository.js', () => ({ participantDrawRepository: pdRepo }));
 vi.mock('../../../database/mysql.js', () => ({ getPool: () => pool }));
+// Step 4A — `create()` now wraps its write set in `withTransaction`. Unit tests
+// run without a real pool, so the transaction is faked onto the mock pool; the
+// repositories are mocked and ignore the connection.
+vi.mock('../../../database/database.transaction.js', () => ({
+  withTransaction: (fn: any) => fn(pool),
+  runProvidedTransaction: (_conn: any, fn: any) => fn(),
+  onAfterCommit: vi.fn(),
+  isInTransaction: () => true,
+  flushAfterCommitHooks: vi.fn(),
+}));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
@@ -95,6 +105,9 @@ const competitionRepo = vi.hoisted(() => ({
   findById: vi.fn(),
   createDefault: vi.fn(),
   findDefaultByTournament: vi.fn(),
+  // Step 4A — `assertPrizeCompetitions` may load the tournament's competitions
+  // to resolve an omitted prize target; legacy unit tests see none.
+  findByTournament: vi.fn(async () => []),
 }));
 vi.mock('../infrastructure/repositories/competition.repository.js', () => ({ competitionRepository: competitionRepo }));
 
@@ -151,7 +164,7 @@ describe('TournamentService (Group 5A)', () => {
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: {}, standingsRules: null });
 
     const created = await svc.create(makeTournament(), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ draw_seed: expect.any(Number) }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ draw_seed: expect.any(Number) }), expect.anything());
     expect(created.id).toBe(10);
   });
 
@@ -335,7 +348,7 @@ describe('TournamentService (Group 5A)', () => {
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
     // Client attempts to supply tournament_type 'platform' for an org-owned tournament.
     await svc.create(makeTournament({ organisation_id: 1001, tournament_type: 'platform' }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 1001, tournament_type: 'community' }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 1001, tournament_type: 'community' }), expect.anything());
   });
 
   it('G1A-type-2. org create without explicit type still derives community', async () => {
@@ -345,7 +358,7 @@ describe('TournamentService (Group 5A)', () => {
     mrRepo.findFormatById.mockResolvedValue({ formatId: 1, sportId: 22, formatType: 'doubles', playersPerSide: 2, name: 'Padel', isActive: true });
     mrRepo.findRuleSetById.mockResolvedValue({ formatId: 1, ruleSetId: 1, version: 1, rules: { score_structure: 'sets', best_of: 3 }, standingsRules: null });
     await svc.create(makeTournament({ organisation_id: 1001, tournament_type: undefined }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 1001, tournament_type: 'community' }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ organisation_id: 1001, tournament_type: 'community' }), expect.anything());
   });
 
   it('G1A-type-3. G11 Phase 3 — an org-less (platform) create is REJECTED', async () => {
@@ -391,7 +404,7 @@ describe('TournamentService (Group 5A)', () => {
       return [[]];
     });
     await svc.create(makeTournament({ organisation_id: 1001, currency_code: 'AED' }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'EGP' }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'EGP' }), expect.anything());
   });
 
   it('G1A-curr-2. branch currency override wins over organisation country default', async () => {
@@ -406,7 +419,7 @@ describe('TournamentService (Group 5A)', () => {
       return [[]];
     });
     await svc.create(makeTournament({ organisation_id: 1001, branch_id: 7, currency_code: 'USD' }), 1);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'AED' }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ currency_code: 'AED' }), expect.anything());
   });
 
   it('G1A-curr-3. G11 Phase 3 — an org-less create is rejected before any currency resolution', async () => {

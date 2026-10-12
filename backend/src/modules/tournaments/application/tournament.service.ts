@@ -86,8 +86,27 @@ export const ENGINE_SUPPORTED_BRACKET_SLUGS = Object.keys(BRACKET_SLUG_TO_FORMAT
  */
 export const ORGANISATION_TOURNAMENT_TYPE = 'community';
 
+/**
+ * Phase 4 Step 2 — a planned competition created atomically with the tournament
+ * (one per eligible group; validated at the DTO boundary by `CompetitionSeedSchema`).
+ */
+export interface TournamentCompetitionSeed {
+  /**
+   * Step 4A — stable client-side key addressing this planned competition, so a
+   * prize can target it (`competition_key`) before its persisted id exists. Never
+   * persisted itself.
+   */
+  key?: string;
+  competition_type?: 'singles' | 'doubles' | 'team';
+  name: string;
+  age_mode?: 'open' | 'categories' | null;
+  age_category_ids?: number[] | null;
+  gender_categories?: ('male' | 'female' | 'mixed')[] | null;
+  level_ids?: number[] | null;
+}
+
 export class TournamentService {
-  async create(data: Partial<Tournament>, creatorId: number): Promise<Tournament> {
+  async create(data: Partial<Tournament> & { competitions?: TournamentCompetitionSeed[]; generate_competitions?: boolean }, creatorId: number): Promise<Tournament> {
     // G11 Phase 3 (LOCKED PRODUCT RULE) — the CourtZon PLATFORM must never
     // create, own, fund, or financially recognise a tournament. Only an
     // ORGANISATION may create and own one. The organisation id is injected
@@ -196,74 +215,203 @@ export class TournamentService {
     // string is never trusted as authoritative. When no valid format/rule-set
     // can be resolved, the rules stay empty rather than inventing a value.
     const rulesSnapshot = await this.resolveRulesSnapshot(effectiveData.sport_id, effectiveData.match_format_id, effectiveData.rule_set_id, effectiveData.bracket_type_id);
-    const id = await tournamentRepository.create({
-      ...effectiveData, creator_id: creatorId, draw_seed: drawSeed, commission_rate: commissionRate,
-      tournament_type: effectiveType,
-      rules: rulesSnapshot ?? undefined,
-    });
-    // G11.18 Phase 1 — every tournament automatically receives ONE default
-    // competition that mirrors its configuration (format, fee, currency,
-    // capacity, eligibility, bracket). The BEFORE-INSERT triggers scope all
-    // legacy descendant writes (registrations/participants/matches/prizes) to
-    // this competition, preserving current single-competition behavior.
+    // Phase 4 Step 2B — requested competition splitting must NEVER silently fall
+    // back to the legacy default. The client signals an explicit split request
+    // (`generate_competitions: true`); an empty/absent competition list then
+    // FAILS here (before ANY insert) instead of creating a broad default that
+    // would merge groups and broaden eligibility. Legacy clients that omit the
+    // flag keep the current behavior (non-empty `competitions` wins; otherwise
+    // the default competition is created).
+    const plannedCompetitions = Array.isArray(data.competitions) ? data.competitions : [];
+    if (data.generate_competitions === true && plannedCompetitions.length === 0) {
+      throw new AppError(
+        'Competition splitting was requested, but no competitions could be generated for the configured eligibility',
+        422,
+        ErrorCodes.TOURNAMENT_COMPETITION_REQUIRED,
+        { code: ErrorCodes.TOURNAMENT_COMPETITION_REQUIRED },
+      );
+    }
+    // Phase 4 Step 4A — PRIZE → COMPETITION TARGET PRE-FLIGHT.
+    // Every prize that targets a competition must do so EXPLICITLY; the target is
+    // validated BEFORE any persistent write so a bad payload can never leave a
+    // partial tournament. Two failure modes are closed here:
+    //   * an unknown `competition_key` — never a silent fallback to the default;
+    //   * a split tournament (multiple planned competitions) where a prize omits
+    //     its target entirely — ambiguous, so it is rejected. The legacy single
+    //     default is the ONLY case where omission is allowed.
+    // Duplicate seed keys are also rejected: keys are the addressing scheme and
+    // must uniquely identify exactly one planned competition.
+    {
+      const seedKeyList = plannedCompetitions
+        .map((s) => s.key)
+        .filter((k): k is string => typeof k === 'string' && k.length > 0);
+      const seedKeys = new Set(seedKeyList);
+      if (seedKeys.size !== seedKeyList.length) {
+        throw new AppError(
+          'Competition keys must be unique within a single create request',
+          422,
+          ErrorCodes.VALIDATION_INVALID_VALUE,
+          { code: ErrorCodes.VALIDATION_INVALID_VALUE, details: { keys: seedKeyList } },
+        );
+      }
+      for (const p of prizes) {
+        if (p.competition_key != null) {
+          if (!seedKeys.has(p.competition_key)) {
+            throw new AppError(
+              'Prize targets a competition that is not part of this tournament',
+              422,
+              ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND,
+              { code: ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND, details: { competitionKey: p.competition_key } },
+            );
+          }
+        } else if (p.competition_id == null && plannedCompetitions.length > 1) {
+          throw new AppError(
+            'This tournament creates multiple competition categories — select the target competition for every prize',
+            422,
+            ErrorCodes.TOURNAMENT_COMPETITION_REQUIRED,
+            { code: ErrorCodes.TOURNAMENT_COMPETITION_REQUIRED, details: { competitions: seedKeyList } },
+          );
+        }
+      }
+    }
+    // G11.18 Phase 1 — every tournament automatically receives competitions that
+    // mirror its configuration (format, fee, currency, capacity, eligibility,
+    // bracket). The BEFORE-INSERT triggers scope all legacy descendant writes
+    // (registrations/participants/matches/prizes) to the default competition,
+    // preserving current single-competition behavior.
+    //
+    // Phase 4 Step 2 — when the client supplies `competitions` (one per eligible
+    // gender × age/level group), those are created INSTEAD of the legacy default:
+    //   * each competition carries its OWN eligibility (gender, age band or
+    //     level) so every group is isolated in its own draw;
+    //   * NO broad default competition exists, so registrations can never
+    //     silently merge different groups into one draw;
+    //   * is_default stays 0 for all — with ≥1 competition, an omitted
+    //     competition id at registration fails closed (competition required).
+    //
+    // Resolved BEFORE the transaction: this is a reference-table read
+    // (sport_formats) that is not part of the atomic write set.
     const defaultFormat = effectiveData.match_format_id != null
       ? await matchResultRepository.findFormatById(effectiveData.match_format_id)
       : (effectiveData.sport_id != null ? await matchResultRepository.resolveDefaultFormatForSport(effectiveData.sport_id) : null);
-    await competitionRepository.createDefault({
-      tournament_id: id,
-      competition_type: defaultFormat?.formatType === 'team' ? 'team' : defaultFormat?.formatType === 'doubles' ? 'doubles' : 'singles',
-      match_format_id: effectiveData.match_format_id ?? null,
-      rule_set_id: effectiveData.rule_set_id ?? null,
-      bracket_type_id: effectiveData.bracket_type_id ?? null,
-      sport_id: effectiveData.sport_id ?? null,
-      entry_fee: effectiveData.entry_fee ?? 0,
-      registration_fee: effectiveData.registration_fee ?? 0,
-      currency_code: effectiveData.currency_code ?? 'EGP',
-      price_type: effectiveData.price_type ?? null,
-      max_participants: effectiveData.max_participants ?? null,
-      min_participants: effectiveData.min_participants ?? 2,
-      registration_payment_methods: effectiveData.registration_payment_methods,
-      waitlist_enabled: effectiveData.waitlist_enabled ?? false,
-      age_mode: effectiveData.age_mode ?? null,
-      age_category_ids: effectiveData.age_category_ids,
-      gender_categories: effectiveData.gender_categories,
-      level_ids: effectiveData.level_ids,
-    });
-    // Step 3B-5A — GSK tournaments receive their Group Stage skeleton at
-    // creation (stage_order 1, round-robin, validated GSK config). NO groups or
-    // matches are generated here — those stay explicit prepare/generate steps.
-    if (data.format === 'group_stage_knockout' && (data as any).gsk_config) {
-      const stageCompetition = await competitionService.resolveRegistrationCompetition(id, null);
-      const stageCompetitionId = stageCompetition?.id != null ? Number(stageCompetition.id) : null;
-      if (stageCompetitionId == null) {
-        throw new ConflictError('A competition context is required for GSK stage creation', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    // Step 2A — a seed without an explicit competition type INHERITS the same
+    // resolved default format the legacy default-competition path uses
+    // (never a silent 'singles'). Explicit seeds still win.
+    const resolveSeededType = (t: 'singles' | 'doubles' | 'team' | undefined): 'singles' | 'doubles' | 'team' =>
+      t ?? (defaultFormat?.formatType === 'team' ? 'team' : defaultFormat?.formatType === 'doubles' ? 'doubles' : 'singles');
+    // Phase 4 Step 4A — the WHOLE create (tournament + competitions + GSK stage +
+    // prizes + sponsors + generated description) is ONE atomic unit. Any
+    // validation or insert failure rolls EVERYTHING back, so a failed create can
+    // never leave an orphaned tournament, a half-generated competition set, or
+    // stray prize/sponsor rows. Side effects that must only happen once the write
+    // is durable (the realtime event) run AFTER the transaction commits.
+    const keyToId = new Map<string, number>();
+    const keyCompetitions: Array<{ key: string; id: number; name: string }> = [];
+    const id = await withTransaction(async (conn) => {
+      const tid = await tournamentRepository.create({
+        ...effectiveData, creator_id: creatorId, draw_seed: drawSeed, commission_rate: commissionRate,
+        tournament_type: effectiveType,
+        rules: rulesSnapshot ?? undefined,
+      }, conn);
+      let firstGeneratedCompetitionId: number | null = null;
+      if (plannedCompetitions.length > 0) {
+        for (const seed of plannedCompetitions) {
+          const seededCompetitionId = await competitionRepository.create({
+            tournament_id: tid,
+            competition_type: resolveSeededType(seed.competition_type),
+            name: seed.name,
+            match_format_id: effectiveData.match_format_id ?? null,
+            rule_set_id: effectiveData.rule_set_id ?? null,
+            bracket_type_id: effectiveData.bracket_type_id ?? null,
+            sport_id: effectiveData.sport_id ?? null,
+            entry_fee: effectiveData.entry_fee ?? 0,
+            registration_fee: effectiveData.registration_fee ?? 0,
+            currency_code: effectiveData.currency_code ?? 'EGP',
+            price_type: (effectiveData.price_type ?? 'FIXED') as 'FREE' | 'FIXED' | 'MEMBERS_ONLY',
+            max_participants: effectiveData.max_participants ?? null,
+            min_participants: effectiveData.min_participants ?? 2,
+            registration_payment_methods: effectiveData.registration_payment_methods,
+            waitlist_enabled: Boolean(Number(effectiveData.waitlist_enabled ?? 0)),
+            age_mode: seed.age_mode ?? null,
+            age_category_ids: seed.age_category_ids ?? null,
+            gender_categories: seed.gender_categories ?? null,
+            level_ids: seed.level_ids ?? null,
+            conn,
+          });
+          if (seed.key) {
+            keyToId.set(seed.key, seededCompetitionId);
+            keyCompetitions.push({ key: seed.key, id: seededCompetitionId, name: seed.name });
+          }
+          if (firstGeneratedCompetitionId == null) firstGeneratedCompetitionId = seededCompetitionId;
+        }
+      } else {
+        await competitionRepository.createDefault({
+          tournament_id: tid,
+          competition_type: defaultFormat?.formatType === 'team' ? 'team' : defaultFormat?.formatType === 'doubles' ? 'doubles' : 'singles',
+          match_format_id: effectiveData.match_format_id ?? null,
+          rule_set_id: effectiveData.rule_set_id ?? null,
+          bracket_type_id: effectiveData.bracket_type_id ?? null,
+          sport_id: effectiveData.sport_id ?? null,
+          entry_fee: effectiveData.entry_fee ?? 0,
+          registration_fee: effectiveData.registration_fee ?? 0,
+          currency_code: effectiveData.currency_code ?? 'EGP',
+          price_type: effectiveData.price_type ?? null,
+          max_participants: effectiveData.max_participants ?? null,
+          min_participants: effectiveData.min_participants ?? 2,
+          registration_payment_methods: effectiveData.registration_payment_methods,
+          waitlist_enabled: effectiveData.waitlist_enabled ?? false,
+          age_mode: effectiveData.age_mode ?? null,
+          age_category_ids: effectiveData.age_category_ids,
+          gender_categories: effectiveData.gender_categories,
+          level_ids: effectiveData.level_ids,
+          conn,
+        });
       }
-      await tournamentRepository.createStage({
-        tournament_id: id,
-        competition_id: stageCompetitionId,
-        stage_order: 1,
-        name: 'Group Stage',
-        progression_format: 'round_robin',
-        match_format_id: effectiveData.match_format_id,
-        rule_set_id: effectiveData.rule_set_id,
-        advance_count: Number((data as any).gsk_config.groupStage.qualification.topPerGroup),
-        status: 'pending',
-        config: (data as any).gsk_config as unknown as Record<string, unknown>,
-      });
-    }
-    if (prizes.length > 0) {
-      const scopedPrizes = await this.assertPrizeCompetitions(id, prizes);
-      await tournamentRepository.replacePrizes(id, scopedPrizes);
-    }
-    if (sponsors.length > 0) {
-      await tournamentRepository.replaceSponsors(id, sponsors);
-    }
-    // Phase 2 (H2) — auto-generate ONLY when the user supplied no description;
-    // an explicit user description is preserved exactly.
-    if (!(data.description ?? '').trim()) {
-      const generated = await this.generateTournamentDescription(id);
-      await tournamentRepository.update(id, { description: generated });
-    }
+      // Step 3B-5A — GSK tournaments receive their Group Stage skeleton at
+      // creation (stage_order 1, round-robin, validated GSK config). NO groups or
+      // matches are generated here — those stay explicit prepare/generate steps.
+      if (data.format === 'group_stage_knockout' && (data as any).gsk_config) {
+        // Phase 4 Step 2 — with generated competitions there is no default row, so
+        // the GSK stage anchors on the FIRST generated competition instead of the
+        // legacy default (multiple competitions make the omitted-id fallback fail).
+        // Step 4A — resolved through the SAME connection so it sees the
+        // just-created (uncommitted) competitions.
+        const stageCompetitionId = firstGeneratedCompetitionId
+          ?? (await competitionService.resolveRegistrationCompetition(tid, null, conn))?.id ?? null;
+        if (stageCompetitionId == null) {
+          throw new ConflictError('A competition context is required for GSK stage creation', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+        }
+        await tournamentRepository.createStage({
+          tournament_id: tid,
+          competition_id: Number(stageCompetitionId),
+          stage_order: 1,
+          name: 'Group Stage',
+          progression_format: 'round_robin',
+          match_format_id: effectiveData.match_format_id,
+          rule_set_id: effectiveData.rule_set_id,
+          advance_count: Number((data as any).gsk_config.groupStage.qualification.topPerGroup),
+          status: 'pending',
+          config: (data as any).gsk_config as unknown as Record<string, unknown>,
+        }, conn);
+      }
+      if (prizes.length > 0) {
+        // Step 4A — target validation + key→id resolution + per-competition cash
+        // uniqueness, all inside the transaction and against the SAME connection.
+        const scopedPrizes = await this.assertPrizeCompetitions(tid, prizes, keyToId, conn);
+        await tournamentRepository.replacePrizes(tid, scopedPrizes, conn);
+      }
+      if (sponsors.length > 0) {
+        await tournamentRepository.replaceSponsors(tid, sponsors, conn);
+      }
+      // Phase 2 (H2) — auto-generate ONLY when the user supplied no description;
+      // an explicit user description is preserved exactly.
+      if (!(data.description ?? '').trim()) {
+        const generated = await this.generateTournamentDescription(tid, conn);
+        await tournamentRepository.update(tid, { description: generated }, conn);
+      }
+      return tid;
+    });
+    // ── Post-commit: read the durable row + emit realtime events ──
     const tournament = await tournamentRepository.findById(id);
     // Step 3B-5A — the create response must not falsely report competition
     // readiness: for GSK it carries the validated config and an explicit
@@ -271,6 +419,11 @@ export class TournamentService {
     if (data.format === 'group_stage_knockout' && (data as any).gsk_config) {
       (tournament as any).gsk_config = (data as any).gsk_config;
       (tournament as any).competition_prepared = false;
+    }
+    // Step 4A — expose the generated competitions (stable key → persisted id) so
+    // the client can reconcile the prize targets it submitted by key.
+    if (keyCompetitions.length > 0) {
+      (tournament as any).competitions = keyCompetitions;
     }
     eventBusV2.emit('tournament:created', { tournamentId: id, name: data.name, format: data.format, ...this.tournamentRealtimeScope(tournament!) } as Record<string, unknown>, {
       aggregateType: 'tournament', aggregateId: String(id), aggregateVersion: 1,
@@ -303,15 +456,24 @@ export class TournamentService {
     const cashSeen = new Map<string, void>();
     for (const p of prizes) {
       if (p.prize_type === 'cash' && p.placement != null) {
-        const key = `${p.competition_id ?? 'default'}:${p.placement}`;
+        // Step 4A — the uniqueness bucket is the RESOLVED competition identity.
+        // A generated competition may be addressed by `competition_key` before
+        // its id exists, so the key is part of the bucket: two cash prizes at the
+        // same placement in the SAME target still conflict here, while the same
+        // placement in two DIFFERENT targets is legitimately allowed.
+        const key = `${p.competition_id ?? p.competition_key ?? 'default'}:${p.placement}`;
         if (cashSeen.has(key)) {
-          throw new ConflictError(`Multiple cash prizes configured for placement ${p.placement}${p.competition_id != null ? ` in competition #${p.competition_id}` : ''}`, ErrorCodes.TOURNAMENT_INVALID_PRIZE);
+          throw new ConflictError(`Multiple cash prizes configured for placement ${p.placement}${p.competition_id != null ? ` in competition #${p.competition_id}` : (p.competition_key != null ? ` in competition ${p.competition_key}` : '')}`, ErrorCodes.TOURNAMENT_INVALID_PRIZE);
         }
         cashSeen.set(key, undefined);
       }
     }
     return prizes.map((p, i) => {
       const prizeType = p.prize_type as TournamentPrizeType;
+      // Step 4A — carry the stable competition key through normalisation so
+      // `assertPrizeCompetitions` can resolve it to the persisted id (the key is
+      // never written to the DB; only `competition_id` is).
+      const competitionKey = p.competition_key ?? null;
       if (prizeType === 'cash') {
         const amount = p.amount;
         if (amount == null || amount <= 0) {
@@ -326,6 +488,7 @@ export class TournamentService {
         return {
           placement: p.placement ?? null,
           competition_id: p.competition_id != null ? Number(p.competition_id) : null,
+          competition_key: competitionKey,
           prize_type: prizeType,
           description: p.description ?? null,
           amount,
@@ -336,6 +499,7 @@ export class TournamentService {
       return {
         placement: p.placement ?? null,
         competition_id: p.competition_id != null ? Number(p.competition_id) : null,
+        competition_key: competitionKey,
         prize_type: prizeType,
         description: p.description ?? null,
         amount: null,
@@ -346,27 +510,63 @@ export class TournamentService {
   }
 
   /**
-   * R2-a — competition-scoped prize validation, run once the tournament id
-   * exists (right before the prize rows are persisted).
+   * R2-a + Step 4A — competition-scoped prize validation, run once the tournament
+   * id exists (right before the prize rows are persisted).
+   *   * a `competition_key` (Step 4A) is resolved through `competitionKeyToId`
+   *     (built while the generated competitions were created in the SAME
+   *     transaction); an unknown key is a fail-closed 422 — never a silent
+   *     fallback to the default;
    *   * an explicitly supplied `competition_id` MUST belong to this tournament
    *     (fail-closed 422, never a raw FK/database error);
-   *   * omitted `competition_id` resolves to the tournament's DEFAULT
-   *     competition for duplicate detection (the DB trigger fills the same
-   *     default on insert, so the two are interchangeable);
+   *   * an OMITTED target resolves to the tournament's DEFAULT competition
+   *     (legacy behavior preserved) when one exists; with exactly one
+   *     (non-default) competition it resolves to that single unambiguous row;
+   *     with MULTIPLE competitions and no default it is rejected (422) — never a
+   *     silent pick;
    *   * one cash prize per ranked placement per EFFECTIVE competition — mirrors
-   *     `uk_tprize_cash_competition_placement` exactly, including the
-   *     omitted-vs-explicit-default unification the pure normaliser cannot see.
-   * Returns the prize set unchanged (omission is preserved for the trigger).
+   *     `uk_tprize_cash_competition_placement` exactly.
+   * Returns the prize set with each resolvable target written as an explicit
+   * `competition_id` (the stable key is not persisted). Prizes that legitimately
+   * fall back to the legacy default keep the omitted column so the DB trigger
+   * assigns the same default.
    */
-  private async assertPrizeCompetitions(tournamentId: number, prizes: TournamentPrizeInput[]): Promise<TournamentPrizeInput[]> {
+  private async assertPrizeCompetitions(
+    tournamentId: number,
+    prizes: TournamentPrizeInput[],
+    competitionKeyToId?: Map<string, number>,
+    conn?: PoolConnection,
+  ): Promise<TournamentPrizeInput[]> {
     if (prizes.length === 0) return prizes;
-    const defaultComp = await competitionRepository.findDefaultByTournament(tournamentId);
+    const defaultComp = await competitionRepository.findDefaultByTournament(tournamentId, conn);
     const defaultId = defaultComp?.id != null ? Number(defaultComp.id) : null;
+    // Loaded lazily — only needed when a prize omits its target and there is no
+    // default competition to fall back to.
+    let allCompetitions: Awaited<ReturnType<typeof competitionRepository.findByTournament>> | null = null;
+    const loadCompetitions = async () => {
+      if (allCompetitions == null) allCompetitions = await competitionRepository.findByTournament(tournamentId, conn);
+      return allCompetitions;
+    };
     const cashSeen = new Map<string, boolean>();
+    const resolved: TournamentPrizeInput[] = [];
     for (const p of prizes) {
       let effectiveCompId = defaultId;
-      if (p.competition_id != null) {
-        const competition = await competitionRepository.findById(Number(p.competition_id));
+      // Whether the resolved target must be written EXPLICITLY (no default row
+      // exists for the trigger to fill in).
+      let writeExplicit = false;
+      if (p.competition_key != null) {
+        const mapped = competitionKeyToId?.get(p.competition_key);
+        if (mapped == null) {
+          throw new AppError(
+            'Prize targets a competition that is not part of this tournament',
+            422,
+            ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND,
+            { code: ErrorCodes.TOURNAMENT_COMPETITION_NOT_FOUND, details: { competitionKey: p.competition_key } },
+          );
+        }
+        effectiveCompId = mapped;
+        writeExplicit = true;
+      } else if (p.competition_id != null) {
+        const competition = await competitionRepository.findById(Number(p.competition_id), conn);
         if (!competition || Number(competition.tournament_id) !== Number(tournamentId)) {
           throw new AppError(
             'Competition does not belong to this tournament',
@@ -376,6 +576,22 @@ export class TournamentService {
           );
         }
         effectiveCompId = Number(competition.id) ?? effectiveCompId;
+        // Explicitly supplied ids are already written verbatim by replacePrizes.
+      } else if (defaultId == null) {
+        const competitions = await loadCompetitions();
+        if (competitions.length === 1) {
+          effectiveCompId = Number(competitions[0].id);
+          // No default row exists — the trigger has nothing to fill, so write the
+          // single unambiguous competition explicitly.
+          writeExplicit = true;
+        } else if (competitions.length > 1) {
+          throw new AppError(
+            'This tournament creates multiple competition categories — select the target competition for every prize',
+            422,
+            ErrorCodes.TOURNAMENT_COMPETITION_REQUIRED,
+            { code: ErrorCodes.TOURNAMENT_COMPETITION_REQUIRED, details: { competitions: competitions.map((c) => Number(c.id)) } },
+          );
+        }
       }
       if (p.prize_type === 'cash' && p.placement != null) {
         const key = `${effectiveCompId ?? 'default'}:${p.placement}`;
@@ -387,8 +603,13 @@ export class TournamentService {
         }
         cashSeen.set(key, true);
       }
+      resolved.push(
+        writeExplicit && effectiveCompId != null
+          ? { ...p, competition_id: effectiveCompId }
+          : p,
+      );
     }
-    return prizes;
+    return resolved;
   }
 
   /**
@@ -444,10 +665,10 @@ export class TournamentService {
    * Never assigns monetary value to IN-KIND prizes/sponsors and never includes
    * cash amounts (keeps the composed text safe for public detail pages).
    */
-  private async generateTournamentDescription(id: number): Promise<string> {
-    const t = await this.getById(id);
-    const prizes = await tournamentRepository.findPrizesByTournament(id);
-    const sponsors = await tournamentRepository.findSponsorsByTournament(id);
+  private async generateTournamentDescription(id: number, conn?: PoolConnection): Promise<string> {
+    const t = await this.getById(id, conn);
+    const prizes = await tournamentRepository.findPrizesByTournament(id, conn);
+    const sponsors = await tournamentRepository.findSponsorsByTournament(id, conn);
     const input = await this.buildDescriptionInput(t, prizes, sponsors);
     return composeTournamentDescription(input);
   }
@@ -1063,8 +1284,8 @@ export class TournamentService {
     return Object.keys(out).length ? out : null;
   }
 
-  async getById(id: number): Promise<Tournament> {
-    const t = await tournamentRepository.findById(id);
+  async getById(id: number, conn?: PoolConnection): Promise<Tournament> {
+    const t = await tournamentRepository.findById(id, conn);
     if (!t) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
     // Group 3 — the persisted JSON allowlist is exposed as a normalised array
     // (legacy NULL rows → backward-compatible default both methods).
@@ -2124,7 +2345,7 @@ export class TournamentService {
             waiting_order: waitingOrder,
             eligibility_snapshot: eligibility.snapshot as unknown as Record<string, unknown>,
           }, conn);
-          await participantDrawRepository.createParticipant({
+          const participantId = await participantDrawRepository.createParticipant({
             tournament_id: tournamentId,
             competition_id: competition?.id ?? null,
             registration_id: id,
@@ -2133,6 +2354,17 @@ export class TournamentService {
             member_user_ids: [userId],
             waiting_order: waitingOrder,
           }, conn);
+          // Step 3C — materialize the authoritative singleton member row with the
+          // participant (same transaction). Group 7 `tournament_participant_members`
+          // is the source of truth for result progression; `member_user_ids` above is
+          // only a SQL cache. A waiting entry promoted later already owns its roster.
+          await participantMemberRepository.addMember({
+            tournament_id: tournamentId,
+            participant_id: participantId,
+            user_id: userId,
+            member_order: 0,
+            conn,
+          });
         });
       } catch (err) {
         // Phase 2 — a concurrent duplicate that passed the pre-check is caught by
@@ -2202,7 +2434,7 @@ export class TournamentService {
           payment_status: 'unpaid',
           eligibility_snapshot: eligibility.snapshot as unknown as Record<string, unknown>,
         }, conn);
-        await participantDrawRepository.createParticipant({
+        const participantId = await participantDrawRepository.createParticipant({
           tournament_id: tournamentId,
           competition_id: competition?.id ?? null,
           registration_id: id,
@@ -2210,6 +2442,20 @@ export class TournamentService {
           status: 'active',
           member_user_ids: [userId],
         }, conn);
+        // Step 3C — the authoritative singleton member row is created atomically
+        // with the participant/registration. Result progression resolves the winner
+        // through this roster (`resolveParticipantEntity`); relying on the
+        // `member_user_ids` JSON cache alone left every registered individual
+        // without a member row, so approved results could never advance them.
+        // Idempotency/duplicates are guarded by uk_member_participant_user and by
+        // the registration uniqueness check above.
+        await participantMemberRepository.addMember({
+          tournament_id: tournamentId,
+          participant_id: participantId,
+          user_id: userId,
+          member_order: 0,
+          conn,
+        });
       });
     } catch (err) {
       // Phase 2 — concurrent duplicate passed the pre-check → uk_player_competition.
@@ -2473,7 +2719,7 @@ export class TournamentService {
           const missingSide = p1 != null ? 'player2' : 'player1';
           const j = slot.bracket_position ?? 0;
           const missingPos = missingSide === 'player1' ? j * 2 : j * 2 + 1;
-          const feed = await tournamentRepository.findBracketSlot(tournamentId, slot.round - 1, missingPos);
+          const feed = await tournamentRepository.findBracketSlot(tournamentId, Number(slot.competition_id), slot.round - 1, missingPos);
           if (feed && feed.progression_state === 'bye' && feed.winner_id == null) {
             const winner = p1 != null ? p1 : p2!;
             await this.seatBracketWinner(slot, winner);
@@ -2538,7 +2784,7 @@ export class TournamentService {
     if (!meta || meta.target_round == null || meta.target_bracket_position == null) {
       return null;
     }
-    const target = await tournamentRepository.findBracketSlot(slot.tournament_id, meta.target_round, meta.target_bracket_position);
+    const target = await tournamentRepository.findBracketSlot(slot.tournament_id, Number(slot.competition_id), meta.target_round, meta.target_bracket_position);
     if (!target) return null;
     const slotSide = meta.target_side === 'player2' ? 'player2' : 'player1';
     const participantField = slotSide === 'player1' ? 'participant1_id' : 'participant2_id';
@@ -2624,6 +2870,29 @@ export class TournamentService {
       return { source, advancedTo: null };
     }
 
+    // Step 3E — legacy membership repair for THIS source match only.
+    //
+    // A participant materialized BEFORE Step 3C can have a locked draw and an
+    // approved result but no authoritative member row, which would make winner
+    // resolution below fail closed. Repair is scoped to the source match's OWN
+    // participant ids (participant1_id / participant2_id) — never a tournament-
+    // wide sync, never bracket coordinates, never another competition. It is
+    // individual + active only, idempotent and purely additive.
+    //
+    // TRANSACTION NOTE: this runs BEFORE `conn.beginTransaction()` below, on the
+    // pool connection, so it is NOT atomic with the progression write. That is
+    // safe but not transactional: a repair failure throws before any progression
+    // write (nothing partial), the progression event is retried, and a retry is
+    // a no-op because the repair is idempotent. Making it atomic would require
+    // threading `conn` through `resolveParticipantEntity` and moving winner
+    // resolution inside the transaction — a larger refactor, deliberately not
+    // done here.
+    const { participantDrawService } = await import('./participant-draw.service.js');
+    await participantDrawService.repairMissingIndividualMemberRow(source.tournament_id, [
+      source.participant1_id,
+      source.participant2_id,
+    ]);
+
     // G9-B — resolve the winning TOURNAMENT PARTICIPANT (never a single user).
     // The result is side-based; the winning side maps to the slot's authoritative
     // participant identity (participant1_id = home, participant2_id = away). If the
@@ -2679,7 +2948,7 @@ export class TournamentService {
         // post-commit lone-slot resolution can advance an already-present ACTIVE
         // participant; never complete the tournament through an ineligible winner.
         if (meta.target_round != null && meta.target_bracket_position != null) {
-          target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
+          target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), meta.target_round, meta.target_bracket_position);
         }
       } else if (isTerminalSlot) {
         // Final round — the tournament is complete. G11.14: auto-completion goes
@@ -2691,7 +2960,7 @@ export class TournamentService {
         await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
         tournamentCompleted = true;
       } else if (targetRound != null && targetBracketPosition != null) {
-        target = await tournamentRepository.findBracketSlot(source.tournament_id, targetRound, targetBracketPosition);
+        target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), targetRound, targetBracketPosition);
         if (target) {
           const slotSide = meta.target_side === 'player2' ? 'player2' : 'player1';
           const participantField = slotSide === 'player1' ? 'participant1_id' : 'participant2_id';
@@ -2910,7 +3179,7 @@ export class TournamentService {
     const meta = this.parseProgressionMeta(source);
     if (meta == null || meta.is_bracket !== true) return { outcome: 'no_repair' };
     if (meta.target_round == null || meta.target_bracket_position == null) return { outcome: 'no_repair' }; // final round — no target to repair
-    const target = await tournamentRepository.findBracketSlot(source.tournament_id, meta.target_round, meta.target_bracket_position);
+    const target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), meta.target_round, meta.target_bracket_position);
     if (!target) return { outcome: 'no_repair' };
     if (target.match_id != null) return { outcome: 'already_repaired' };
     if (target.progression_state === 'bye' || target.progression_state === 'cancelled' || target.progression_state === 'completed') return { outcome: 'legitimate_terminal' };
@@ -2990,7 +3259,7 @@ export class TournamentService {
 
     let target: TournamentMatch | null = null;
     if (hasTarget) {
-      target = await tournamentRepository.findBracketSlot(input.tournamentId, meta!.target_round!, meta!.target_bracket_position!);
+      target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), meta!.target_round!, meta!.target_bracket_position!);
     }
 
     if (target == null || target.id == null) {

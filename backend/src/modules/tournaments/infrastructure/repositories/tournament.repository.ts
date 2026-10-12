@@ -368,7 +368,7 @@ export class TournamentRepository {
     return rows.length ? (rows[0] as Tournament) : null;
   }
 
-  async create(data: Partial<Tournament>): Promise<number> {
+  async create(data: Partial<Tournament>, conn?: PoolConnection): Promise<number> {
     // G11 Phase 3 (LOCKED PRODUCT RULE) — a tournament is ALWAYS owned by an
     // ORGANISATION. This repository invariant guard is defence in depth behind
     // `TournamentService.create()`: no caller may persist an org-less tournament,
@@ -380,9 +380,10 @@ export class TournamentRepository {
     if (data.tournament_type != null && data.tournament_type !== 'community') {
       throw new Error(`Tournament repository invariant violated: unsupported tournament_type "${data.tournament_type}" — expected "community"`);
     }
+    const db = conn ?? getPool();
     const sql = `INSERT INTO tournaments (public_id, creator_id, organisation_id, branch_id, venue_type, venue_name, venue_address, venue_city, venue_country, latitude, longitude, place_id, venue_contact, maps_url, bracket_type_id, format, category, season, sport_id, match_format_id, rule_set_id, draw_seed, name, code, description, tournament_type, max_participants, max_teams, min_participants, entry_fee, registration_fee, currency_code, price_type, registration_payment_methods, waitlist_enabled, commission_rate, prize_description, status, is_public, registration_opens, registration_closes, start_date, end_date, daily_start_time, daily_end_time, rules, is_featured, image_url, age_mode, age_category_ids, gender_categories, level_ids, max_events_per_player)
                  VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    const [result] = await getPool().query<ResultSet>(sql, [
+    const [result] = await db.query<ResultSet>(sql, [
       data.creator_id, data.organisation_id, data.branch_id ?? null,
       data.venue_type ?? null, data.venue_name ?? null, data.venue_address ?? null, data.venue_city ?? null,
       data.venue_country ?? null, data.latitude ?? null, data.longitude ?? null, data.place_id ?? null,
@@ -415,7 +416,7 @@ export class TournamentRepository {
     return (result as any).insertId;
   }
 
-  async update(id: number, data: Partial<Tournament>): Promise<void> {
+  async update(id: number, data: Partial<Tournament>, conn?: PoolConnection): Promise<void> {
     const fields: string[] = [];
     const params: any[] = [];
     const updatable: (keyof Tournament)[] = [
@@ -442,7 +443,8 @@ export class TournamentRepository {
     }
     if (!fields.length) return;
     params.push(id);
-    await getPool().query(
+    const db = conn ?? getPool();
+    await db.query(
       `UPDATE tournaments SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`, params,
     );
   }
@@ -709,8 +711,9 @@ export class TournamentRepository {
 
   // ── Prizes (tournament_prizes — Group 2) ──
 
-  async findPrizesByTournament(tournamentId: number): Promise<TournamentPrize[]> {
-    const [rows] = await getPool().query<RowData>(
+  async findPrizesByTournament(tournamentId: number, conn?: PoolConnection): Promise<TournamentPrize[]> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       'SELECT * FROM tournament_prizes WHERE tournament_id = ? ORDER BY display_order ASC, id ASC',
       [tournamentId],
     );
@@ -766,8 +769,9 @@ export class TournamentRepository {
 
   // ── Sponsors (tournament_sponsors — simple tournament-level model) ──
 
-  async findSponsorsByTournament(tournamentId: number): Promise<TournamentSponsor[]> {
-    const [rows] = await getPool().query<RowData>(
+  async findSponsorsByTournament(tournamentId: number, conn?: PoolConnection): Promise<TournamentSponsor[]> {
+    const db = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
       'SELECT * FROM tournament_sponsors WHERE tournament_id = ? ORDER BY display_order ASC, id ASC',
       [tournamentId],
     );
@@ -1075,11 +1079,11 @@ export class TournamentRepository {
     return rows.length ? (rows[0] as TournamentMatch) : null;
   }
 
-  /** Group 5B — a specific bracket slot for a round + position. */
-  async findBracketSlot(tournamentId: number, round: number, bracketPosition: number): Promise<TournamentMatch | null> {
+  /** Group 5B — a specific bracket slot for a round + position, WITHIN one competition. */
+  async findBracketSlot(tournamentId: number, competitionId: number, round: number, bracketPosition: number): Promise<TournamentMatch | null> {
     const [rows] = await getPool().query<RowData>(
-      'SELECT * FROM tournament_matches WHERE tournament_id = ? AND round = ? AND bracket_position = ? ORDER BY id ASC LIMIT 1',
-      [tournamentId, round, bracketPosition],
+      'SELECT * FROM tournament_matches WHERE tournament_id = ? AND competition_id = ? AND round = ? AND bracket_position = ? ORDER BY id ASC LIMIT 1',
+      [tournamentId, competitionId, round, bracketPosition],
     );
     return rows.length ? (rows[0] as TournamentMatch) : null;
   }

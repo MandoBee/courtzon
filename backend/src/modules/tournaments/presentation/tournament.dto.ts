@@ -31,6 +31,41 @@ export const TournamentEligibilityInputSchema = z.object({
 });
 
 /**
+ * Phase 4 Step 2 — one PLANNED competition created atomically WITH the
+ * tournament. Each seed represents a single eligible group (gender × age
+ * category, or gender × level for Professionals), so every group owns its own
+ * competition and therefore its own independent draw.
+ *
+ * A generated competition is deliberately constrained to EXACTLY ONE gender
+ * category (['male'] / ['female'] / ['mixed']) — never the broad multi-gender
+ * set that would merge groups into a single draw. Mixed Doubles stays ONE
+ * mixed-gender competition: ['mixed'] is a single category and is never split
+ * into male-only/female-only competitions.
+ */
+export const CompetitionSeedSchema = z.object({
+  /**
+   * Phase 4 Step 4A — stable client-side key identifying this planned
+   * competition. Prizes may reference it via `competition_key` so a prize is
+   * mapped to the INTENDED competition (resolved server-side to the persisted
+   * id) instead of silently falling back to the default. Keys must be unique
+   * within a single create payload.
+   */
+  key: z.string().min(1).max(120).optional(),
+  /**
+   * Optional: when present it is used verbatim; when omitted the tournament
+   * create path INHERITS the backend's resolved default format type — the SAME
+   * derivation the legacy default-competition path uses (never a silent
+   * 'singles' when the sport's default format is doubles/team).
+   */
+  competition_type: z.enum(['singles', 'doubles', 'team']).optional(),
+  name: z.string().min(1).max(200),
+  age_mode: z.enum(['open', 'categories']).nullable().optional(),
+  age_category_ids: z.array(z.coerce.number().int().positive()).max(100).nullable().optional(),
+  gender_categories: z.array(z.enum(['male', 'female', 'mixed'])).length(1),
+  level_ids: z.array(z.coerce.number().int().positive()).max(100).nullable().optional(),
+});
+
+/**
  * Group 2 — structured Tournament prize input. Multiple prizes per placement are
  * allowed; `placement` is nullable (NULL = special/non-ranked prize).
  * Cash prizes carry `amount` + the Tournament's authoritative `currency_code`;
@@ -40,6 +75,14 @@ export const TournamentPrizeSchema = z.object({
   placement: z.number().int().positive().nullable().optional(),
   /** G11.20 — optional competition/category scope; omitted = the tournament's default competition (legacy trigger behavior). */
   competition_id: z.number().int().positive().optional(),
+  /**
+   * Phase 4 Step 4A — target a GENERATED competition by its stable client key
+   * (`competitions[].key`). Resolved server-side to the persisted competition id
+   * BEFORE any prize row is written. On a split tournament (multiple generated
+   * competitions) a prize MUST target exactly one competition (by key or id) —
+   * an omitted target fails with a structured 422 (never a silent fallback).
+   */
+  competition_key: z.string().min(1).max(120).optional(),
   prize_type: z.enum(['cash', 'gold', 'silver', 'bronze', 'trophy', 'gift', 'other']),
   description: z.string().max(255).optional(),
   amount: z.number().min(0).optional(),
@@ -101,6 +144,23 @@ export const CreateTournamentSchema = z.object({
   waitlist_enabled: z.boolean().optional().default(false),
   /** Phase 3 — max events a player may enter in this tournament; NULL = unlimited (default). */
   max_events_per_player: z.number().int().min(1).nullable().optional(),
+  /**
+   * Phase 4 Step 2 — optional atomic competition generation. When present
+   * (non-empty), these competitions are created WITH the tournament INSTEAD of
+   * the legacy single default competition — each is one specific eligible group
+   * so every group owns an independent draw and no broad default exists. When
+   * absent, the legacy default competition is created (backward compatible).
+   */
+  competitions: z.array(CompetitionSeedSchema).max(60).optional(),
+  /**
+   * Phase 4 Step 2B — explicit split-generation request. When `true`, the
+   * tournament create path REQUIRES a non-empty `competitions` list and FAILS
+   * validation otherwise — the legacy default competition must never silently
+   * replace a requested gender/age/level split (which would merge groups and
+   * broaden eligibility). Omitted (legacy clients) → current behavior: a
+   * non-empty `competitions` wins; otherwise the default competition is created.
+   */
+  generate_competitions: z.boolean().optional(),
   // Commission is ALWAYS derived server-side from the organisation's active
   // subscription/plan (Group 5B-SR). The field is intentionally NOT part of the
   // schema — zod strips any client-supplied commission_rate so it can never

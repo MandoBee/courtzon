@@ -80,7 +80,8 @@ export interface RegistrationEligibilitySnapshot {
 interface PlayerRow {
   id: number;
   gender: string | null;
-  birth_date: string | null;
+  /** Raw driver value: string `YYYY-MM-DD`/ISO or a JS `Date` (mysql2 inflation). */
+  birth_date: unknown | null;
 }
 
 /** Pure evaluation context (testable without a database). */
@@ -108,6 +109,31 @@ export function assertSingleAgeCategoryFamily(categories: TournamentAgeCategory[
       'INVALID_AGE_CATEGORIES',
     );
   }
+}
+
+/**
+ * ROBUST birth-year extraction for the YEAR-only age formula.
+ *
+ * `users.birth_date` is a `DATE` column; mysql2 (app pool, `timezone +00:00`,
+ * no `dateStrings`) may hand it back as a JS `Date`, while other readers and
+ * fixtures deliver `'YYYY-MM-DD'` / ISO strings. The previous
+ * `Number(String(value).slice(0, 4))` silently became NaN for `Date` objects,
+ * making EVERY age-category evaluation fail. This helper accepts both forms;
+ * unparseable values return `null` (⇒ structured MISSING_BIRTH_DATE/AGE error,
+ * never a silent NaN).
+ */
+export function toBirthYear(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.getUTCFullYear();
+  }
+  const s = String(value).trim();
+  const match = /^(\d{4})/.exec(s);
+  if (match) return Number(match[1]);
+  // Defensive: a Date that was already stringified by an older reader
+  // ("Wed May 05 2010 …") — parse it back and read the UTC calendar year.
+  const parsed = new Date(s);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getUTCFullYear();
 }
 
 /**
@@ -253,7 +279,10 @@ export class TournamentEligibilityService {
       usersById.set(Number(row.id), {
         id: Number(row.id),
         gender: row.gender != null ? String(row.gender) : null,
-        birth_date: row.birth_date != null ? String(row.birth_date) : null,
+        // Keep the RAW driver value — `toBirthYear` accepts both the `'YYYY-MM-DD'`
+        // string and the inflated JS Date (the legacy `String(...)` here turned a
+        // Date into "Wed May 05 2010 …" and silently broke every age evaluation).
+        birth_date: row.birth_date ?? null,
       });
     }
 
@@ -298,7 +327,7 @@ export class TournamentEligibilityService {
       player
         ? {
             gender: player.gender,
-            birthYear: player.birth_date ? Number(String(player.birth_date).slice(0, 4)) : null,
+            birthYear: player.birth_date ? toBirthYear(player.birth_date) : null,
           }
         : undefined,
       playerLevelId,

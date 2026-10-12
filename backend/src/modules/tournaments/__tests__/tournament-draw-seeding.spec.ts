@@ -40,6 +40,7 @@ const pdRepo = vi.hoisted(() => ({
 
 const pmRepo = vi.hoisted(() => ({
   addMember: vi.fn(),
+  findMember: vi.fn(),
   listMembersByTournament: vi.fn(),
   listMembersByParticipant: vi.fn(),
 }));
