@@ -24,6 +24,7 @@ import { getPool } from '../../../database/mysql.js';
 import type { PoolConnection } from 'mysql2/promise';
 import { withTransaction, runProvidedTransaction } from '../../../database/database.transaction.js';
 import { tournamentEligibilityService } from './tournament-eligibility.service.js';
+import { mapRegistrationDuplicateError } from './registration-duplicate.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { matchResultRepository } from '../../match-result/infrastructure/match-result.repository.js';
 import { formatSportRules } from '../../match-result/application/rules/format-rules.js';
@@ -2132,6 +2133,11 @@ export class TournamentService {
             waiting_order: waitingOrder,
           }, conn);
         });
+      } catch (err) {
+        // Phase 2 — a concurrent duplicate that passed the pre-check is caught by
+        // uk_player_competition here; surface the SAME user-safe 409 instead of a
+        // raw ER_DUP_ENTRY. Everything else rethrows untouched.
+        mapRegistrationDuplicateError(err, competition ? 'Already registered in this competition' : 'Already registered in this tournament');
       } finally {
         conn.release();
       }
@@ -2200,6 +2206,10 @@ export class TournamentService {
           member_user_ids: [userId],
         }, conn);
       });
+    } catch (err) {
+      // Phase 2 — concurrent duplicate passed the pre-check → uk_player_competition.
+      // Map to the same user-safe 409; unrelated DB errors rethrow untouched.
+      mapRegistrationDuplicateError(err, competition ? 'Already registered in this competition' : 'Already registered in this tournament');
     } finally {
       conn.release();
     }

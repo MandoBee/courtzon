@@ -199,6 +199,29 @@ describe('G11.18 competition categories foundation', () => {
     )).rejects.toMatchObject({ code: 'ER_DUP_ENTRY' });
   });
 
+  it('6-7S. the service returns a friendly 409 for a same-competition duplicate; another eligible competition still registers', async () => {
+    const { tid, def, extra } = await createTournamentWithCompetitions();
+    const { tournamentService } = await import('../application/tournament.service.js');
+
+    // First valid registration succeeds.
+    const first = await tournamentService.register(tid, P.u1, undefined, undefined, { competitionId: def });
+    expect(Number(first.id)).toBeGreaterThan(0);
+
+    // Duplicate registration: same player + same competition → standard 409 Conflict.
+    await expect(
+      tournamentService.register(tid, P.u1, undefined, undefined, { competitionId: def }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      errorCode: 'CONFLICT',
+      code: 'TOURNAMENT_REGISTRATION_EXISTS',
+      message: 'Already registered in this competition',
+    });
+
+    // A different eligible competition remains independently registrable.
+    const second = await tournamentService.register(tid, P.u3, undefined, undefined, { competitionId: extra });
+    expect(Number(second.id)).toBeGreaterThan(0);
+  });
+
   it('6-7. the tournament service automatically creates the default competition on create', async () => {
     const { tournamentService } = await import('../application/tournament.service.js');
     const ruleSetId = ruleSetSingles;
