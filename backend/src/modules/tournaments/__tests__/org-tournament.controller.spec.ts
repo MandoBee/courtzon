@@ -44,10 +44,19 @@ const service = vi.hoisted(() => ({
   listSportFormatsCascade: vi.fn(),
 }));
 
+const drawService = vi.hoisted(() => ({
+  generateDraw: vi.fn(),
+  getCurrentDraw: vi.fn(),
+  validateDraw: vi.fn(),
+  approveDraw: vi.fn(),
+  lockDraw: vi.fn(),
+}));
+
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 
 vi.mock('../infrastructure/repositories/tournament.repository.js', () => ({ tournamentRepository: repo }));
 vi.mock('../application/tournament.service.js', () => ({ tournamentService: service }));
+vi.mock('../application/participant-draw.service.js', () => ({ participantDrawService: drawService }));
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 
 import * as ctrl from '../presentation/org-tournament.controller.js';
@@ -276,5 +285,156 @@ describe('org-tournament.controller (tenant isolation)', () => {
     repo.getOrganisationId.mockResolvedValue(ORG_B);
     await expect(ctrl.listOrgEligibleCourtsHandler(req({ params: { orgId: String(ORG_A), id: '7' } }), res()))
       .rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
+  });
+});
+
+describe('org-tournament.controller — competition-scoped draw generation', () => {
+  const ORG_A = 1001;
+
+  it('forwards the selected competition_id to the service (multi-competition draw)', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.generateDraw.mockResolvedValue({ id: 501, competition_id: 11 });
+    const reply = res();
+    await ctrl.generateOrgDrawHandler(
+      req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 11 } }),
+      reply,
+    );
+    expect(drawService.generateDraw).toHaveBeenCalledWith(9, 42, undefined, 11);
+    expect(reply.sent).toMatchObject({ id: 501, competition_id: 11 });
+  });
+
+  it('forwards draw_seed AND competition_id together', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.generateDraw.mockResolvedValue({ id: 502 });
+    await ctrl.generateOrgDrawHandler(
+      req({ params: { orgId: String(ORG_A), id: '9' }, body: { draw_seed: 777, competition_id: 12 } }),
+      res(),
+    );
+    expect(drawService.generateDraw).toHaveBeenCalledWith(9, 42, 777, 12);
+  });
+
+  it('omits the competition scope when none is supplied (single-competition / legacy compatible)', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.generateDraw.mockResolvedValue({ id: 503 });
+    await ctrl.generateOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: {} }), res());
+    expect(drawService.generateDraw).toHaveBeenCalledWith(9, 42, undefined, undefined);
+  });
+
+  it('rejects a malformed competition_id at the DTO boundary before any service call', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    await expect(
+      ctrl.generateOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 'not-a-number' } }), res()),
+    ).rejects.toThrow();
+    expect(drawService.generateDraw).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-positive competition_id at the DTO boundary', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    await expect(
+      ctrl.generateOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 0 } }), res()),
+    ).rejects.toThrow();
+    expect(drawService.generateDraw).not.toHaveBeenCalled();
+  });
+
+  it('cannot generate a draw for a tournament owned by another org (tenancy enforced before delegating)', async () => {
+    repo.getOrganisationId.mockResolvedValue(2002); // ORG_B
+    await expect(
+      ctrl.generateOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 11 } }), res()),
+    ).rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
+    expect(drawService.generateDraw).not.toHaveBeenCalled();
+  });
+
+  it('propagates a competition that does not belong to this tournament (service fail-closed)', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.generateDraw.mockRejectedValue(
+      new AppError('Competition not found', 404, 'TOURNAMENT_COMPETITION_NOT_FOUND'),
+    );
+    await expect(
+      ctrl.generateOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 999 } }), res()),
+    ).rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_COMPETITION_NOT_FOUND' });
+    expect(drawService.generateDraw).toHaveBeenCalledWith(9, 42, undefined, 999);
+  });
+
+  it('read: forwards competition_id from the query string (multi-competition current draw)', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.getCurrentDraw.mockResolvedValue({ id: 601, competition_id: 11 });
+    const reply = res();
+    await ctrl.getOrgCurrentDrawHandler(
+      req({ params: { orgId: String(ORG_A), id: '9' }, query: { competition_id: '11' } }),
+      reply,
+    );
+    expect(drawService.getCurrentDraw).toHaveBeenCalledWith(9, 11);
+    expect(reply.sent).toMatchObject({ id: 601, competition_id: 11 });
+  });
+
+  it('read: omits scope when the query has no competition_id (single-competition / legacy compatible)', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.getCurrentDraw.mockResolvedValue(null);
+    await ctrl.getOrgCurrentDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, query: {} }), res());
+    expect(drawService.getCurrentDraw).toHaveBeenCalledWith(9, undefined);
+  });
+
+  it('validate: forwards competition_id from the query string', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.validateDraw.mockResolvedValue({ valid: true });
+    await ctrl.validateOrgDrawHandler(
+      req({ params: { orgId: String(ORG_A), id: '9' }, query: { competition_id: '12' } }),
+      res(),
+    );
+    expect(drawService.validateDraw).toHaveBeenCalledWith(9, 12);
+  });
+
+  it('approve: forwards competition_id from the body', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.approveDraw.mockResolvedValue({ id: 602, status: 'approved' });
+    await ctrl.approveOrgDrawHandler(
+      req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 11 } }),
+      res(),
+    );
+    expect(drawService.approveDraw).toHaveBeenCalledWith(9, 42, 11);
+  });
+
+  it('lock: forwards competition_id from the body', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.lockDraw.mockResolvedValue({ id: 603, status: 'locked' });
+    await ctrl.lockOrgDrawHandler(
+      req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 12 } }),
+      res(),
+    );
+    expect(drawService.lockDraw).toHaveBeenCalledWith(9, 42, 12);
+  });
+
+  it('approve/lock: empty or absent body omits scope (legacy compatible)', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    drawService.approveDraw.mockResolvedValue({});
+    drawService.lockDraw.mockResolvedValue({});
+    await ctrl.approveOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: {} }), res());
+    expect(drawService.approveDraw).toHaveBeenCalledWith(9, 42, undefined);
+    await ctrl.lockOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: undefined }), res());
+    expect(drawService.lockDraw).toHaveBeenCalledWith(9, 42, undefined);
+  });
+
+  it('read/validate: reject a malformed competition_id in the query before delegating', async () => {
+    repo.getOrganisationId.mockResolvedValue(ORG_A);
+    await expect(
+      ctrl.getOrgCurrentDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, query: { competition_id: 'abc' } }), res()),
+    ).rejects.toThrow();
+    await expect(
+      ctrl.validateOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, query: { competition_id: 0 } }), res()),
+    ).rejects.toThrow();
+    expect(drawService.getCurrentDraw).not.toHaveBeenCalled();
+    expect(drawService.validateDraw).not.toHaveBeenCalled();
+  });
+
+  it('read/approve: cross-tenant draw operations are blocked before delegating', async () => {
+    repo.getOrganisationId.mockResolvedValue(2002); // ORG_B
+    await expect(
+      ctrl.getOrgCurrentDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, query: { competition_id: '11' } }), res()),
+    ).rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
+    await expect(
+      ctrl.approveOrgDrawHandler(req({ params: { orgId: String(ORG_A), id: '9' }, body: { competition_id: 11 } }), res()),
+    ).rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
+    expect(drawService.getCurrentDraw).not.toHaveBeenCalled();
+    expect(drawService.approveDraw).not.toHaveBeenCalled();
   });
 });

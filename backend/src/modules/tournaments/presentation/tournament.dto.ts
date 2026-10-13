@@ -487,6 +487,20 @@ export const GenerateDrawSchema = z.object({
   competition_id: z.coerce.number().int().positive().optional(),
 });
 
+/**
+ * G11.18 Phase 3 — optional competition scope for draw lifecycle operations
+ * (read / validate / approve / lock). Used for the request BODY on approve/lock
+ * and the QUERY string on the read/validate endpoints. Omitted (or empty) = the
+ * tournament's single/default competition (legacy-compatible); REQUIRED to
+ * target ONE competition of a multi-competition tournament.
+ */
+export const DrawScopeSchema = z.object({
+  competition_id: z.preprocess(
+    (v) => (v === '' || v === null ? undefined : v),
+    z.coerce.number().int().positive().optional(),
+  ),
+});
+
 /** G11.18 Phase 3 — competition venue override (validated server-side; null clears to inherit). */
 export const CompetitionVenueSchema = z.object({
   venue_override: z.record(z.string(), z.unknown()).nullable().optional(),

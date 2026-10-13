@@ -7,7 +7,7 @@ import {
   CreatePairParticipantSchema, CreateTeamParticipantSchema,
   AddParticipantMemberSchema, RemoveParticipantMemberSchema,
   CreateReplacementRequestSchema, ReviewReplacementSchema,
-  ScheduleMatchSchema, GenerateMatchesSchema,
+  ScheduleMatchSchema, GenerateMatchesSchema, DrawScopeSchema,
 } from './tournament.dto.js';
 import { matchScheduleService } from '../application/match-schedule.service.js';
 
@@ -92,13 +92,15 @@ export async function listDrawsHandler(request: FastifyRequest, reply: FastifyRe
 
 export async function getCurrentDrawHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const draw = await participantDrawService.getCurrentDraw(Number(id));
+  const { competition_id } = DrawScopeSchema.parse(request.query ?? {});
+  const draw = await participantDrawService.getCurrentDraw(Number(id), competition_id);
   return reply.send(draw);
 }
 
 export async function validateDrawHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const result = await participantDrawService.validateDraw(Number(id));
+  const { competition_id } = DrawScopeSchema.parse(request.query ?? {});
+  const result = await participantDrawService.validateDraw(Number(id), competition_id);
   return reply.send(result);
 }
 
@@ -113,14 +115,16 @@ export async function moveParticipantHandler(request: FastifyRequest, reply: Fas
 export async function approveDrawHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
-  const draw = await participantDrawService.approveDraw(Number(id), userId);
+  const { competition_id } = DrawScopeSchema.parse(request.body ?? {});
+  const draw = await participantDrawService.approveDraw(Number(id), userId, competition_id);
   return reply.send(draw);
 }
 
 export async function lockDrawHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id } = request.params as any;
-  const draw = await participantDrawService.lockDraw(Number(id), userId);
+  const { competition_id } = DrawScopeSchema.parse(request.body ?? {});
+  const draw = await participantDrawService.lockDraw(Number(id), userId, competition_id);
   return reply.send(draw);
 }
 

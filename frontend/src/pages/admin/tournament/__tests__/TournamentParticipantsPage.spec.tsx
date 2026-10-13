@@ -82,7 +82,7 @@ function mockApi() {
     if (url.includes('/participants')) return Promise.resolve({ data: __state.emptyParticipants ? [] : [...__state.participants, __state.pair] });
     if (url.includes('/waitlist')) return Promise.resolve({ data: __state.waitlist });
     if (url.includes('/draw')) return Promise.resolve({ data: __state.noDraw ? null : __state.currentDraw });
-    if (url.includes('/competitions')) return Promise.resolve({ data: __state.competitions });
+    if (url.includes('/competitions')) return Promise.resolve({ data: { data: __state.competitions } });
     return Promise.resolve({ data: {} });
   });
 }
@@ -361,5 +361,23 @@ describe('TournamentParticipantsPage — F-02 fetch-error states', () => {
     expect(await screen.findByText('Unable to load participants.')).toBeTruthy();
     expect(screen.getByText('Unable to load waitlist.')).toBeTruthy();
     expect(screen.getAllByText('Retry').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('TournamentParticipantsPage — competition-scoped draw (G11.18 Phase 3)', () => {
+  it('multi-competition: blocks the draw action until a competition is selected', async () => {
+    __state.competitions = [{ id: 11, name: 'Singles A' }, { id: 12, name: 'Singles B' }];
+    renderPage();
+    await screen.findAllByText('Player A');
+    const btn = (await screen.findByRole('button', { name: /Generate Draw|Re-Draw/ })) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('single-competition / legacy: the draw action stays available without a selection', async () => {
+    __state.competitions = [{ id: 11, name: 'Singles A' }];
+    renderPage();
+    await screen.findAllByText('Player A');
+    const btn = (await screen.findByRole('button', { name: /Generate Draw|Re-Draw/ })) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
   });
 });

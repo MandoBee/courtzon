@@ -412,23 +412,32 @@ export async function generateOrgDrawHandler(request: FastifyRequest, reply: Fas
   const { GenerateDrawSchema } = await import('./tournament.dto.js');
   const body = GenerateDrawSchema.parse(request.body);
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send(await participantDrawService.generateDraw(Number(id), userId, body.draw_seed));
+  // G11.18 Phase 3 — forward the OPTIONAL competition scope so a draw can be
+  // generated for ONE competition of a multi-competition tournament (the service
+  // resolves + validates it against this tournament; omitted = single/default
+  // competition, preserving legacy behavior). Org tenancy is enforced above by
+  // `assertOrgOwnsTournament`.
+  return reply.send(await participantDrawService.generateDraw(Number(id), userId, body.draw_seed, body.competition_id));
 }
 
 export async function getOrgCurrentDrawHandler(request: FastifyRequest, reply: FastifyReply) {
   const orgId = getOrgId(request);
   const { id } = request.params as any;
   await assertOrgOwnsTournament(orgId, Number(id));
+  const { DrawScopeSchema } = await import('./tournament.dto.js');
+  const { competition_id } = DrawScopeSchema.parse(request.query ?? {});
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send(await participantDrawService.getCurrentDraw(Number(id)));
+  return reply.send(await participantDrawService.getCurrentDraw(Number(id), competition_id));
 }
 
 export async function validateOrgDrawHandler(request: FastifyRequest, reply: FastifyReply) {
   const orgId = getOrgId(request);
   const { id } = request.params as any;
   await assertOrgOwnsTournament(orgId, Number(id));
+  const { DrawScopeSchema } = await import('./tournament.dto.js');
+  const { competition_id } = DrawScopeSchema.parse(request.query ?? {});
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send(await participantDrawService.validateDraw(Number(id)));
+  return reply.send(await participantDrawService.validateDraw(Number(id), competition_id));
 }
 
 export async function moveOrgParticipantHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -447,8 +456,10 @@ export async function approveOrgDrawHandler(request: FastifyRequest, reply: Fast
   const userId = getUserId(request);
   const { id } = request.params as any;
   await assertOrgOwnsTournament(orgId, Number(id));
+  const { DrawScopeSchema } = await import('./tournament.dto.js');
+  const { competition_id } = DrawScopeSchema.parse(request.body ?? {});
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send(await participantDrawService.approveDraw(Number(id), userId));
+  return reply.send(await participantDrawService.approveDraw(Number(id), userId, competition_id));
 }
 
 export async function lockOrgDrawHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -456,8 +467,10 @@ export async function lockOrgDrawHandler(request: FastifyRequest, reply: Fastify
   const userId = getUserId(request);
   const { id } = request.params as any;
   await assertOrgOwnsTournament(orgId, Number(id));
+  const { DrawScopeSchema } = await import('./tournament.dto.js');
+  const { competition_id } = DrawScopeSchema.parse(request.body ?? {});
   const { participantDrawService } = await import('../application/participant-draw.service.js');
-  return reply.send(await participantDrawService.lockDraw(Number(id), userId));
+  return reply.send(await participantDrawService.lockDraw(Number(id), userId, competition_id));
 }
 
 // ── Group 6 — org-scoped participant lifecycle (withdrawal / waitlist / replacement) ──

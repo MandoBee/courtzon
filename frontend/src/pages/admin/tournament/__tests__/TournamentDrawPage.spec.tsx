@@ -38,6 +38,7 @@ const __state = vi.hoisted(() => ({
   } as Partial<CurrentDraw> | null,
   validation: { valid: true } as { valid: boolean; message?: string },
   errors: { tournament: false, participants: false, draw: false, validation: false } as Record<string, boolean>,
+  competitions: [] as Array<{ id: number; name: string }>,
 }));
 
 vi.mock('../../../../services/api', () => ({
@@ -83,6 +84,7 @@ function mockApi() {
     if (url.includes('/draw/validate')) return Promise.resolve({ data: __state.validation });
     if (url.includes('/draw')) return Promise.resolve({ data: __state.currentDraw });
     if (url.includes('/participants')) return Promise.resolve({ data: __state.participants });
+    if (url.includes('/competitions')) return Promise.resolve({ data: { data: __state.competitions } });
     if (__state.errors.tournament && (url.includes('/admin/tournaments/1') || url.includes('/org/1/tournaments/1'))) return Promise.reject(new Error('tournament failed'));
     if (url.includes('/admin/tournaments/1') || url.includes(`/org/1/tournaments/1`)) return Promise.resolve({ data: { id: 1, format: __state.format } });
     return Promise.resolve({ data: {} });
@@ -104,6 +106,7 @@ beforeEach(() => {
   };
   __state.validation = { valid: true };
   __state.errors = { tournament: false, participants: false, draw: false, validation: false };
+  __state.competitions = [];
   mockApi();
 });
 
@@ -259,5 +262,41 @@ describe('TournamentDrawPage — F-02 fetch-error states', () => {
     expect(await screen.findByText('Unable to load tournament.')).toBeTruthy();
     expect(screen.getByText('Unable to load draw.')).toBeTruthy();
     expect(screen.getAllByText('Retry').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('TournamentDrawPage — competition-scoped draw (G11.18 Phase 3)', () => {
+  it('multi-competition: renders a selector, blocks the draw until a competition is chosen, then scopes the POST', async () => {
+    __state.competitions = [{ id: 11, name: 'Singles A' }, { id: 12, name: 'Singles B' }];
+    renderPage();
+    const select = await screen.findByRole('combobox');
+    const drawBtn = () => screen.getByRole('button', { name: /Generate Draw|Re-Draw/ }) as HTMLButtonElement;
+    // No competition chosen → draw actions are blocked (never an ambiguous request).
+    expect(drawBtn().disabled).toBe(true);
+    expect(screen.getByText(/Select a competition to generate its draw/)).toBeTruthy();
+
+    fireEvent.change(select, { target: { value: '11' } });
+    await waitFor(() => expect(drawBtn().disabled).toBe(false));
+    fireEvent.click(drawBtn());
+    await waitFor(() => {
+      const call = (api.post as any).mock.calls.find((c: any[]) => c[0].includes('/admin/tournaments/1/draw'));
+      expect(call).toBeTruthy();
+      expect(call[1]).toMatchObject({ competition_id: 11 });
+    });
+  });
+
+  it('single-competition / legacy: no selector and the draw POST omits competition scope', async () => {
+    __state.competitions = [{ id: 11, name: 'Singles A' }];
+    renderPage();
+    await screen.findAllByText('Player A');
+    expect(screen.queryByRole('combobox')).toBeNull();
+    const btn = screen.getAllByText('Re-Draw')[0] as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    await waitFor(() => {
+      const call = (api.post as any).mock.calls.find((c: any[]) => c[0].includes('/admin/tournaments/1/draw'));
+      expect(call).toBeTruthy();
+      expect(call[1]?.competition_id).toBeUndefined();
+    });
   });
 });

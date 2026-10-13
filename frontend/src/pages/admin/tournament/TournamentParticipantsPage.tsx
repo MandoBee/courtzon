@@ -59,9 +59,26 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   });
   const participants = Array.isArray(data) ? data : [];
 
+  // G11.18 Phase 3 — the draw operations are competition-scoped. The competitions
+  // must be resolved FIRST so we know whether an explicit selection is required.
+  const { data: competitionsData, isError: competitionsError, refetch: refetchCompetitions } = useQuery({
+    queryKey: ['tournament-competitions', tournamentId],
+    queryFn: () => tournamentApi.listCompetitions(tournamentId),
+    enabled: isOrg ? Boolean(orgId) : true,
+  });
+  const competitionList: any[] = Array.isArray(competitionsData) ? competitionsData : [];
+  const needsCompetitionChoice = competitionList.length > 1;
+  // When the tournament owns more than one competition the operator MUST select
+  // which one to draw; the server rejects an ambiguous (unscoped) request rather
+  // than picking one. Omitted scope (0/1 competition) keeps legacy behavior.
+  const [drawCompetition, setDrawCompetition] = useState<number | ''>('');
+  const scopedDrawCompetition = needsCompetitionChoice && drawCompetition !== '' ? Number(drawCompetition) : null;
+  const missingDrawCompetitionChoice = needsCompetitionChoice && drawCompetition === '';
+
   const { data: draw, isError: drawError, refetch: refetchDraw } = useQuery({
-    queryKey: ['tournament-draw', tournamentId],
-    queryFn: () => wrap(api.getCurrentDraw, tournamentId),
+    queryKey: ['tournament-draw', tournamentId, scopedDrawCompetition],
+    queryFn: () => wrap(api.getCurrentDraw, tournamentId, scopedDrawCompetition),
+    enabled: !missingDrawCompetitionChoice,
   });
 
   const invalidate = () => {
@@ -86,13 +103,6 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   // owns more than one competition the operator MUST choose — the server rejects
   // an ambiguous promotion rather than filling an arbitrary category.
   const [promoteCompetition, setPromoteCompetition] = useState<number | ''>('');
-  const { data: competitionsData, isError: competitionsError, refetch: refetchCompetitions } = useQuery({
-    queryKey: ['tournament-competitions', tournamentId],
-    queryFn: () => tournamentApi.listCompetitions(tournamentId),
-    enabled: isOrg ? Boolean(orgId) : true,
-  });
-  const competitionList: any[] = Array.isArray(competitionsData) ? competitionsData : [];
-  const needsCompetitionChoice = competitionList.length > 1;
 
   const { data: replacementData, isError: replacementError, refetch: refetchReplacement } = useQuery({
     queryKey: ['tournament-replacement-requests', tournamentId],
@@ -130,19 +140,19 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   });
 
   const generateDraw = useMutation({
-    mutationFn: () => wrap(api.generateDraw, tournamentId),
+    mutationFn: () => wrap(api.generateDraw, tournamentId, undefined, scopedDrawCompetition),
     onSuccess: () => { showToast(t('tournaments.draw_generated', 'Draw generated'), 'success'); invalidate(); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const approveDraw = useMutation({
-    mutationFn: () => wrap(api.approveDraw, tournamentId),
+    mutationFn: () => wrap(api.approveDraw, tournamentId, scopedDrawCompetition),
     onSuccess: () => { showToast(t('tournaments.draw_approved', 'Draw approved'), 'success'); invalidate(); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
   const lockDraw = useMutation({
-    mutationFn: () => wrap(api.lockDraw, tournamentId),
+    mutationFn: () => wrap(api.lockDraw, tournamentId, scopedDrawCompetition),
     onSuccess: () => { showToast(t('tournaments.draw_locked', 'Draw locked'), 'success'); invalidate(); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
@@ -223,7 +233,23 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-[var(--color-text)]">{t('tournaments.participants', 'Participants & Seeding')}</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap items-center">
+          {needsCompetitionChoice && (
+            <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+              {t('tournaments.draw.competition', 'Competition')}
+              <select
+                aria-label={t('tournaments.draw.competition', 'Competition')}
+                value={drawCompetition}
+                onChange={(e) => setDrawCompetition(e.target.value ? Number(e.target.value) : '')}
+                className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-2 py-1 text-xs bg-[var(--color-surface)] text-[var(--color-text)]"
+              >
+                <option value="">{t('tournaments.competition.select', 'Select competition…')}</option>
+                {competitionList.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name || `#${c.id}`}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <Can permission={managePerm}>
             <button onClick={() => navigate(isOrg ? `/org/${orgId}/tournaments/${tournamentId}/draw` : `/admin/tournament/list/${tournamentId}/draw`)}
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)]">
@@ -241,15 +267,15 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-[var(--color-primary)] text-[var(--color-primary)]">
               {t('tournaments.create_team', 'Add Team')}
             </button>
-            <button onClick={() => generateDraw.mutate()} disabled={generateDraw.isPending || drawStatus === 'locked' || drawError}
+            <button onClick={() => generateDraw.mutate()} disabled={missingDrawCompetitionChoice || generateDraw.isPending || drawStatus === 'locked' || drawError}
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white disabled:opacity-50">
               {draw ? 'Re-Draw' : 'Generate Draw'}
             </button>
-            <button onClick={() => approveDraw.mutate()} disabled={approveDraw.isPending || drawStatus !== 'draft'}
+            <button onClick={() => approveDraw.mutate()} disabled={missingDrawCompetitionChoice || approveDraw.isPending || drawStatus !== 'draft'}
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-green-300 text-green-700 disabled:opacity-50">
               Approve
             </button>
-            <button onClick={() => lockDraw.mutate()} disabled={lockDraw.isPending || drawStatus !== 'approved'}
+            <button onClick={() => lockDraw.mutate()} disabled={missingDrawCompetitionChoice || lockDraw.isPending || drawStatus !== 'approved'}
               className="px-3 py-1.5 text-xs font-medium rounded-[var(--radius-md)] border border-amber-300 text-amber-700 disabled:opacity-50">
               Lock
             </button>
