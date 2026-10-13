@@ -860,7 +860,17 @@ export class TournamentRepository {
    * tournament). Non-required projections (bye, placeholder, no shared match)
    * are excluded by the `match_id IS NOT NULL` guard.
    */
-  async countUnresolvedRequiredMatches(tournamentId: number): Promise<number> {
+  async countUnresolvedRequiredMatches(tournamentId: number, excludeMatchId?: number): Promise<number> {
+    // The count is TOURNAMENT-WIDE (every competition) so completion can never
+    // ignore an unresolved sibling competition. `excludeMatchId` lets a caller
+    // completing a specific slot exclude that slot itself (it is being resolved
+    // by the caller and must not block its own tournament's completion).
+    const params: unknown[] = [tournamentId];
+    let excludeClause = '';
+    if (excludeMatchId != null) {
+      excludeClause = ' AND tm.id <> ?';
+      params.push(excludeMatchId);
+    }
     const [rows] = await getPool().query<RowData>(
       `SELECT COUNT(*) AS c
        FROM tournament_matches tm
@@ -869,11 +879,12 @@ export class TournamentRepository {
          AND tm.match_id IS NOT NULL
          AND tm.status <> 'cancelled'
          AND tm.progression_state <> 'bye'
+         ${excludeClause}
          AND (
            tm.status IN ('scheduled', 'in_progress')
            OR mrr.submission_status = 'disputed'
          )`,
-      [tournamentId],
+      params,
     );
     return Number(rows[0]?.c ?? 0);
   }
@@ -1536,17 +1547,21 @@ export class TournamentRepository {
    */
   async replacePlacements(
     tournamentId: number,
-    placements: Array<{ placement: number; participant_id: number | null; user_id: number | null; source?: string }>,
+    placements: Array<{ competition_id: number | null; placement: number; participant_id: number | null; user_id: number | null; source?: string }>,
     conn?: PoolConnection,
   ): Promise<void> {
     const db = conn ?? getPool();
     if (!placements.length) return;
     await db.query('DELETE FROM tournament_placements WHERE tournament_id = ?', [tournamentId]);
     for (const p of placements) {
+      // `competition_id` is written EXPLICITLY — never left to the
+      // `trg_tplacement_competition_id` default, which resolves to the
+      // tournament's DEFAULT competition and would be NULL (NOT NULL / FK
+      // violation) for a multi-competition tournament with no default.
       await db.query(
-        `INSERT INTO tournament_placements (tournament_id, placement, participant_id, user_id, source, resolved_at)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
-        [tournamentId, p.placement, p.participant_id, p.user_id, p.source ?? 'bracket'],
+        `INSERT INTO tournament_placements (tournament_id, competition_id, placement, participant_id, user_id, source, resolved_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [tournamentId, p.competition_id, p.placement, p.participant_id, p.user_id, p.source ?? 'bracket'],
       );
     }
   }

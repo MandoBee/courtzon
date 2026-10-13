@@ -29,6 +29,8 @@ const repo = vi.hoisted(() => ({
   findBracketSlot: vi.fn(),
   countMatchesAtPosition: vi.fn(),
   countIncompleteStageMatches: vi.fn(),
+  countUnresolvedRequiredMatches: vi.fn(),
+  replacePlacements: vi.fn(),
   updateStageStatus: vi.fn(),
   updateMatch: vi.fn(),
   updateMatchStatus: vi.fn(),
@@ -62,7 +64,7 @@ const mrRepo = vi.hoisted(() => ({
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 
-const pdr = vi.hoisted(() => ({ findParticipantById: vi.fn() }));
+const pdr = vi.hoisted(() => ({ findParticipantById: vi.fn(), listParticipantsByTournament: vi.fn(async () => []) }));
 const pmr = vi.hoisted(() => ({
   findActiveMembersByUserIds: vi.fn(),
   listMembersByParticipant: vi.fn(),
@@ -194,6 +196,13 @@ function makeSlot(overrides: Partial<TournamentMatch> = {}): TournamentMatch {
     ...overrides,
   } as TournamentMatch;
 }
+
+// Default for the multi-competition completion guard: no unresolved required
+// matches (completion allowed) unless a test overrides it. Top-level so it
+// re-applies before every test and cannot leak a per-test override.
+beforeEach(() => {
+  repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+});
 
 describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
   beforeEach(() => {
@@ -481,6 +490,136 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
     expect(repo.updateStatus.mock.calls.some((c) => String(c[1]) === 'completed')).toBe(false);
     expect(out.stageCompleted).toBe(true);
     expect(out.tournamentCompleted).toBe(false);
+  });
+});
+
+describe('TournamentService — multi-competition completion guard & competition-aware placements', () => {
+  const svc = new TournamentService();
+
+  function terminalFinal(overrides: Partial<TournamentMatch> = {}): TournamentMatch {
+    return makeSlot({
+      id: 61, round: 1, bracket_position: 0, match_id: 930, is_final: 1,
+      participant1_id: 100, participant2_id: 200,
+      status: 'in_progress', progression_state: 'pending',
+      progression_meta: { is_bracket: true, is_final: 1, target_round: null, target_bracket_position: null },
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findById.mockResolvedValue(makeTournament({ status: 'running', format: 'knockout' }));
+    repo.findMatches.mockResolvedValue([]);
+    repo.findStages.mockResolvedValue([]);
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+    repo.replacePlacements.mockResolvedValue(undefined);
+    pool.getConnection.mockResolvedValue(fakeConn);
+    installDefaultParticipants();
+    lockedTarget.row = null;
+    repo.lockMatchById.mockImplementation(async () => lockedTarget.row);
+  });
+
+  it('does NOT complete the tournament while a sibling competition has an unresolved required match', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(terminalFinal());
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(1); // sibling competition unresolved
+
+    const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
+
+    // The slot IS terminalized and committed…
+    expect(repo.updateMatch).toHaveBeenCalledWith(61, expect.objectContaining({ progression_state: 'completed', final_position: 1 }), fakeConn);
+    expect(fakeConn.commit).toHaveBeenCalledTimes(1);
+    expect(fakeConn.rollback).not.toHaveBeenCalled();
+    // …but the tournament is NOT completed and emits no completion side-effects.
+    expect(repo.updateStatus.mock.calls.some((c) => String(c[1]) === 'completed')).toBe(false);
+    expect(bus.emit.mock.calls.some((c) => c[0] === 'tournament:completed')).toBe(false);
+    expect(audit.recordAudit.mock.calls.some((c) => c[0]?.action === 'TOURNAMENT.AUTO_COMPLETED')).toBe(false);
+    expect(out.tournamentCompleted).toBe(false);
+    // Guard excludes the source slot itself.
+    expect(repo.countUnresolvedRequiredMatches).toHaveBeenCalledWith(1, 61);
+  });
+
+  it('completes the tournament once every required match across competitions is resolved', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(terminalFinal());
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
+
+    expect(repo.updateStatus).toHaveBeenCalledWith(1, 'completed', fakeConn, 'running');
+    expect(bus.emit).toHaveBeenCalledWith('tournament:completed', expect.objectContaining({ tournamentId: 1, winnerId: 10 }), expect.anything());
+    expect(out.tournamentCompleted).toBe(true);
+  });
+
+  it('a single-competition knockout still completes normally (no regression)', async () => {
+    repo.findMatchBySharedMatchId.mockResolvedValue(terminalFinal());
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
+
+    expect(out.tournamentCompleted).toBe(true);
+    expect(audit.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'TOURNAMENT.AUTO_COMPLETED', entityId: 1 }));
+  });
+
+  it('two independent finals resolve into separate competition-specific placements', async () => {
+    const finalFor = (cid: number, id: number, p1: number, p2: number, u1: number, u2: number, shared: number): TournamentMatch =>
+      makeSlot({
+        id, competition_id: cid, round: 1, bracket_position: 0, match_id: shared, is_final: 1,
+        participant1_id: p1, participant2_id: p2, player1_id: u1, player2_id: u2,
+        winner_id: u1, winner_participant_id: p1, loser_participant_id: p2,
+        status: 'completed', progression_state: 'completed',
+        progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+      });
+    repo.findMatches.mockResolvedValue([
+      finalFor(11, 3, 100, 200, 10, 20, 930),
+      finalFor(12, 4, 300, 400, 30, 40, 931),
+    ]);
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+
+    await svc.complete(1);
+
+    expect(repo.replacePlacements).toHaveBeenCalledWith(1, [
+      { competition_id: 11, placement: 1, participant_id: 100, user_id: 10, source: 'bracket' },
+      { competition_id: 11, placement: 2, participant_id: 200, user_id: 20, source: 'bracket' },
+      { competition_id: 12, placement: 1, participant_id: 300, user_id: 30, source: 'bracket' },
+      { competition_id: 12, placement: 2, participant_id: 400, user_id: 40, source: 'bracket' },
+    ]);
+  });
+
+  it('an ambiguous bracket WITHIN one competition still fails closed (no placements written)', async () => {
+    repo.findMatches.mockResolvedValue([
+      makeSlot({ id: 3, competition_id: 11, round: 1, bracket_position: 0, is_final: 1, participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20, winner_id: 10, winner_participant_id: 100, status: 'completed', progression_state: 'completed', progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null } }),
+      makeSlot({ id: 4, competition_id: 11, round: 1, bracket_position: 1, is_final: 1, participant1_id: 300, participant2_id: 400, player1_id: 30, player2_id: 40, winner_id: 30, winner_participant_id: 300, status: 'completed', progression_state: 'completed', progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null } }),
+    ]);
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+
+    await svc.complete(1);
+
+    expect(repo.replacePlacements).not.toHaveBeenCalled();
+  });
+
+  it('operator complete() on an ALREADY-completed tournament is BLOCKED while a sibling competition is unresolved (cannot force placements)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ status: 'completed', format: 'knockout' }));
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(1);
+    await expect(svc.complete(1)).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_MATCHES_UNRESOLVED });
+    expect(repo.replacePlacements).not.toHaveBeenCalled();
+  });
+
+  it('operator complete() on an ALREADY-completed tournament re-captures competition placements idempotently once all matches resolve', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ status: 'completed', format: 'knockout' }));
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
+    repo.findMatches.mockResolvedValue([
+      makeSlot({ id: 3, competition_id: 11, round: 1, bracket_position: 0, is_final: 1, participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20, winner_id: 10, winner_participant_id: 100, loser_participant_id: 200, status: 'completed', progression_state: 'completed', progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null } }),
+      makeSlot({ id: 4, competition_id: 12, round: 1, bracket_position: 0, is_final: 1, participant1_id: 300, participant2_id: 400, player1_id: 30, player2_id: 40, winner_id: 30, winner_participant_id: 300, loser_participant_id: 400, status: 'completed', progression_state: 'completed', progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null } }),
+    ]);
+    await svc.complete(1);
+    expect(repo.replacePlacements).toHaveBeenCalledWith(1, [
+      { competition_id: 11, placement: 1, participant_id: 100, user_id: 10, source: 'bracket' },
+      { competition_id: 11, placement: 2, participant_id: 200, user_id: 20, source: 'bracket' },
+      { competition_id: 12, placement: 1, participant_id: 300, user_id: 30, source: 'bracket' },
+      { competition_id: 12, placement: 2, participant_id: 400, user_id: 40, source: 'bracket' },
+    ]);
   });
 });
 

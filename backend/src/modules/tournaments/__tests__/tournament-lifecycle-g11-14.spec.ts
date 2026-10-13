@@ -113,7 +113,7 @@ describe('G11.14 tournament lifecycle', () => {
     // round → placements [1,2]; nothing ambiguous.
     repo.findMatches.mockResolvedValue([
       {
-        id: 3, tournament_id: 1, round: 2, match_number: 1, bracket_position: 0,
+        id: 3, tournament_id: 1, competition_id: 1, round: 2, match_number: 1, bracket_position: 0,
         player1_id: 11, player2_id: 20, participant1_id: 11, participant2_id: 20,
         winner_id: 11, winner_participant_id: 11, loser_participant_id: 20,
         status: 'completed', progression_state: 'completed',
@@ -124,8 +124,8 @@ describe('G11.14 tournament lifecycle', () => {
     repo.replacePlacements.mockResolvedValue(undefined);
     await svc.complete(1);
     expect(repo.replacePlacements).toHaveBeenCalledWith(1, [
-      { placement: 1, participant_id: 11, user_id: 11, source: 'bracket' },
-      { placement: 2, participant_id: 20, user_id: 20, source: 'bracket' },
+      { competition_id: 1, placement: 1, participant_id: 11, user_id: 11, source: 'bracket' },
+      { competition_id: 1, placement: 2, participant_id: 20, user_id: 20, source: 'bracket' },
     ]);
     expect(bus.emit.mock.calls.some((c) => c[0] === 'tournament:completed')).toBe(true);
   });

@@ -2048,14 +2048,17 @@ export class TournamentService {
     // Scope: round_robin only — knockout keeps its engine auto-completion paths
     // (final-round / max-order stage) completely unchanged.
     const t = await this.getById(id);
-    if (t.format === 'round_robin') {
-      const unresolved = await tournamentRepository.countUnresolvedRequiredMatches(id);
-      if (unresolved > 0) {
-        throw new ConflictError(
-          `Tournament cannot be completed: ${unresolved} required match(es) are still unresolved (scheduled, in progress or disputed)`,
-          ErrorCodes.TOURNAMENT_MATCHES_UNRESOLVED,
-        );
-      }
+    // G8-D + multi-competition — the operator may complete ONLY when every
+    // REQUIRED match across ALL competitions is resolved (the count is
+    // tournament-wide). Round-robin keeps its original contract; knockout/
+    // bracket now shares the SAME guard so a tournament can never be closed
+    // while a sibling competition still has an unresolved final.
+    const unresolved = await tournamentRepository.countUnresolvedRequiredMatches(id);
+    if (unresolved > 0) {
+      throw new ConflictError(
+        `Tournament cannot be completed: ${unresolved} required match(es) are still unresolved (scheduled, in progress or disputed)`,
+        ErrorCodes.TOURNAMENT_MATCHES_UNRESOLVED,
+      );
     }
     const updated = await this.updateStatus(id, 'completed');
     // G11.14 — terminal cleanup: a completed tournament must never deliver a
@@ -2238,24 +2241,48 @@ export class TournamentService {
    * bracket data ONLY (fail-closed resolver). Idempotent (delete-all + insert).
    * Ambiguous / incomplete graphs produce NO placements — completion is never
    * blocked, none is ever fabricated. NOT financial: no ledger, no entitlement.
+   *
+   * Multi-competition: each competition's bracket is resolved INDEPENDENTLY
+   * (grouped by `competition_id`) and every placement is persisted with its own
+   * `competition_id` — the tournament-wide "single terminal slot" assumption is
+   * NOT applied across competitions. A competition whose bracket is genuinely
+   * ambiguous/incomplete contributes NO placements (fail-closed, per competition).
    */
   private async captureBracketPlacements(tournamentId: number): Promise<void> {
     const matches = await tournamentRepository.findMatches(tournamentId);
     if (!matches || matches.length === 0) return;
-    const outcome = resolveKnockoutPlacements(matches.map((m) => toKnockoutMatchInput(m)));
-    if (outcome.status !== 'resolved') {
-      console.warn({ tournamentId, status: outcome.status, reason: (outcome as any).reason }, 'captureBracketPlacements: fail-closed (no placements written)');
+
+    const byCompetition = new Map<number | null, TournamentMatch[]>();
+    for (const m of matches) {
+      const cid = m.competition_id != null ? Number(m.competition_id) : null;
+      const list = byCompetition.get(cid) ?? [];
+      list.push(m);
+      byCompetition.set(cid, list);
+    }
+
+    const placements: Array<{ competition_id: number | null; placement: number; participant_id: number | null; user_id: number | null; source: string }> = [];
+    for (const [competitionId, compMatches] of byCompetition) {
+      const outcome = resolveKnockoutPlacements(compMatches.map((m) => toKnockoutMatchInput(m)));
+      if (outcome.status !== 'resolved') {
+        console.warn({ tournamentId, competitionId, status: outcome.status, reason: (outcome as any).reason }, 'captureBracketPlacements: competition fail-closed (no placements written)');
+        continue;
+      }
+      for (const p of outcome.placements) {
+        placements.push({
+          competition_id: competitionId,
+          placement: p.placement,
+          participant_id: p.participantId,
+          user_id: p.userId,
+          source: p.source,
+        });
+      }
+    }
+
+    if (placements.length === 0) {
+      console.warn({ tournamentId }, 'captureBracketPlacements: no resolvable competition placements');
       return;
     }
-    await tournamentRepository.replacePlacements(
-      tournamentId,
-      outcome.placements.map((p) => ({
-        placement: p.placement,
-        participant_id: p.participantId,
-        user_id: p.userId,
-        source: p.source,
-      })),
-    );
+    await tournamentRepository.replacePlacements(tournamentId, placements);
   }
 
   async register(
@@ -2939,6 +2966,14 @@ export class TournamentService {
     const isTerminalSlot = meta.target_round == null && meta.target_bracket_position == null;
     const targetRound = meta.target_round ?? null;
     const targetBracketPosition = meta.target_bracket_position ?? null;
+    // Multi-competition completion guard — a tournament may auto-complete ONLY
+    // when NO OTHER required match (in this or any sibling competition) remains
+    // unresolved. The source slot is excluded by id (it is being resolved by
+    // this very progression). Computed only when a completion is even possible.
+    const needsCompletionCheck = isTerminalSlot || source.stage_id != null;
+    const unresolvedSiblingRequired = needsCompletionCheck
+      ? await tournamentRepository.countUnresolvedRequiredMatches(source.tournament_id, source.id)
+      : 0;
     const conn = await getPool().getConnection();
     let target: TournamentMatch | null = null;
     let stageCompleted = false;
@@ -2968,14 +3003,15 @@ export class TournamentService {
       } else if (isTerminalSlot) {
         // Final round — the tournament auto-completes ONLY when the lifecycle
         // permits `→ completed` from the CURRENT status (running / legacy open /
-        // in_progress). G11.14 keeps the validated lifecycle as the sole
-        // authority: a cancelled/archived tournament can never be resurrected,
-        // and a pre-run tournament (registration_open/registration_closed) is
-        // never force-completed by a late result. In those cases the slot is
-        // STILL terminalized — the committed `updateMatch` above is
-        // authoritative — only the tournament status write + completion events
-        // are skipped (never a silent catch: the transition is not attempted).
-        if (this.canAutoCompleteTournament(t.status)) {
+        // in_progress) AND no sibling required match is still unresolved.
+        // G11.14 keeps the validated lifecycle as the sole authority: a
+        // cancelled/archived tournament can never be resurrected, and a pre-run
+        // tournament (registration_open/registration_closed) is never
+        // force-completed by a late result. In those cases the slot is STILL
+        // terminalized — the committed `updateMatch` above is authoritative —
+        // only the tournament status write + completion events are skipped
+        // (never a silent catch: the transition is not attempted).
+        if (unresolvedSiblingRequired === 0 && this.canAutoCompleteTournament(t.status)) {
           validateTournamentTransition(t.status, 'completed');
           await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
           tournamentCompleted = true;
@@ -2984,7 +3020,8 @@ export class TournamentService {
             tournamentId: source.tournament_id,
             status: t.status,
             sharedMatchId: input.matchId,
-          }, 'progression: final slot terminalized without tournament auto-completion (lifecycle does not allow → completed)');
+            unresolvedSiblingRequired,
+          }, 'progression: final slot terminalized without tournament auto-completion (lifecycle disallows, or a sibling competition is unresolved)');
         }
       } else if (targetRound != null && targetBracketPosition != null) {
         target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), targetRound, targetBracketPosition);
@@ -3017,10 +3054,11 @@ export class TournamentService {
             if (stages.length > 0) {
               const maxOrder = Math.max(...stages.map((s) => s.stage_order));
               const stage = stages.find((s) => s.id === source.stage_id);
-              if (stage && stage.stage_order === maxOrder && this.canAutoCompleteTournament(t.status)) {
+              if (stage && stage.stage_order === maxOrder && unresolvedSiblingRequired === 0 && this.canAutoCompleteTournament(t.status)) {
                 // G11.14 — validated + guarded lifecycle transition (see above),
                 // only when the lifecycle permits completion from the CURRENT
-                // status. A pre-run / terminal tournament is never force-completed.
+                // status AND no sibling required match is unresolved. A pre-run /
+                // terminal tournament is never force-completed.
                 validateTournamentTransition(t.status, 'completed');
                 await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
                 tournamentCompleted = true;

@@ -119,11 +119,20 @@ describe('G8-D-CONTRACT — RR completion guard (operator-only, blocked while un
     expect(tournamentRepo.updateStatus).not.toHaveBeenCalled();
   });
 
-  it('knockout tournaments keep manual completion without the RR guard', async () => {
+  it('knockout tournaments share the completion guard (blocked while a required match is unresolved)', async () => {
     tournamentRepo.findById.mockResolvedValue(rr({ format: 'knockout', bracket_type_id: 1 }));
+    tournamentRepo.countUnresolvedRequiredMatches.mockResolvedValue(1);
+    await expect(tournamentService.complete(1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_MATCHES_UNRESOLVED });
+    expect(tournamentRepo.countUnresolvedRequiredMatches).toHaveBeenCalledWith(1);
+    expect(tournamentRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('knockout tournaments complete when every required match is resolved', async () => {
+    tournamentRepo.findById.mockResolvedValue(rr({ format: 'knockout', bracket_type_id: 1 }));
+    tournamentRepo.countUnresolvedRequiredMatches.mockResolvedValue(0);
     await tournamentService.complete(1);
-    // Knockout is out of the approved RR contract — the guard must not run.
-    expect(tournamentRepo.countUnresolvedRequiredMatches).not.toHaveBeenCalled();
+    expect(tournamentRepo.countUnresolvedRequiredMatches).toHaveBeenCalledWith(1);
     expect(tournamentRepo.updateStatus).toHaveBeenCalledWith(1, 'completed', undefined, 'running');
   });
 });

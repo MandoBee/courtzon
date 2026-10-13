@@ -27,6 +27,7 @@ const repo = vi.hoisted(() => ({
   findBracketSlot: vi.fn(),
   countMatchesAtPosition: vi.fn(),
   countIncompleteStageMatches: vi.fn(),
+  countUnresolvedRequiredMatches: vi.fn(),
   updateStageStatus: vi.fn(),
   updateMatch: vi.fn(),
   updateMatchStatus: vi.fn(),
@@ -144,6 +145,7 @@ describe('TournamentService live-play bridge (T-B)', () => {
     matchServiceMock.completeMatch.mockResolvedValue(undefined);
     matchResultServiceMock.submitMatchResult.mockResolvedValue({ id: 55, finalResult: { scoreSummary: '6-4, 6-3' } });
     pool.getConnection.mockResolvedValue(fakeConn);
+    repo.countUnresolvedRequiredMatches.mockResolvedValue(0);
   });
 
   const svc = new TournamentService();
