@@ -365,13 +365,15 @@ describe('Tournament Hub Results management (Step 3F)', () => {
     await waitFor(() => expect(resultApi.acceptMatchResult).toHaveBeenCalledWith(900), { timeout: 3000 });
   });
 
-  it('9. Accept is gated by matches.result.accept', async () => {
+  it('9. Accept is gated by matches.result.accept; a pending result shows View Result (not an empty form)', async () => {
     __state.permissions = ['tournament.result.manage'];
     renderManager({ matches: [PENDING_MATCH] });
     await openResults();
     expect(screen.queryByRole('button', { name: 'Accept Result' })).toBeNull();
-    // Record Result (tournament.result.manage) still available
-    expect(screen.getAllByRole('button', { name: 'Record Result' }).length).toBeGreaterThan(0);
+    // A pending result already exists → no empty Record Result form; View Result instead.
+    const pendingRow = rowContaining('Tariq');
+    expect(within(pendingRow).queryByRole('button', { name: 'Record Result' })).toBeNull();
+    expect(within(pendingRow).getByRole('button', { name: 'View Result' })).toBeTruthy();
   });
 
   it('10. dispute/correction are NOT duplicated inside the Hub (shared-module link only)', async () => {
@@ -389,8 +391,9 @@ describe('Tournament Hub Results management (Step 3F)', () => {
   });
 
   it('12. org mode routes result submission through the org-scoped tournament API', async () => {
-    renderManager({ isOrg: true, orgId: '6', matches: [PENDING_MATCH] });
-    await openResults();
+    // A match WITHOUT an existing result (the only state that may be recorded).
+    renderManager({ isOrg: true, orgId: '6', matches: [makeMatch({ id: 4, rule_snapshot: { score_structure: 'sets' } })] });
+    await screen.findByText('Ali');
     fireEvent.click(screen.getByRole('button', { name: 'Record Result' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save Result' }));
@@ -533,5 +536,89 @@ describe('MatchesManager — administrative Approve Result', () => {
     await screen.findByText('Nour');
     const row = rowContaining('Nour');
     expect(within(row).queryByRole('button', { name: 'Approve Result' })).toBeNull();
+  });
+});
+
+describe('MatchesManager — existing result is authoritative (no empty Record Result form)', () => {
+  it('an APPROVED result shows the persisted score + View Result, never an empty Record Result form', async () => {
+    renderManager({ matches: [KO_MATCH] });
+    await screen.findByText('Nour');
+    // Authoritative persisted result is displayed on the row.
+    expect(screen.getByText('6-4 6-3')).toBeTruthy();
+    const row = rowContaining('Nour');
+    expect(within(row).queryByRole('button', { name: 'Record Result' })).toBeNull();
+    expect(within(row).getByRole('button', { name: 'View Result' })).toBeTruthy();
+  });
+
+  it('a PENDING result shows View Result instead of an empty form', async () => {
+    renderManager({ matches: [PENDING_MATCH] });
+    await screen.findByText('Tariq');
+    const row = rowContaining('Tariq');
+    expect(within(row).queryByRole('button', { name: 'Record Result' })).toBeNull();
+    expect(within(row).getByRole('button', { name: 'View Result' })).toBeTruthy();
+  });
+
+  it('a DISPUTED result suppresses Record Result (no silent overwrite)', async () => {
+    renderManager({ matches: [DISPUTED_MATCH] });
+    await screen.findByText('D1');
+    const row = rowContaining('D1');
+    expect(within(row).queryByRole('button', { name: 'Record Result' })).toBeNull();
+  });
+
+  it('a match with NO result offers Record Result and no View Result', async () => {
+    renderManager({ matches: [makeMatch({ id: 40, player1_name: 'New', player2_name: 'Match' })] });
+    await screen.findByText('New');
+    const row = rowContaining('New');
+    expect(within(row).getByRole('button', { name: 'Record Result' })).toBeTruthy();
+    expect(within(row).queryByRole('button', { name: 'View Result' })).toBeNull();
+  });
+
+  it('a WITHDRAWN result may be re-recorded (matches the backend rule) and is still viewable', async () => {
+    renderManager({ matches: [makeMatch({ id: 41, player1_name: 'W1', player2_name: 'W2', result_status: 'withdrawn', match_id: 903 })] });
+    await screen.findByText('W1');
+    const row = rowContaining('W1');
+    expect(within(row).getByRole('button', { name: 'Record Result' })).toBeTruthy();
+    expect(within(row).getByRole('button', { name: 'View Result' })).toBeTruthy();
+  });
+
+  it('View Result is available from the default (All) segment for an approved result (consistency with Match Details)', async () => {
+    const props = renderManager({ matches: [KO_MATCH] });
+    await screen.findByText('Nour');
+    fireEvent.click(within(rowContaining('Nour')).getByRole('button', { name: 'View Result' }));
+    await waitFor(() => expect(resultApi.fetchMatchResult).toHaveBeenCalledWith(KO_MATCH.match_id), { timeout: 3000 });
+    await waitFor(() => expect(props.onViewResult).toHaveBeenCalledWith(expect.anything(), expect.any(Object)), { timeout: 3000 });
+  });
+});
+
+describe('MatchesManager — Record Result modal is contained (no horizontal overflow)', () => {
+  async function openResultDialog(match = makeMatch({ rule_snapshot: { score_structure: 'sets' } })) {
+    renderManager({ matches: [match] });
+    await screen.findByText('Ali');
+    fireEvent.click(screen.getByRole('button', { name: 'Record Result' }));
+    return screen.findByRole('dialog');
+  }
+
+  it('set inputs use min-width-safe grid sizing (no intrinsic-width flex-1) and stay inside the dialog', async () => {
+    const dialog = await openResultDialog();
+    const home = within(dialog).getByPlaceholderText('Home');
+    const away = within(dialog).getByPlaceholderText('Away');
+    expect(home.className).toContain('min-w-0');
+    expect(away.className).toContain('min-w-0');
+    expect(home.className).not.toContain('flex-1');
+    expect(away.className).not.toContain('flex-1');
+    const row = home.parentElement as HTMLElement;
+    expect(row.className).toContain('grid');
+    expect(row.className).toContain('minmax(0,1fr)');
+    expect(dialog.contains(home)).toBe(true);
+    expect(dialog.contains(away)).toBe(true);
+  });
+
+  it('goal inputs are wrapped in min-w-0 columns (contained in the dialog)', async () => {
+    const dialog = await openResultDialog(makeMatch({ rule_snapshot: { score_structure: 'goals' } }));
+    const homeGoals = within(dialog).getByText('Home Goals').parentElement as HTMLElement;
+    const awayGoals = within(dialog).getByText('Away Goals').parentElement as HTMLElement;
+    expect(homeGoals.className).toContain('min-w-0');
+    expect(awayGoals.className).toContain('min-w-0');
+    expect(dialog.contains(homeGoals)).toBe(true);
   });
 });

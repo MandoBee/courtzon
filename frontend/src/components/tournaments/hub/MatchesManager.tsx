@@ -86,6 +86,30 @@ function isInProgress(m: TournamentMatchNode): boolean {
 }
 
 /**
+ * Whether a NEW result may be recorded for this match.
+ *
+ * Mirrors the authoritative backend rule EXACTLY: `matchResultService.submitMatchResult`
+ * rejects a submission whenever a result record already exists and is not
+ * `withdrawn` ("A result already exists for this match (…)"). A `null` result
+ * status means no record exists yet; `withdrawn` is the only existing state the
+ * backend allows re-recording. Every other status (pending_confirmation,
+ * approved, disputed, no_result) already HAS an authoritative persisted result —
+ * the UI must show that result (View Result) instead of an empty form, never an
+ * empty form as though no result exists.
+ */
+const RE_RECORDABLE_RESULT_STATUSES = new Set(['withdrawn']);
+export function canRecordResult(m: TournamentMatchNode): boolean {
+  const rs = m.result_status;
+  if (rs == null || rs === '') return true;
+  return RE_RECORDABLE_RESULT_STATUSES.has(String(rs));
+}
+
+/** A match that already carries an authoritative persisted result (viewable). */
+export function hasPersistedResult(m: TournamentMatchNode): boolean {
+  return m.result_status != null && m.result_status !== '' && m.match_id != null;
+}
+
+/**
  * Step 3G — presentation-only grouping: a scheduled match with an authoritative
  * `start_time` no more than 60 minutes in the future (and not in the past) is
  * treated as "starting soon". No business logic — the backend decides state;
@@ -477,7 +501,7 @@ export function MatchesManager({
               <Button size="sm" variant="ghost" onClick={() => onDetails(m)}>
                 {t('tournamentBracket.details', 'Details')}
               </Button>
-              {(segment === 'results' || segment === 'live') && m.match_id != null && m.result_status && (
+              {hasPersistedResult(m) && (
                 <Button size="sm" variant="ghost" onClick={() => setViewReq({ m })}>
                   {t('tournaments.matchessection.view_result', 'View Result')}
                 </Button>
@@ -517,11 +541,13 @@ export function MatchesManager({
                   {t('tournaments.assign_referee', 'Referee')}
                 </Button>
               </Can>
-              <Can permission={resultPerm}>
-                <Button size="sm" variant="secondary" onClick={() => { setResultModal({ match: m, open: true }); setResultData(emptyResultForm()); }}>
-                  {t('tournaments.record_result', 'Record Result')}
-                </Button>
-              </Can>
+              {canRecordResult(m) && (
+                <Can permission={resultPerm}>
+                  <Button size="sm" variant="secondary" onClick={() => { setResultModal({ match: m, open: true }); setResultData(emptyResultForm()); }}>
+                    {t('tournaments.record_result', 'Record Result')}
+                  </Button>
+                </Can>
+              )}
               {courtFor.open && courtFor.matchId === m.id && (
                 <div className="flex w-full items-center gap-2 md:w-auto">
                   <select
@@ -569,7 +595,7 @@ export function MatchesManager({
         a11yDialog
       >
         {selectedMatch && (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <div>
               <label className={labelCls}>{t('tournaments.match.status')}</label>
               <select value={resultData.outcome} onChange={(e) => setResultData((p) => ({ ...p, outcome: e.target.value }))} className={inputCls}>
@@ -596,11 +622,11 @@ export function MatchesManager({
               if (structure === 'goals') {
                 return (
                   <div className="grid grid-cols-2 gap-2">
-                    <div>
+                    <div className="min-w-0">
                       <label className={labelCls}>Home Goals</label>
                       <input type="number" min={0} value={resultData.homeGoals} onChange={(e) => setResultData((p) => ({ ...p, homeGoals: e.target.value }))} className={inputCls} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className={labelCls}>Away Goals</label>
                       <input type="number" min={0} value={resultData.awayGoals} onChange={(e) => setResultData((p) => ({ ...p, awayGoals: e.target.value }))} className={inputCls} />
                     </div>
@@ -611,11 +637,11 @@ export function MatchesManager({
                 <div className="space-y-1">
                   <label className={labelCls}>{t('tournaments.match.sets', 'Sets')}</label>
                   {resultData.sets.map((s, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <input type="number" min={0} value={s.home} placeholder="Home" onChange={(e) => setResultData((p) => ({ ...p, sets: p.sets.map((x, i) => (i === idx ? { ...x, home: e.target.value } : x)) }))} className="flex-1 rounded-[var(--radius-md)] border border-[var(--color-border)] px-2 py-1 text-sm" />
-                      <span>-</span>
-                      <input type="number" min={0} value={s.away} placeholder="Away" onChange={(e) => setResultData((p) => ({ ...p, sets: p.sets.map((x, i) => (i === idx ? { ...x, away: e.target.value } : x)) }))} className="flex-1 rounded-[var(--radius-md)] border border-[var(--color-border)] px-2 py-1 text-sm" />
-                      <button type="button" onClick={() => setResultData((p) => ({ ...p, sets: p.sets.filter((_, i) => i !== idx) }))} className="text-xs text-[var(--color-error)] px-1" aria-label="Remove set">X</button>
+                    <div key={idx} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2">
+                      <input type="number" min={0} value={s.home} placeholder="Home" onChange={(e) => setResultData((p) => ({ ...p, sets: p.sets.map((x, i) => (i === idx ? { ...x, home: e.target.value } : x)) }))} className="min-w-0 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] px-2 py-1 text-sm" />
+                      <span className="shrink-0 text-[var(--color-text-muted)]">-</span>
+                      <input type="number" min={0} value={s.away} placeholder="Away" onChange={(e) => setResultData((p) => ({ ...p, sets: p.sets.map((x, i) => (i === idx ? { ...x, away: e.target.value } : x)) }))} className="min-w-0 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] px-2 py-1 text-sm" />
+                      <button type="button" onClick={() => setResultData((p) => ({ ...p, sets: p.sets.filter((_, i) => i !== idx) }))} className="shrink-0 text-xs text-[var(--color-error)] px-1" aria-label="Remove set">X</button>
                     </div>
                   ))}
                   <button type="button" onClick={() => setResultData((p) => ({ ...p, sets: [...p.sets, { home: '', away: '' }] }))} className="text-xs text-[var(--color-primary)]">+ Add set</button>
