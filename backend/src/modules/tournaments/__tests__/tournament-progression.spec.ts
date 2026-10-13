@@ -298,6 +298,102 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
     expect(out.tournamentCompleted).toBe(true);
   });
 
+  // ── Pre-run lifecycle (registration_open / registration_closed) ──────────────
+  // A late approved final must terminalize its bracket slot but MUST NOT force
+  // the tournament status forward (registration_open → completed is invalid).
+  for (const status of ['registration_open', 'registration_closed'] as const) {
+    it(`terminalizes a two-player final but does NOT auto-complete a '${status}' tournament (slot commits, no event/audit)`, async () => {
+      repo.findById.mockResolvedValue(makeTournament({ status }));
+      repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+        id: 61, round: 1, bracket_position: 0, match_id: 930, is_final: 1,
+        participant1_id: 100, participant2_id: 200,
+        progression_meta: { is_bracket: true, is_final: 1, target_round: null, target_bracket_position: null },
+      }));
+      mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+
+      const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
+
+      // Slot terminalized (committed) — never left pending, never rolled back.
+      expect(repo.updateMatch).toHaveBeenCalledWith(61, expect.objectContaining({
+        winner_id: 10, winner_participant_id: 100, loser_participant_id: 200,
+        final_position: 1, status: 'completed', progression_state: 'completed',
+      }), fakeConn);
+      expect(fakeConn.commit).toHaveBeenCalledTimes(1);
+      expect(fakeConn.rollback).not.toHaveBeenCalled();
+      // Tournament NOT completed and NO completion side effects.
+      expect(repo.updateStatus.mock.calls.some((c) => String(c[1]) === 'completed')).toBe(false);
+      expect(bus.emit.mock.calls.some((c) => c[0] === 'tournament:completed')).toBe(false);
+      expect(audit.recordAudit.mock.calls.some((c) => c[0]?.action === 'TOURNAMENT.AUTO_COMPLETED')).toBe(false);
+      expect(out.tournamentCompleted).toBe(false);
+      // The progressed event still fires (the slot DID advance).
+      expect(bus.emit).toHaveBeenCalledWith('tournament:match-progressed', expect.anything(), expect.anything());
+    });
+  }
+
+  // ── Terminal lifecycle (cancelled / archived) ────────────────────────────────
+  // Never resurrected / auto-completed; the slot still terminalizes (documented
+  // fail-closed slot behavior: projection of the authoritative result, status
+  // untouched).
+  for (const status of ['cancelled', 'archived'] as const) {
+    it(`terminalizes the final slot but NEVER auto-completes a '${status}' tournament`, async () => {
+      repo.findById.mockResolvedValue(makeTournament({ status }));
+      repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+        id: 61, round: 1, bracket_position: 0, match_id: 930,
+        participant1_id: 100, participant2_id: 200,
+        progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+      }));
+      mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }, { userId: 20, outcome: 'loss', side: 'away' }]);
+
+      const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
+
+      expect(repo.updateMatch).toHaveBeenCalledWith(61, expect.objectContaining({ progression_state: 'completed', winner_id: 10 }), fakeConn);
+      expect(repo.updateStatus.mock.calls.some((c) => String(c[1]) === 'completed')).toBe(false);
+      expect(bus.emit.mock.calls.some((c) => c[0] === 'tournament:completed')).toBe(false);
+      expect(out.tournamentCompleted).toBe(false);
+    });
+  }
+
+  it('a max-order stage finish on a pre-run tournament completes the stage but not the tournament', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ status: 'registration_open' }));
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 61, round: 4, bracket_position: 0, match_id: 940, stage_id: 3,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    }));
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 20, outcome: 'win', side: 'away' }, { userId: 10, outcome: 'loss', side: 'home' }]);
+    repo.countIncompleteStageMatches.mockResolvedValue(0);
+    repo.findStages.mockResolvedValue([
+      { id: 1, stage_order: 1, name: 'Groups', progression_format: 'round_robin' },
+      { id: 3, stage_order: 3, name: 'Final', progression_format: 'knockout' },
+    ]);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 940, resultId: 7 });
+
+    expect(repo.updateStageStatus).toHaveBeenCalledWith(3, 'completed', fakeConn);
+    expect(repo.updateStatus.mock.calls.some((c) => String(c[1]) === 'completed')).toBe(false);
+    expect(out.stageCompleted).toBe(true);
+    expect(out.tournamentCompleted).toBe(false);
+  });
+
+  it('replay after a pre-run terminalization is a no-op (slot already completed)', async () => {
+    repo.findById.mockResolvedValue(makeTournament({ status: 'registration_open' }));
+    // The slot is already terminal (the retry sees the committed state).
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 61, round: 1, bracket_position: 0, match_id: 930,
+      status: 'completed', progression_state: 'completed', winner_id: 10,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    }));
+    mrRepo.getParticipants.mockResolvedValue([{ userId: 10, outcome: 'win', side: 'home' }]);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
+
+    expect(repo.updateMatch).not.toHaveBeenCalled();
+    expect(repo.updateStatus).not.toHaveBeenCalled();
+    expect(bus.emit).not.toHaveBeenCalled();
+    expect(out).toEqual({ source: expect.anything(), advancedTo: null });
+  });
+
   it('advances a bye-filled slot without a winner when the approved result has no winner', async () => {
     repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
       id: 11, round: 1, bracket_position: 0, match_id: 900,

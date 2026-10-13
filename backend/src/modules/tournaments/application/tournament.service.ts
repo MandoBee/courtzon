@@ -6,8 +6,8 @@ import { competitionService } from './competition.service.js';
 import { isTournamentParticipantProgressionEligible, seededShuffle, ENGINE_EXECUTABLE_FORMATS, BRACKET_SLUG_TO_FORMAT, bracketSlugCapability, bracketTypeCreationAvailable } from '../domain/tournament-aggregate.js';
 import { normalizeEligibility } from '../domain/tournament-eligibility.js';
 import { resolveAgeCategories } from '../domain/tournament-age-catalog.js';
-import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType } from '../domain/tournament-aggregate.js';
-import { validateTournamentTransition, validateRegistrationTransition } from '../domain/lifecycle.js';
+import type { Tournament, TournamentFormat, TournamentRegistration, TournamentMatch, TournamentStage, TournamentPrizeInput, TournamentPrize, TournamentPrizeType, TournamentVenue, TournamentParticipant, TournamentParticipantMember, TournamentParticipantStatus, TournamentSponsorInput, TournamentSponsor, SponsorSupportType, TournamentStatus } from '../domain/tournament-aggregate.js';
+import { validateTournamentTransition, validateRegistrationTransition, getAllowedTournamentTransitions } from '../domain/lifecycle.js';
 import { resolveKnockoutPlacements, toKnockoutMatchInput } from '../domain/knockout-placements.js';
 import {
   evaluateKnockoutCorrectionBlockReason,
@@ -2804,6 +2804,21 @@ export class TournamentService {
   }
 
   /**
+   * Whether the tournament lifecycle permits an automatic `→ completed`
+   * transition from the CURRENT status. `getAllowedTournamentTransitions` is
+   * derived from the SAME `lifecycle.ts` map used by `validateTournamentTransition`,
+   * so it remains the single authority:
+   *   * `running` (and legacy `open` / `in_progress`) → allowed (auto-complete).
+   *   * `registration_open` / `registration_closed` (pre-run) → NOT allowed: a
+   *     late final result terminalizes its bracket slot but must never force the
+   *     tournament status forward.
+   *   * `cancelled` / `archived` (terminal) → NOT allowed: never resurrected.
+   */
+  private canAutoCompleteTournament(status: TournamentStatus): boolean {
+    return getAllowedTournamentTransitions(status).includes('completed');
+  }
+
+  /**
    * Group 5B — progression entry point driven EXCLUSIVELY by authoritative
    * APPROVED shared Match results (match:result-approved / auto-approved /
    * resolved-approved). Idempotent: a slot is resolved once.
@@ -2951,14 +2966,26 @@ export class TournamentService {
           target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), meta.target_round, meta.target_bracket_position);
         }
       } else if (isTerminalSlot) {
-        // Final round — the tournament is complete. G11.14: auto-completion goes
-        // through the SAME validated lifecycle transition the operator path uses,
-        // so a cancelled/archived tournament can never be resurrected by a late
-        // result (validateTournamentTransition throws → rollback). The guarded
-        // repository write is the optimistic-concurrency backstop.
-        validateTournamentTransition(t.status, 'completed');
-        await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
-        tournamentCompleted = true;
+        // Final round — the tournament auto-completes ONLY when the lifecycle
+        // permits `→ completed` from the CURRENT status (running / legacy open /
+        // in_progress). G11.14 keeps the validated lifecycle as the sole
+        // authority: a cancelled/archived tournament can never be resurrected,
+        // and a pre-run tournament (registration_open/registration_closed) is
+        // never force-completed by a late result. In those cases the slot is
+        // STILL terminalized — the committed `updateMatch` above is
+        // authoritative — only the tournament status write + completion events
+        // are skipped (never a silent catch: the transition is not attempted).
+        if (this.canAutoCompleteTournament(t.status)) {
+          validateTournamentTransition(t.status, 'completed');
+          await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
+          tournamentCompleted = true;
+        } else {
+          console.info({
+            tournamentId: source.tournament_id,
+            status: t.status,
+            sharedMatchId: input.matchId,
+          }, 'progression: final slot terminalized without tournament auto-completion (lifecycle does not allow → completed)');
+        }
       } else if (targetRound != null && targetBracketPosition != null) {
         target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), targetRound, targetBracketPosition);
         if (target) {
@@ -2990,8 +3017,10 @@ export class TournamentService {
             if (stages.length > 0) {
               const maxOrder = Math.max(...stages.map((s) => s.stage_order));
               const stage = stages.find((s) => s.id === source.stage_id);
-              if (stage && stage.stage_order === maxOrder) {
-                // G11.14 — validated + guarded lifecycle transition (see above).
+              if (stage && stage.stage_order === maxOrder && this.canAutoCompleteTournament(t.status)) {
+                // G11.14 — validated + guarded lifecycle transition (see above),
+                // only when the lifecycle permits completion from the CURRENT
+                // status. A pre-run / terminal tournament is never force-completed.
                 validateTournamentTransition(t.status, 'completed');
                 await tournamentRepository.updateStatus(source.tournament_id, 'completed', conn, t.status);
                 tournamentCompleted = true;
