@@ -315,8 +315,18 @@ export class MatchResultService {
     return record.submissionStatus === 'approved' || record.submissionStatus === 'disputed';
   }
 
-  /** Part E.60 — referee omitted result; opponent confirms with no revision. */
-  async acceptResult(matchId: number, actorId: number, ip?: string): Promise<MatchResultRecord> {
+  /**
+   * Part E.60 — referee omitted result; opponent confirms with no revision.
+   *
+   * ADMINISTRATIVE PATH (`opts.administrative`): the tournament administrative
+   * approval workflow (Super Admin / tournament creator / owning-organisation
+   * admin) approves a pending result through the SAME canonical mechanics
+   * (approvePending + rating + `match:result-approved`). The participant and
+   * "submitter cannot accept their own result" checks are bypassed ONLY for this
+   * path — the caller is authorised by the tournament route guard + ownership
+   * assertion, and the approval is audited separately (`match.result.approved`).
+   */
+  async acceptResult(matchId: number, actorId: number, ip?: string, opts?: { administrative?: boolean }): Promise<MatchResultRecord> {
     const matchIdActual = await matchResultRepository.resolveMatchId(matchId);
     if (!matchIdActual) throw new NotFoundError('match not found');
 
@@ -328,8 +338,11 @@ export class MatchResultService {
     }
     const context = await matchResultRepository.getMatchContext(matchIdActual);
     if (!context) throw new NotFoundError('match context not found');
-    if (record.submittedBy === actorId) throw new RulesValidationError('The submitter cannot accept their own result');
-    if (!context.participantUserIds.includes(actorId)) throw new ForbiddenError('Only match participants can accept a result');
+    const administrative = opts?.administrative === true;
+    if (!administrative) {
+      if (record.submittedBy === actorId) throw new RulesValidationError('The submitter cannot accept their own result');
+      if (!context.participantUserIds.includes(actorId)) throw new ForbiddenError('Only match participants can accept a result');
+    }
 
     const now = new Date().toISOString();
     const accepted = await matchResultRepository.approvePending(record.id, {
@@ -342,7 +355,14 @@ export class MatchResultService {
       throw new RulesValidationError('This result is no longer pending confirmation');
     }
 
-    await recordAudit({ actorId, action: 'match.result.accepted', entityType: 'match_result_records', entityId: record.id, ipAddress: ip });
+    await recordAudit({
+      actorId,
+      action: administrative ? 'match.result.approved' : 'match.result.accepted',
+      entityType: 'match_result_records',
+      entityId: record.id,
+      ...(administrative ? { afterState: { path: 'administrative' } } : {}),
+      ipAddress: ip,
+    });
 
     await this.applyRatingForRecord(record.id, matchIdActual);
 

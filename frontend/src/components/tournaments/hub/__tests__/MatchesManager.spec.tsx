@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   assignCourt: vi.fn(),
   assignReferee: vi.fn(),
   recordResult: vi.fn(),
+  approveResult: vi.fn(),
   getEligibleCourts: vi.fn(),
 }));
 
@@ -124,6 +125,7 @@ beforeEach(() => {
   api.assignCourt.mockResolvedValue({ data: {} });
   api.assignReferee.mockResolvedValue({ data: {} });
   api.recordResult.mockResolvedValue({ data: {} });
+  api.approveResult.mockResolvedValue({ data: {} });
   api.getEligibleCourts.mockResolvedValue([{ id: 1, name: 'Court A' }, { id: 2, name: 'Court B' }]);
   resultApi.fetchMatchResult.mockResolvedValue({ record: { id: 55, matchId: 900, submissionStatus: 'pending_confirmation', rawResult: { outcome: 'completed', score: { sets: [{ home: 6, away: 3 }] } } }, participants: [] });
   resultApi.acceptMatchResult.mockResolvedValue({ data: {} });
@@ -506,5 +508,30 @@ describe('Tournament Hub Matches � Live segment (Step 3G)', () => {
     const src = readFileSync(resolve('./src/components/tournaments/hub/MatchesManager.tsx'), 'utf8');
     expect(src).not.toMatch(/from ['"].*socket-client['"]/);
     expect(src).not.toMatch(/from ['"].*realtime\/socket['"]/);
+  });
+});
+
+describe('MatchesManager — administrative Approve Result', () => {
+  it('shows Approve Result for a pending result and calls the administrative endpoint with the tournament match id', async () => {
+    renderManager();
+    await screen.findByText('Tariq');
+    const row = rowContaining('Tariq');
+    const btn = within(row).getByRole('button', { name: 'Approve Result' });
+    fireEvent.click(btn);
+    await waitFor(() => expect(api.approveResult).toHaveBeenCalledWith(4));
+  });
+
+  it('hides Approve Result without the result.manage permission', async () => {
+    __state.permissions = ['tournament.view'];
+    renderManager();
+    await screen.findByText('Tariq');
+    expect(screen.queryByRole('button', { name: 'Approve Result' })).toBeNull();
+  });
+
+  it('does not show Approve Result for an already-approved result', async () => {
+    renderManager();
+    await screen.findByText('Nour');
+    const row = rowContaining('Nour');
+    expect(within(row).queryByRole('button', { name: 'Approve Result' })).toBeNull();
   });
 });

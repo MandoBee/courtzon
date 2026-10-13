@@ -3947,6 +3947,27 @@ export class TournamentService {
   }
 
   /**
+   * Administrative tournament-result approval (Super Admin / tournament creator /
+   * owning-organisation admin). Approves the PENDING shared result of a specific
+   * tournament match through the SAME canonical result-approval service
+   * (`acceptResult` with the administrative path), so winner persistence,
+   * bracket progression, standings and `match:result-approved` stay identical to
+   * the player-accept flow. Only a `pending_confirmation` result of THIS match is
+   * accepted; `approvePending`'s optimistic guard makes a duplicate/conflicting
+   * approval fail closed. The route layer enforces authorisation + tenancy.
+   */
+  async approveTournamentMatchResult(matchId: number, actorId: number, ip?: string): Promise<{ sharedMatchId: number; resultId: number; submissionStatus: string }> {
+    const match = await tournamentRepository.findMatchById(matchId);
+    if (!match) throw new NotFoundError('Tournament match', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    if (match.match_id == null) {
+      throw new ConflictError('This tournament match has no shared Match — approve the result on the shared Match instead', ErrorCodes.TOURNAMENT_INVALID_FORMAT);
+    }
+    const { matchResultService } = await import('../../match-result/application/match-result.service.js');
+    const record = await matchResultService.acceptResult(match.match_id, actorId, ip, { administrative: true });
+    return { sharedMatchId: match.match_id, resultId: record.id, submissionStatus: record.submissionStatus };
+  }
+
+  /**
    * G8-A — mirror an approved shared result onto the bracket-slot projection.
    * `winner_id` is a PROJECTION of the authoritative match_result_records state
    * (never written by controllers and never an independent authority). It is

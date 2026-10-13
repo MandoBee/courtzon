@@ -241,6 +241,18 @@ export function MatchesManager({
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
+  // Administrative approval of a PENDING tournament result (Super Admin /
+  // tournament creator / owning-organisation admin). Gated by the SAME backend
+  // permission the endpoint enforces (resultPerm); the server is authoritative.
+  const approveResult = useMutation({
+    mutationFn: (matchId: number) => call(api.approveResult, matchId),
+    onSuccess: () => {
+      invalidate();
+      showToast(t('tournaments.result_approved', 'Result approved'), 'success');
+    },
+    onError: (err) => showToast(getErrorMessage(err), 'error'),
+  });
+
   // Step 3F — lazy fetch of the shared result record so the universal Drawer
   // can reuse ResultSummaryView (no second summary implementation).
   const viewResultFetch = useQuery({
@@ -474,6 +486,13 @@ export function MatchesManager({
                 <Can permission="matches.result.accept">
                   <Button size="sm" variant="primary" onClick={() => acceptResult.mutate(m.match_id!)}>
                     {t('tournaments.matchessection.accept_result', 'Accept Result')}
+                  </Button>
+                </Can>
+              )}
+              {m.result_status === 'pending_confirmation' && (
+                <Can permission={resultPerm}>
+                  <Button size="sm" variant="primary" onClick={() => approveResult.mutate(m.id)} disabled={approveResult.isPending}>
+                    {t('tournaments.approve_result', 'Approve Result')}
                   </Button>
                 </Can>
               )}

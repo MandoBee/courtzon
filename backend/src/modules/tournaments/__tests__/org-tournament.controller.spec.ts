@@ -42,6 +42,7 @@ const service = vi.hoisted(() => ({
   listBracketTypeOptions: vi.fn(),
   getOrgCommissionConfig: vi.fn(),
   listSportFormatsCascade: vi.fn(),
+  approveTournamentMatchResult: vi.fn(),
 }));
 
 const drawService = vi.hoisted(() => ({
@@ -436,5 +437,33 @@ describe('org-tournament.controller — competition-scoped draw generation', () 
     ).rejects.toMatchObject({ statusCode: 404, errorCode: 'TOURNAMENT_NOT_FOUND' });
     expect(drawService.getCurrentDraw).not.toHaveBeenCalled();
     expect(drawService.approveDraw).not.toHaveBeenCalled();
+  });
+});
+
+describe('org-tournament.controller — administrative result approval', () => {
+  const ORG_A = 1001;
+
+  it('approves a pending result for an org-owned match and records the audit path', async () => {
+    repo.getMatchOrganisationId.mockResolvedValue(ORG_A);
+    service.approveTournamentMatchResult.mockResolvedValue({ sharedMatchId: 16, resultId: 8, submissionStatus: 'approved' });
+    const reply = res();
+    await ctrl.approveOrgMatchResultHandler(req({ params: { orgId: String(ORG_A), matchId: '3' }, ip: '1.2.3.4' }), reply);
+    expect(service.approveTournamentMatchResult).toHaveBeenCalledWith(3, 42, '1.2.3.4');
+    expect(reply.sent).toMatchObject({ ok: true, resultId: 8, status: 'approved' });
+    expect(audit.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'TOURNAMENT.APPROVE_RESULT', entityId: 8 }));
+  });
+
+  it('rejects a match owned by another organisation before any service call (cross-org blocked)', async () => {
+    repo.getMatchOrganisationId.mockResolvedValue(2002); // ORG_B
+    await expect(ctrl.approveOrgMatchResultHandler(req({ params: { orgId: String(ORG_A), matchId: '3' } }), res()))
+      .rejects.toMatchObject({ statusCode: 404, errorCode: 'MATCH_NOT_FOUND' });
+    expect(service.approveTournamentMatchResult).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown match (no owning org) before any service call', async () => {
+    repo.getMatchOrganisationId.mockResolvedValue(null);
+    await expect(ctrl.approveOrgMatchResultHandler(req({ params: { orgId: String(ORG_A), matchId: '999' } }), res()))
+      .rejects.toMatchObject({ statusCode: 404, errorCode: 'MATCH_NOT_FOUND' });
+    expect(service.approveTournamentMatchResult).not.toHaveBeenCalled();
   });
 });

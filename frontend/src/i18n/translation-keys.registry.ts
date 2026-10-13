@@ -2555,6 +2555,8 @@ export const translationKeysRegistry: TranslationKeyEntry[] = [
   { key: 'tournaments.matchessection.view_result', defaultValue: 'View Result', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results view result' },
   { key: 'tournaments.matchessection.accept_result', defaultValue: 'Accept Result', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub results accept result' },
   { key: 'tournaments.matchessection.result_accepted', defaultValue: 'Result accepted', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Hub results accepted toast' },
+  { key: 'tournaments.approve_result', defaultValue: 'Approve Result', moduleSlug: 'tournaments', elementType: 'button', elementLabel: 'Hub administrative approve result action' },
+  { key: 'tournaments.result_approved', defaultValue: 'Result approved', moduleSlug: 'tournaments', elementType: 'message', elementLabel: 'Hub administrative result approved toast' },
   { key: 'tournaments.matchessection.no_results_yet', defaultValue: 'No results yet for this tournament.', moduleSlug: 'tournaments', elementType: 'text', elementLabel: 'Hub results empty state' },
   { key: 'tournaments.matchessection.live_now', defaultValue: 'Live Now', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Hub live now section' },
   { key: 'tournaments.matchessection.starting_soon', defaultValue: 'Starting Soon', moduleSlug: 'tournaments', elementType: 'heading', elementLabel: 'Hub starting soon section' },

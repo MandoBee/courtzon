@@ -376,6 +376,14 @@ export async function orgTournamentRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireOrgScopedPermission('org.tournaments.result.manage')] },
     ctrl.recordOrgMatchResultHandler,
   );
+  // Administrative approval of a PENDING tournament match result (Super Admin /
+  // tournament creator / owning-organisation admin). Tenant ownership is
+  // enforced in the handler; the result is approved via the canonical service.
+  app.post(
+    '/org/:orgId/tournaments/matches/:matchId/result/approve',
+    { preHandler: [requireOrgScopedPermission('org.tournaments.result.manage')] },
+    ctrl.approveOrgMatchResultHandler,
+  );
 
   // ── G11.3 — organisation official: refund-request review (financial.reconcile) ──
   // Tenant ownership of the request's tournament is enforced in the service

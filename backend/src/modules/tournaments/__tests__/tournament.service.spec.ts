@@ -60,6 +60,10 @@ const mrRepo = vi.hoisted(() => ({
   listRuleSetsBySport: vi.fn(),
 }));
 
+// Administrative tournament-result approval delegates to the canonical shared
+// result-approval service (acceptResult with the administrative path).
+const mrsSvc = vi.hoisted(() => ({ acceptResult: vi.fn() }));
+
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn() }));
 const bus = vi.hoisted(() => ({ emit: vi.fn() }));
 const pool = vi.hoisted(() => ({
@@ -94,6 +98,7 @@ vi.mock('../../../database/database.transaction.js', () => ({
 vi.mock('../../audit-log/index.js', () => ({ recordAudit: audit.recordAudit }));
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
 vi.mock('../../match-result/infrastructure/match-result.repository.js', () => ({ matchResultRepository: mrRepo }));
+vi.mock('../../match-result/application/match-result.service.js', () => ({ matchResultService: mrsSvc }));
 vi.mock('../../organisations/application/current-subscription.service.js', () => ({
   getCommissionRate: commission.getCommissionRate,
   getCurrentSubscription: vi.fn(async () => ({ exists: false, planName: null })),
@@ -723,5 +728,30 @@ describe('TournamentService — R2-a competition-scoped prizes', () => {
       expect.objectContaining({ placement: 1, competition_id: null }),
       expect.objectContaining({ placement: 1, competition_id: 6 }),
     ]));
+  });
+});
+
+describe('TournamentService — administrative result approval', () => {
+  const svc = new TournamentService();
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('approves through the canonical service with the administrative path', async () => {
+    repo.findMatchById.mockResolvedValue({ id: 3, tournament_id: 9, match_id: 16, competition_id: 11, status: 'in_progress' });
+    mrsSvc.acceptResult.mockResolvedValue({ id: 8, submissionStatus: 'approved' });
+    const out = await svc.approveTournamentMatchResult(3, 127, '1.2.3.4');
+    expect(mrsSvc.acceptResult).toHaveBeenCalledWith(16, 127, '1.2.3.4', { administrative: true });
+    expect(out).toEqual({ sharedMatchId: 16, resultId: 8, submissionStatus: 'approved' });
+  });
+
+  it('rejects a match with no shared Match (cannot approve)', async () => {
+    repo.findMatchById.mockResolvedValue({ id: 3, tournament_id: 9, match_id: null, status: 'scheduled' });
+    await expect(svc.approveTournamentMatchResult(3, 127)).rejects.toBeInstanceOf(ConflictError);
+    expect(mrsSvc.acceptResult).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown tournament match', async () => {
+    repo.findMatchById.mockResolvedValue(null);
+    await expect(svc.approveTournamentMatchResult(999, 127)).rejects.toBeInstanceOf(NotFoundError);
+    expect(mrsSvc.acceptResult).not.toHaveBeenCalled();
   });
 });

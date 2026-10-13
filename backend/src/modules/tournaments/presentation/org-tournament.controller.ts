@@ -357,6 +357,24 @@ export async function recordOrgMatchResultHandler(request: FastifyRequest, reply
   return reply.status(201).send({ ok: true, resultId: out.resultId });
 }
 
+/**
+ * Administrative approval of a PENDING tournament match result. Organisation
+ * tenancy is authoritative (the match's owning organisation must equal :orgId),
+ * and the route guard admits only the org owner / a platform admin / an
+ * org-scoped holder of `org.tournaments.result.manage`. The result is approved
+ * through the canonical shared result-approval service.
+ */
+export async function approveOrgMatchResultHandler(request: FastifyRequest, reply: FastifyReply) {
+  const orgId = getOrgId(request);
+  const userId = getUserId(request);
+  const { matchId } = request.params as any;
+  const ownerOrgId = await tournamentRepository.getMatchOrganisationId(Number(matchId));
+  if (ownerOrgId == null || ownerOrgId !== orgId) throw new AppError('Match does not belong to this organisation', 404, 'MATCH_NOT_FOUND', {});
+  const out = await tournamentService.approveTournamentMatchResult(Number(matchId), userId, (request as any).ip);
+  recordAudit({ actorId: userId, action: 'TOURNAMENT.APPROVE_RESULT', entityType: 'match_result_records', entityId: out.resultId, afterState: { orgId, path: 'organisation', status: out.submissionStatus } });
+  return reply.send({ ok: true, resultId: out.resultId, status: out.submissionStatus });
+}
+
 /** T-B — org-scoped start of a Tournament Match's shared Match Session. */
 export async function startOrgTournamentMatchHandler(request: FastifyRequest, reply: FastifyReply) {
   const orgId = getOrgId(request);

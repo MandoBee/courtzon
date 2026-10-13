@@ -46,6 +46,10 @@ export const tournamentApi = {
   // Result lifecycle (outcome + winner side + structured score, NOT winner_id).
   recordResult: (matchId: number, data: any) =>
     api.post(`/admin/tournaments/matches/${matchId}/result`, data).then(r => r.data),
+  // Administrative approval of a PENDING tournament match result (Super Admin /
+  // tournament creator / owning-organisation admin).
+  approveResult: (matchId: number) =>
+    api.post(`/admin/tournaments/matches/${matchId}/result/approve`).then(r => r.data),
 
   getStandings: (tournamentId: number) => api.get(`/admin/tournaments/${tournamentId}/standings`).then(r => r.data),
 
@@ -156,6 +160,10 @@ export const orgTournamentApi = {
     api.post(`/org/${orgId}/tournaments/matches/${matchId}/complete`).then(r => r.data),
   recordResult: (orgId: number | string, matchId: number, data: any) =>
     api.post(`/org/${orgId}/tournaments/matches/${matchId}/result`, data).then(r => r.data),
+  // Administrative approval of a PENDING tournament match result (Super Admin /
+  // tournament creator / owning-organisation admin).
+  approveResult: (orgId: number | string, matchId: number) =>
+    api.post(`/org/${orgId}/tournaments/matches/${matchId}/result/approve`).then(r => r.data),
   getStandings: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/standings`).then(r => r.data),
   getRegistrations: (orgId: number | string, tournamentId: number) => api.get(`/org/${orgId}/tournaments/${tournamentId}/registrations`).then(r => r.data),
   register: (orgId: number | string, tournamentId: number, teamId?: number, paymentMethod?: 'cash' | 'card') =>

@@ -412,6 +412,46 @@ describe('LIFECYCLE — Test A normal approval', () => {
   });
 });
 
+describe('Administrative approval (opts.administrative) — tournament result workflow', () => {
+  it('approves a pending result for a NON-participant submitter (Super Admin / creator / org admin)', async () => {
+    repo.findByMatchId.mockResolvedValue(makeRecord({ submittedBy: 127 }));
+    repo.getMatchContext.mockResolvedValue(CONTEXT); // participants [5,6]
+    repo.approvePending.mockResolvedValue(true);
+    repo.findById.mockResolvedValue(makeRecord({ submissionStatus: 'approved' }));
+    rating.resolveOverallPercentAt.mockResolvedValue(60);
+    rating.applyEvidence.mockResolvedValue({ before: 60, after: 62 });
+
+    // actor 127 is NOT a participant and IS the submitter — allowed administratively.
+    const rec = await matchResultService.acceptResult(42, 127, undefined, { administrative: true });
+
+    expect(repo.approvePending).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ submission_status: 'approved', accepted_by: 127 }));
+    expect(audit.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'match.result.approved' }));
+    expect(bus.emit).toHaveBeenCalledWith('match:result-approved', expect.objectContaining({ matchId: 42 }), expect.anything());
+    expect(rec).toBeTruthy();
+  });
+
+  it('the PLAYER path still forbids a non-participant and the submitter (unchanged)', async () => {
+    repo.findByMatchId.mockResolvedValue(makeRecord({ submittedBy: 5 }));
+    // non-participant, non-submitter → Forbidden
+    await expect(matchResultService.acceptResult(42, 999)).rejects.toBeInstanceOf(ForbiddenError);
+    // submitter (even a participant) → RulesValidation
+    await expect(matchResultService.acceptResult(42, 5)).rejects.toBeInstanceOf(RulesValidationError);
+  });
+
+  it('rejects an already-approved result (duplicate/conflicting approval fails closed)', async () => {
+    repo.findByMatchId.mockResolvedValue(makeRecord({ submissionStatus: 'approved' }));
+    await expect(matchResultService.acceptResult(42, 127, undefined, { administrative: true })).rejects.toBeInstanceOf(RulesValidationError);
+    expect(repo.approvePending).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the optimistic approvePending guard loses the race (no phantom events)', async () => {
+    repo.findByMatchId.mockResolvedValue(makeRecord());
+    repo.approvePending.mockResolvedValue(false);
+    await expect(matchResultService.acceptResult(42, 127, undefined, { administrative: true })).rejects.toBeInstanceOf(RulesValidationError);
+    expect(bus.emit).not.toHaveBeenCalledWith('match:result-approved', expect.anything(), expect.anything());
+  });
+});
+
 describe('RATING SAFETY (Part 8) — only a FINAL/CONFIRMED score may touch ratings', () => {
   it('a freshly SAVED (pending_confirmation) score creates NO rating evidence', async () => {
     repo.resolveMatchId.mockResolvedValue(42);

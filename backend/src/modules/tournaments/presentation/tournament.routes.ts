@@ -154,6 +154,9 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/tournaments/matches/:matchId/start', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.startTournamentMatchHandler);
   app.post('/admin/tournaments/matches/:matchId/complete', { preHandler: [requirePermission(['tournament.manage'])] }, ctrl.completeTournamentMatchHandler);
   app.post('/admin/tournaments/matches/:matchId/result', { preHandler: [requirePermission(['tournament.result.manage'])] }, ctrl.recordMatchResultHandler);
+  // Administrative approval of a PENDING tournament match result (Super Admin /
+  // tournament creator / owning-organisation admin, subject to the route guard).
+  app.post('/admin/tournaments/matches/:matchId/result/approve', { preHandler: [requirePermission(['tournament.result.manage'])] }, ctrl.approveMatchResultHandler);
 
   // ── Group 5B-SR — Bracket type configuration (Super Admin, full CRUD) ──
 

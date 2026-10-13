@@ -556,6 +556,25 @@ export async function recordMatchResultHandler(request: FastifyRequest, reply: F
   return reply.status(201).send({ success: true, resultId: out.resultId, sharedMatchId: out.sharedMatchId });
 }
 
+/**
+ * Administrative approval of a PENDING tournament match result (Super Admin /
+ * tournament creator / owning-organisation admin, subject to the route guard).
+ * Approves through the canonical shared result-approval service so winner
+ * persistence, bracket progression, standings and `match:result-approved` remain
+ * consistent. Only a `pending_confirmation` result of THIS match is accepted.
+ */
+export async function approveMatchResultHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { matchId } = request.params as any;
+  const out = await tournamentService.approveTournamentMatchResult(Number(matchId), userId, (request as any).ip);
+  recordAudit({
+    actorId: userId, action: 'TOURNAMENT.APPROVE_RESULT', entityType: 'match_result_records',
+    entityId: out.resultId, afterState: { sharedMatchId: out.sharedMatchId, path: 'admin', status: out.submissionStatus },
+    ipAddress: request.ip, userAgent: getUserAgent(request),
+  });
+  return reply.send({ success: true, resultId: out.resultId, sharedMatchId: out.sharedMatchId, status: out.submissionStatus });
+}
+
 /** T-B — start the shared Match Session of a Tournament Match. */
 export async function startTournamentMatchHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
