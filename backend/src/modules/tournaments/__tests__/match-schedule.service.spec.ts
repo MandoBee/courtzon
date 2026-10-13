@@ -5,6 +5,7 @@ import { MatchScheduleService } from '../application/match-schedule.service.js';
 const pdRepo = vi.hoisted(() => ({
   findParticipantById: vi.fn(),
   findCurrentDraw: vi.fn(),
+  listCurrentDraws: vi.fn(),
   findDrawEntries: vi.fn(),
 }));
 
@@ -115,6 +116,7 @@ beforeEach(() => {
   crRepo.findTournamentBooking.mockResolvedValue(null);
   bookingRepo.checkSlotAvailability.mockResolvedValue(true);
   matchSvc.createForTournament.mockResolvedValue({ id: 900 });
+  pdRepo.listCurrentDraws.mockResolvedValue([]);
   poolConn.beginTransaction.mockImplementation(async () => undefined);
   poolConn.commit.mockImplementation(async () => undefined);
   poolConn.rollback.mockImplementation(async () => undefined);
@@ -574,5 +576,80 @@ describe('G9-A — ROUND-1 PROGRESSION TARGET WIRING (G8 locked-draw path)', () 
     expect(created.every((c: any) => c.progression_meta.target_round == null)).toBe(true);
     expect(r.generated).toBe(6); // 4 players → 6 pairings
     expect(r.byes).toBe(0);
+  });
+});
+
+describe('G8 VERIFY — PART 8: match generation is ATOMIC across ALL locked draws', () => {
+  function lockedDraw(id: number, competitionId: number | null) {
+    return { id, tournament_id: 1, competition_id: competitionId, attempt_number: 1, draw_seed: 42, status: 'locked', validation_status: 'valid', is_current: 1 };
+  }
+  const twoEntries = (drawId: number) => [
+    { id: drawId * 10 + 1, draw_id: drawId, participant_id: drawId * 100 + 1, position: 0 },
+    { id: drawId * 10 + 2, draw_id: drawId, participant_id: drawId * 100 + 2, position: 1 },
+  ];
+
+  it('M1. generates matches for EVERY locked draw, each with its own competition_id', async () => {
+    pdRepo.listCurrentDraws.mockResolvedValue([lockedDraw(10, 11), lockedDraw(11, 12)]);
+    pdRepo.findDrawEntries.mockImplementation(async (drawId: number) => twoEntries(drawId));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+    const r = await svc.generateMatchesFromLockedDraw(1, 1);
+    expect(r.generated).toBe(2);
+    expect(r.draws).toBe(2);
+    const comps = tRepo.createMatch.mock.calls
+      .map((c: any[]) => c[0].competition_id)
+      .sort((a: number, b: number) => a - b);
+    expect(comps).toEqual([11, 12]);
+    expect(poolConn.commit).toHaveBeenCalled();
+  });
+
+  it('M2. a failure on the SECOND draw rolls back the WHOLE invocation — no success events/audit', async () => {
+    pdRepo.listCurrentDraws.mockResolvedValue([lockedDraw(10, 11), lockedDraw(11, 12)]);
+    pdRepo.findDrawEntries.mockImplementation(async (drawId: number) => twoEntries(drawId));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+    // First draw's match is written; the second draw's insert fails.
+    tRepo.createMatch
+      .mockImplementationOnce(async () => 100)
+      .mockImplementationOnce(async () => { throw new Error('boom-2nd-draw'); });
+    await expect(svc.generateMatchesFromLockedDraw(1, 1)).rejects.toThrow('boom-2nd-draw');
+    expect(poolConn.rollback).toHaveBeenCalled();
+    expect(poolConn.commit).not.toHaveBeenCalled();
+    // No false success side effects for rolled-back work.
+    expect(bus.emit).not.toHaveBeenCalledWith('tournament:matches-generated', expect.anything(), expect.anything());
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('M3. retry after a rolled-back invocation succeeds (rollback left nothing behind)', async () => {
+    pdRepo.listCurrentDraws.mockResolvedValue([lockedDraw(10, 11), lockedDraw(11, 12)]);
+    pdRepo.findDrawEntries.mockImplementation(async (drawId: number) => twoEntries(drawId));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+    tRepo.createMatch.mockImplementationOnce(async () => { throw new Error('boom'); });
+    await expect(svc.generateMatchesFromLockedDraw(1, 1)).rejects.toThrow('boom');
+    // Nothing persisted → the in-lock re-count still sees 0 for both competitions.
+    tRepo.countMatches.mockResolvedValue(0);
+    tRepo.createMatch.mockResolvedValue(100);
+    const r = await svc.generateMatchesFromLockedDraw(1, 1);
+    expect(r.generated).toBe(2);
+    expect(r.draws).toBe(2);
+  });
+
+  it('M4. a retry after SUCCESS is rejected for the already-generated competition (no duplicate set)', async () => {
+    pdRepo.listCurrentDraws.mockResolvedValue([lockedDraw(10, 11), lockedDraw(11, 12)]);
+    pdRepo.findDrawEntries.mockImplementation(async (drawId: number) => twoEntries(drawId));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+    await svc.generateMatchesFromLockedDraw(1, 1);
+    // Competition 12 now already owns matches → the WHOLE retry fails closed.
+    tRepo.countMatches.mockImplementation(async (_tid: number, comp: number) => (Number(comp) === 12 ? 1 : 0));
+    await expect(svc.generateMatchesFromLockedDraw(1, 1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED });
+  });
+
+  it('M5. any UNLOCKED draw fails closed before any match is generated (no partial writes)', async () => {
+    pdRepo.listCurrentDraws.mockResolvedValue([lockedDraw(10, 11), { ...lockedDraw(11, 12), status: 'approved' }]);
+    pdRepo.findDrawEntries.mockImplementation(async (drawId: number) => twoEntries(drawId));
+    pdRepo.findParticipantById.mockImplementation(async (id: number) => participant(id));
+    await expect(svc.generateMatchesFromLockedDraw(1, 1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_DRAW_NOT_LOCKED });
+    expect(tRepo.createMatch).not.toHaveBeenCalled();
+    expect(poolConn.commit).not.toHaveBeenCalled();
   });
 });

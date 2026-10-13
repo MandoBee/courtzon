@@ -90,31 +90,37 @@ export class MatchScheduleService {
     let generated = 0;
     let byes = 0;
 
-    for (const draw of draws) {
-      const competitionId = draw.competition_id != null ? Number(draw.competition_id) : null;
-      const entries = await participantDrawRepository.findDrawEntries(draw.id!);
-      const ordered = entries
-        .filter((e) => e.participant_id != null)
-        .sort((a, b) => Number(a.position) - Number(b.position))
-        .map((e) => Number(e.participant_id));
-      if (ordered.length < 2) {
-        throw new ConflictError('At least 2 participants are required to generate matches', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
-      }
+    // ATOMIC ACROSS ALL LOCKED DRAWS — the whole tournament invocation runs in
+    // ONE transaction (a single tournament-row lock). A failure on ANY competition
+    // rolls back EVERY match and bracket-slot write from this invocation, so a
+    // tournament-wide retry can never observe a partial set (and can never be
+    // blocked by TOURNAMENT_MATCHES_ALREADY_GENERATED for a competition whose
+    // matches should have rolled back). `match:created` events emitted by
+    // createForTournament inside the manual transaction are flushed only after the
+    // shared commit (ALS), so a rollback never delivers a phantom Match.
+    const conn = await getPool().getConnection();
+    try {
+      await runProvidedTransaction(conn, async () => {
+        // Serialize generation for this tournament (one row lock for the whole set).
+        await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
 
-      const formatCtx = await tournamentService.resolveMatchFormatContext(t);
-      const { slots, isKnockout } = this.buildSlots(t, ordered);
+        for (const draw of draws) {
+          const competitionId = draw.competition_id != null ? Number(draw.competition_id) : null;
+          const entries = await participantDrawRepository.findDrawEntries(draw.id!);
+          const ordered = entries
+            .filter((e) => e.participant_id != null)
+            .sort((a, b) => Number(a.position) - Number(b.position))
+            .map((e) => Number(e.participant_id));
+          if (ordered.length < 2) {
+            throw new ConflictError('At least 2 participants are required to generate matches', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
+          }
 
-      const conn = await getPool().getConnection();
-      let drawGenerated = 0;
-      let drawByes = 0;
-      try {
-        // Group 6 — ALS transaction context: match:created events emitted by
-        // createForTournament inside this manual transaction are flushed only
-        // after the shared commit; a rollback never delivers a phantom Match.
-        await runProvidedTransaction(conn, async () => {
-          // Serialize generation for this competition; the existence re-check MUST
-          // run inside the locked transaction (race guard).
-          await conn.query('SELECT id FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+          const formatCtx = await tournamentService.resolveMatchFormatContext(t);
+          const { slots, isKnockout } = this.buildSlots(t, ordered);
+
+          // Per-competition duplicate guard — re-checked INSIDE the locked
+          // transaction (race guard). A conflict on ANY competition rolls back the
+          // WHOLE invocation (never a partial set).
           const existing = await tournamentRepository.countMatches(tournamentId, competitionId, conn);
           if (existing > 0) {
             throw new ConflictError('Matches are already generated for this competition', ErrorCodes.TOURNAMENT_MATCHES_ALREADY_GENERATED);
@@ -146,7 +152,7 @@ export class MatchScheduleService {
                 progression_state: 'pending',
                 progression_meta: meta as unknown as Record<string, unknown>,
               }, conn);
-              drawGenerated += 1;
+              generated += 1;
             } else {
               const presentId = p1Id ?? p2Id ?? null;
               const present = presentId != null ? await this.loadParticipant(presentId) : null;
@@ -168,19 +174,19 @@ export class MatchScheduleService {
                 progression_state: 'pending',
                 progression_meta: slot.bye === true ? { ...meta, bye: true } as unknown as Record<string, unknown> : meta as unknown as Record<string, unknown>,
               }, conn);
-              if (presentId != null) drawByes += 1;
+              if (presentId != null) byes += 1;
             }
           }
-        });
-      } finally {
-        conn.release();
-      }
-      generated += drawGenerated;
-      byes += drawByes;
-
-      // Group 5B — propagate draw-time byes (existing engine semantics, not invented).
-      await tournamentService.advanceByes(tournamentId);
+        }
+      });
+    } finally {
+      conn.release();
     }
+
+    // Group 5B — propagate draw-time byes (existing engine semantics, not invented).
+    // Post-commit + tournament-wide (idempotent): only runs once the whole
+    // generation set is durably committed.
+    await tournamentService.advanceByes(tournamentId);
 
     await recordAudit({
       actorId,
