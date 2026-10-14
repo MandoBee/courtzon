@@ -439,6 +439,8 @@ export const GskKnockoutSchema = z.object({
   preventSameGroupRematch: z.boolean(),
   allowByes: z.boolean(),
   playInRounds: z.number().int().min(0).optional(),
+  // GSK-3C — optional third-place playoff (omitted/false preserves legacy behaviour).
+  thirdPlaceMatch: z.boolean().optional(),
 });
 
 export const GskConfigurationSchema = z

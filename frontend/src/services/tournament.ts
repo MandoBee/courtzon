@@ -107,8 +107,8 @@ export const tournamentTeamApi = {
     api.get<{ data: any }>(`/tournaments/${tournamentId}/teams`).then((r) => r.data?.data),
   joinTeam: (tournamentId: number, participantId: number) =>
     api.post(`/tournaments/${tournamentId}/teams/${participantId}/join`).then((r) => r.data),
-  invite: (tournamentId: number, participantId: number, inviteeUserId: number) =>
-    api.post(`/tournaments/${tournamentId}/teams/${participantId}/invitations`, { inviteeUserId }).then((r) => r.data),
+  invite: (tournamentId: number, participantId: number, invitee: { inviteeUserId?: number; inviteePhone?: string }) =>
+    api.post(`/tournaments/${tournamentId}/teams/${participantId}/invitations`, invitee).then((r) => r.data),
   listSent: (tournamentId: number, participantId: number) =>
     api.get<{ data: any }>(`/tournaments/${tournamentId}/teams/${participantId}/invitations`).then((r) => r.data?.data),
   listMine: () =>
@@ -117,6 +117,9 @@ export const tournamentTeamApi = {
     api.post(`/tournaments/${tournamentId}/team-invitations/${invitationId}/accept`).then((r) => r.data),
   reject: (tournamentId: number, invitationId: number) =>
     api.post(`/tournaments/${tournamentId}/team-invitations/${invitationId}/reject`).then((r) => r.data),
+  // Phase 3 — withdraw a pending invitation (captain-only, server-authoritative).
+  cancel: (tournamentId: number, invitationId: number) =>
+    api.post(`/tournaments/${tournamentId}/team-invitations/${invitationId}/cancel`).then((r) => r.data),
 };
 
 // Organisation-scoped tournament API — mirrors the admin workbench methods but

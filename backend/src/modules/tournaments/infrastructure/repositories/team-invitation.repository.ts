@@ -104,6 +104,43 @@ export class TeamInvitationRepository {
     params.push(id);
     await db.query(`UPDATE tournament_team_invitations SET ${sets.join(', ')} WHERE id = ?`, params);
   }
+
+  /**
+   * Phase 3 — CANCEL a pending invitation. A withdrawn request is transient
+   * (migration 186 explicitly marks the row a transient request, not an immutable
+   * audit record): the row is removed so the UNIQUE(participant_id,
+   * invitee_user_id) slot is freed for a future re-invitation. Accountability is
+   * preserved by the caller's audit log entry (TOURNAMENT.TEAM_INVITE_CANCELLED).
+   */
+  async deleteById(id: number, conn?: import('mysql2/promise').PoolConnection): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query('DELETE FROM tournament_team_invitations WHERE id = ?', [id]);
+  }
+
+  /**
+   * Phase 3 — RE-INVITE: re-open a terminal (rejected/expired) invitation row for
+   * the same (participant, invitee) pair. The row is REUSED (the DB enforces at
+   * most one invitation per pair) rather than re-inserted, so invitation history
+   * is retained; the prior terminal status is captured in the caller's audit log.
+   */
+  async reactivate(
+    id: number,
+    data: { inviterUserId: number; expiresAt: string | null },
+    conn?: import('mysql2/promise').PoolConnection,
+  ): Promise<void> {
+    const db = conn ?? getPool();
+    await db.query(
+      `UPDATE tournament_team_invitations
+         SET status = 'pending',
+             inviter_user_id = ?,
+             expires_at = ?,
+             accepted_at = NULL,
+             rejected_at = NULL,
+             expired_at = NULL
+       WHERE id = ?`,
+      [data.inviterUserId, data.expiresAt, id],
+    );
+  }
 }
 
 export const teamInvitationRepository = new TeamInvitationRepository();

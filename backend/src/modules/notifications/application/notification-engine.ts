@@ -718,7 +718,8 @@ const eventGroups: EventGroupConfig[] = [
       }
       if (eventName === 'tournament:team-invitation') {
         // G11.17 — sent → the INVITEE; accepted/rejected → the captain/inviter.
-        if (data.status === 'sent' && data.inviteeUserId && data.tournamentId) {
+        // Phase 3 — cancelled → the INVITEE (their pending invite was withdrawn).
+        if ((data.status === 'sent' || data.status === 'cancelled') && data.inviteeUserId && data.tournamentId) {
           await dispatchToUser({
             userId: data.inviteeUserId, eventName, categorySlug, data,
             relatedEntityType: 'tournament', relatedEntityId: String(data.tournamentId),

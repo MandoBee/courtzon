@@ -6,9 +6,14 @@ export interface MembershipPlanAttributes {
   category: string;
   duration_type: string;
   duration_value: number;
+  /** Canonical `membership_plans.plan_type` column (NOT NULL). */
+  plan_type: string;
+  /** Canonical `membership_plans.duration_days` column (NOT NULL). */
+  duration_days: number;
   price: number;
   currency: string;
-  status: 'active' | 'inactive' | 'archived';
+  /** Canonical `membership_plans.status` column. */
+  status: 'draft' | 'active' | 'archived';
   is_default: boolean;
   is_public: boolean;
   sort_order: number;

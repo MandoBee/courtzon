@@ -775,6 +775,20 @@ export interface BracketSlot {
   targetBracketPosition?: number;
   /** Which participant this slot's winner fills on the target slot. */
   targetSide?: 'player1' | 'player2';
+  /**
+   * GSK-3C — TRUE for the dedicated third-place playoff slot. Such a slot is
+   * NOT part of the single-elimination tree: it never becomes a terminal
+   * (championship) slot and its winner is placement 3, never the champion.
+   */
+  isThirdPlace?: boolean;
+  /**
+   * GSK-3C — where this slot's LOSER is routed. Only set on the two semifinal
+   * slots when a third-place match is enabled; omitted for every other slot so
+   * the legacy winner-only routing is untouched.
+   */
+  loserTargetRound?: number;
+  loserTargetBracketPosition?: number;
+  loserTargetSide?: 'player1' | 'player2';
 }
 
 export interface TournamentMatchResult {
@@ -1067,6 +1081,69 @@ export function normaliseBracketTargets(slots: BracketSlot[], participantCount: 
       targetSide,
     };
   });
+}
+
+/**
+ * GSK-3C — whether a bracket can host a REAL third-place match.
+ *
+ * A third-place match needs BOTH semifinals to be contested so that TWO
+ * determinable losers exist. With the tail-padded single-elimination bracket the
+ * number of participants reaching each round halves (rounded up), and a padding
+ * bye cascades forward: if fewer than four participants reach the semifinal
+ * round, at least one semifinal is a bye (or empty) and only ONE loser is
+ * determinable. Such a bracket must NOT generate a third-place match (the
+ * requirement: never fabricate a placement and never create an unplayable slot).
+ *
+ * Pure and deterministic — identical inputs always produce the same decision.
+ *
+ * @param qualifiedCount  number of participants entering the knockout round 1
+ * @param totalRounds     log2(bracket size); round 1 = first, totalRounds = final
+ */
+export function knockoutThirdPlaceEligible(qualifiedCount: number, totalRounds: number): boolean {
+  // A direct final (single round) has no semifinals → no third-place match.
+  if (totalRounds < 2) return false;
+  // Participants reaching the semifinal round (the round immediately before the
+  // final): entrants(1) = qualified; entrants(r) = ceil(entrants(r-1) / 2).
+  let entrants = Math.max(0, Math.floor(qualifiedCount));
+  for (let r = 2; r <= totalRounds - 1; r++) entrants = Math.ceil(entrants / 2);
+  // Exactly two contested semifinals → exactly two real losers.
+  return entrants === 4;
+}
+
+/**
+ * GSK-3C — attach a dedicated third-place playoff to a normalised bracket.
+ *
+ * When eligible (see `knockoutThirdPlaceEligible`) every semifinal slot is told
+ * where its LOSER goes (upper semi → player1, lower semi → player2) and a new
+ * third-place slot is appended at `(round: totalRounds, bracketPosition: 1)`.
+ * The final keeps `(totalRounds, 0)`, so the two never collide.
+ *
+ * When NOT eligible the bracket is returned unchanged — `thirdPlaceMatch` is a
+ * strict opt-in and never perturbs the existing topology. Pure; single source of
+ * truth for the third-place wiring (competition-scoped: pass one competition's
+ * slots).
+ */
+export function withThirdPlaceMatch(slots: BracketSlot[], qualifiedCount: number, totalRounds: number): BracketSlot[] {
+  if (!knockoutThirdPlaceEligible(qualifiedCount, totalRounds)) return slots;
+  const thirdRound = totalRounds;
+  const thirdBracketPosition = 1;
+  const semifinalRound = totalRounds - 1;
+  const wired: BracketSlot[] = slots.map((s) => {
+    if (s.round !== semifinalRound) return s;
+    const isUpper = (s.bracketPosition ?? 0) === 0;
+    return {
+      ...s,
+      loserTargetRound: thirdRound,
+      loserTargetBracketPosition: thirdBracketPosition,
+      loserTargetSide: isUpper ? 'player1' : 'player2',
+    };
+  });
+  wired.push({
+    round: thirdRound,
+    bracketPosition: thirdBracketPosition,
+    isThirdPlace: true,
+  });
+  return wired;
 }
 
 /**

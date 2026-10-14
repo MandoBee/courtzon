@@ -7,6 +7,11 @@ import { Modal } from '../../components/ui';
 import { Can } from '../../permissions/Can';
 import { SkeletonRow } from '../../components/ui/Skeleton';
 import { localTodayString } from '../../utils/formatDate';
+import {
+  MEMBERSHIP_PLAN_DURATION_TYPE_OPTIONS,
+  MEMBERSHIP_PLAN_STATUS_OPTIONS,
+  MEMBERSHIP_PLAN_TYPE_OPTIONS,
+} from '../../services/membership';
 
 type Tab = 'plans' | 'assignments';
 
@@ -54,12 +59,16 @@ function PlansPanel() {
         ))}
       </div>
       <Modal open={showForm} onClose={() => { setShowForm(false); setEditing(null); }} title={editing ? t('membership.edit_plan') : t('membership.create_plan')}>
-        <form onSubmit={e => { e.preventDefault(); const fd = new FormData(e.currentTarget); const d = { code: fd.get('code'), name: fd.get('name'), description: fd.get('description'), plan_type: fd.get('plan_type'), duration_days: Number(fd.get('duration_days')), price: Number(fd.get('price')), currency: fd.get('currency'), status: fd.get('status'), is_public: fd.get('is_public') === 'on' }; if (editing) updateMut.mutate({ id: editing.id, ...d }); else createMut.mutate(d); }} className="space-y-3">
+        <form onSubmit={e => { e.preventDefault(); const fd = new FormData(e.currentTarget); const d = { code: fd.get('code'), name: fd.get('name'), description: fd.get('description'), category: fd.get('category'), duration_type: fd.get('duration_type'), duration_value: Number(fd.get('duration_value')), plan_type: fd.get('plan_type'), duration_days: Number(fd.get('duration_days')), price: Number(fd.get('price')), currency: fd.get('currency'), status: fd.get('status'), is_public: fd.get('is_public') === 'on' }; if (editing) updateMut.mutate({ id: editing.id, ...d }); else createMut.mutate(d); }} className="space-y-3">
           <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-medium">{t('membership.code')}</label><input name="code" defaultValue={editing?.code || ''} required className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div>
           <div><label className="text-xs font-medium">{t('membership.name')}</label><input name="name" defaultValue={editing?.name || ''} required className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div></div>
           <div><label className="text-xs font-medium">{t('membership.description')}</label><textarea name="description" defaultValue={editing?.description || ''} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div>
-          <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-medium">{t('membership.plan_type')}</label><select name="plan_type" defaultValue={editing?.plan_type || 'monthly'} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></div>
+          <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-medium">{t('membership.plan_type')}</label><select name="plan_type" defaultValue={editing?.plan_type || 'monthly'} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">{MEMBERSHIP_PLAN_TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
           <div><label className="text-xs font-medium">{t('membership.duration_days')}</label><input name="duration_days" type="number" defaultValue={editing?.duration_days || 30} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div></div>
+          <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-medium">Category</label><input name="category" defaultValue={editing?.category || 'general'} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div>
+          <div><label className="text-xs font-medium">Status</label><select name="status" defaultValue={editing?.status || 'active'} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">{MEMBERSHIP_PLAN_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div></div>
+          <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-medium">Duration type</label><select name="duration_type" defaultValue={editing?.duration_type || 'months'} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl">{MEMBERSHIP_PLAN_DURATION_TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
+          <div><label className="text-xs font-medium">Duration value</label><input name="duration_value" type="number" min={1} defaultValue={editing?.duration_value || 1} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div></div>
           <div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-medium">{t('membership.price')}</label><input name="price" type="number" step="0.01" defaultValue={editing?.price || 0} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div>
           <div><label className="text-xs font-medium">{t('membership.currency')}</label><input name="currency" defaultValue={editing?.currency || 'EGP'} className="w-full px-3 py-2 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl" /></div></div>
           <div className="flex items-center gap-4"><label className="flex items-center gap-1 text-sm"><input type="checkbox" name="is_public" defaultChecked={editing?.is_public ?? true} className="rounded" /> {t('membership.is_public')}</label></div>

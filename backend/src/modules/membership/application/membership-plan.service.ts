@@ -73,6 +73,10 @@ class MembershipPlanService {
       category: string;
       duration_type: string;
       duration_value: number;
+      /** NOT NULL, no DB default — caller-supplied business value. */
+      plan_type: string;
+      /** NOT NULL, no DB default — caller-supplied business value. */
+      duration_days: number;
       price: number;
       currency?: string;
       status?: string;
@@ -92,12 +96,13 @@ class MembershipPlanService {
     if (existing.length) throw new ConflictError('Plan code already exists', ErrorCodes.VALIDATION_INVALID_VALUE);
 
     const [result] = await pool.execute(
-      `INSERT INTO membership_plans (code, name, description, category, duration_type, duration_value, price, currency, status, is_default, is_public, sort_order, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO membership_plans (code, name, description, category, duration_type, duration_value, plan_type, duration_days, price, currency, status, is_default, is_public, sort_order, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.code, data.name, data.description ?? null, data.category,
-        data.duration_type, data.duration_value, data.price,
-        data.currency ?? 'USD', data.status ?? 'active',
+        data.duration_type, data.duration_value, data.plan_type, data.duration_days,
+        data.price,
+        data.currency ?? 'EGP', data.status ?? 'active',
         data.is_default ?? false, data.is_public ?? true,
         data.sort_order ?? 0, userId, userId,
       ],
@@ -125,6 +130,8 @@ class MembershipPlanService {
       category?: string;
       duration_type?: string;
       duration_value?: number;
+      plan_type?: string;
+      duration_days?: number;
       price?: number;
       currency?: string;
       status?: string;
@@ -152,8 +159,8 @@ class MembershipPlanService {
     const params: any[] = [];
     const updatable: (keyof typeof data)[] = [
       'code', 'name', 'description', 'category', 'duration_type',
-      'duration_value', 'price', 'currency', 'status', 'is_default',
-      'is_public', 'sort_order',
+      'duration_value', 'plan_type', 'duration_days', 'price', 'currency',
+      'status', 'is_default', 'is_public', 'sort_order',
     ];
     for (const field of updatable) {
       if (data[field] !== undefined) {
@@ -211,8 +218,8 @@ class MembershipPlanService {
     );
     return {
       categories: categories.map((r: any) => r.category),
-      duration_types: ['day', 'week', 'month', 'year'],
-      statuses: ['active', 'inactive', 'archived'],
+      duration_types: ['days', 'months', 'years', 'perpetual'],
+      statuses: ['draft', 'active', 'archived'],
     };
   }
 }

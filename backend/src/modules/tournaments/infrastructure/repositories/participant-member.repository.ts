@@ -111,6 +111,25 @@ export class ParticipantMemberRepository {
     return rows.length ? { id: Number(rows[0].id), full_name: rows[0].full_name ?? null } : null;
   }
 
+  /**
+   * Phase 3 — resolve an ELIGIBLE player by phone number so a team captain can
+   * invite a partner by phone. Matches the stored E.164-style `full_phone` OR the
+   * local `phone_number`. Only active users with a player profile are eligible
+   * (the same eligibility bar as `findEligiblePlayer`).
+   */
+  async findEligiblePlayerByPhone(phone: string, conn?: import('mysql2/promise').PoolConnection): Promise<{ id: number; full_name: string | null } | null> {
+    const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();
+    const [rows] = await db.query<RowData>(
+      `SELECT u.id, u.full_name
+       FROM users u
+       JOIN player_profiles pp ON pp.user_id = u.id
+       WHERE (u.full_phone = ? OR u.phone_number = ?) AND u.account_status = 'active' AND u.deleted_at IS NULL
+       LIMIT 1`,
+      [phone, phone],
+    );
+    return rows.length ? { id: Number(rows[0].id), full_name: rows[0].full_name ?? null } : null;
+  }
+
   /** Members of a participant joined with their user display name. */
   async listMembersByParticipant(participantId: number, conn?: import('mysql2/promise').PoolConnection): Promise<Array<TournamentParticipantMember & { full_name?: string | null }>> {
     const db: import('mysql2/promise').Pool | import('mysql2/promise').PoolConnection = conn ?? getPool();

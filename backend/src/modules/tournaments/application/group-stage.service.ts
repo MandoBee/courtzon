@@ -97,15 +97,33 @@ export class GroupStageService {
       throw new ConflictError((e as Error).message, ErrorCodes.TOURNAMENT_GROUP_CONFIG_INVALID);
     }
 
-    // Primary member (user) per participant — needed for the shared Match rows.
-    const primaryMemberByParticipant = new Map<number, number>();
+    // Active member roster (user ids, ordered by member_order) per participant —
+    // EVERY active member of BOTH sides must be persisted on the shared Match,
+    // so a doubles pair contributes two rows per side.
+    const participantTypeById = new Map<number, string>(raw.map((p) => [Number(p.id), String(p.participant_type)]));
+    const activeRosterByParticipant = new Map<number, number[]>();
     for (const c of contexts) {
       const members = await participantMemberRepository.listMembersByParticipant(c.participantId);
-      const primary = members.find((m) => m.status === 'active')?.user_id ?? null;
-      if (primary == null) {
+      const roster = members
+        .filter((m) => m.status === 'active')
+        .sort((a, b) => Number(a.member_order) - Number(b.member_order) || Number(a.id ?? 0) - Number(b.id ?? 0))
+        .map((m) => Number(m.user_id));
+      if (roster.length === 0) {
         throw new ConflictError(`Participant #${c.participantId} has no active member`, ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_NOT_FOUND);
       }
-      primaryMemberByParticipant.set(c.participantId, Number(primary));
+      // Phase 3 fix (F1) — a TEAM participant (including a doubles pair modelled
+      // as a team) must have at least TWO active members to enter the group
+      // stage. An incomplete "forming" team (partner invitation still pending)
+      // is rejected here, so a one-player side can never reach a group match.
+      // Individual/pair participants are governed by their own exact-count rule.
+      if (participantTypeById.get(c.participantId) === 'team' && roster.length < 2) {
+        throw new ConflictError(
+          `Participant #${c.participantId} is an incomplete team: at least 2 active members are required to enter the group stage (currently ${roster.length})`,
+          ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID,
+          { min: 2, actual: roster.length, participantId: c.participantId },
+        );
+      }
+      activeRosterByParticipant.set(c.participantId, roster);
     }
 
     // ── Deterministic assignment (same tournament + participant set + seed ⇒ same groups) ──
@@ -154,9 +172,14 @@ export class GroupStageService {
           for (const pairing of pairingsByGroup[g]) {
             const p1 = participantsById.get(pairing.player1Id)!;
             const p2 = participantsById.get(pairing.player2Id)!;
-            const u1 = primaryMemberByParticipant.get(p1.participantId)!;
-            const u2 = primaryMemberByParticipant.get(p2.participantId)!;
-            // Shared authoritative Match (results/courts run through it).
+            const roster1 = activeRosterByParticipant.get(p1.participantId)!;
+            const roster2 = activeRosterByParticipant.get(p2.participantId)!;
+            // Legacy compatibility: player1_id/player2_id keep the FIRST active
+            // member of each side (the former primary-member contract).
+            const u1 = roster1[0];
+            const u2 = roster2[0];
+            // Shared authoritative Match (results/courts run through it): EVERY
+            // active member of each side is persisted (doubles = two per side).
             const shared = await matchService.createForTournament({
               tournamentId,
               sportId: t.sport_id!,
@@ -165,8 +188,8 @@ export class GroupStageService {
               formatSnapshot: formatCtx.formatSnapshot,
               ruleSnapshot: formatCtx.ruleSnapshot,
               participants: [
-                { userId: u1, side: 'home', teamIndex: 0, role: 'host' },
-                { userId: u2, side: 'away', teamIndex: 1, role: 'joiner' },
+                ...roster1.map((userId) => ({ userId, side: 'home' as const, teamIndex: 0, role: 'host' as const })),
+                ...roster2.map((userId) => ({ userId, side: 'away' as const, teamIndex: 1, role: 'joiner' as const })),
               ],
               conn,
             });

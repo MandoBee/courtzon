@@ -11,6 +11,54 @@ import { useToast } from '../../components/ui/Toast';
  * Create a team, view your roster, invite players, accept/reject invitations,
  * and join an open team — all within the existing tournament team rules.
  */
+/**
+ * Phase 3 — the captain's outgoing invitations for one team, with the ability to
+ * CANCEL a still-pending invitation. Server-authoritative: the button is a
+ * convenience; the backend enforces captain-only + pending-only cancellation.
+ */
+function SentInvitations({
+  tournamentId,
+  participantId,
+  onCancel,
+  cancelling,
+}: {
+  tournamentId: number;
+  participantId: number;
+  onCancel: (invitationId: number) => void;
+  cancelling: boolean;
+}) {
+  const sentQuery = useQuery({
+    queryKey: ['team-invitations-sent', tournamentId, participantId],
+    queryFn: () => tournamentTeamApi.listSent(tournamentId, participantId),
+    enabled: Number.isFinite(tournamentId) && Number.isFinite(participantId),
+  });
+  const sent = (sentQuery.data || []) as any[];
+  if (sent.length === 0) return null;
+  const statusStyles: Record<string, string> = {
+    pending: 'text-[var(--color-text-muted)]',
+    accepted: 'text-[var(--color-success,#16a34a)]',
+    rejected: 'text-[var(--color-danger,#dc2626)]',
+    expired: 'text-[var(--color-text-muted)]',
+  };
+  return (
+    <ul className="space-y-1 pt-1">
+      {sent.map((inv: any) => (
+        <li key={inv.id} className="flex items-center justify-between text-sm text-[var(--color-text)]">
+          <span>
+            {inv.invitee_name || `Player #${inv.invitee_user_id}`}{' '}
+            <span className={statusStyles[inv.status] || ''}>({inv.status})</span>
+          </span>
+          {inv.status === 'pending' && (
+            <Button size="sm" variant="secondary" loading={cancelling} onClick={() => onCancel(Number(inv.id))}>
+              Cancel
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function PlayerTeamPage() {
   const { id } = useParams<{ id: string }>();
   const tid = Number(id);
@@ -18,7 +66,7 @@ export default function PlayerTeamPage() {
   const { showToast } = useToast();
   const { can } = useCan();
   const [teamName, setTeamName] = useState('');
-  const [inviteUserId, setInviteUserId] = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
 
   const teamQuery = useQuery({
     queryKey: ['tournament-teams', tid],
@@ -48,9 +96,15 @@ export default function PlayerTeamPage() {
     onError: (e: any) => showToast(e?.response?.data?.message || 'Cannot join', 'error'),
   });
   const inviteMutation = useMutation({
-    mutationFn: (pid: number) => tournamentTeamApi.invite(tid, pid, Number(inviteUserId)),
-    onSuccess: () => { setInviteUserId(''); showToast('Invitation sent'); invalidate(); },
+    mutationFn: (pid: number) => tournamentTeamApi.invite(tid, pid, { inviteePhone: invitePhone.trim() }),
+    onSuccess: () => { setInvitePhone(''); showToast('Invitation sent'); invalidate(); },
     onError: (e: any) => showToast(e?.response?.data?.message || 'Invitation failed', 'error'),
+  });
+  const cancelMutation = useMutation({
+    mutationFn: ({ tournamentId, invitationId }: { tournamentId: number; invitationId: number }) =>
+      tournamentTeamApi.cancel(tournamentId, invitationId),
+    onSuccess: () => { showToast('Invitation cancelled'); invalidate(); },
+    onError: (e: any) => showToast(e?.response?.data?.message || 'Failed to cancel invitation', 'error'),
   });
   const respondMutation = useMutation({
     mutationFn: ({ inv, accept }: { inv: any; accept: boolean }) =>
@@ -81,9 +135,17 @@ export default function PlayerTeamPage() {
         <Card key={t.id}>
           <h3 className="font-semibold text-[var(--color-text)]">{t.name || `Team #${t.id}`}</h3>
           {can('player.tournaments.team.invite') && (
-            <div className="flex gap-2 mt-3">
-              <Input value={inviteUserId} onChange={(e) => setInviteUserId(e.target.value)} placeholder="Player user id" type="number" />
-              <Button loading={inviteMutation.isPending} onClick={() => inviteMutation.mutate(Number(t.id))}>Invite</Button>
+            <div className="space-y-2 mt-3">
+              <div className="flex gap-2">
+                <Input value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} placeholder="Partner phone number" type="tel" />
+                <Button loading={inviteMutation.isPending} onClick={() => inviteMutation.mutate(Number(t.id))}>Invite</Button>
+              </div>
+              <SentInvitations
+                tournamentId={tid}
+                participantId={Number(t.id)}
+                onCancel={(invitationId) => cancelMutation.mutate({ tournamentId: tid, invitationId })}
+                cancelling={cancelMutation.isPending}
+              />
             </div>
           )}
         </Card>

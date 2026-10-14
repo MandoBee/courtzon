@@ -11,7 +11,7 @@ import { participantMemberRepository } from '../infrastructure/repositories/part
 import { teamInvitationRepository } from '../infrastructure/repositories/team-invitation.repository.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { recordAudit } from '../../audit-log/index.js';
-import type { Tournament, TournamentCompetition, TournamentParticipant, TournamentTeamInvitation } from '../domain/tournament-aggregate.js';
+import type { Tournament, TournamentCompetition, TournamentParticipant, TournamentTeamInvitation, TeamInvitationStatus } from '../domain/tournament-aggregate.js';
 
 /**
  * G11.17 — PLAYER team self-service: creation, join, invitations (invite →
@@ -35,12 +35,52 @@ import type { Tournament, TournamentCompetition, TournamentParticipant, Tourname
  */
 const INVITATION_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours; lazy + explicit expiry.
 
-export function isExpired(inv: TournamentTeamInvitation, now = Date.now()): boolean {
+export function isExpired(inv: Pick<TournamentTeamInvitation, 'expires_at'>, now = Date.now()): boolean {
   return inv.expires_at != null && new Date(inv.expires_at).getTime() <= now;
 }
 
 export function invitationTtlMs(): number {
   return INVITATION_TTL_MS;
+}
+
+/**
+ * Phase 3 — normalise a phone number supplied for an invitation to the
+ * digits-with-optional-leading-'+' form stored in `users.full_phone` /
+ * `users.phone_number`. Presentational only: the actual match (full_phone OR
+ * phone_number) is performed by the repository.
+ */
+export function normalizeInvitePhone(phone: string): string {
+  const trimmed = String(phone ?? '').trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/[^\d]/g, '');
+  return hasPlus ? `+${digits}` : digits;
+}
+
+/**
+ * Phase 3 — a TERMINAL invitation (rejected or expired) may be safely re-opened
+ * on a re-invitation. Pending (live) and accepted invitations must never be
+ * re-sent: a pending one already stands, an accepted one means the player is
+ * already a member.
+ */
+export function reinvitableStatus(status: TeamInvitationStatus): boolean {
+  return status === 'rejected' || status === 'expired';
+}
+
+/**
+ * Phase 3 fix (F2) — whether an EXISTING invitation row may be re-opened by a
+ * re-invitation. True for a TERMINAL row (rejected / expired) and ALSO for a
+ * still-PENDING row whose `expires_at` is already overdue: expiry is applied
+ * lazily (`expireOverdue` / reads), so without this an overdue invitation could
+ * not be re-sent until some unrelated read happened to expire it first (it would
+ * be rejected as a duplicate). A live (non-overdue) pending invitation and an
+ * accepted one are never re-sendable.
+ */
+export function isReinvitable(
+  inv: Pick<TournamentTeamInvitation, 'status' | 'expires_at'> | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!inv) return false;
+  return reinvitableStatus(inv.status) || (inv.status === 'pending' && isExpired(inv, now));
 }
 
 function participantMemberIds(p: TournamentParticipant): number[] {
@@ -127,18 +167,13 @@ export class TeamInvitationService {
     // THE creator must be the team captain (primary member): never allow a
     // player to create a team they are not part of.
     const members = Array.from(new Set([Number(actorId), ...(Array.isArray(input.memberUserIds) ? input.memberUserIds.map((id) => Number(id)) : [])]));
-    // Existing tournament rule (reused, NOT relaxed): a team participant must
-    // start with at least 2 active members — a lone player cannot create one.
-    if (members.length < 2) {
-      throw new ConflictError(
-        'A team needs at least 2 members — invite a teammate to create it',
-        ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID,
-        { min: 2, actual: members.length },
-      );
-    }
+    // Phase 3 — a player team may be created FORMING with the captain as its first
+    // (and initially only) active member; the partner is added through the
+    // invitation lifecycle and the team is completed on acceptance. Admin /
+    // management creation keeps the strict 2-member minimum.
     const created = await participantMemberService.createTeamParticipant(
       tournamentId,
-      { name: input.name, memberUserIds: members, competitionId: competition?.id ?? null },
+      { name: input.name, memberUserIds: members, competitionId: competition?.id ?? null, allowFormingTeam: true },
       actorId,
     );
     return created;
@@ -232,26 +267,41 @@ export class TeamInvitationService {
         ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_ACTIVE_DUPLICATE,
       );
     }
-    const duplicate = await teamInvitationRepository.findByParticipantAndInvitee(participantId, Number(inviteeUserId));
-    if (duplicate) {
+    const existing = await teamInvitationRepository.findByParticipantAndInvitee(participantId, Number(inviteeUserId));
+    if (existing && !isReinvitable(existing)) {
+      // A live (non-overdue) pending invitation already stands; an accepted one
+      // means the player is a member (caught above). Rejected/expired rows and
+      // OVERDUE-pending rows may be re-sent (F2) — the row is re-activated, not
+      // duplicated.
       throw new ConflictError('An invitation to this player already exists for this team', ErrorCodes.TOURNAMENT_TEAM_INVITATION_DUPLICATE);
     }
 
-    const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
-    const id = await teamInvitationRepository.create({
-      tournament_id: Number(t.id),
-      participant_id: participantId,
-      inviter_user_id: Number(actorId),
-      invitee_user_id: Number(inviteeUserId),
-      expires_at: expiresAt.toISOString().slice(0, 19).replace('T', ' '),
-    });
+    const expiresAtSql = new Date(Date.now() + INVITATION_TTL_MS).toISOString().slice(0, 19).replace('T', ' ');
+    let id: number;
+    if (existing) {
+      // Phase 3 — RE-INVITATION: the DB allows at most ONE invitation per
+      // (participant, invitee), so the existing terminal row is REUSED and
+      // re-opened to pending. Invitation history is retained (the row is not
+      // destroyed) and the prior terminal status is captured in the audit log.
+      await teamInvitationRepository.reactivate(existing.id, { inviterUserId: Number(actorId), expiresAt: expiresAtSql });
+      id = Number(existing.id);
+    } else {
+      id = await teamInvitationRepository.create({
+        tournament_id: Number(t.id),
+        participant_id: participantId,
+        inviter_user_id: Number(actorId),
+        invitee_user_id: Number(inviteeUserId),
+        expires_at: expiresAtSql,
+      });
+    }
 
     await recordAudit({
       actorId,
-      action: 'TOURNAMENT.TEAM_INVITE_SENT',
+      action: existing ? 'TOURNAMENT.TEAM_INVITE_RE_SENT' : 'TOURNAMENT.TEAM_INVITE_SENT',
       entityType: 'tournament_team_invitation',
       entityId: id,
-      afterState: { tournament_id: Number(t.id), participant_id: participantId, invitee_user_id: inviteeUserId },
+      beforeState: existing ? { invitation_id: id, previous_status: existing.status } : undefined,
+      afterState: { tournament_id: Number(t.id), participant_id: participantId, invitee_user_id: Number(inviteeUserId), status: 'pending' },
     });
 
     this.emitInvitation(t, participantId, id, Number(inviteeUserId), Number(actorId), 'sent', participant);
@@ -259,6 +309,84 @@ export class TeamInvitationService {
     const created = await teamInvitationRepository.findById(id);
     if (!created) throw new ConflictError('Failed to create team invitation');
     return created;
+  }
+
+  /**
+   * Phase 3 — invite a partner by PHONE NUMBER. The number is normalised (digits
+   * with an optional leading '+') and resolved to an ELIGIBLE player; every
+   * authorization / eligibility / isolation / duplicate rule of the id-based path
+   * is then reused unchanged (the id path stays the single source of truth).
+   */
+  async invitePlayerByPhone(
+    tournamentId: number,
+    participantId: number,
+    phone: string,
+    actorId: number,
+  ): Promise<TournamentTeamInvitation> {
+    const normalized = normalizeInvitePhone(phone);
+    // A usable phone has at least a country code + subscriber number. Resolve
+    // against full_phone OR the local phone_number before delegating.
+    if (normalized.replace(/\D/g, '').length < 6) {
+      throw new ConflictError('A valid phone number is required', ErrorCodes.TOURNAMENT_TEAM_INVITATION_INVITEE_NOT_FOUND);
+    }
+    const invitee = await participantMemberRepository.findEligiblePlayerByPhone(normalized);
+    if (!invitee) {
+      throw new ConflictError('No eligible player found for that phone number', ErrorCodes.TOURNAMENT_TEAM_INVITATION_INVITEE_NOT_FOUND);
+    }
+    return this.invitePlayer(tournamentId, participantId, Number(invitee.id), actorId);
+  }
+
+  /**
+   * Phase 3 — CANCEL a pending invitation. Only the inviting captain may cancel,
+   * and only while the invitation is still pending; a resolved (accepted /
+   * rejected / expired) invitation can never be cancelled. The transient row is
+   * deleted (the DB enforces at most one invitation per pair, so this frees the
+   * slot for a future re-invitation) and the action is captured in the audit log;
+   * the invitee is notified so their pending invite disappears across devices.
+   */
+  async cancelInvitation(tournamentId: number, invitationId: number, actorId: number): Promise<{ id: number; status: 'cancelled' }> {
+    const conn = await getPool().getConnection();
+    let invitation: TournamentTeamInvitation;
+    try {
+      await conn.beginTransaction();
+      const locked = await teamInvitationRepository.lockById(Number(invitationId), conn);
+      if (!locked || Number(locked.tournament_id) !== Number(tournamentId)) {
+        throw new NotFoundError('Team invitation', ErrorCodes.TOURNAMENT_TEAM_INVITATION_NOT_FOUND);
+      }
+      invitation = locked;
+      // Authorization: only the inviter (the team captain who sent it) may
+      // withdraw the invitation. Cross-team cancellation fails here.
+      if (Number(invitation.inviter_user_id) !== Number(actorId)) {
+        throw new ForbiddenError('Only the captain who sent an invitation can cancel it', ErrorCodes.TOURNAMENT_TEAM_CAPTAIN_REQUIRED);
+      }
+      if (invitation.status !== 'pending') {
+        throw new ConflictError(`Invitation is already ${invitation.status}`, ErrorCodes.TOURNAMENT_TEAM_INVITATION_DUPLICATE);
+      }
+      await teamInvitationRepository.deleteById(Number(invitation.id), conn);
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+
+    await recordAudit({
+      actorId,
+      action: 'TOURNAMENT.TEAM_INVITE_CANCELLED',
+      entityType: 'tournament_team_invitation',
+      entityId: Number(invitation.id),
+      beforeState: {
+        tournament_id: Number(invitation.tournament_id),
+        invitation_id: Number(invitation.id),
+        participant_id: Number(invitation.participant_id),
+        invitee_user_id: Number(invitation.invitee_user_id),
+        status: 'pending',
+      },
+    });
+    const t = await this.getTournament(Number(invitation.tournament_id));
+    this.emitInvitation(t, Number(invitation.participant_id), Number(invitation.id), Number(invitation.invitee_user_id), Number(invitation.inviter_user_id), 'cancelled');
+    return { id: Number(invitation.id), status: 'cancelled' };
   }
 
   async listSentInvitations(tournamentId: number, participantId: number, actorId: number): Promise<Array<TournamentTeamInvitation & { invitee_name?: string | null }>> {
@@ -360,6 +488,11 @@ export class TeamInvitationService {
         entityId: Number(invitation.id),
         afterState: { tournament_id: Number(tournamentId), invitation_id: Number(invitation.id) },
       });
+      // Phase 3 — notify the captain that the invitation was declined. The
+      // notification engine already maps the `rejected` status to the inviter;
+      // this call completes that (previously unwired) path.
+      const t = await this.getTournament(Number(tournamentId));
+      this.emitInvitation(t, Number(invitation.participant_id), Number(invitation.id), Number(invitation.invitee_user_id), Number(invitation.inviter_user_id), 'rejected');
       const updated = await teamInvitationRepository.findById(Number(invitationId));
       return updated!;
     } catch (err) {
@@ -407,8 +540,8 @@ export class TeamInvitationService {
     invitationId: number,
     inviteeUserId: number,
     inviterUserId: number,
-    status: 'sent' | 'accepted' | 'rejected',
-    _participant: TournamentParticipant,
+    status: 'sent' | 'accepted' | 'rejected' | 'cancelled',
+    _participant?: TournamentParticipant,
   ): void {
     const scope = tournamentRealtimeScope(t, [inviteeUserId, inviterUserId]);
     void eventBusV2.emit('tournament:team-invitation', {

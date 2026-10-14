@@ -82,6 +82,7 @@ const __state = vi.hoisted(() => ({
   createdMembers: 0,
   createdMatches: 0,
   sharedMatchIds: 0,
+  sharedMatchCalls: [] as any[],
   groupQueryResult: [] as any[],
 }));
 
@@ -96,7 +97,12 @@ vi.mock('../../../database/database.transaction', () => ({
 vi.mock('../../audit-log/index', () => ({ recordAudit: vi.fn() }));
 
 vi.mock('../../match/application/services/match.service', () => ({
-  matchService: { createForTournament: vi.fn(async () => ({ id: ++__state.sharedMatchIds })) },
+  matchService: {
+    createForTournament: vi.fn(async (input: any) => {
+      __state.sharedMatchCalls.push(input);
+      return { id: ++__state.sharedMatchIds };
+    }),
+  },
 }));
 
 const tournamentServiceMock = vi.hoisted(() => ({
@@ -144,6 +150,7 @@ function resetPersistence() {
   __state.createdMembers = 0;
   __state.createdMatches = 0;
   __state.sharedMatchIds = 0;
+  __state.sharedMatchCalls = [];
   tournRepo.createGroup.mockImplementation(async (data: any) => {
     __state.createdGroups += 1;
     const id = __state.createdGroups;
@@ -156,7 +163,7 @@ function resetPersistence() {
     __state.matchRows.push(data);
     return __state.createdMatches;
   });
-  (pmRepo.listMembersByParticipant as any).mockImplementation(async (pid: number) => [{ user_id: pid * 100, status: 'active' }]);
+  (pmRepo.listMembersByParticipant as any).mockImplementation(async (pid: number) => [{ id: pid * 10, user_id: pid * 100, member_order: 0, status: 'active' }]);
 }
 
 beforeEach(() => {
@@ -279,5 +286,58 @@ describe('GroupStageService — group + round robin match generation', () => {
     expect(__state.createdGroups).toBe(2);
     expect(__state.createdMembers).toBe(8);
     expect(__state.createdMatches).toBe(before);
+  });
+
+  // ── Phase 1 (doubles rosters) ──────────────────────────────────────────────
+  it('doubles: persists EVERY active member of both sides (4 match_participants per match)', async () => {
+    resetStage();
+    __state.stage.config.groupStage.groupCount = 1;
+    setupParticipants(4);
+    // Each participant is a doubles pair: two active members ordered 0, 1.
+    (pmRepo.listMembersByParticipant as any).mockImplementation(async (pid: number) => [
+      { id: pid * 10, user_id: pid * 100, member_order: 0, status: 'active' },
+      { id: pid * 10 + 1, user_id: pid * 100 + 1, member_order: 1, status: 'active' },
+    ]);
+
+    const res = await runStage();
+    expect(res.matches).toBe(6);
+    expect(__state.sharedMatchCalls.length).toBe(6);
+    for (const call of __state.sharedMatchCalls) {
+      const parts = call.participants as Array<{ userId: number; side: string; teamIndex: number }>;
+      expect(parts).toHaveLength(4);
+      const home = parts.filter((p) => p.side === 'home');
+      const away = parts.filter((p) => p.side === 'away');
+      expect(home).toHaveLength(2);
+      expect(away).toHaveLength(2);
+      for (const p of parts) expect(p.teamIndex).toBe(p.side === 'home' ? 0 : 1);
+      // ordered by member_order (member 0 before member 1) on each side
+      expect(home.map((p) => p.userId % 10)).toEqual([0, 1]);
+      expect(away.map((p) => p.userId % 10)).toEqual([0, 1]);
+    }
+    // Legacy compatibility: player1_id/player2_id keep the FIRST active member.
+    for (const m of __state.matchRows) {
+      expect(m.player1_id % 10).toBe(0);
+      expect(m.player2_id % 10).toBe(0);
+    }
+  });
+
+  it('singles: retains exactly one member per side (2 match_participants per match)', async () => {
+    setupParticipants(8);
+    await runStage();
+    expect(__state.sharedMatchCalls.length).toBe(12);
+    for (const call of __state.sharedMatchCalls) {
+      const parts = call.participants as Array<{ side: string; teamIndex: number }>;
+      expect(parts).toHaveLength(2);
+      expect(parts.filter((p) => p.side === 'home')).toHaveLength(1);
+      expect(parts.filter((p) => p.side === 'away')).toHaveLength(1);
+    }
+  });
+
+  it('fails safely when a participant has no active member (TOURNAMENT_PARTICIPANT_MEMBER_NOT_FOUND)', async () => {
+    setupParticipants(8);
+    (pmRepo.listMembersByParticipant as any).mockImplementation(async (pid: number) =>
+      pid === 1 ? [] : [{ id: pid * 10, user_id: pid * 100, member_order: 0, status: 'active' }]);
+    await expect(runStage()).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_NOT_FOUND });
+    expect(__state.createdMatches).toBe(0);
   });
 });

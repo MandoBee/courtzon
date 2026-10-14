@@ -3,7 +3,7 @@ import { runProvidedTransaction } from '../../../database/database.transaction.j
 import { recordAudit } from '../../audit-log/index.js';
 import { ConflictError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
-import { generateKnockoutBracket, normaliseBracketTargets } from '../domain/tournament-aggregate.js';
+import { generateKnockoutBracket, normaliseBracketTargets, withThirdPlaceMatch } from '../domain/tournament-aggregate.js';
 import {
   assignKnockoutSeeding,
   validateKnockoutPairing,
@@ -12,6 +12,7 @@ import {
 import type { GskConfiguration } from '../domain/gsk-config.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
+import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { matchService } from '../../match/application/services/match.service.js';
 import { tournamentService } from './tournament.service.js';
 import { competitionService } from './competition.service.js';
@@ -113,17 +114,36 @@ export class KnockoutTransitionService {
 
     // ── Participant identity + authoritative seeds (from the participant repo) ──
     const raw = await participantDrawRepository.listParticipantsByCompetition(tournamentId, scopedCompetitionId);
-    const byParticipant = new Map<number, { userId: number | null; seed: number | null }>();
+    const byParticipant = new Map<number, { userIds: number[]; seed: number | null }>();
+    const participantTypeById = new Map<number, string>(raw.map((p) => [Number(p.id), String(p.participant_type)]));
     for (const p of raw) {
-      const primaryUserId = firstMemberUserId(p.member_user_ids);
-      byParticipant.set(Number(p.id), { userId: primaryUserId, seed: p.seed_number != null ? Number(p.seed_number) : null });
+      const participantId = Number(p.id);
+      // Authoritative active roster (ordered by member_order): every active
+      // member of BOTH sides is persisted on the shared knockout Match.
+      const members = await participantMemberRepository.listMembersByParticipant(participantId);
+      const userIds = members
+        .filter((m) => m.status === 'active')
+        .sort((a, b) => Number(a.member_order) - Number(b.member_order) || Number(a.id ?? 0) - Number(b.id ?? 0))
+        .map((m) => Number(m.user_id));
+      byParticipant.set(participantId, { userIds, seed: p.seed_number != null ? Number(p.seed_number) : null });
     }
     for (const q of qualified) {
       if (!byParticipant.has(q.participantId)) {
         throw new ConflictError(`Qualified participant #${q.participantId} is not a tournament participant`, ErrorCodes.TOURNAMENT_QUALIFICATION_INVALID);
       }
-      if (byParticipant.get(q.participantId)!.userId == null) {
+      const activeMemberCount = byParticipant.get(q.participantId)!.userIds.length;
+      if (activeMemberCount === 0) {
         throw new ConflictError(`Qualified participant #${q.participantId} has no active member`, ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_NOT_FOUND);
+      }
+      // Phase 3 fix (F1) — a qualified TEAM (including a doubles pair modelled as
+      // a team) must have at least TWO active members to enter the knockout
+      // bracket; an incomplete forming team is rejected here.
+      if (participantTypeById.get(q.participantId) === 'team' && activeMemberCount < 2) {
+        throw new ConflictError(
+          `Qualified participant #${q.participantId} is an incomplete team: at least 2 active members are required to enter the knockout stage (currently ${activeMemberCount})`,
+          ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID,
+          { min: 2, actual: activeMemberCount, participantId: q.participantId },
+        );
       }
     }
     if (new Set(qualified.map((q) => q.participantId)).size !== qualified.length) {
@@ -159,13 +179,29 @@ export class KnockoutTransitionService {
     }
 
     // ── Existing knockout generator ──
-    const slots = normaliseBracketTargets(generateKnockoutBracket(orderedIds), Q);
+    let slots = normaliseBracketTargets(generateKnockoutBracket(orderedIds), Q);
     const totalRounds = Math.max(1, Math.round(Math.log2(nextPowerOfTwo(Q))));
+
+    // GSK-3C — optional third-place playoff. Only generated when BOTH semifinals
+    // can be contested (two determinable losers); the helper returns the bracket
+    // unchanged otherwise, so opt-out behaviour is byte-for-byte identical.
+    if (ko.thirdPlaceMatch === true) {
+      slots = withThirdPlaceMatch(slots, Q, totalRounds);
+    }
+
     for (const slot of slots) {
+      if (slot.isThirdPlace === true) {
+        // The dedicated third-place slot is NOT part of the single-elimination
+        // tree: it is never the championship final and sits one step off it.
+        slot.isFinal = false;
+        slot.bracketDepth = 1;
+        continue;
+      }
       const fromEnd = totalRounds - slot.round;
       slot.isFinal = fromEnd === 0;
       slot.bracketDepth = Math.max(0, fromEnd);
     }
+    const matchCount = slots.length;
 
     const formatCtx = await tournamentService.resolveMatchFormatContext(t);
     const conn = await getPool().getConnection();
@@ -214,7 +250,7 @@ export class KnockoutTransitionService {
       action: 'TOURNAMENT.KNOCKOUT_STAGE_GENERATED',
       entityType: 'tournament',
       entityId: tournamentId,
-      afterState: { groupStageId: Number(groupStage.id), stageId: knockoutStageId, stageOrder: knockoutStageOrder, bracketSize: N, qualified: Q, matches: N - 1, competitionId: scopedCompetitionId },
+      afterState: { groupStageId: Number(groupStage.id), stageId: knockoutStageId, stageOrder: knockoutStageOrder, bracketSize: N, qualified: Q, matches: matchCount, competitionId: scopedCompetitionId },
     });
 
     await eventBusV2.emit('tournament:knockout-generated', {
@@ -223,7 +259,7 @@ export class KnockoutTransitionService {
       competitionId: scopedCompetitionId,
       qualified,
       bracketSize: N,
-      matchCount: N - 1,
+      matchCount,
       ...tournamentRealtimeScope(t),
     } as Record<string, unknown>, {
       aggregateType: 'tournament',
@@ -231,7 +267,7 @@ export class KnockoutTransitionService {
       aggregateVersion: 1,
     });
 
-    return { stageId: knockoutStageId, stageOrder: knockoutStageOrder, bracketSize: N, participants: Q, matches: N - 1 };
+    return { stageId: knockoutStageId, stageOrder: knockoutStageOrder, bracketSize: N, participants: Q, matches: matchCount };
   }
 
   private async persistKnockoutMatches(
@@ -239,8 +275,8 @@ export class KnockoutTransitionService {
     tournamentId: number,
     competitionId: number,
     stageId: number,
-    slots: Array<{ round: number; bracketPosition?: number; player1Id?: number; player2Id?: number; bye?: boolean; isFinal?: boolean; bracketDepth?: number; targetRound?: number; targetBracketPosition?: number; targetSide?: 'player1' | 'player2' }>,
-    byParticipant: Map<number, { userId: number | null; seed: number | null }>,
+    slots: Array<{ round: number; bracketPosition?: number; player1Id?: number; player2Id?: number; bye?: boolean; isFinal?: boolean; bracketDepth?: number; targetRound?: number; targetBracketPosition?: number; targetSide?: 'player1' | 'player2'; isThirdPlace?: boolean; loserTargetRound?: number; loserTargetBracketPosition?: number; loserTargetSide?: 'player1' | 'player2' }>,
+    byParticipant: Map<number, { userIds: number[]; seed: number | null }>,
     formatCtx: any,
     conn: any,
     totalRounds: number,
@@ -248,9 +284,13 @@ export class KnockoutTransitionService {
     for (const slot of slots) {
       const p1Id = slot.player1Id != null ? Number(slot.player1Id) : null;
       const p2Id = slot.player2Id != null ? Number(slot.player2Id) : null;
-      const u1 = p1Id != null ? byParticipant.get(p1Id)?.userId ?? null : null;
-      const u2 = p2Id != null ? byParticipant.get(p2Id)?.userId ?? null : null;
-      const roundLabel = knockoutRoundLabel(slot.round, totalRounds);
+      const roster1 = p1Id != null ? byParticipant.get(p1Id)?.userIds ?? [] : [];
+      const roster2 = p2Id != null ? byParticipant.get(p2Id)?.userIds ?? [] : [];
+      // Legacy compatibility: player1_id/player2_id keep the FIRST active member
+      // of each side (the former primary-member contract).
+      const u1 = roster1[0] ?? null;
+      const u2 = roster2[0] ?? null;
+      const roundLabel = knockoutRoundLabel(slot.round, totalRounds, slot.isThirdPlace === true);
       const meta = buildKnockoutMeta(slot);
 
       if (p1Id != null && p2Id != null) {
@@ -262,8 +302,8 @@ export class KnockoutTransitionService {
           formatSnapshot: formatCtx.formatSnapshot,
           ruleSnapshot: formatCtx.ruleSnapshot,
           participants: [
-            { userId: u1!, side: 'home', teamIndex: 0, role: 'host' },
-            { userId: u2!, side: 'away', teamIndex: 1, role: 'joiner' },
+            ...roster1.map((userId) => ({ userId, side: 'home' as const, teamIndex: 0, role: 'host' as const })),
+            ...roster2.map((userId) => ({ userId, side: 'away' as const, teamIndex: 1, role: 'joiner' as const })),
           ],
           conn,
         });
@@ -287,7 +327,8 @@ export class KnockoutTransitionService {
         }, conn);
       } else {
         const presentId = p1Id ?? p2Id;
-        const presentUserId = presentId != null ? byParticipant.get(presentId)?.userId ?? null : null;
+        const presentRoster = presentId != null ? byParticipant.get(presentId)?.userIds ?? [] : [];
+        const presentUserId = presentRoster[0] ?? null;
         await tournamentRepository.createMatch({
           tournament_id: tournamentId,
           competition_id: competitionId,
@@ -311,40 +352,29 @@ export class KnockoutTransitionService {
   }
 }
 
-function buildKnockoutMeta(slot: { bracketPosition?: number; bye?: boolean; isFinal?: boolean; bracketDepth?: number; targetRound?: number; targetBracketPosition?: number; targetSide?: 'player1' | 'player2' }): Record<string, unknown> {
+function buildKnockoutMeta(slot: { bracketPosition?: number; bye?: boolean; isFinal?: boolean; bracketDepth?: number; targetRound?: number; targetBracketPosition?: number; targetSide?: 'player1' | 'player2'; isThirdPlace?: boolean; loserTargetRound?: number; loserTargetBracketPosition?: number; loserTargetSide?: 'player1' | 'player2' }): Record<string, unknown> {
   return {
     is_bracket: true,
     bye: slot.bye === true ? true : undefined,
+    is_third_place: slot.isThirdPlace === true ? true : undefined,
     target_round: slot.targetRound != null ? slot.targetRound : null,
     target_bracket_position: slot.targetBracketPosition != null ? slot.targetBracketPosition : null,
     target_side: slot.targetSide ?? (((slot.bracketPosition ?? 0) % 2 === 0) ? 'player1' : 'player2'),
+    loser_target_round: slot.loserTargetRound != null ? slot.loserTargetRound : null,
+    loser_target_bracket_position: slot.loserTargetBracketPosition != null ? slot.loserTargetBracketPosition : null,
+    loser_target_side: slot.loserTargetSide ?? null,
     is_final: slot.isFinal === true ? 1 : 0,
     bracket_depth: slot.bracketDepth ?? null,
   };
 }
 
-function knockoutRoundLabel(round: number, totalRounds: number): string {
+function knockoutRoundLabel(round: number, totalRounds: number, isThirdPlace = false): string {
+  if (isThirdPlace) return 'Third-place';
   const fromEnd = totalRounds - round;
   if (fromEnd === 0) return 'Final';
   if (fromEnd === 1) return 'Semi-final';
   if (fromEnd === 2) return 'Quarter-final';
   return `Round ${round}`;
-}
-
-function firstMemberUserId(memberUserIds: unknown): number | null {
-  const arr = typeof memberUserIds === 'string' ? safeParseJsonArray(memberUserIds) : memberUserIds;
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-  const first = Number(arr[0]);
-  return Number.isSafeInteger(first) && first > 0 ? first : null;
-}
-
-function safeParseJsonArray(value: string): unknown[] {
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 export const knockoutTransitionService = new KnockoutTransitionService();

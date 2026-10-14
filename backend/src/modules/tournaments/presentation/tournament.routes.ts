@@ -198,6 +198,8 @@ export async function tournamentRoutes(app: FastifyInstance): Promise<void> {
   app.get('/tournaments/team-invitations/mine', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.listMyInvitationsHandler);
   app.post('/tournaments/:id/team-invitations/:invitationId/accept', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.acceptInvitationHandler);
   app.post('/tournaments/:id/team-invitations/:invitationId/reject', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.rejectInvitationHandler);
+  // Phase 3 — cancel a pending invitation (captain-only, server-authoritative).
+  app.post('/tournaments/:id/team-invitations/:invitationId/cancel', { preHandler: [requirePermission(['player.tournaments.team.invite'])] }, ctrl.cancelInvitationHandler);
 
   // G11.3 — player refund request (own registration) + status read.
   app.post('/tournaments/registrations/:regId/refund-request', { preHandler: [requirePermission(['tournament.register'])] }, ctrl.requestRefundHandler);

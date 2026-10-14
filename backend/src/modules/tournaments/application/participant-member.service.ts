@@ -167,7 +167,7 @@ export class ParticipantMemberService {
     return player;
   }
 
-  private assertMemberCount(participantType: 'individual' | 'pair' | 'team', formatType: 'singles' | 'doubles' | 'team', rosterSize: number | null, activeCount: number, required: number): void {
+  private assertMemberCount(participantType: 'individual' | 'pair' | 'team', formatType: 'singles' | 'doubles' | 'team', rosterSize: number | null, activeCount: number, required: number, minActiveForTeam = 2): void {
     const requiredCount = required;
     if (participantType === 'pair' && activeCount !== requiredCount) {
       throw new ConflictError(
@@ -176,11 +176,11 @@ export class ParticipantMemberService {
         { expected: requiredCount, actual: activeCount, participantType },
       );
     }
-    if (participantType === 'team' && (activeCount < 2 || activeCount > requiredCount)) {
+    if (participantType === 'team' && (activeCount < minActiveForTeam || activeCount > requiredCount)) {
       throw new ConflictError(
-        `A team participant requires between 2 and ${requiredCount} active members (currently ${activeCount})`,
+        `A team participant requires between ${minActiveForTeam} and ${requiredCount} active members (currently ${activeCount})`,
         ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID,
-        { min: 2, max: requiredCount, actual: activeCount },
+        { min: minActiveForTeam, max: requiredCount, actual: activeCount },
       );
     }
     if (participantType === 'individual' && activeCount !== 1) {
@@ -227,10 +227,16 @@ export class ParticipantMemberService {
     return this.createParticipant(tournamentId, { ...input, participantType: 'pair' }, actorId);
   }
 
-  /** Create a TEAM participant (roster from the sport format config; 2..rosterSize active members). */
+  /**
+   * Create a TEAM participant (roster from the sport format config; 2..rosterSize
+   * active members). Phase 3: a PLAYER-owned team may be created in a "forming"
+   * state with just its captain (`allowFormingTeam: true`) and completed later via
+   * the invitation lifecycle. Admin/management team creation keeps the strict
+   * 2-member minimum (the flag defaults to false).
+   */
   async createTeamParticipant(
     tournamentId: number,
-    input: { name?: string; memberUserIds: number[]; paymentMethod?: string; competitionId?: number | null },
+    input: { name?: string; memberUserIds: number[]; paymentMethod?: string; competitionId?: number | null; allowFormingTeam?: boolean },
     actorId: number,
   ): Promise<TournamentParticipant & { payment?: Record<string, unknown> | null }> {
     return this.createParticipant(tournamentId, { ...input, participantType: 'team' }, actorId);
@@ -245,7 +251,7 @@ export class ParticipantMemberService {
    */
   async createParticipant(
     tournamentId: number,
-    input: { participantType: 'pair' | 'team'; name?: string; memberUserIds: number[]; paymentMethod?: string; competitionId?: number | null },
+    input: { participantType: 'pair' | 'team'; name?: string; memberUserIds: number[]; paymentMethod?: string; competitionId?: number | null; allowFormingTeam?: boolean },
     actorId: number,
   ): Promise<TournamentParticipant & { payment?: Record<string, unknown> | null }> {
     const t = await this.getTournament(tournamentId);
@@ -270,7 +276,11 @@ export class ParticipantMemberService {
       throw new ConflictError('A participant requires at least one member', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID);
     }
     const requiredCount = this.requiredMemberCount(fmt.formatType, input.participantType, fmt.rosterSize);
-    this.assertMemberCount(input.participantType, fmt.formatType, fmt.rosterSize, members.length, requiredCount);
+    // Phase 3 — a PLAYER team may start "forming" with only its captain (1 active
+    // member); its partner is added via the invitation lifecycle. Admin/management
+    // creation (flag unset) keeps the strict 2-member minimum.
+    const minActiveForTeam = input.participantType === 'team' && input.allowFormingTeam ? 1 : 2;
+    this.assertMemberCount(input.participantType, fmt.formatType, fmt.rosterSize, members.length, requiredCount, minActiveForTeam);
 
     const displayName = input.name?.trim() || (input.participantType === 'pair' ? 'Unnamed Pair' : 'Unnamed Team');
 

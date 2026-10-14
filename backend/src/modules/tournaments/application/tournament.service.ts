@@ -55,11 +55,18 @@ export interface BracketProgressionMeta {
   is_bracket: boolean;
   /** True for draw-time padding slots that receive no opponent (round 1). */
   bye?: boolean;
+  /** GSK-3C — TRUE for the dedicated third-place playoff slot (never a final). */
+  is_third_place?: boolean;
   /** Where this slot's winner advances (KO only; null = final round). */
   target_round?: number | null;
   target_bracket_position?: number | null;
   /** Which participant this slot's winner fills on the target slot. */
   target_side?: 'player1' | 'player2';
+  /** GSK-3C — where this slot's LOSER advances (semifinals feeding third place). */
+  loser_target_round?: number | null;
+  loser_target_bracket_position?: number | null;
+  /** Which participant this slot's loser fills on the target slot. */
+  loser_target_side?: 'player1' | 'player2' | null;
 }
 
 /**
@@ -2964,8 +2971,13 @@ export class TournamentService {
       : (Number(source.participant2_id) === Number(winnerParticipantId) && source.participant1_id != null
         ? Number(source.participant1_id) : null);
     const isTerminalSlot = meta.target_round == null && meta.target_bracket_position == null;
+    // GSK-3C — the dedicated third-place slot is a terminal slot for PLAY but
+    // never the championship final; its winner is placement 3, not placement 1.
+    const isThirdPlaceSlot = meta.is_third_place === true;
     const targetRound = meta.target_round ?? null;
     const targetBracketPosition = meta.target_bracket_position ?? null;
+    const loserTargetRound = meta.loser_target_round ?? null;
+    const loserTargetBracketPosition = meta.loser_target_bracket_position ?? null;
     // Multi-competition completion guard — a tournament may auto-complete ONLY
     // when NO OTHER required match (in this or any sibling competition) remains
     // unresolved. The source slot is excluded by id (it is being resolved by
@@ -2976,6 +2988,8 @@ export class TournamentService {
       : 0;
     const conn = await getPool().getConnection();
     let target: TournamentMatch | null = null;
+    let thirdPlaceTarget: TournamentMatch | null = null;
+    let loserSeated = false;
     let stageCompleted = false;
     let tournamentCompleted = false;
     try {
@@ -2984,10 +2998,11 @@ export class TournamentService {
         winner_id: winnerId,
         // G11.14 — winner_id and winner_participant_id stay consistent going
         // forward; the real loser is recorded when determinable; the terminal
-        // slot's final_position resolves the champion placement.
+        // slot's final_position resolves the champion placement. GSK-3C — the
+        // dedicated third-place slot records final_position 3 (never 1).
         winner_participant_id: winnerParticipantId,
         loser_participant_id: loserParticipantId,
-        final_position: isTerminalSlot ? 1 : null,
+        final_position: isTerminalSlot ? (isThirdPlaceSlot ? 3 : 1) : null,
         status: 'completed',
         progression_state: 'completed',
       }, conn);
@@ -3040,6 +3055,53 @@ export class TournamentService {
             // (which runs after commit) sees both participants without a re-read.
             (target as any)[participantField] = winnerParticipantId;
             (target as any)[userField] = winnerId;
+          }
+        }
+      }
+
+      // GSK-3C — route this slot's LOSER into the dedicated third-place match.
+      // Driven purely by the draw-time `loser_target_*` provenance (set only on
+      // the two semifinals when the third-place match is enabled). Idempotent:
+      // a side that is already populated is never overwritten with a DIFFERENT
+      // participant; an identical participant is a no-op. A missing/unresolvable
+      // loser fails safe (no participation, no envelope): the third-place slot
+      // stays incompletely seated and therefore never blocks completion.
+      if (loserTargetRound != null && loserTargetBracketPosition != null) {
+        if (loserParticipantId == null) {
+          console.warn({
+            tournamentId: source.tournament_id,
+            slotId: source.id,
+            matchId: input.matchId,
+          }, 'progression: third-place routing skipped — no determinable loser for this slot');
+        } else {
+          thirdPlaceTarget = await tournamentRepository.findBracketSlot(
+            source.tournament_id, Number(source.competition_id), loserTargetRound, loserTargetBracketPosition,
+          );
+          if (thirdPlaceTarget) {
+            const loserSide = meta.loser_target_side === 'player2' ? 'player2' : 'player1';
+            const loserParticipantField = loserSide === 'player1' ? 'participant1_id' : 'participant2_id';
+            const loserUserField = loserSide === 'player1' ? 'player1_id' : 'player2_id';
+            const existing = (thirdPlaceTarget as any)[loserParticipantField];
+            if (existing == null) {
+              const loserUserId = Number(source.participant1_id) === Number(loserParticipantId)
+                ? (source.player1_id ?? null)
+                : (source.player2_id ?? null);
+              await tournamentRepository.updateMatch(thirdPlaceTarget.id!, ({
+                [loserParticipantField]: loserParticipantId,
+                [loserUserField]: loserUserId,
+              }) as Partial<TournamentMatch>, conn);
+              (thirdPlaceTarget as any)[loserParticipantField] = loserParticipantId;
+              (thirdPlaceTarget as any)[loserUserField] = loserUserId;
+              loserSeated = true;
+            } else if (Number(existing) !== Number(loserParticipantId)) {
+              console.warn({
+                tournamentId: source.tournament_id,
+                slotId: thirdPlaceTarget.id,
+                side: loserSide,
+                existingParticipantId: Number(existing),
+                loserParticipantId,
+              }, 'progression: third-place side already populated with a different participant — not overwriting');
+            }
           }
         }
       }
@@ -3104,6 +3166,38 @@ export class TournamentService {
           }
         }
       }
+    }
+
+    // GSK-3C — materialise the third-place shared Match once BOTH semifinal
+    // losers are seated on it. Idempotent (attach re-reads the locked row and
+    // returns an existing match_id) and creation-event-safe (only the caller
+    // that actually created it emits).
+    if (thirdPlaceTarget) {
+      const attachedThird = await this.attachSharedMatchToTarget(thirdPlaceTarget, t);
+      if (attachedThird && attachedThird.created) {
+        eventBusV2.emit('tournament:match-created', {
+          tournamentId: t.id, matchId: attachedThird.matchId, tournamentMatchId: thirdPlaceTarget.id,
+          winnerId: null, participantWinnerId: null,
+          ...this.tournamentRealtimeScope(t, [thirdPlaceTarget.player1_id, thirdPlaceTarget.player2_id]),
+        } as Record<string, unknown>, {
+          aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
+        });
+      }
+      if (loserSeated) {
+        eventBusV2.emit('tournament:match-progressed', {
+          tournamentId: t.id, matchId: input.matchId, resultId: input.resultId,
+          fromSlotId: source.id, toSlotId: thirdPlaceTarget.id, participantLoserId: loserParticipantId,
+          ...this.tournamentRealtimeScope(t, [thirdPlaceTarget.player1_id, thirdPlaceTarget.player2_id]),
+        } as Record<string, unknown>, {
+          aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
+        });
+      }
+    } else if (loserTargetRound != null && loserTargetBracketPosition != null && loserParticipantId != null) {
+      // The third-place slot could not be located in this competition — fail
+      // safely and report, never fabricate a target.
+      console.warn({
+        tournamentId: source.tournament_id, slotId: source.id, loserTargetRound, loserTargetBracketPosition,
+      }, 'progression: third-place target slot not found — loser not routed');
     }
 
     if (stageCompleted) {
@@ -3245,21 +3339,52 @@ export class TournamentService {
   private async repairMissingTargetSharedMatch(source: TournamentMatch): Promise<{ outcome: 'repaired' | 'already_repaired' | 'legitimate_terminal' | 'no_repair' }> {
     const meta = this.parseProgressionMeta(source);
     if (meta == null || meta.is_bracket !== true) return { outcome: 'no_repair' };
-    if (meta.target_round == null || meta.target_bracket_position == null) return { outcome: 'no_repair' }; // final round — no target to repair
-    const target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), meta.target_round, meta.target_bracket_position);
-    if (!target) return { outcome: 'no_repair' };
-    if (target.match_id != null) return { outcome: 'already_repaired' };
-    if (target.progression_state === 'bye' || target.progression_state === 'cancelled' || target.progression_state === 'completed') return { outcome: 'legitimate_terminal' };
-    if ((target.status as string) === 'cancelled') return { outcome: 'legitimate_terminal' };
-    if (target.participant1_id == null || target.participant2_id == null) return { outcome: 'no_repair' };
-
     const t = await this.getById(source.tournament_id);
+
+    const outcomes: Array<'repaired' | 'already_repaired' | 'legitimate_terminal' | 'no_repair'> = [];
+    if (meta.target_round != null && meta.target_bracket_position != null) {
+      outcomes.push(await this.repairMissingTargetSlot(source, t, Number(meta.target_round), Number(meta.target_bracket_position), meta.target_side));
+    }
+    // GSK-3C — a semifinal whose approved result ALSO routed a loser to the
+    // dedicated third-place slot repairs that target too. Evaluated
+    // independently of the winner target, so an already-linked winner target
+    // never masks a stalled third-place attach.
+    if (meta.loser_target_round != null && meta.loser_target_bracket_position != null) {
+      outcomes.push(await this.repairMissingTargetSlot(source, t, Number(meta.loser_target_round), Number(meta.loser_target_bracket_position), meta.loser_target_side ?? undefined));
+    }
+    if (outcomes.length === 0) return { outcome: 'no_repair' };
+    if (outcomes.includes('repaired')) return { outcome: 'repaired' };
+    if (outcomes.every((o) => o === 'already_repaired')) return { outcome: 'already_repaired' };
+    if (outcomes.includes('legitimate_terminal')) return { outcome: 'legitimate_terminal' };
+    return { outcome: 'no_repair' };
+  }
+
+  /**
+   * Repair ONE bracket target slot's shared Match. Idempotent, lock-safe and
+   * G9-D3-gated through `attachSharedMatchToTarget`; the authoritative
+   * `tournament:match-created` event fires only for the caller that actually
+   * materialised the shared Match.
+   */
+  private async repairMissingTargetSlot(
+    source: TournamentMatch,
+    t: Tournament,
+    targetRound: number,
+    targetBracketPosition: number,
+    targetSide: 'player1' | 'player2' | undefined,
+  ): Promise<'repaired' | 'already_repaired' | 'legitimate_terminal' | 'no_repair'> {
+    const target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), targetRound, targetBracketPosition);
+    if (!target) return 'no_repair';
+    if (target.match_id != null) return 'already_repaired';
+    if (target.progression_state === 'bye' || target.progression_state === 'cancelled' || target.progression_state === 'completed') return 'legitimate_terminal';
+    if ((target.status as string) === 'cancelled') return 'legitimate_terminal';
+    if (target.participant1_id == null || target.participant2_id == null) return 'no_repair';
+
     const attached = await this.attachSharedMatchToTarget(target, t);
     if (attached) {
       if (attached.created) {
         // Only the caller that actually materialised the Match emits the event,
         // and only after the transaction committed (inside attach).
-        const slotSide = meta.target_side === 'player2' ? 'player2' : 'player1';
+        const slotSide = targetSide === 'player2' ? 'player2' : 'player1';
         eventBusV2.emit('tournament:match-created', {
           tournamentId: t.id, matchId: attached.matchId, tournamentMatchId: target.id,
           winnerId: slotSide === 'player1' ? target.player1_id : target.player2_id,
@@ -3269,11 +3394,11 @@ export class TournamentService {
           aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
         });
       }
-      return { outcome: 'repaired' };
+      return 'repaired';
     }
     // attach returned null: G9-D3 eligibility rejection or materialisation not
     // applicable — a deterministic business state, never an endless retry loop.
-    return { outcome: 'no_repair' };
+    return 'no_repair';
   }
 
   // ── G8-D-KO-CORRECTION: pre-start knockout result correction ───────────────

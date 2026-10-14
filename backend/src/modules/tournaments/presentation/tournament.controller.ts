@@ -99,13 +99,27 @@ export async function joinTeamHandler(request: FastifyRequest, reply: FastifyRep
 export async function createInvitationHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { id, participantId } = request.params as any;
-  const body = (request.body ?? {}) as { inviteeUserId?: number };
-  if (!body.inviteeUserId) {
-    return reply.status(400).send({ message: 'inviteeUserId is required', code: 'VALIDATION_ERROR' });
-  }
+  const body = (request.body ?? {}) as { inviteeUserId?: number; inviteePhone?: string };
   const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  // Phase 3 — a partner may be invited by PHONE NUMBER (resolved to an eligible
+  // player) or, for backwards compatibility, by user id.
+  if (body.inviteePhone != null && String(body.inviteePhone).trim() !== '') {
+    const invitation = await teamInvitationService.invitePlayerByPhone(Number(id), Number(participantId), String(body.inviteePhone), userId);
+    return reply.status(201).send(invitation);
+  }
+  if (!body.inviteeUserId) {
+    return reply.status(400).send({ message: 'inviteePhone or inviteeUserId is required', code: 'VALIDATION_ERROR' });
+  }
   const invitation = await teamInvitationService.invitePlayer(Number(id), Number(participantId), Number(body.inviteeUserId), userId);
   return reply.status(201).send(invitation);
+}
+
+export async function cancelInvitationHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = getUserId(request);
+  const { id, invitationId } = request.params as any;
+  const { teamInvitationService } = await import('../application/team-invitation.service.js');
+  const result = await teamInvitationService.cancelInvitation(Number(id), Number(invitationId), userId);
+  return reply.send(result);
 }
 
 export async function listSentInvitationsHandler(request: FastifyRequest, reply: FastifyReply) {

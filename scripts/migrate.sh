@@ -65,6 +65,53 @@ ensure_tracking_table() {
   " 2>/dev/null || true
 }
 
+# ── Applied-file checksum drift detection ────────────────────────────────────
+# The tracking table stores sha256[:12] of each file at apply time, but the
+# runner never re-executes an applied filename — so editing an applied
+# migration silently diverges the database from the repository. Detect and
+# report it (WARNING only: never blocks or re-runs anything).
+verify_applied_hashes() {
+  local checked=0 drift=0
+
+  # Baseline artifact (recorded under a synthetic filename).
+  local baseline_file="$BASELINE_DIR/001_courtzon_v3.sql"
+  if [ -f "$baseline_file" ]; then
+    local b_stored
+    b_stored=$(mysql $MYSQL -N -e "
+      SELECT hash FROM $TRACKING_TABLE WHERE filename='baseline/001_courtzon_v3.sql' AND direction='up' ORDER BY id DESC LIMIT 1;
+    " 2>/dev/null || echo "")
+    if [ -n "$b_stored" ]; then
+      checked=$((checked + 1))
+      local b_current
+      b_current=$(sha256sum "$baseline_file" | cut -c1-12)
+      if [ "$b_stored" != "$b_current" ]; then
+        drift=$((drift + 1))
+        log "DRIFT baseline/001_courtzon_v3.sql (applied=$b_stored, current=$b_current) — file changed after it was applied; the database was NOT rebuilt"
+      fi
+    fi
+  fi
+
+  for migration_file in "$MIGRATIONS_DIR"/*.sql; do
+    [ -f "$migration_file" ] || continue
+    local filename
+    filename=$(basename "$migration_file")
+    local stored
+    stored=$(mysql $MYSQL -N -e "
+      SELECT hash FROM $TRACKING_TABLE WHERE filename='$filename' AND direction='up' ORDER BY id DESC LIMIT 1;
+    " 2>/dev/null || echo "")
+    [ -n "$stored" ] || continue
+    checked=$((checked + 1))
+    local current
+    current=$(sha256sum "$migration_file" | cut -c1-12)
+    if [ "$stored" != "$current" ]; then
+      drift=$((drift + 1))
+      log "DRIFT $filename (applied=$stored, current=$current) — file changed after it was applied; the database was NOT re-migrated"
+    fi
+  done
+
+  log "Checksum drift check: $checked applied file(s) verified, $drift mismatch(es)."
+}
+
 apply_baseline() {
   local baseline_file="$BASELINE_DIR/001_courtzon_v3.sql"
   if [ ! -f "$baseline_file" ]; then
@@ -271,6 +318,7 @@ main() {
   fi
 
   ensure_tracking_table
+  verify_applied_hashes
 
   if [ "$fresh" = true ]; then
     apply_baseline

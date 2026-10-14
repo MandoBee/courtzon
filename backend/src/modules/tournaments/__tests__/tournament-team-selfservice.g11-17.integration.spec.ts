@@ -142,16 +142,22 @@ afterAll(async () => {
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe('G11.17 player team self-service', () => {
-  it('T1. a player creates a team (captain + initial teammate); a lone player cannot', async () => {
+  it('T1. a player creates a FORMING team (captain as the first active member) or with an initial teammate', async () => {
     const tid = await createTeamTournament();
+    const tid2 = await createTeamTournament();
     const { teamInvitationService } = await import('../application/team-invitation.service.js');
-    await expect(teamInvitationService.createTeamForPlayer(tid, CAP1, { name: 'Solo' })).rejects.toMatchObject({
-      code: 'TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID',
-    });
-    const team = await teamInvitationService.createTeamForPlayer(tid, CAP1, { name: 'Alpha', memberUserIds: [M2] });
+    // Phase 3 — a player team may be created "forming" with the captain alone;
+    // the partner is added through the invitation lifecycle.
+    const solo = await teamInvitationService.createTeamForPlayer(tid, CAP1, { name: 'Solo' });
+    expect(solo.participant_type).toBe('team');
+    expect((solo.member_user_ids as number[]).map(Number)).toEqual([CAP1]);
+    expect(await activeMembers(tid, Number(solo.id))).toBe(1);
+    // It may also be created with the captain + an initial teammate (in its own
+    // tournament, so the active-user uniqueness rule is not violated).
+    const team = await teamInvitationService.createTeamForPlayer(tid2, CAP1, { name: 'Alpha', memberUserIds: [M2] });
     expect(team.participant_type).toBe('team');
     expect((team.member_user_ids as number[]).map(Number)).toEqual([CAP1, M2]);
-    expect(await activeMembers(tid, Number(team.id))).toBe(2);
+    expect(await activeMembers(tid2, Number(team.id))).toBe(2);
   });
 
   it('T2+T3. captain invites an eligible player; duplicate invitation rejected', async () => {

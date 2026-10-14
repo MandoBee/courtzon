@@ -20,6 +20,11 @@
  *     eliminated in the round immediately preceding the final. Two (or more)
  *     elimination losers in that round (e.g. an 8-player bracket) make a tie →
  *     `third` is omitted (fail closed, never fabricated).
+ *   • GSK-3C — when the competition has a dedicated THIRD-PLACE slot
+ *     (`is_third_place: true`), that slot is authoritative: `third` is the
+ *     winner of the COMPLETED third-place match and the legacy elimination
+ *     heuristic is NOT used (the dedicated slot never counts as a terminal
+ *     slot either).
  *
  * OUTCOME SEMANTICS
  *   • status 'resolved'  — placements[] holds every uniquely derivable placing.
@@ -35,6 +40,8 @@ import type { TournamentMatch } from './tournament-aggregate.js';
 export interface KnockoutProgressionMeta {
   is_bracket?: boolean;
   bye?: boolean;
+  /** GSK-3C — TRUE for the dedicated third-place playoff slot (never a final). */
+  is_third_place?: boolean;
   target_round?: number | null;
   target_bracket_position?: number | null;
   target_side?: 'player1' | 'player2' | null;
@@ -110,6 +117,9 @@ export function toKnockoutMatchInput(m: TournamentMatch): KnockoutMatchInput {
 function isTerminalSlot(m: KnockoutMatchInput, meta: KnockoutProgressionMeta): boolean {
   return meta.is_bracket === true
     && meta.bye !== true
+    // GSK-3C — the dedicated third-place slot is terminal for PLAY but is NOT a
+    // championship final; it must never be counted as a terminal slot.
+    && meta.is_third_place !== true
     && (meta.target_round == null || !Number.isFinite(Number(meta.target_round)))
     && (meta.target_bracket_position == null || !Number.isFinite(Number(meta.target_bracket_position)));
 }
@@ -168,6 +178,11 @@ export function resolveKnockoutPlacements(input: readonly KnockoutMatchInput[]):
   if (finals.length === 0) return { status: 'ambiguous', reason: 'no_terminal_slot', placements: [] };
   if (finals.length > 1) return { status: 'ambiguous', reason: 'multiple_terminal_slots', placements: [] };
 
+  // 1b. GSK-3C — the optional dedicated third-place slot. At most ONE may exist
+  //     per competition; more than one is structurally ambiguous (fail closed).
+  const thirdPlaceSlots = bracketed.filter(({ meta }) => meta.is_third_place === true);
+  if (thirdPlaceSlots.length > 1) return { status: 'ambiguous', reason: 'multiple_third_place_slots', placements: [] };
+
   const final = finals[0].m;
 
   // 2. Fail closed on an unresolved final.
@@ -198,11 +213,26 @@ export function resolveKnockoutPlacements(input: readonly KnockoutMatchInput[]):
     });
   }
 
-  // 5. Third — only when EXACTLY ONE participant was uniquely eliminated in the
-  //    round immediately preceding the final (a "bye cascade" / 3-player single
-  //    semi). Two or more elimination losers make a tie → third is omitted.
-  //    Withdrawn/placeholder/bye slots never contribute a loser.
-  if (placements.some((p) => p.placement === 2)) {
+  // 5. Third place.
+  //    • GSK-3C — when the competition has a dedicated third-place slot, that
+  //      slot is AUTHORITATIVE: placement 3 is the winner of the COMPLETED
+  //      third-place match and nothing else. If it is not terminally resolved
+  //      (or its winner cannot be resolved to exactly one participant) then
+  //      placement 3 is omitted (fail closed) — the legacy heuristic is NEVER
+  //      used as a fallback while a dedicated slot exists.
+  //    • Legacy — with no dedicated slot, `third` is resolved ONLY when exactly
+  //      one participant was uniquely eliminated in the round immediately
+  //      preceding the final. Two or more elimination losers make a tie → third
+  //      is omitted. Withdrawn/placeholder/bye slots never contribute a loser.
+  if (thirdPlaceSlots.length === 1) {
+    const thirdPlace = thirdPlaceSlots[0].m;
+    if (isTerminallyResolved(thirdPlace) && thirdPlace.match_id != null) {
+      const winner = resolveWinnerParticipant(thirdPlace);
+      if (winner.participantId != null) {
+        placements.push({ placement: 3, participantId: winner.participantId, userId: winner.userId, source: 'bracket' });
+      }
+    }
+  } else if (placements.some((p) => p.placement === 2)) {
     const eliminatedSet = new Map<number, { participantId: number; userId: number | null }>();
     for (const { m } of bracketed) {
       const meta = m.progression_meta == null ? undefined : parseMeta(m.progression_meta);

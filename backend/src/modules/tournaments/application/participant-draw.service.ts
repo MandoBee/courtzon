@@ -1,4 +1,5 @@
 import { participantDrawRepository } from '../infrastructure/repositories/participant-draw.repository.js';
+import { participantMemberRepository } from '../infrastructure/repositories/participant-member.repository.js';
 import { tournamentRepository } from '../infrastructure/repositories/tournament.repository.js';
 import { tournamentService } from './tournament.service.js';
 import type {
@@ -411,6 +412,20 @@ export class ParticipantDrawService {
           : await participantDrawRepository.listParticipantsByTournament(tournamentId);
         if (participants.length < 2) {
           throw new ConflictError('At least 2 participants are required to generate a draw', ErrorCodes.TOURNAMENT_CAPACITY_EXCEEDED);
+        }
+        // Phase 3 — a "forming" team (captain only, partner invited but not yet
+        // accepted) must not enter play. Every TEAM participant must have at
+        // least 2 active members before the draw, or it must be withdrawn.
+        for (const p of participants) {
+          if (p.participant_type !== 'team') continue;
+          const activeCount = await participantMemberRepository.countActiveMembers(Number(p.id), conn);
+          if (activeCount < 2) {
+            throw new ConflictError(
+              'A team must have at least 2 active members before the draw — its partner invitation is still pending',
+              ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID,
+              { participantId: Number(p.id), activeCount, min: 2 },
+            );
+          }
         }
 
         attempt = await participantDrawRepository.getNextDrawAttempt(tournamentId, scopedCompetitionId, conn);

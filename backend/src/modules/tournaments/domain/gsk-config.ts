@@ -44,6 +44,15 @@ export interface GskKnockoutConfig {
   allowByes: boolean;
   /** Explicit play-in layer count when the qualified count needs one (0 = none). */
   playInRounds?: number;
+  /**
+   * GSK-3C — optional third-place playoff.
+   *
+   * When TRUE the bracket generator adds a dedicated third-place slot and the
+   * progression engine routes BOTH semifinal losers into it. Omitted/FALSE
+   * preserves the exact pre-existing behaviour (no third-place slot, placement 3
+   * derived by the legacy fail-closed heuristic only).
+   */
+  thirdPlaceMatch?: boolean;
 }
 
 export interface GskConfiguration {

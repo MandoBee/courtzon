@@ -82,6 +82,7 @@ const __state = vi.hoisted(() => ({
   nextStageId: 50,
   nextMatchId: 1,
   sharedMatches: 0,
+  matchCalls: [] as any[],
   stageMatchCount: 0,
   conn: {},
 }));
@@ -98,6 +99,9 @@ vi.mock('../infrastructure/repositories/tournament.repository', () => ({ tournam
 
 const pdRepo = vi.hoisted(() => ({ listParticipantsByCompetition: vi.fn() }));
 vi.mock('../infrastructure/repositories/participant-draw.repository', () => ({ participantDrawRepository: pdRepo }));
+
+const pmRepo = vi.hoisted(() => ({ listMembersByParticipant: vi.fn() }));
+vi.mock('../infrastructure/repositories/participant-member.repository', () => ({ participantMemberRepository: pmRepo }));
 
 const matchSvc = vi.hoisted(() => ({ createForTournament: vi.fn() }));
 vi.mock('../../match/application/services/match.service', () => ({ matchService: matchSvc }));
@@ -146,6 +150,11 @@ function setup(qualified: any[], knockoutOverrides: Record<string, unknown> = {}
     member_user_ids: [(i + 1) * 100], seed_number: i + 1,
   }));
   pdRepo.listParticipantsByCompetition.mockResolvedValue(__state.participants as any);
+  // Authoritative active roster: one member per participant (singles fixture).
+  // user_id matches the legacy member_user_ids cache ([i+1]*100 where id=i+1).
+  pmRepo.listMembersByParticipant.mockImplementation(async (pid: number) => [
+    { id: pid * 10, participant_id: pid, user_id: pid * 100, member_order: 0, status: 'active' },
+  ]);
   qualSvc.qualifyGroupStage.mockResolvedValue({ tournamentId: 9, stageId: 5, qualified, totalQualified: qualified.length });
 }
 
@@ -155,6 +164,7 @@ function resetPersistence() {
   __state.nextStageId = 50;
   __state.nextMatchId = 1;
   __state.sharedMatches = 0;
+  __state.matchCalls = [];
   tournRepo.findStages.mockImplementation(async () => [JSON.parse(JSON.stringify(__state.groupStage))]);
   tournRepo.createStage.mockImplementation(async (data: any) => {
     __state.createdStages.push(data);
@@ -168,7 +178,10 @@ function resetPersistence() {
     __state.stageId = data.stage_id;
     return __state.nextMatchId++;
   });
-  matchSvc.createForTournament.mockImplementation(async () => ({ id: ++__state.sharedMatches }));
+  matchSvc.createForTournament.mockImplementation(async (input: any) => {
+    __state.matchCalls.push(input);
+    return { id: ++__state.sharedMatches };
+  });
 }
 
 beforeEach(() => {
@@ -321,5 +334,56 @@ describe('KnockoutTransitionService — GSK → knockout (backed by the existing
         expect(['player1', 'player2']).toContain(meta.target_side);
       }
     }
+  });
+
+  // ── Phase 1 (doubles rosters) ──────────────────────────────────────────────
+  it('doubles: initial GSK knockout matches persist EVERY active member of both sides (4 per match)', async () => {
+    setup(makeQualified(2, 2), { startingRound: 'semifinals' });
+    // Each qualified participant is a doubles pair: two active members ordered 0, 1.
+    pmRepo.listMembersByParticipant.mockImplementation(async (pid: number) => [
+      { id: pid * 10, participant_id: pid, user_id: pid * 100, member_order: 0, status: 'active' },
+      { id: pid * 10 + 1, participant_id: pid, user_id: pid * 100 + 1, member_order: 1, status: 'active' },
+    ]);
+    await runTransition();
+
+    const realMatches = __state.matchRows.filter((m: any) => m.match_id != null);
+    expect(realMatches.length).toBe(2); // two semifinals carry resolved participants
+    expect(__state.matchCalls.length).toBe(2);
+    for (const call of __state.matchCalls) {
+      const parts = call.participants as Array<{ userId: number; side: string; teamIndex: number }>;
+      expect(parts).toHaveLength(4);
+      const home = parts.filter((p) => p.side === 'home');
+      const away = parts.filter((p) => p.side === 'away');
+      expect(home).toHaveLength(2);
+      expect(away).toHaveLength(2);
+      for (const p of parts) expect(p.teamIndex).toBe(p.side === 'home' ? 0 : 1);
+      expect(home.map((p) => p.userId % 10)).toEqual([0, 1]);
+      expect(away.map((p) => p.userId % 10)).toEqual([0, 1]);
+    }
+    // Legacy compatibility: player1_id/player2_id keep the FIRST active member.
+    for (const m of realMatches) {
+      expect(m.player1_id % 10).toBe(0);
+      expect(m.player2_id % 10).toBe(0);
+    }
+  });
+
+  it('singles: initial GSK knockout matches retain one member per side', async () => {
+    setup(makeQualified(2, 2), { startingRound: 'semifinals' });
+    await runTransition();
+    expect(__state.matchCalls.length).toBe(2);
+    for (const call of __state.matchCalls) {
+      const parts = call.participants as Array<{ side: string }>;
+      expect(parts).toHaveLength(2);
+      expect(parts.filter((p) => p.side === 'home')).toHaveLength(1);
+      expect(parts.filter((p) => p.side === 'away')).toHaveLength(1);
+    }
+  });
+
+  it('fails safely when a qualified participant has no active member', async () => {
+    setup(makeQualified(2, 2), { startingRound: 'semifinals' });
+    pmRepo.listMembersByParticipant.mockImplementation(async (pid: number) =>
+      pid === 1 ? [] : [{ id: pid * 10, participant_id: pid, user_id: pid * 100, member_order: 0, status: 'active' }]);
+    await expect(runTransition()).rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_NOT_FOUND });
+    expect(__state.matchRows.length).toBe(0);
   });
 });
