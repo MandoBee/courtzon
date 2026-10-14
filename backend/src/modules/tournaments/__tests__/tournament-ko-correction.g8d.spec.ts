@@ -816,3 +816,345 @@ describe('G8-D-KO-CORRECTION · realtime + audit (post-commit only, existing eve
     expect(bus.emit.mock.calls.map((c) => c[0]).filter((t) => String(t).includes('rating'))).toEqual([]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GSK-3C · D3 — the THIRD-PLACE (loser) destination is reconciled too
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A semifinal wires TWO downstream destinations: the winner to the championship
+ * side (`target_*`) and the loser to the dedicated third-place playoff
+ * (`loser_target_*`). Correcting the semifinal must reconcile BOTH, in ONE
+ * transaction and under the SAME guard — otherwise the OLD loser stays seated in
+ * the third-place match (wrong placement-3 / wrong prize attribution).
+ */
+describe('GSK-3C (D3) — third-place destination during knockout result correction', () => {
+  const THIRD_PLACE_SLOT = 31;
+  const THIRD_PLACE_SHARED_MATCH = 903;
+  const UNRELATED_SLOT = 41;
+
+  /**
+   * Semifinal source (100 beats 200 originally) wired to BOTH destinations:
+   * winner → final (`player1`), loser → third place (`player1`). The third-place
+   * slot currently holds the OLD semifinal loser (participant 200) and the
+   * sibling-semifinal loser (participant 500).
+   */
+  function installThirdPlaceBracket(opts: {
+    loserTargetSide?: 'player1' | 'player2';
+    thirdSlot?: Record<string, any>;
+  } = {}): void {
+    installParticipants([
+      { id: 100, users: [10] },
+      { id: 200, users: [20] },
+      { id: 300, users: [30] },
+      { id: 500, users: [50] },
+    ]);
+    installSlot(SOURCE_SLOT, {
+      round: 1, bracket_position: 0, match_id: SOURCE_SHARED_MATCH,
+      participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20,
+      status: 'completed', progression_state: 'completed', winner_id: 10,
+      progression_meta: {
+        is_bracket: true,
+        target_round: 2, target_bracket_position: 0, target_side: 'player1',
+        loser_target_round: 2, loser_target_bracket_position: 1,
+        loser_target_side: opts.loserTargetSide ?? 'player1',
+      },
+    });
+    installSlot(TARGET_SLOT, {
+      round: 2, bracket_position: 0, participant2_id: 300, player2_id: 30,
+    });
+    installSlot(THIRD_PLACE_SLOT, {
+      round: 2, bracket_position: 1,
+      participant1_id: 200, player1_id: 20,
+      participant2_id: 500, player2_id: 50,
+      ...opts.thirdSlot,
+    });
+  }
+
+  /** Route `findBracketSlot` to BOTH destinations of the semifinal. */
+  function routeBothDestinations(): void {
+    repo.findBracketSlot.mockImplementation(async (_tid: number, _cid: number, round: number, pos: number) => {
+      if (round === 2 && pos === 0) return slot(TARGET_SLOT);
+      if (round === 2 && pos === 1) return slot(THIRD_PLACE_SLOT);
+      return null;
+    });
+  }
+
+  beforeEach(() => {
+    routeBothDestinations();
+  });
+
+  it('a/b. a semifinal correction updates BOTH the winner destination and the third-place destination', async () => {
+    installThirdPlaceBracket();
+
+    const p = await plan();
+
+    // Planning surfaces the third-place destination, with the CORRECTED loser
+    // (participant 100 / user 10 — the participant that LOST the corrected result).
+    expect(p.loserSeat).toMatchObject({
+      targetSlotId: THIRD_PLACE_SLOT,
+      targetSide: 'player1',
+      case: 'B',
+      previousParticipantId: 200,
+      participantId: 100,
+      primaryUserId: 10,
+    });
+
+    const write = vi.fn(async () => undefined);
+    const outcome = await svc.reconcileKnockoutResultCorrection(p, write as any);
+
+    // Winner destination — the corrected winner (participant 200 / user 20).
+    expect(slot(TARGET_SLOT).participant1_id).toBe(200);
+    expect(slot(TARGET_SLOT).player1_id).toBe(20);
+    // Third-place destination — the corrected LOSER REPLACES the old semifinal loser.
+    expect(slot(THIRD_PLACE_SLOT).participant1_id).toBe(100);
+    expect(slot(THIRD_PLACE_SLOT).player1_id).toBe(10);
+    // The sibling side of the third-place match is untouched.
+    expect(slot(THIRD_PLACE_SLOT).participant2_id).toBe(500);
+    expect(slot(THIRD_PLACE_SLOT).player2_id).toBe(50);
+    // ONE transaction; both seats committed together.
+    expect(fakeConn.commit).toHaveBeenCalledTimes(1);
+    expect(fakeConn.rollback).not.toHaveBeenCalled();
+    expect(outcome.reseatedTargetSlotId).toBe(TARGET_SLOT);
+    expect(outcome.reseatedLoserTargetSlotId).toBe(THIRD_PLACE_SLOT);
+  });
+
+  for (const stateName of ['in_progress', 'completed'] as const) {
+    it(`c. correction is BLOCKED when the third-place match is ${stateName}`, async () => {
+      installThirdPlaceBracket({ thirdSlot: { match_id: THIRD_PLACE_SHARED_MATCH } });
+      matchServiceMock.inspectPreStartState.mockImplementation(async (matchId: number) => {
+        if (matchId === TARGET_SHARED_MATCH) return { status: 'closed', result: null };
+        if (matchId === THIRD_PLACE_SHARED_MATCH) return { status: stateName, result: null };
+        return null;
+      });
+
+      await expect(plan()).rejects.toMatchObject({
+        code: ErrorCodes.TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED,
+      });
+      // Read-only planning: nothing was written.
+      expect(repo.updateMatch).not.toHaveBeenCalled();
+      expect(fakeConn.commit).not.toHaveBeenCalled();
+    });
+  }
+
+  it('c2. correction is BLOCKED when the third-place match already holds a result in flight', async () => {
+    installThirdPlaceBracket({ thirdSlot: { match_id: THIRD_PLACE_SHARED_MATCH } });
+    matchServiceMock.inspectPreStartState.mockImplementation(async (matchId: number) => {
+      if (matchId === TARGET_SHARED_MATCH) return { status: 'closed', result: null };
+      if (matchId === THIRD_PLACE_SHARED_MATCH) return { status: 'closed', result: { id: 88, submissionStatus: 'pending_confirmation', outcome: 'completed' } };
+      return null;
+    });
+
+    await expect(plan()).rejects.toMatchObject({
+      code: ErrorCodes.TOURNAMENT_KNOCKOUT_CORRECTION_BLOCKED,
+    });
+  });
+
+  it('d. a bracket WITHOUT loser_target wiring keeps the existing behaviour (no third-place seat)', async () => {
+    installThirdPlaceBracket();
+    // The same semifinal, WITHOUT the loser wiring (a bracket with no third place).
+    installSlot(SOURCE_SLOT, {
+      round: 1, bracket_position: 0, match_id: SOURCE_SHARED_MATCH,
+      participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20,
+      status: 'completed', progression_state: 'completed', winner_id: 10,
+      progression_meta: { is_bracket: true, target_round: 2, target_bracket_position: 0, target_side: 'player1' },
+    });
+
+    const p = await plan();
+    expect(p.loserSeat).toBeNull();
+
+    const write = vi.fn(async () => undefined);
+    const outcome = await svc.reconcileKnockoutResultCorrection(p, write as any);
+
+    // The winner destination is still corrected exactly as before…
+    expect(slot(TARGET_SLOT).participant1_id).toBe(200);
+    // …and the (unwired) third-place slot is NOT touched: the old loser remains.
+    expect(slot(THIRD_PLACE_SLOT).participant1_id).toBe(200);
+    expect(slot(THIRD_PLACE_SLOT).player1_id).toBe(20);
+    expect(outcome.reseatedLoserTargetSlotId).toBeNull();
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(THIRD_PLACE_SLOT, expect.anything(), expect.anything());
+  });
+
+  it('e. no unrelated bracket slot is modified', async () => {
+    installThirdPlaceBracket();
+    installSlot(UNRELATED_SLOT, {
+      round: 1, bracket_position: 1, match_id: 910,
+      participant1_id: 300, participant2_id: 500, player1_id: 30, player2_id: 50,
+      status: 'scheduled', progression_state: 'pending', winner_id: null,
+    });
+    const before = { ...slot(UNRELATED_SLOT) };
+
+    await correct();
+
+    expect(slot(UNRELATED_SLOT)).toEqual(before);
+    expect(repo.updateMatch).not.toHaveBeenCalledWith(UNRELATED_SLOT, expect.anything(), expect.anything());
+  });
+
+  it('f. CASE C — a stale pre-start third-place Match is retired and re-materialised', async () => {
+    installThirdPlaceBracket({ thirdSlot: { match_id: THIRD_PLACE_SHARED_MATCH } });
+    matchServiceMock.inspectPreStartState.mockImplementation(async (matchId: number) => {
+      if (matchId === THIRD_PLACE_SHARED_MATCH) return { status: 'closed', result: null };
+      if (matchId === TARGET_SHARED_MATCH) return { status: 'closed', result: null };
+      return null;
+    });
+
+    const p = await plan();
+    expect(p.loserSeat).toMatchObject({
+      targetSlotId: THIRD_PLACE_SLOT,
+      case: 'C',
+      targetSharedMatchId: THIRD_PLACE_SHARED_MATCH,
+    });
+
+    const write = vi.fn(async () => undefined);
+    const outcome = await svc.reconcileKnockoutResultCorrection(p, write as any);
+
+    // The stale third-place Match is retired (and its court released)…
+    expect(matchServiceMock.cancelTournamentMatch).toHaveBeenCalledWith(THIRD_PLACE_SHARED_MATCH, expect.any(String));
+    expect(outcome.cancelledLoserSharedMatchId).toBe(THIRD_PLACE_SHARED_MATCH);
+    // The third-place court is released; `outcome.courtReleased` reports the
+    // WINNER destination only, which is CASE B here (no shared Match to release).
+    expect(courtReservationMock.releaseCourt).toHaveBeenCalledWith(THIRD_PLACE_SHARED_MATCH);
+    expect(outcome.courtReleased).toBe(false);
+    // …the corrected loser is seated…
+    expect(slot(THIRD_PLACE_SLOT).participant1_id).toBe(100);
+    expect(slot(THIRD_PLACE_SLOT).player1_id).toBe(10);
+    // …and the Match is rebuilt through the EXISTING attach path.
+    expect(outcome.rematerialisedLoserSharedMatchId).toBe(state.createdMatchIds[0]);
+    expect(slot(THIRD_PLACE_SLOT).match_id).toBe(state.createdMatchIds[0]);
+  });
+
+  it('g. the reconciliation is audited and the bracket is invalidated once', async () => {
+    installThirdPlaceBracket();
+
+    await correct();
+
+    const entry = state.audit.find((a) => a.action === 'TOURNAMENT.KNOCKOUT_CORRECTION_RECONCILED');
+    expect(entry.afterState).toMatchObject({
+      case: 'B',
+      target_slot_id: TARGET_SLOT,
+      loser_target_slot_id: THIRD_PLACE_SLOT,
+      loser_target_side: 'player1',
+      previous_loser_target_participant_id: 200,
+      loser_participant_id: 100,
+    });
+    const progressed = state.events.filter((e) => e.type === 'tournament:match-progressed');
+    expect(progressed).toHaveLength(1);
+    expect(progressed[0].payload).toMatchObject({
+      fromSlotId: SOURCE_SLOT, toSlotId: TARGET_SLOT, loserToSlotId: THIRD_PLACE_SLOT, corrected: true,
+    });
+    const updated = state.events.filter((e) => e.type === 'tournament:updated');
+    expect(updated).toHaveLength(1);
+  });
+
+  // ── F1 (Phase 5.9) — a plan that went STALE between planning and execution ──
+  // A shared Match appearing on a destination the plan classified as CASE B must
+  // never have its linkage cleared: that orphans a playable Match (and strands its
+  // court), and cancellation runs on its own connection so it can never join the
+  // correction transaction. The correction is refused instead; the caller reloads.
+
+  it('F1-a. a winner-target Match appearing after planning is REFUSED; the Match and the slot stay linked', async () => {
+    installThirdPlaceBracket();
+    const p = await plan();
+    expect(p.case).toBe('B');
+    expect(p.targetSharedMatchId).toBeNull();
+
+    // The race: a concurrent correction materialises the downstream Match.
+    slot(TARGET_SLOT).match_id = 904;
+
+    const write = vi.fn(async () => undefined);
+    await expect(svc.reconcileKnockoutResultCorrection(p, write as any))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND });
+
+    // The linkage is PRESERVED — the Match is neither orphaned nor cancelled…
+    expect(slot(TARGET_SLOT).match_id).toBe(904);
+    expect(matchServiceMock.cancelTournamentMatch).not.toHaveBeenCalled();
+    // …and nothing at all was written (no seat moved, no result write, no commit).
+    expect(slot(TARGET_SLOT).participant1_id).toBeNull();
+    expect(slot(THIRD_PLACE_SLOT).participant1_id).toBe(200);
+    expect(repo.updateMatch).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(fakeConn.commit).not.toHaveBeenCalled();
+    expect(fakeConn.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it('F1-b. a third-place Match appearing after planning is REFUSED; no unrelated slot is modified', async () => {
+    installThirdPlaceBracket();
+    installSlot(UNRELATED_SLOT, {
+      round: 1, bracket_position: 1, match_id: 910,
+      participant1_id: 300, participant2_id: 500, player1_id: 30, player2_id: 50,
+    });
+    const unrelatedBefore = { ...slot(UNRELATED_SLOT) };
+
+    const p = await plan();
+    expect(p.loserSeat?.case).toBe('B');
+
+    // The race: the third-place Match is materialised after planning.
+    slot(THIRD_PLACE_SLOT).match_id = 905;
+
+    const write = vi.fn(async () => undefined);
+    await expect(svc.reconcileKnockoutResultCorrection(p, write as any))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND });
+
+    // The third-place Match/slot stay linked, and the OLD loser is NOT replaced.
+    expect(slot(THIRD_PLACE_SLOT).match_id).toBe(905);
+    expect(slot(THIRD_PLACE_SLOT).participant1_id).toBe(200);
+    expect(matchServiceMock.cancelTournamentMatch).not.toHaveBeenCalled();
+    // The winner destination and every unrelated slot are untouched.
+    expect(slot(TARGET_SLOT).participant1_id).toBeNull();
+    expect(slot(UNRELATED_SLOT)).toEqual(unrelatedBefore);
+    expect(repo.updateMatch).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('F1-c. unchanged CASE B plans still reconcile both destinations (the guard does not over-trigger)', async () => {
+    installThirdPlaceBracket();
+
+    const p = await plan();
+    const outcome = await svc.reconcileKnockoutResultCorrection(p, vi.fn(async () => undefined) as any);
+
+    expect(outcome.reseatedTargetSlotId).toBe(TARGET_SLOT);
+    expect(outcome.reseatedLoserTargetSlotId).toBe(THIRD_PLACE_SLOT);
+    expect(slot(TARGET_SLOT).participant1_id).toBe(200);
+    expect(slot(THIRD_PLACE_SLOT).participant1_id).toBe(100);
+  });
+
+  it('F1-c2. unchanged CASE C plans still retire + re-materialise (a planned linkage is preserved)', async () => {
+    installThirdPlaceBracket({ thirdSlot: { match_id: THIRD_PLACE_SHARED_MATCH } });
+    matchServiceMock.inspectPreStartState.mockImplementation(async (matchId: number) => {
+      if (matchId === THIRD_PLACE_SHARED_MATCH) return { status: 'closed', result: null };
+      if (matchId === TARGET_SHARED_MATCH) return { status: 'closed', result: null };
+      return null;
+    });
+
+    const p = await plan();
+    expect(p.loserSeat?.case).toBe('C');
+
+    const outcome = await svc.reconcileKnockoutResultCorrection(p, vi.fn(async () => undefined) as any);
+
+    expect(outcome.cancelledLoserSharedMatchId).toBe(THIRD_PLACE_SHARED_MATCH);
+    expect(outcome.reseatedLoserTargetSlotId).toBe(THIRD_PLACE_SLOT);
+    expect(outcome.rematerialisedLoserSharedMatchId).toBe(state.createdMatchIds[0]);
+  });
+
+  it('F1-c3. a CASE C destination whose linkage CHANGED after planning is REFUSED (never silently orphaned)', async () => {
+    installThirdPlaceBracket({ thirdSlot: { match_id: THIRD_PLACE_SHARED_MATCH } });
+    matchServiceMock.inspectPreStartState.mockImplementation(async (matchId: number) => {
+      if (matchId === THIRD_PLACE_SHARED_MATCH) return { status: 'closed', result: null };
+      if (matchId === TARGET_SHARED_MATCH) return { status: 'closed', result: null };
+      return null;
+    });
+
+    const p = await plan();
+    expect(p.loserSeat).toMatchObject({ case: 'C', targetSharedMatchId: THIRD_PLACE_SHARED_MATCH });
+
+    // The race: the third-place slot was re-linked to a DIFFERENT Match meanwhile.
+    slot(THIRD_PLACE_SLOT).match_id = 906;
+
+    await expect(svc.reconcileKnockoutResultCorrection(p, vi.fn(async () => undefined) as any))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND });
+
+    expect(slot(THIRD_PLACE_SLOT).match_id).toBe(906);
+    expect(slot(THIRD_PLACE_SLOT).participant1_id).toBe(200);
+    expect(repo.updateMatch).not.toHaveBeenCalled();
+  });
+});

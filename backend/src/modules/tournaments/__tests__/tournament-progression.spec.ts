@@ -491,6 +491,131 @@ describe('TournamentService.progressFromApprovedResult (Group 5B)', () => {
     expect(out.stageCompleted).toBe(true);
     expect(out.tournamentCompleted).toBe(false);
   });
+
+  // ── GSK-3C (D1) — a third-place completion must never announce a false champion ──
+  // The third-place playoff is a terminal slot for PLAY (placement 3), never the
+  // championship final. Both completion routes (final-slot branch and last-stage
+  // branch) converge on the same `tournament:completed` emission, so the champion
+  // is resolved from the PERSISTED final and never from the third-place winnerId.
+  // The event feeds BOTH the winner notification and the placement-1 prize binding.
+
+  /** Bracket with a completed final (champion user 10) + a third-place playoff (winner user 20). */
+  function thirdPlaceBracket(): TournamentMatch[] {
+    return [
+      makeSlot({
+        id: 71, round: 2, bracket_position: 0, match_id: 930,
+        participant1_id: 100, participant2_id: 200, player1_id: 10, player2_id: 20,
+        winner_id: 10, winner_participant_id: 100, status: 'completed', progression_state: 'completed',
+        progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+      }),
+      makeSlot({
+        id: 72, round: 2, bracket_position: 1, match_id: 950,
+        participant1_id: 200, participant2_id: 300, player1_id: 20, player2_id: 50,
+        winner_id: 20, winner_participant_id: 200, status: 'completed', progression_state: 'completed',
+        progression_meta: { is_bracket: true, is_third_place: true, target_round: null, target_bracket_position: null },
+      }),
+    ];
+  }
+
+  /** The just-approved third-place slot itself (participants 200 v 300; winner user 20). */
+  function thirdPlaceSlot(overrides: Partial<TournamentMatch> = {}): TournamentMatch {
+    return makeSlot({
+      id: 62, round: 2, bracket_position: 1, match_id: 950,
+      participant1_id: 200, participant2_id: 300, player1_id: 20, player2_id: 50,
+      progression_meta: { is_bracket: true, is_third_place: true, target_round: null, target_bracket_position: null },
+      ...overrides,
+    });
+  }
+
+  it('completing the THIRD-PLACE match announces the final winner, never the third-place winner', async () => {
+    repo.findMatches.mockResolvedValue(thirdPlaceBracket());
+    repo.findMatchBySharedMatchId.mockResolvedValue(thirdPlaceSlot());
+    // The third-place playoff is won by user 20 (a DIFFERENT player from the champion, user 10).
+    mrRepo.getParticipants.mockResolvedValue([
+      { userId: 20, outcome: 'win', side: 'home' },
+      { userId: 50, outcome: 'loss', side: 'away' },
+    ]);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 950, resultId: 9 });
+
+    expect(out.tournamentCompleted).toBe(true);
+    // The third-place slot is correctly terminalized as placement 3 …
+    expect(repo.updateMatch).toHaveBeenCalledWith(62, expect.objectContaining({
+      winner_id: 20, final_position: 3, status: 'completed', progression_state: 'completed',
+    }), fakeConn);
+    // … but the champion announced on completion is the FINAL winner (user 10).
+    expect(bus.emit).toHaveBeenCalledWith(
+      'tournament:completed',
+      expect.objectContaining({ tournamentId: 1, winnerId: 10, userId: 10 }),
+      expect.anything(),
+    );
+    // The third-place winner (20) is NEVER the announced champion.
+    const completed = bus.emit.mock.calls.find((c) => c[0] === 'tournament:completed')!;
+    expect(completed[1].winnerId).not.toBe(20);
+    expect(completed[1].userId).not.toBe(20);
+  });
+
+  it('stage-route third-place completion also resolves the champion from the final', async () => {
+    repo.findMatches.mockResolvedValue(thirdPlaceBracket());
+    repo.findMatchBySharedMatchId.mockResolvedValue(thirdPlaceSlot({ id: 63, match_id: 951, stage_id: 3 }));
+    mrRepo.getParticipants.mockResolvedValue([
+      { userId: 20, outcome: 'win', side: 'home' },
+      { userId: 50, outcome: 'loss', side: 'away' },
+    ]);
+    repo.countIncompleteStageMatches.mockResolvedValue(0);
+    repo.findStages.mockResolvedValue([
+      { id: 3, stage_order: 3, name: 'Knockout', progression_format: 'knockout' },
+    ]);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 951, resultId: 10 });
+
+    expect(out.tournamentCompleted).toBe(true);
+    expect(bus.emit).toHaveBeenCalledWith(
+      'tournament:completed',
+      expect.objectContaining({ tournamentId: 1, winnerId: 10, userId: 10 }),
+      expect.anything(),
+    );
+  });
+
+  it('fails closed — an unresolvable champion emits NO winnerId/userId (never a false champion)', async () => {
+    // The persisted bracket holds only the third-place slot: no championship final.
+    repo.findMatches.mockResolvedValue([thirdPlaceBracket()[1]]);
+    repo.findMatchBySharedMatchId.mockResolvedValue(thirdPlaceSlot());
+    mrRepo.getParticipants.mockResolvedValue([
+      { userId: 20, outcome: 'win', side: 'home' },
+      { userId: 50, outcome: 'loss', side: 'away' },
+    ]);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 950, resultId: 11 });
+
+    expect(out.tournamentCompleted).toBe(true);
+    const completed = bus.emit.mock.calls.find((c) => c[0] === 'tournament:completed')!;
+    expect(completed).toBeTruthy();
+    expect(completed[1]).not.toHaveProperty('winnerId');
+    expect(completed[1]).not.toHaveProperty('userId');
+  });
+
+  it('legacy bracket WITHOUT a third-place slot keeps the exact prior winner propagation', async () => {
+    repo.findMatches.mockResolvedValue([thirdPlaceBracket()[0]]);
+    repo.findMatchBySharedMatchId.mockResolvedValue(makeSlot({
+      id: 61, round: 4, bracket_position: 0, match_id: 930,
+      participant1_id: 100, participant2_id: 200,
+      progression_meta: { is_bracket: true, target_round: null, target_bracket_position: null },
+    }));
+    mrRepo.getParticipants.mockResolvedValue([
+      { userId: 10, outcome: 'win', side: 'home' },
+      { userId: 20, outcome: 'loss', side: 'away' },
+    ]);
+
+    const out = await svc.progressFromApprovedResult({ matchId: 930, resultId: 4 });
+
+    expect(out.tournamentCompleted).toBe(true);
+    expect(bus.emit).toHaveBeenCalledWith(
+      'tournament:completed',
+      expect.objectContaining({ tournamentId: 1, winnerId: 10, userId: 10 }),
+      expect.anything(),
+    );
+  });
 });
 
 describe('TournamentService — multi-competition completion guard & competition-aware placements', () => {

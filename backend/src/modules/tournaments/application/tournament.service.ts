@@ -16,6 +16,7 @@ import {
   type KnockoutCorrectionDownstreamState,
   type KnockoutCorrectionOutcome,
   type KnockoutCorrectionPlan,
+  type KnockoutCorrectionLoserSeat,
 } from '../domain/knockout-correction.js';
 import { AppError, NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -2232,6 +2233,12 @@ export class TournamentService {
     for (const m of matches) {
       const meta = this.parseProgressionMeta(m);
       if (!meta || meta.is_bracket !== true || meta.bye === true) continue;
+      // GSK-3C — the dedicated third-place slot is terminal for PLAY but is NOT a
+      // championship final; it must never be counted as a terminal slot. Mirrors
+      // knockout-placements.isTerminalSlot. Without this the third-place slot is
+      // collected alongside the real final, making `finalSlots.length !== 1` and
+      // forcing the champion to resolve to null.
+      if (meta.is_third_place === true) continue;
       if (meta.target_round == null && meta.target_bracket_position == null) {
         finalSlots.push(m);
       }
@@ -3207,8 +3214,18 @@ export class TournamentService {
     }
     if (tournamentCompleted) {
       // G11.14 — capture the placements without operator assertion (fail-closed),
-      // record the system audit, and drop any stale start reminders. The G11.13
-      // winnerId propagation is preserved exactly.
+      // record the system audit, and drop any stale start reminders.
+      // GSK-3C (D1) — the slot that completed the tournament can be the dedicated
+      // THIRD-PLACE playoff: a terminal slot for PLAY, but never the championship
+      // final. Both completion routes (the final-slot branch above and the
+      // last-stage branch) converge on this flag. When the trigger IS the
+      // third-place slot, resolve the champion from the PERSISTED championship
+      // final (Phase 5.5) — the third-place winner is placement 3 and must never
+      // be announced, notified, or prize-bound (placement 1) as the champion.
+      // Fail closed: an unresolvable champion emits WITHOUT winnerId/userId.
+      // A final-triggered completion (and every legacy bracket without a
+      // third-place match) keeps the exact prior propagation.
+      const championUserId = isThirdPlaceSlot ? await this.resolveBracketChampionUserId(t.id!) : winnerId;
       await this.captureBracketPlacements(t.id!);
       await Promise.resolve(
         recordAudit({
@@ -3216,12 +3233,17 @@ export class TournamentService {
           action: 'TOURNAMENT.AUTO_COMPLETED',
           entityType: 'tournament',
           entityId: t.id,
-          afterState: { status: 'completed', winnerId: winnerId ?? null },
+          afterState: { status: 'completed', winnerId: championUserId ?? null },
         }),
       ).catch(() => undefined);
       void this.removeStartRemindersForTournament(t).catch((err: any) =>
         console.error({ err, tournamentId: t.id }, 'auto-complete: remove start reminders failed'));
-      eventBusV2.emit('tournament:completed', { tournamentId: t.id, winnerId, userId: winnerId, name: t.name, ...this.tournamentRealtimeScope(t, [winnerId]) } as Record<string, unknown>, {
+      eventBusV2.emit('tournament:completed', {
+        tournamentId: t.id,
+        ...(championUserId != null ? { winnerId: championUserId, userId: championUserId } : {}),
+        name: t.name,
+        ...this.tournamentRealtimeScope(t, [championUserId]),
+      } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(t.id), aggregateVersion: 1,
       });
     }
@@ -3425,8 +3447,9 @@ export class TournamentService {
    * (`in_progress` / `completed` / `void`), already holds a submitted, disputed
    * or approved result, or the tournament itself is `completed`.
    *
-   * "Downstream" is deliberately SCOPED to the single bracket target derived from
-   * the source slot's `progression_meta` — unrelated tournament matches are
+   * "Downstream" is deliberately SCOPED to the bracket destinations derived from
+   * the source slot's `progression_meta` — the winner target, plus the (GSK-3C)
+   * `loser_target_*` third-place destination. Unrelated tournament matches are
    * never scanned, so an unrelated live match elsewhere in the tournament can
    * never block a legitimate correction.
    */
@@ -3448,43 +3471,60 @@ export class TournamentService {
     const meta = this.parseProgressionMeta(source);
     const hasTarget = meta != null && meta.is_bracket === true && meta.target_round != null && meta.target_bracket_position != null;
     const targetSide: 'player1' | 'player2' = meta?.target_side === 'player2' ? 'player2' : 'player1';
+    // GSK-3C — the source slot may ALSO wire a LOSER destination: the dedicated
+    // third-place playoff, whose two sides are fed by the two semifinals. It is a
+    // second downstream bracket destination and is planned exactly like the winner
+    // target, so correcting a semifinal can never leave the OLD loser in the
+    // third-place match.
+    const hasLoserTarget = meta != null && meta.is_bracket === true
+      && meta.loser_target_round != null && meta.loser_target_bracket_position != null;
+    const loserTargetSide: 'player1' | 'player2' = meta?.loser_target_side === 'player2' ? 'player2' : 'player1';
 
     let target: TournamentMatch | null = null;
     if (hasTarget) {
       target = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), meta!.target_round!, meta!.target_bracket_position!);
     }
-
-    if (target == null || target.id == null) {
-      // CASE A — the tournament-level block still applies, then result + mirror only.
-      const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream: null });
-      if (reason) {
-        console.warn('planKnockoutResultCorrection: blocked (no downstream target)', { resultId: input.resultId, tournamentId: input.tournamentId, reason });
-        throwKnockoutCorrectionBlocked(reason);
-      }
-      // The corrected winner is still resolved: CASE A has no downstream seat to
-      // move, but the SOURCE projection must be corrected to the new winner
-      // (never left pointing at the old one).
-      return {
-        ...this.correctionPlanCaseA(input.resultId, input.sharedMatchId, input.tournamentId, source, targetSide),
-        ...(await this.resolveCorrectionSeat(source, input.resultParticipants)),
-      };
+    let loserTarget: TournamentMatch | null = null;
+    if (hasLoserTarget) {
+      loserTarget = await tournamentRepository.findBracketSlot(source.tournament_id, Number(source.competition_id), meta!.loser_target_round!, meta!.loser_target_bracket_position!);
     }
 
-    // The ONLY downstream observation: the target's own shared Match.
-    const downstream = await this.readDownstreamCorrectionState(
-      target.match_id != null ? Number(target.match_id) : null,
-    );
-    const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream });
+    // Downstream observation — the winner target AND (GSK-3C) the third-place
+    // target. Both are evaluated with the SAME pure guard, from the SAME place;
+    // the first block reason wins. A destination with no shared Match contributes
+    // no state (only the tournament-level block applies to it).
+    const downstream = target != null && target.id != null
+      ? await this.readDownstreamCorrectionState(target.match_id != null ? Number(target.match_id) : null)
+      : null;
+    const loserDownstream = loserTarget != null && loserTarget.id != null
+      ? await this.readDownstreamCorrectionState(loserTarget.match_id != null ? Number(loserTarget.match_id) : null)
+      : null;
+    const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream })
+      ?? evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream: loserDownstream });
     if (reason) {
       // The precise reason stays server-side; the client only ever sees the
       // generic, business-level message.
       console.warn('planKnockoutResultCorrection: blocked', {
-        resultId: input.resultId, tournamentId: input.tournamentId, sourceSlotId: source.id, targetSlotId: target.id, reason,
+        resultId: input.resultId, tournamentId: input.tournamentId, sourceSlotId: source.id,
+        targetSlotId: target?.id ?? null, loserTargetSlotId: loserTarget?.id ?? null, reason,
       });
       throwKnockoutCorrectionBlocked(reason);
     }
 
     const seat = await this.resolveCorrectionSeat(source, input.resultParticipants);
+    const loserSeat = this.planLoserSeat(loserTarget, loserTargetSide, seat);
+
+    if (target == null || target.id == null) {
+      // CASE A — no winner target: result + mirror only. A wired third-place
+      // destination (defensive: not expected alongside a missing final target) is
+      // still carried on the plan and reconciled by the executor.
+      return {
+        ...this.correctionPlanCaseA(input.resultId, input.sharedMatchId, input.tournamentId, source, targetSide),
+        winnerParticipantId: seat.winnerParticipantId,
+        winnerPrimaryUserId: seat.winnerPrimaryUserId,
+        loserSeat,
+      };
+    }
 
     const correctionCase: KnockoutCorrectionCase = target.match_id != null ? 'C' : 'B';
     return {
@@ -3501,7 +3541,76 @@ export class TournamentService {
       previousTargetParticipantId: targetSide === 'player1'
         ? (target.participant1_id != null ? Number(target.participant1_id) : null)
         : (target.participant2_id != null ? Number(target.participant2_id) : null),
+      loserSeat,
     };
+  }
+
+  /**
+   * GSK-3C — build the third-place destination seat from the resolved corrected
+   * loser, or `null` when the source slot wires no `loser_target_*`.
+   *
+   * The seat is deliberately mirror-shaped with the winner target: CASE B when the
+   * third-place slot has no shared Match (reseat only), CASE C when it has one and
+   * it is still pre-start (retire + reseat + re-materialise).
+   */
+  private planLoserSeat(
+    loserTarget: TournamentMatch | null,
+    loserTargetSide: 'player1' | 'player2',
+    seat: { loserParticipantId: number | null; loserPrimaryUserId: number | null },
+  ): KnockoutCorrectionLoserSeat | null {
+    if (!loserTarget || loserTarget.id == null) return null;
+    return {
+      targetSlotId: Number(loserTarget.id),
+      targetSharedMatchId: loserTarget.match_id != null ? Number(loserTarget.match_id) : null,
+      targetSide: loserTargetSide,
+      case: loserTarget.match_id != null ? 'C' : 'B',
+      previousParticipantId: loserTargetSide === 'player1'
+        ? (loserTarget.participant1_id != null ? Number(loserTarget.participant1_id) : null)
+        : (loserTarget.participant2_id != null ? Number(loserTarget.participant2_id) : null),
+      participantId: seat.loserParticipantId,
+      primaryUserId: seat.loserPrimaryUserId,
+    };
+  }
+
+  /**
+   * G8-D stale-plan guard (F1) — the LOCKED downstream slot must still be
+   * compatible with the CASE this plan was built from, validated BEFORE any write.
+   *
+   * * CASE B (the plan saw NO shared Match): the slot must STILL hold none. A Match
+   *   that appeared while the correction was in flight makes the plan stale;
+   *   clearing `match_id` would orphan a playable Match (and leave its court
+   *   allocated). Cancelling it is NOT an option here — `cancelTournamentMatch`
+   *   runs on its own connection and can never join this transaction. Abort.
+   * * CASE C (the plan explicitly scheduled the slot's Match for retirement): the
+   *   slot may already be cleared, or must still point at THAT SAME Match. A
+   *   different one is likewise a stale plan and is refused rather than orphaned.
+   *
+   * Aborts with the established conflict convention used for the sibling
+   * slot-vanished checks in this same transaction (409 + reload-and-retry).
+   */
+  private assertCorrectionDestinationUnchanged(
+    slot: TournamentMatch | null,
+    plannedCase: 'B' | 'C',
+    plannedSharedMatchId: number | null,
+    destination: 'downstream' | 'third-place',
+  ): void {
+    if (slot == null) return;
+    const current = slot.match_id != null ? Number(slot.match_id) : null;
+    if (plannedCase === 'B') {
+      if (current != null) {
+        throw new ConflictError(
+          `A ${destination} bracket match appeared while this correction was in flight — reload the bracket and try again`,
+          ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND,
+        );
+      }
+      return;
+    }
+    if (current != null && Number(current) !== Number(plannedSharedMatchId)) {
+      throw new ConflictError(
+        `The ${destination} bracket match changed while this correction was in flight — reload the bracket and try again`,
+        ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND,
+      );
+    }
   }
 
   /**
@@ -3516,7 +3625,12 @@ export class TournamentService {
   private async resolveCorrectionSeat(
     source: TournamentMatch,
     resultParticipants: Array<{ userId: number; side?: 'home' | 'away' | null; outcome: string }>,
-  ): Promise<{ winnerParticipantId: number | null; winnerPrimaryUserId: number | null }> {
+  ): Promise<{
+    winnerParticipantId: number | null;
+    winnerPrimaryUserId: number | null;
+    loserParticipantId: number | null;
+    loserPrimaryUserId: number | null;
+  }> {
     const winner = await this.classifyCorrectedWinner(source, resultParticipants);
     if (winner.kind === 'unresolvable') {
       throw new ConflictError(
@@ -3525,9 +3639,50 @@ export class TournamentService {
       );
     }
     if (winner.kind === 'winner' && isTournamentParticipantProgressionEligible(winner.participantStatus)) {
-      return { winnerParticipantId: winner.participantId, winnerPrimaryUserId: winner.primaryUserId };
+      // GSK-3C — resolve the corrected LOSER in the same pass so the third-place
+      // destination is updated consistently with the corrected result.
+      const loser = await this.resolveCorrectedLoser(source, winner.participantId);
+      return {
+        winnerParticipantId: winner.participantId,
+        winnerPrimaryUserId: winner.primaryUserId,
+        ...loser,
+      };
     }
-    return { winnerParticipantId: null, winnerPrimaryUserId: null };
+    // No seatable winner (draw / no_result / ineligible winner): BOTH downstream
+    // sides are cleared rather than left stale — forward-progression parity.
+    return {
+      winnerParticipantId: null,
+      winnerPrimaryUserId: null,
+      loserParticipantId: null,
+      loserPrimaryUserId: null,
+    };
+  }
+
+  /**
+   * GSK-3C — the LOSING participant of the corrected source slot: the side that is
+   * NOT the corrected winner (the SAME derivation forward progression uses). Never
+   * a second resolution algorithm. Eligibility-gated: a non-progression-eligible
+   * loser (e.g. `withdrawn_after_start`) is never seated — the stale third-place
+   * side is CLEARED instead, exactly as an ineligible winner clears the target.
+   */
+  private async resolveCorrectedLoser(
+    source: TournamentMatch,
+    winnerParticipantId: number,
+  ): Promise<{ loserParticipantId: number | null; loserPrimaryUserId: number | null }> {
+    const loserParticipantId = Number(source.participant1_id) === Number(winnerParticipantId)
+      ? (source.participant2_id != null ? Number(source.participant2_id) : null)
+      : (Number(source.participant2_id) === Number(winnerParticipantId) && source.participant1_id != null
+        ? Number(source.participant1_id)
+        : null);
+    if (loserParticipantId == null) return { loserParticipantId: null, loserPrimaryUserId: null };
+    const loser = await participantDrawRepository.findParticipantById(loserParticipantId);
+    if (!loser || !isTournamentParticipantProgressionEligible(loser.status)) {
+      return { loserParticipantId: null, loserPrimaryUserId: null };
+    }
+    const loserPrimaryUserId = Number(source.participant1_id) === Number(loserParticipantId)
+      ? (source.player1_id ?? null)
+      : (source.player2_id ?? null);
+    return { loserParticipantId, loserPrimaryUserId };
   }
 
   /** CASE A plan — nothing downstream to reconcile (no target, or no bracket slot). */
@@ -3550,6 +3705,7 @@ export class TournamentService {
       winnerParticipantId: null,
       winnerPrimaryUserId: null,
       previousTargetParticipantId: null,
+      loserSeat: null,
     };
   }
 
@@ -3632,7 +3788,10 @@ export class TournamentService {
     plan: KnockoutCorrectionPlan,
     applyResultWrite: (conn: PoolConnection) => Promise<void>,
   ): Promise<KnockoutCorrectionOutcome> {
-    const cancelled = { sharedMatchId: null as number | null, courtReleased: false };
+    const cancelled = {
+      sharedMatchId: null as number | null, courtReleased: false,
+      loserSharedMatchId: null as number | null, loserCourtReleased: false,
+    };
 
     // ── 0. CASE C: retire the stale downstream Match (pre-commit, idempotent).
     if (plan.case === 'C' && plan.targetSharedMatchId != null) {
@@ -3643,6 +3802,20 @@ export class TournamentService {
       const release = await courtReservationService.releaseCourt(staleMatchId);
       cancelled.sharedMatchId = staleMatchId;
       cancelled.courtReleased = release.released === true;
+    }
+
+    // GSK-3C — the third-place destination may equally hold a stale pre-start
+    // shared Match (both semifinal losers were already seated, so it was
+    // materialised). Retire it the same idempotent way, FIRST, so the reseated
+    // loser can never inherit a Match that still carries the old opponent.
+    if (plan.loserSeat != null && plan.loserSeat.case === 'C' && plan.loserSeat.targetSharedMatchId != null) {
+      const staleLoserMatchId = plan.loserSeat.targetSharedMatchId;
+      const { matchService } = await import('../../match/application/services/match.service.js');
+      await matchService.cancelTournamentMatch(staleLoserMatchId, 'knockout result corrected upstream');
+      const { courtReservationService } = await import('../../booking/application/court-reservation.service.js');
+      const release = await courtReservationService.releaseCourt(staleLoserMatchId);
+      cancelled.loserSharedMatchId = staleLoserMatchId;
+      cancelled.loserCourtReleased = release.released === true;
     }
 
     // ── 1. The single atomic correction transaction.
@@ -3671,6 +3844,29 @@ export class TournamentService {
         // rather than commit a source-only correction.
         throw new ConflictError('The downstream bracket slot no longer exists — reload the bracket and try again', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
       }
+      // GSK-3C — lock the THIRD-PLACE destination LAST (source → winner target →
+      // third-place target). The order is stable for every correction, so a
+      // correction racing another correction/progression cannot deadlock.
+      const loserSlotId = plan.loserSeat?.targetSlotId ?? null;
+      const loserTarget = loserSlotId != null ? await tournamentRepository.lockMatchById(loserSlotId, conn) : null;
+      if (loserSlotId != null && loserTarget == null) {
+        throw new ConflictError('The third-place bracket slot no longer exists — reload the bracket and try again', ErrorCodes.TOURNAMENT_DRAW_NOT_FOUND);
+      }
+
+      // G8-D stale-plan guard (F1) — validate BOTH locked destinations against the
+      // CASE the plan was built from, BEFORE any write. A shared Match that appeared
+      // after planning must never have its linkage cleared here: that would orphan a
+      // playable Match (and strand its court). The whole correction is refused and
+      // the caller reloads + retries. CASE C (a Match the plan explicitly retired)
+      // is preserved — it is only refused when the linkage is no longer that Match.
+      this.assertCorrectionDestinationUnchanged(
+        target, plan.case === 'C' ? 'C' : 'B', plan.targetSharedMatchId, 'downstream',
+      );
+      if (plan.loserSeat != null) {
+        this.assertCorrectionDestinationUnchanged(
+          loserTarget, plan.loserSeat.case, plan.loserSeat.targetSharedMatchId, 'third-place',
+        );
+      }
 
       // Re-verify the SAME guard on the live rows, inside the same transaction
       // that performs the write. A downstream Match that started (or produced a
@@ -3687,6 +3883,23 @@ export class TournamentService {
       } else {
         const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream: null });
         if (reason) throwKnockoutCorrectionBlocked(reason);
+      }
+
+      // GSK-3C — re-verify the THIRD-PLACE destination on its own locked row too.
+      // A third-place Match that started, completed, was voided, or already holds a
+      // result between the plan and here blocks the WHOLE correction (never a
+      // half-applied reseat).
+      if (plan.loserSeat != null && loserTarget != null) {
+        const loserDownstream = await this.readDownstreamCorrectionState(
+          loserTarget.match_id != null ? Number(loserTarget.match_id) : plan.loserSeat.targetSharedMatchId,
+        );
+        const reason = evaluateKnockoutCorrectionBlockReason({ tournamentStatus: t.status, downstream: loserDownstream });
+        if (reason) {
+          console.warn('reconcileKnockoutResultCorrection: blocked on third-place re-verify', {
+            resultId: plan.resultId, loserTargetSlotId: plan.loserSeat.targetSlotId, reason,
+          });
+          throwKnockoutCorrectionBlocked(reason);
+        }
       }
 
       // THE atomic write (corrected result + participant rows).
@@ -3727,7 +3940,29 @@ export class TournamentService {
         reseatedTargetSlotId = plan.targetSlotId;
       }
 
-      return { tournament: t, target, reseatedTargetSlotId, sourceUserIds: source ? [source.player1_id, source.player2_id] : [] };
+      // GSK-3C — reseat the corrected LOSER on the third-place destination, in the
+      // SAME transaction and with the SAME shape as the winner seat (CASE B: seat
+      // only. CASE C: seat + linkage cleared so the EXISTING attach path can
+      // rebuild it). `null` clears the stale side instead of leaving the previous
+      // semifinal loser there — no duplicate reseating, no unrelated slot touched.
+      let reseatedLoserTargetSlotId: number | null = null;
+      if (plan.loserSeat != null && loserTarget != null) {
+        const loserParticipantField = plan.loserSeat.targetSide === 'player2' ? 'participant2_id' : 'participant1_id';
+        const loserUserField = plan.loserSeat.targetSide === 'player2' ? 'player2_id' : 'player1_id';
+        await tournamentRepository.updateMatch(plan.loserSeat.targetSlotId, ({
+          match_id: null,
+          progression_state: 'pending',
+          status: 'scheduled',
+          [loserParticipantField]: plan.loserSeat.participantId,
+          [loserUserField]: plan.loserSeat.primaryUserId,
+        } as Partial<TournamentMatch>), conn);
+        (loserTarget as any)[loserParticipantField] = plan.loserSeat.participantId;
+        (loserTarget as any)[loserUserField] = plan.loserSeat.primaryUserId;
+        (loserTarget as any).match_id = null;
+        reseatedLoserTargetSlotId = plan.loserSeat.targetSlotId;
+      }
+
+      return { tournament: t, target, loserTarget, reseatedTargetSlotId, reseatedLoserTargetSlotId, sourceUserIds: source ? [source.player1_id, source.player2_id] : [] };
     });
 
     // ── 2. CASE C: re-materialise through the EXISTING attach path.
@@ -3738,6 +3973,18 @@ export class TournamentService {
       if (attached) {
         rematerialisedSharedMatchId = attached.matchId;
         materialised = attached.created;
+      }
+    }
+    // GSK-3C — the third-place Match is re-materialised through the SAME
+    // idempotent, lock-safe, eligibility-gated attach path; only when the slot now
+    // holds two seated participants (the corrected loser + the sibling loser).
+    let rematerialisedLoserSharedMatchId: number | null = null;
+    let loserMaterialised = false;
+    if (plan.loserSeat != null && plan.loserSeat.case === 'C' && applied.loserTarget != null && plan.loserSeat.participantId != null) {
+      const attachedLoser = await this.attachSharedMatchToTarget(applied.loserTarget, applied.tournament);
+      if (attachedLoser) {
+        rematerialisedLoserSharedMatchId = attachedLoser.matchId;
+        loserMaterialised = attachedLoser.created;
       }
     }
 
@@ -3758,10 +4005,17 @@ export class TournamentService {
         winner_participant_id: plan.winnerParticipantId,
         cancelled_shared_match_id: cancelled.sharedMatchId,
         rematerialised_shared_match_id: rematerialisedSharedMatchId,
+        // GSK-3C — the third-place destination reconciled in the same transaction.
+        loser_target_slot_id: plan.loserSeat?.targetSlotId ?? null,
+        loser_target_side: plan.loserSeat?.targetSide ?? null,
+        previous_loser_target_participant_id: plan.loserSeat?.previousParticipantId ?? null,
+        loser_participant_id: plan.loserSeat?.participantId ?? null,
+        cancelled_loser_shared_match_id: cancelled.loserSharedMatchId,
+        rematerialised_loser_shared_match_id: rematerialisedLoserSharedMatchId,
       },
     });
 
-    if (plan.case !== 'A') {
+    if (plan.case !== 'A' || plan.loserSeat != null) {
       // Reuse the EXISTING progression event: the frontend already refreshes the
       // bracket, the standings and the tournament detail on it. No new event
       // type, no socket.emit, nothing before commit.
@@ -3773,13 +4027,17 @@ export class TournamentService {
         participantWinnerId: plan.winnerParticipantId,
         fromSlotId: plan.sourceSlotId,
         toSlotId: plan.targetSlotId,
-        stageId: applied.target?.stage_id ?? null,
+        // GSK-3C — the third-place destination reconciled by the same correction.
+        loserToSlotId: plan.loserSeat?.targetSlotId ?? null,
+        stageId: applied.target?.stage_id ?? applied.loserTarget?.stage_id ?? null,
         corrected: true,
         ...this.tournamentRealtimeScope(applied.tournament, [
           plan.winnerPrimaryUserId,
           ...applied.sourceUserIds,
           applied.target?.player1_id,
           applied.target?.player2_id,
+          applied.loserTarget?.player1_id,
+          applied.loserTarget?.player2_id,
         ]),
       } as Record<string, unknown>, {
         aggregateType: 'tournament', aggregateId: String(plan.tournamentId), aggregateVersion: 1,
@@ -3792,6 +4050,21 @@ export class TournamentService {
           winnerId: plan.winnerPrimaryUserId,
           participantWinnerId: plan.winnerParticipantId,
           ...this.tournamentRealtimeScope(applied.tournament, [plan.winnerPrimaryUserId]),
+        } as Record<string, unknown>, {
+          aggregateType: 'tournament', aggregateId: String(plan.tournamentId), aggregateVersion: 1,
+        });
+      }
+      if (loserMaterialised && rematerialisedLoserSharedMatchId != null) {
+        eventBusV2.emit('tournament:match-created', {
+          tournamentId: plan.tournamentId,
+          matchId: rematerialisedLoserSharedMatchId,
+          tournamentMatchId: plan.loserSeat!.targetSlotId,
+          winnerId: plan.loserSeat?.primaryUserId ?? null,
+          participantWinnerId: plan.loserSeat?.participantId ?? null,
+          ...this.tournamentRealtimeScope(applied.tournament, [
+            applied.loserTarget?.player1_id,
+            applied.loserTarget?.player2_id,
+          ]),
         } as Record<string, unknown>, {
           aggregateType: 'tournament', aggregateId: String(plan.tournamentId), aggregateVersion: 1,
         });
@@ -3815,6 +4088,10 @@ export class TournamentService {
       cancelledSharedMatchId: cancelled.sharedMatchId,
       courtReleased: cancelled.courtReleased,
       rematerialisedSharedMatchId,
+      // GSK-3C — the third-place destination reconciled in the same transaction.
+      reseatedLoserTargetSlotId: applied.reseatedLoserTargetSlotId,
+      cancelledLoserSharedMatchId: cancelled.loserSharedMatchId,
+      rematerialisedLoserSharedMatchId,
     };
   }
 

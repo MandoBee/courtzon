@@ -114,6 +114,37 @@ export function throwKnockoutCorrectionBlocked(reason: KnockoutCorrectionBlockRe
 }
 
 /**
+ * GSK-3C — the THIRD-PLACE (semifinal loser) destination of a corrected result.
+ *
+ * A semifinal's `progression_meta` wires TWO downstream destinations: the winner
+ * to the championship side (`target_round`/`target_bracket_position`) and the
+ * loser to the dedicated third-place playoff (`loser_target_*`). Both are
+ * downstream bracket destinations and are reconciled together, under the SAME
+ * guard and in the SAME transaction — otherwise correcting a semifinal leaves the
+ * OLD loser seated in the third-place match (wrong placement-3 / prize).
+ */
+export interface KnockoutCorrectionLoserSeat {
+  /** The third-place `tournament_matches` slot id. */
+  targetSlotId: number;
+  /** The third-place slot's existing shared Match (CASE C only). */
+  targetSharedMatchId: number | null;
+  /** Which side of the third-place slot the corrected LOSER fills. */
+  targetSide: 'player1' | 'player2';
+  /** B: the seat only. C: retire the stale Match, reseat, re-materialise. */
+  case: 'B' | 'C';
+  /** The participant currently occupying that side (audit/diagnostics). */
+  previousParticipantId: number | null;
+  /**
+   * The corrected LOSING tournament participant to seat. `null` (no determinable
+   * or non-progression-eligible loser) CLEARS the stale side rather than leaving
+   * the previous semifinal loser in the third-place match.
+   */
+  participantId: number | null;
+  /** The legacy primary-member user id of the corrected loser (display mirror). */
+  primaryUserId: number | null;
+}
+
+/**
  * The read-only, deterministic output of the correction planner. Produced BEFORE
  * any write, re-verified inside the correcting transaction, then executed.
  */
@@ -144,6 +175,13 @@ export interface KnockoutCorrectionPlan {
   winnerPrimaryUserId: number | null;
   /** The participant currently occupying `targetSide` (audit/diagnostics). */
   previousTargetParticipantId: number | null;
+  /**
+   * GSK-3C — the THIRD-PLACE destination wired by the source slot's
+   * `loser_target_*`, or `null` when the source wires none (every non-semifinal
+   * slot, and every bracket without a third-place playoff). Present, it is
+   * reconciled alongside the winner target in the same transaction.
+   */
+  loserSeat: KnockoutCorrectionLoserSeat | null;
 }
 
 /** What the reconciler actually did — surfaced for logging/tests, never for clients. */
@@ -156,4 +194,10 @@ export interface KnockoutCorrectionOutcome {
   courtReleased: boolean;
   /** The freshly materialised shared Match for the corrected target (CASE C). */
   rematerialisedSharedMatchId: number | null;
+  /** GSK-3C — the THIRD-PLACE slot reseated (or cleared) in the same transaction. */
+  reseatedLoserTargetSlotId: number | null;
+  /** GSK-3C — the stale third-place shared Match cancelled (CASE C). */
+  cancelledLoserSharedMatchId: number | null;
+  /** GSK-3C — the freshly materialised third-place shared Match (CASE C). */
+  rematerialisedLoserSharedMatchId: number | null;
 }
