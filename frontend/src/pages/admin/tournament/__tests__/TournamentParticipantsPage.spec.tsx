@@ -4,13 +4,32 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentParticipantsPage from '../TournamentParticipantsPage';
 
+/**
+ * Test fixture shape for an admin participant row. Mirrors the production
+ * participants contract the page consumes: individual/pair/team participants,
+ * their `competition_id` scope (B4), and their normalized active `members`.
+ */
+type ParticipantFixture = {
+  id: number;
+  player_id: number;
+  display_name: string;
+  status: string;
+  global_rating?: number | null;
+  seed?: { seed_number: number; source: string; rating_snapshot?: number } | null;
+  draw_position?: number;
+  name?: string | null;
+  participant_type?: 'individual' | 'pair' | 'team';
+  competition_id?: number | null;
+  members?: Array<{ id?: number; user_id: number; full_name?: string | null; status: string; member_order?: number }>;
+};
+
 const __state = vi.hoisted(() => ({
   userPermissions: ['*'] as string[],
   participants: [
     { id: 1, player_id: 10, display_name: 'Player A', status: 'active', global_rating: null, seed: null, draw_position: 0 },
     { id: 2, player_id: 20, display_name: 'Player B', status: 'active', global_rating: 1650, seed: { seed_number: 2, source: 'manual' }, draw_position: 1 },
     { id: 3, player_id: 30, display_name: 'Player C', status: 'active', global_rating: 1800, seed: { seed_number: 3, source: 'rating', rating_snapshot: 1800 }, draw_position: 2 },
-  ],
+  ] as ParticipantFixture[],
   currentDraw: {
     id: 10, tournament_id: 1, attempt_number: 1, status: 'draft',
     entries: [
@@ -160,11 +179,11 @@ describe('B4 — doubles pairing player picker (name search, competition scope)'
     __state.competitions = [{ id: 7, name: 'Doubles Open' }];
     __state.participants = [
       ...__state.participants,
-      { id: 9, participant_type: 'pair', competition_id: 7, members: [
+      { id: 9, player_id: 90, display_name: 'Pair A', status: 'active', participant_type: 'pair', competition_id: 7, members: [
         { user_id: 20, status: 'active', full_name: 'Player B' },
         { user_id: 30, status: 'active', full_name: 'Player C' },
       ] },
-      { id: 11, participant_type: 'pair', competition_id: 9, members: [
+      { id: 11, player_id: 110, display_name: 'Pair B', status: 'active', participant_type: 'pair', competition_id: 9, members: [
         { user_id: 60, status: 'active', full_name: 'Player E' },
       ] },
     ];
@@ -194,7 +213,7 @@ describe('B4 — doubles pairing player picker (name search, competition scope)'
       ...__state.participants,
       // The real response may carry a null association — it must NOT become a false
       // "available": the player is shown with an explicit unverifiable reason.
-      { id: 12, participant_type: 'pair', competition_id: null, members: [
+      { id: 12, player_id: 120, display_name: 'Pair C', status: 'active', participant_type: 'pair', competition_id: null, members: [
         { user_id: 50, status: 'active', full_name: 'Player D' },
       ] },
     ];
@@ -226,9 +245,9 @@ describe('B4 — doubles pairing player picker (name search, competition scope)'
     renderPage('org');
     fireEvent.click(await screen.findByText('Add Pair'));
     await screen.findByLabelText('Players (search by name)');
-    const urls = (api.get as any).mock.calls.map((c: any[]) => String(c[0]));
-    expect(urls.some((u) => u.includes('/org/6/tournaments/1/registrations'))).toBe(true);
-    expect(urls.some((u) => u.includes('/admin/tournaments/1/registrations'))).toBe(false);
+    const urls: string[] = (api.get as any).mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(urls.some((u: string) => u.includes('/org/6/tournaments/1/registrations'))).toBe(true);
+    expect(urls.some((u: string) => u.includes('/admin/tournaments/1/registrations'))).toBe(false);
   });
 });
 
