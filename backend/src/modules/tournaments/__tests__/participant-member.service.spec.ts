@@ -185,6 +185,14 @@ describe('Group 7 — MEMBERS', () => {
       .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_DUPLICATE });
   });
 
+  it('7b. B4 — a repeated user id inside the same NEW pair is rejected (explicit distinctness)', async () => {
+    mfRepo.findFormatById.mockResolvedValue(DOUBLES_FMT);
+    await expect(svc.createPairParticipant(1, { name: 'Pair Dup', memberUserIds: [10, 10] }, 1))
+      .rejects.toMatchObject({ code: ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_DUPLICATE });
+    // Rejected BEFORE any member write (no partial state).
+    expect(pmRepo.addMember).not.toHaveBeenCalled();
+  });
+
   it('8. a player cannot belong to two active participants in the SAME tournament', async () => {
     pmRepo.findActiveMemberByUser.mockResolvedValue(ACTIVE_MEMBER(777, 10));
     await expect(svc.addParticipantMember(1, 500, 10, 1))

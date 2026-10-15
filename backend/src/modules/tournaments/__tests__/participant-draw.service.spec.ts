@@ -182,6 +182,22 @@ describe('Group 5 — Participant & Seeding foundation', () => {
     expect(repo.updateSeed).toHaveBeenCalledTimes(1);
   });
 
+  it('B4 — listParticipants returns the participant competition association', async () => {
+    repo.listParticipantsByTournament.mockResolvedValue([
+      { ...participant(1, 10), competition_id: 7 },
+      { ...participant(2, 20), competition_id: null },
+    ]);
+
+    const out = await svc.listParticipants(1);
+
+    // The frontend scopes the "already paired" exclusion by this field; omitting it
+    // silently made paired players look available. Dropping it from the mapper fails here.
+    expect(Object.prototype.hasOwnProperty.call(out[0], 'competition_id')).toBe(true);
+    expect(out[0].competition_id).toBe(7);
+    // A participant with no association is explicit (never a fabricated competition).
+    expect(out[1].competition_id).toBeUndefined();
+  });
+
   it('10. seed survives Auto Re-Draw (draw never writes seeds)', async () => {
     repo.findParticipantByRegistration.mockResolvedValue({ id: 9, tournament_id: 1, registration_id: 1, participant_type: 'individual', status: 'active', member_user_ids: [10] });
     repo.listParticipantsByTournament.mockResolvedValue([participant(1, 10, 1), participant(2, 20, 2), participant(3, 30)]);

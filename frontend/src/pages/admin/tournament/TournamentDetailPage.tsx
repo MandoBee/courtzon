@@ -608,6 +608,7 @@ export default function TournamentDetailPage({ mode = 'admin', orgId }: Props) {
               <div className="md:col-span-2">
                 <GeneratedRules
                   rules={tournament?.rules}
+                  formatLabel={tournament?.bracket_type_name}
                   title={t('tournaments.details.rules')}
                   empty={<p className="text-sm text-[var(--color-text-muted)]">{t('tournaments.details.rules_empty')}</p>}
                 />

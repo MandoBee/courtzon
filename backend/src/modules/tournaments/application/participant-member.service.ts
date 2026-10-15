@@ -271,7 +271,18 @@ export class ParticipantMemberService {
     const fmt = await this.resolveFormatConfig(t, competition);
     this.assertParticipantTypeMatchesFormat(fmt, input.participantType);
 
-    const members = Array.from(new Set(input.memberUserIds.map((id) => Number(id))));
+    const rawMemberIds = input.memberUserIds.map((id) => Number(id));
+    // B4 — explicit DISTINCTNESS guard. Previously a repeated user id was only
+    // *silently collapsed* by the Set below, surfacing as a misleading member-count
+    // error (or, worse, hiding a client bug). Reject it explicitly, before any write.
+    const repeatedId = rawMemberIds.find((id, i) => rawMemberIds.indexOf(id) !== i);
+    if (repeatedId != null) {
+      throw new ConflictError(
+        `Player #${repeatedId} cannot be added twice to the same participant`,
+        ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_DUPLICATE,
+      );
+    }
+    const members = Array.from(new Set(rawMemberIds));
     if (members.length === 0) {
       throw new ConflictError('A participant requires at least one member', ErrorCodes.TOURNAMENT_PARTICIPANT_MEMBER_COUNT_INVALID);
     }

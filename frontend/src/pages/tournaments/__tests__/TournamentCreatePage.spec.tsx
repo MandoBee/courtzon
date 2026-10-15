@@ -893,3 +893,116 @@ describe('Creation Wizard — Phase A: Category & Season removed', () => {
     expect('season' in payload).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F-05 — the match-format cascade is bracket-scoped; a stale rule set must never
+// survive a bracket change, and a PARTIAL pair must never reach the API (409).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('F-05 — match format / rule set cascade cannot produce a partial pair', () => {
+  /** Label-anchored select lookup (same pattern as the file's `fieldInput` helper). */
+  const matchFormatSelect = () =>
+    screen.getByText('tournaments.create.match_format').nextElementSibling as HTMLSelectElement;
+  const ruleSetSelect = () =>
+    screen.getByText('tournaments.create.rule_set').nextElementSibling as HTMLSelectElement;
+
+  /**
+   * Reach the Format step and choose sport → match format → rule set, i.e. the
+   * ORIGINAL order that produced the stale state.
+   */
+  async function goToFormatWithRules(): Promise<RenderResult> {
+    const view = renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    await screen.findByTestId('format-card-single-elimination');
+    selectByOptionText(view, 'Padel', '22'); // sport → format cascade loads
+    await screen.findByText('tournaments.create.match_format');
+    await waitFor(() => expect(matchFormatSelect().options.length).toBeGreaterThan(1));
+    fireEvent.change(matchFormatSelect(), { target: { value: '1' } });
+    await waitFor(() => expect(matchFormatSelect().value).toBe('1'));
+    await waitFor(() => expect(ruleSetSelect().options.length).toBeGreaterThan(1));
+    fireEvent.change(ruleSetSelect(), { target: { value: '1' } });
+    await waitFor(() => expect(ruleSetSelect().value).toBe('1'));
+    return view;
+  }
+
+  it('changing the BRACKET TYPE after picking format + rule set clears BOTH', async () => {
+    await goToFormatWithRules();
+    // Precondition: both are selected (the state that used to become "rules without format").
+    expect(matchFormatSelect().value).toBe('1');
+    expect(ruleSetSelect().value).toBe('1');
+
+    // Change the bracket type AFTER choosing the format/rules — the failing order.
+    fireEvent.click(await screen.findByTestId('format-card-round-robin'));
+
+    await waitFor(() => expect(matchFormatSelect().value).toBe(''));
+    expect(ruleSetSelect().value).toBe('');
+  });
+
+  it('changing the MATCH FORMAT clears the dependent rule set', async () => {
+    await goToFormatWithRules();
+    expect(ruleSetSelect().value).toBe('1');
+
+    fireEvent.change(matchFormatSelect(), { target: { value: '' } });
+
+    await waitFor(() => expect(ruleSetSelect().value).toBe(''));
+  });
+
+  it('a bracket change after picking format + rules submits NEITHER field (no partial pair)', async () => {
+    await goToFormatWithRules();
+    fireEvent.click(await screen.findByTestId('format-card-round-robin')); // bracket AFTER format/rules
+
+    // Walk the remaining steps to Review.
+    await clickContinueAndAwait(3); // Participants
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+    await clickContinueAndAwait(4); // Schedule
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5); // Rules
+    await clickContinueAndAwait(6); // Payments
+    await clickContinueAndAwait(7); // Prizes
+    await clickContinueAndAwait(8); // Review
+
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+
+    const [, payload] = (api.post as any).mock.calls[0] as [string, any];
+    // The API contract is "both or neither": never a rule set without a format.
+    expect(payload.match_format_id).toBeUndefined();
+    expect(payload.rule_set_id).toBeUndefined();
+  });
+
+  it('valid sequence (sport → bracket → format → rule set) submits BOTH fields', async () => {
+    const view = renderPage(ALL);
+    fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'Cup' } });
+    fireEvent.click(continueBtn());
+    await screen.findByTestId('format-card-single-elimination');
+    // Bracket type FIRST, then the cascade selections (the correct order — a later
+    // bracket change would legitimately reset the format/rule set).
+    fireEvent.click(screen.getByTestId('format-card-single-elimination'));
+    selectByOptionText(view, 'Padel', '22');
+    await screen.findByText('tournaments.create.match_format');
+    await waitFor(() => expect(matchFormatSelect().options.length).toBeGreaterThan(1));
+    fireEvent.change(matchFormatSelect(), { target: { value: '1' } });
+    await waitFor(() => expect(matchFormatSelect().value).toBe('1'));
+    await waitFor(() => expect(ruleSetSelect().options.length).toBeGreaterThan(1));
+    fireEvent.change(ruleSetSelect(), { target: { value: '1' } });
+    await waitFor(() => expect(ruleSetSelect().value).toBe('1'));
+
+    // Walk the remaining steps to Review.
+    await clickContinueAndAwait(3); // Participants
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+    await clickContinueAndAwait(4); // Schedule
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+    await clickContinueAndAwait(5); // Rules
+    await clickContinueAndAwait(6); // Payments
+    await clickContinueAndAwait(7); // Prizes
+    await clickContinueAndAwait(8); // Review
+
+    fireEvent.click(screen.getByRole('button', { name: 'tournaments.create.submit' }));
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+
+    const [, payload] = (api.post as any).mock.calls[0] as [string, any];
+    // A complete, valid pair IS sent (the fix must not over-clear).
+    expect(payload.match_format_id).toBe(1);
+    expect(payload.rule_set_id).toBe(1);
+  });
+});

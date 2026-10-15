@@ -301,7 +301,11 @@ export default function TournamentDetailPage() {
         <SponsorList sponsors={tournament.sponsors} showAmount={false} />
         <EligibilitySummary tournament={tournament} />
         {tournament.rules && (
-          <GeneratedRules rules={tournament.rules} title="Tournament Rules" />
+          <GeneratedRules
+            rules={tournament.rules}
+            formatLabel={tournament.bracket_type_name}
+            title="Tournament Rules"
+          />
         )}
         {myRegistration && (
           <p className="text-xs font-medium">

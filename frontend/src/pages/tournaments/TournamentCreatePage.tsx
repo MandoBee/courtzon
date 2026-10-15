@@ -172,7 +172,17 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
         .refine(
           (v) => !v.dailyStartTime || !v.dailyEndTime || v.dailyStartTime < v.dailyEndTime,
           { message: t('tournaments.create.validation.daily_window'), path: ['dailyEndTime'] },
-        ),
+        )
+        // F-05 — a rule set is only meaningful together with a match format. This
+        // enforces the API's "both or neither" contract at submit time and gives the
+        // user a clear, localized reason instead of a server 409.
+        .refine((v) => !v.ruleSetId || !!v.matchFormatId, {
+          message: t(
+            'tournaments.create.validation.rule_set_requires_format',
+            'Select a match format before choosing a rule set',
+          ),
+          path: ['ruleSetId'],
+        }),
     [t],
   );
 
@@ -250,7 +260,7 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
     queryFn: () => api.get('/sports').then((r) => r.data),
   });
 
-  const { data: formatCascade } = useQuery({
+  const { data: formatCascade, isFetching: formatCascadeFetching } = useQuery({
     queryKey: ['sport-formats-cascade', effectiveOrgId, selectedSport, selectedBracket],
     queryFn: () => orgTournamentApi.getSportFormats(effectiveOrgId, selectedSport!, selectedBracket || undefined),
     enabled: hasOwningOrg && !!selectedSport,
@@ -272,6 +282,31 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
   useEffect(() => {
     setValue('ruleSetId', '');
   }, [selectedFormat, setValue]);
+
+  // F-05 — the format cascade is BRACKET-SCOPED (`getSportFormats(..., bracketType)`),
+  // so a match format chosen under one bracket type must never survive a bracket
+  // change. Clearing only the format used to leave a STALE rule set behind, which the
+  // API rejects with 409 ("Tournament must configure both a Match Format and a Rule
+  // Set, or neither"). Clear BOTH whenever the bracket type changes.
+  useEffect(() => {
+    setValue('matchFormatId', '');
+    setValue('ruleSetId', '');
+  }, [selectedBracket, setValue]);
+
+  // F-05 — the cascade refetches and its option list can shrink. If the currently
+  // selected format is no longer offered, clear the format AND its dependent rule
+  // set, so a rule set can never outlive the format it belongs to. Skipped while the
+  // cascade is still loading so a valid in-flight selection is never wiped.
+  useEffect(() => {
+    if (formatCascadeFetching) return;
+    if (formatGroups.length === 0) return;
+    if (!selectedFormat) return;
+    const stillOffered = formatGroups.some((g) => String(g.format.id) === String(selectedFormat));
+    if (!stillOffered) {
+      setValue('matchFormatId', '');
+      setValue('ruleSetId', '');
+    }
+  }, [formatGroups, formatCascadeFetching, selectedFormat, setValue]);
 
   useEffect(() => {
     if (isOrg) return;
@@ -387,8 +422,11 @@ export default function TournamentCreatePage({ mode = 'admin', orgId }: Props) {
       format: data.format === 'group_stage_knockout' ? 'group_stage_knockout' : (data.format === 'knockout' || data.format === 'round_robin' ? data.format : undefined),
       gsk_config: data.format === 'group_stage_knockout' ? (data.gsk_config ?? undefined) : undefined,
       sport_id: data.sportId ? Number(data.sportId) : undefined,
+      // F-05 — never send a partial pair: the API accepts a Match Format AND a Rule
+      // Set together, or neither. The schema refine above already blocks the UI path;
+      // this is defence-in-depth for the wire contract.
       match_format_id: data.matchFormatId ? Number(data.matchFormatId) : undefined,
-      rule_set_id: data.ruleSetId ? Number(data.ruleSetId) : undefined,
+      rule_set_id: data.matchFormatId && data.ruleSetId ? Number(data.ruleSetId) : undefined,
       max_participants: Number(data.maxParticipants),
       min_participants: data.minParticipants ? Number(data.minParticipants) : 2,
       max_events_per_player: data.maxEventsPerPlayer === '' || data.maxEventsPerPlayer == null
@@ -777,7 +815,12 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                       <Can permission="tournaments.create.match-format">
                         <div>
                           <label className="mb-2 block text-sm font-medium text-[var(--color-text)]">{t('tournaments.create.match_format')}</label>
-                          <select {...register('matchFormatId')} disabled={!hasOwningOrg} className={selectCls}>
+                          <select
+                            value={selectedFormat ?? ''}
+                            onChange={(e) => setValue('matchFormatId', e.target.value, { shouldValidate: true, shouldDirty: true })}
+                            disabled={!hasOwningOrg}
+                            className={selectCls}
+                          >
                             <option value="">{t('tournaments.create.select_format')}</option>
                             {formatGroups.map((g) => (
                               <option key={g.format.id} value={g.format.id}>{g.format.name}</option>
@@ -788,7 +831,12 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                       <Can permission="tournaments.create.rule-set">
                         <div>
                           <label className="mb-2 block text-sm font-medium text-[var(--color-text)]">{t('tournaments.create.rule_set')}</label>
-                          <select {...register('ruleSetId')} disabled={!selectedFormat || !hasOwningOrg} className={selectCls}>
+                          <select
+                            value={watch('ruleSetId') ?? ''}
+                            onChange={(e) => setValue('ruleSetId', e.target.value, { shouldValidate: true, shouldDirty: true })}
+                            disabled={!selectedFormat || !hasOwningOrg}
+                            className={selectCls}
+                          >
                             <option value="">{t('tournaments.create.select_rule_set')}</option>
                             {formatGroups
                               .filter((g) => String(g.format.id) === selectedFormat)
@@ -799,6 +847,9 @@ const formatCards: TournamentFormatCard[] = useMemo(() => {
                                 </option>
                               ))}
                           </select>
+                          {errors.ruleSetId?.message && (
+                            <p className="mt-1 text-xs text-[var(--color-error)]" role="alert">{errors.ruleSetId.message}</p>
+                          )}
                         </div>
                       </Can>
                     </div>

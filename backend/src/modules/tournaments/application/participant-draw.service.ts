@@ -240,6 +240,10 @@ export class ParticipantDrawService {
         tournament_id: r.tournament_id,
         registration_id: r.registration_id,
         participant_type: participantType,
+        // B4 — the participant's competition association (`p.*` selects it above).
+        // The frontend needs it to scope the "already paired" exclusion correctly;
+        // omitting it made the UI treat paired players as available.
+        competition_id: r.competition_id != null ? Number(r.competition_id) : undefined,
         status: r.status,
         member_user_ids: memberUserIds,
         name: r.name ?? null,

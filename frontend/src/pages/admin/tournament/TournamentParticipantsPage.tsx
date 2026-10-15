@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
 import { Can } from '../../../permissions/Can';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
-import { tournamentApi, tournamentParticipantApi, orgTournamentParticipantApi } from '../../../services/tournament';
+import { tournamentApi, tournamentParticipantApi, orgTournamentParticipantApi, orgTournamentApi } from '../../../services/tournament';
 import { getErrorMessage } from '../../../utils/errors';
 
 export type TournamentParticipantsContextMode = 'admin' | 'org';
@@ -50,6 +50,10 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   const [replaceTarget, setReplaceTarget] = useState<{ withdrawnId: number; replacementId: number; competitionId?: number | null } | null>(null);
   // Group 7 state
   const [createTarget, setCreateTarget] = useState<{ type: 'pair' | 'team' } | null>(null);
+  // B4 — pair/team member SELECTION (replaces raw numeric user-id entry).
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [pairCompetition, setPairCompetition] = useState<number | ''>('');
   const [addMemberTarget, setAddMemberTarget] = useState<{ participantId: number } | null>(null);
   const [requestTarget, setRequestTarget] = useState<{ participantId: number; members: Member[] } | null>(null);
 
@@ -74,6 +78,102 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   const [drawCompetition, setDrawCompetition] = useState<number | ''>('');
   const scopedDrawCompetition = needsCompetitionChoice && drawCompetition !== '' ? Number(drawCompetition) : null;
   const missingDrawCompetitionChoice = needsCompetitionChoice && drawCompetition === '';
+
+  // ── B4 — doubles pairing: NAME-searchable selection of REGISTERED players ──
+  // Candidates are the tournament's registrations (the authoritative "registered
+  // players"): `player_id` + `player_name` ONLY — phone numbers are never exposed.
+  const { data: registrationsData } = useQuery({
+    queryKey: ['tournament-registrations', tournamentId, isOrg ? orgId : 'admin'],
+    queryFn: () => (isOrg && orgId
+      ? orgTournamentApi.getRegistrations(orgId, tournamentId)
+      : tournamentApi.getRegistrations(tournamentId)),
+    enabled: isOrg ? Boolean(orgId) : true,
+  });
+  const registrationRows: any[] = Array.isArray(registrationsData) ? registrationsData : [];
+
+  // A SOLE competition is selected automatically (verified by the competitions
+  // list); several require an explicit choice. There is deliberately NO
+  // tournament-wide fallback for the exclusion scope.
+  const soleCompetitionId = competitionList.length === 1 ? Number(competitionList[0].id) : null;
+  const pairCompetitionId: number | null =
+    soleCompetitionId ?? (pairCompetition === '' ? null : Number(pairCompetition));
+  const needsPairCompetitionChoice = competitionList.length > 1 && pairCompetition === '';
+  const pairScopeResolved = !needsPairCompetitionChoice;
+
+  // B4 — active membership resolved against the SELECTED competition only.
+  //  • scope known + the participant's competition is unknown/null → the association
+  //    cannot be verified, so the player is NEVER offered as available (no false
+  //    "available"); a clear reason is shown instead.
+  //  • scope known + a DIFFERENT known competition → a different competition, so the
+  //    player is NOT excluded.
+  //  • no scope (legacy / no competitions) → the whole tournament is the scope.
+  const activeMembership = useMemo(() => {
+    const inScope = new Set<number>();
+    const unscoped = new Set<number>();
+    const scope = pairCompetitionId == null ? null : Number(pairCompetitionId);
+    for (const p of participants as any[]) {
+      const members: any[] = Array.isArray(p?.members) ? p.members : [];
+      const activeUserIds = members
+        .filter((m) => m?.status === 'active')
+        .map((m) => Number(m.user_id));
+      if (activeUserIds.length === 0) continue;
+      const raw = p?.competition_id;
+      if (scope == null) {
+        for (const id of activeUserIds) inScope.add(id);
+      } else if (raw == null) {
+        for (const id of activeUserIds) unscoped.add(id);
+      } else if (Number(raw) === scope) {
+        for (const id of activeUserIds) inScope.add(id);
+      }
+    }
+    return { inScope, unscoped };
+  }, [participants, pairCompetitionId]);
+
+  const candidatePlayers = useMemo(() => {
+    if (!pairScopeResolved) return [] as Array<{ id: number; name: string; unavailableReason?: string }>;
+    const seen = new Set<number>();
+    const out: Array<{ id: number; name: string; unavailableReason?: string }> = [];
+    for (const r of registrationRows) {
+      const id = Number(r?.player_id ?? 0);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const name = String(r?.player_name ?? '').trim() || `Player #${id}`;
+      const unavailableReason = activeMembership.inScope.has(id)
+        ? t('tournaments.pair_player_already_assigned', 'Already in a pair/team')
+        : activeMembership.unscoped.has(id)
+          ? t('tournaments.pair_player_assignment_unknown', 'Availability cannot be verified for the selected competition')
+          : undefined;
+      out.push({ id, name, unavailableReason });
+    }
+    return out;
+  }, [registrationRows, activeMembership, pairScopeResolved, t]);
+  const candidateIdsSignature = candidatePlayers.map((c) => c.id).join(',');
+
+  const selectedPlayers = selectedMemberIds
+    .map((id) => candidatePlayers.find((c) => c.id === id))
+    .filter((c): c is { id: number; name: string; unavailableReason?: string } => Boolean(c));
+
+  const visibleCandidates = candidatePlayers.filter((c) =>
+    c.name.toLowerCase().includes(memberSearch.trim().toLowerCase()),
+  );
+
+  // Drop selections invalidated by a refreshed payload or a competition change.
+  useEffect(() => {
+    setSelectedMemberIds((prev) => {
+      const allowed = new Set(
+        candidatePlayers.filter((c) => !c.unavailableReason).map((c) => c.id),
+      );
+      const next = prev.filter((id) => allowed.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateIdsSignature, pairCompetitionId]);
+
+  // B4 — a COMPETITION CHANGE invalidates every selection outright: the scope itself
+  // changed, not merely the candidate set. Clear them so nothing stale is submitted.
+  useEffect(() => {
+    setSelectedMemberIds([]);
+  }, [pairCompetitionId]);
 
   const { data: draw, isError: drawError, refetch: refetchDraw } = useQuery({
     queryKey: ['tournament-draw', tournamentId, scopedDrawCompetition],
@@ -162,13 +262,19 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   const createPairTeam = useMutation({
     mutationFn: () => {
       const type = createTarget!.type;
-      const memberIds = (type === 'pair' ? createPairMemberIds : createTeamMemberIds).filter((s) => s.trim()).map(Number);
-      const payload = { name: createPairTeamName || undefined, member_user_ids: memberIds };
+      // B4 — the REAL user ids chosen in the picker + the selected competition,
+      // sent through the EXISTING request contract (the server stays authoritative
+      // for eligibility, roster size, duplicates and tenant/competition scope).
+      const payload = {
+        name: createPairTeamName || undefined,
+        member_user_ids: selectedMemberIds,
+        competition_id: pairCompetitionId ?? undefined,
+      };
       return type === 'team'
         ? wrap(api.createTeamParticipant, tournamentId, payload)
         : wrap(api.createPairParticipant, tournamentId, payload);
     },
-    onSuccess: () => { showToast(t('tournaments.participant_created', 'Participant created'), 'success'); setCreateTarget(null); setCreatePairTeamName(''); setCreatePairMemberIds(['', '']); setCreateTeamMemberIds(['', '', '']); invalidate(); },
+    onSuccess: () => { showToast(t('tournaments.participant_created', 'Participant created'), 'success'); setCreateTarget(null); setCreatePairTeamName(''); setSelectedMemberIds([]); setMemberSearch(''); invalidate(); },
     onError: (err) => showToast(getErrorMessage(err), 'error'),
   });
 
@@ -213,8 +319,6 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
   });
 
   const [createPairTeamName, setCreatePairTeamName] = useState('');
-  const [createPairMemberIds, setCreatePairMemberIds] = useState(['', '']);
-  const [createTeamMemberIds, setCreateTeamMemberIds] = useState(['', '', '', '', '']);
   const [addMemberUserId, setAddMemberUserId] = useState('');
   const [requestOutgoingUserId, setRequestOutgoingUserId] = useState('');
   const [requestReplacementUserId, setRequestReplacementUserId] = useState('');
@@ -643,21 +747,78 @@ export default function TournamentParticipantsPage({ mode = 'admin', orgId: orgI
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setCreateTarget(null)}>
           <div className="w-full max-w-md bg-[var(--color-surface)] rounded-[var(--radius-lg)] border border-[var(--color-border)] p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold">{createTarget.type === 'pair' ? t('tournaments.create_pair', 'Add Pair') : t('tournaments.create_team', 'Add Team')}</h3>
-            <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.create_members_hint', 'Enter the player user IDs for this participant. One tournament entry — one payment. The sport/format roster size is enforced server-side.')}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">{t('tournaments.pair_members_hint', 'Select registered players by name. One tournament entry — one payment. The sport/format roster size is enforced server-side.')}</p>
             <label className="block text-xs font-medium text-[var(--color-text-muted)]">Name</label>
             <input value={createPairTeamName} onChange={(e) => setCreatePairTeamName(e.target.value)}
               placeholder={createTarget.type === 'pair' ? 'Pair name' : 'Team name'} className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
-            <label className="block text-xs font-medium text-[var(--color-text-muted)]">Member user IDs</label>
-            {(createTarget.type === 'pair' ? createPairMemberIds : createTeamMemberIds).map((v, i) => (
-              <input key={i} type="number" value={v} onChange={(e) => {
-                if (createTarget.type === 'pair') {
-                  const next = [...createPairMemberIds]; next[i] = e.target.value; setCreatePairMemberIds(next);
-                } else {
-                  const next = [...createTeamMemberIds]; next[i] = e.target.value; setCreateTeamMemberIds(next);
-                }
-              }} placeholder={`Player user ID ${i + 1}`} className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
-            ))}
-            <button onClick={() => createPairTeam.mutate()} disabled={createPairTeam.isPending}
+
+            {competitionList.length > 1 && (
+              <div>
+                <label htmlFor="pair-competition" className="block text-xs font-medium text-[var(--color-text-muted)]">
+                  {t('tournaments.pair_select_competition', 'Competition')}
+                </label>
+                <select id="pair-competition" value={pairCompetition}
+                  onChange={(e) => setPairCompetition(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm">
+                  <option value="">{t('tournaments.pair_select_competition_placeholder', 'Select a competition…')}</option>
+                  {competitionList.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name || `Competition #${c.id}`}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <label htmlFor="pair-member-search" className="block text-xs font-medium text-[var(--color-text-muted)]">
+              {t('tournaments.pair_search_players', 'Players (search by name)')}
+            </label>
+            <input id="pair-member-search" type="search" value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              placeholder={t('tournaments.pair_search_placeholder', 'Search registered players by name')}
+              className="w-full px-3 py-2 border rounded-[var(--radius-md)] text-sm" />
+
+            <ul aria-label={t('tournaments.pair_available_players', 'Registered players')}
+              className="max-h-40 overflow-y-auto divide-y rounded-[var(--radius-md)] border border-[var(--color-border)]">
+              {visibleCandidates.length === 0 && (
+                <li className="px-3 py-2 text-xs text-[var(--color-text-muted)]">
+                  {t('tournaments.pair_no_players', 'No registered players match.')}
+                </li>
+              )}
+              {visibleCandidates.map((c) => {
+                const isSelected = selectedMemberIds.includes(c.id);
+                const disabled = Boolean(c.unavailableReason) || isSelected;
+                return (
+                  <li key={c.id}>
+                    <button type="button" disabled={disabled}
+                      onClick={() => setSelectedMemberIds((prev) => (prev.includes(c.id) ? prev : [...prev, c.id]))}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm disabled:opacity-60">
+                      <span>{c.name}</span>
+                      <span className="text-xs text-[var(--color-text-muted)]">
+                        {c.unavailableReason ?? (isSelected ? t('tournaments.pair_selected', 'Selected') : t('tournaments.pair_add', 'Add'))}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div aria-label={t('tournaments.pair_selected_players', 'Selected players')} className="flex flex-wrap gap-2">
+              {selectedPlayers.map((p) => (
+                <span key={p.id} className="inline-flex items-center gap-1 rounded-full bg-[var(--color-bg)] px-2 py-1 text-xs">
+                  {p.name}
+                  <button type="button" aria-label={t('tournaments.pair_remove_player', 'Remove player')}
+                    onClick={() => setSelectedMemberIds((prev) => prev.filter((id) => id !== p.id))}>×</button>
+                </span>
+              ))}
+            </div>
+
+            {needsPairCompetitionChoice && (
+              <p role="alert" className="text-xs text-[var(--color-error)]">
+                {t('tournaments.pair_competition_required', 'Select a competition before creating a pair.')}
+              </p>
+            )}
+
+            <button onClick={() => createPairTeam.mutate()}
+              disabled={createPairTeam.isPending || !pairScopeResolved || selectedMemberIds.length < 2}
               className="w-full px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm font-medium disabled:opacity-50">
               {createPairTeam.isPending ? 'Saving...' : 'Create Participant'}
             </button>

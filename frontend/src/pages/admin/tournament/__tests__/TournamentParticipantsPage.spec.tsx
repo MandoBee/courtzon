@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TournamentParticipantsPage from '../TournamentParticipantsPage';
@@ -33,6 +33,14 @@ const __state = vi.hoisted(() => ({
   ],
   errors: { participants: false, draw: false, waitlist: false, competitions: false, replacement: false } as Record<string, boolean>,
   competitions: [] as Array<{ id: number; name: string }>,
+  // B4 — registrations feed the name-search picker (player_id + player_name ONLY).
+  registrations: [
+    { player_id: 10, player_name: 'Player A' },
+    { player_id: 20, player_name: 'Player B' },
+    { player_id: 30, player_name: 'Player C' },
+    { player_id: 50, player_name: 'Player D' },
+    { player_id: 60, player_name: 'Player E' },
+  ] as Array<{ player_id: number; player_name: string }>,
   emptyParticipants: false,
   noDraw: false,
 }));
@@ -58,18 +66,23 @@ vi.mock('../../../../components/ui/Toast', () => ({
 
 import api from '../../../../services/api';
 
-function renderPage() {
+function renderPage(mode: 'admin' | 'org' = 'admin') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const path = mode === 'org' ? '/org/6/tournaments/1/participants' : '/admin/tournament/list/1/participants';
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/admin/tournament/list/1/participants']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/admin/tournament/list/:id/participants" element={<TournamentParticipantsPage mode="admin" />} />
+          <Route path="/org/:orgId/tournaments/:id/participants" element={<TournamentParticipantsPage mode="org" orgId="6" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
+
+/** The pristine participant fixture — restored before every test (tests reassign it). */
+const BASE_PARTICIPANTS = __state.participants;
 
 function mockApi() {
   (api.get as any).mockImplementation((url: string) => {
@@ -78,6 +91,7 @@ function mockApi() {
     if (__state.errors.draw && url.includes('/draw')) return Promise.reject(new Error('draw failed'));
     if (__state.errors.competitions && url.includes('/competitions')) return Promise.reject(new Error('competitions failed'));
     if (__state.errors.participants && url.includes('/participants')) return Promise.reject(new Error('participants failed'));
+    if (url.includes('/registrations')) return Promise.resolve({ data: __state.registrations });
     if (url.includes('/replacement-requests')) return Promise.resolve({ data: __state.replacementRequests });
     if (url.includes('/participants')) return Promise.resolve({ data: __state.emptyParticipants ? [] : [...__state.participants, __state.pair] });
     if (url.includes('/waitlist')) return Promise.resolve({ data: __state.waitlist });
@@ -92,9 +106,130 @@ beforeEach(() => {
   __state.userPermissions = ['*'];
   __state.errors = { participants: false, draw: false, waitlist: false, competitions: false, replacement: false };
   __state.competitions = [];
+  __state.participants = [...BASE_PARTICIPANTS];
   __state.emptyParticipants = false;
   __state.noDraw = false;
   mockApi();
+});
+
+describe('B4 — doubles pairing player picker (name search, competition scope)', () => {
+  async function openPairModal() {
+    const view = renderPage();
+    fireEvent.click(await screen.findByText('Add Pair'));
+    await screen.findByLabelText('Players (search by name)');
+    return view;
+  }
+  const competitionSelect = () => document.getElementById('pair-competition') as HTMLSelectElement;
+  const candidates = () => within(screen.getByLabelText('Registered players'));
+  const selected = () => within(screen.getByLabelText('Selected players'));
+  const submitBtn = () => screen.getByText('Create Participant').closest('button') as HTMLButtonElement;
+
+  it('lists registered players by NAME and filters by name search', async () => {
+    await openPairModal();
+    expect(candidates().getByText('Player A')).toBeTruthy();
+    expect(candidates().getByText('Player E')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Players (search by name)'), { target: { value: 'player d' } });
+    await waitFor(() => expect(candidates().queryByText('Player A')).toBeNull());
+    expect(candidates().getByText('Player D')).toBeTruthy();
+  });
+
+  it('submits the REAL user ids and the selected competition id (unchanged contract)', async () => {
+    __state.competitions = [{ id: 7, name: 'Doubles Open' }];
+    await openPairModal();
+    fireEvent.click(candidates().getByText('Player A'));
+    fireEvent.click(candidates().getByText('Player D'));
+    await waitFor(() => expect(selected().getByText('Player A')).toBeTruthy());
+    fireEvent.click(submitBtn());
+    await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
+    const [, payload] = (api.post as any).mock.calls[0] as [string, any];
+    expect(payload.member_user_ids).toEqual([10, 50]);
+    expect(payload.competition_id).toBe(7);
+  });
+
+  it('prevents selecting the same player twice', async () => {
+    await openPairModal();
+    fireEvent.click(candidates().getByText('Player A'));
+    await waitFor(() => expect(selected().getByText('Player A')).toBeTruthy());
+    const row = candidates().getByText('Player A').closest('button') as HTMLButtonElement;
+    expect(row.disabled).toBe(true); // already-selected candidate is not re-addable
+    fireEvent.click(row);
+    expect(selected().getAllByText('Player A')).toHaveLength(1);
+  });
+
+  it('excludes players active in the SELECTED competition only', async () => {
+    __state.competitions = [{ id: 7, name: 'Doubles Open' }];
+    __state.participants = [
+      ...__state.participants,
+      { id: 9, participant_type: 'pair', competition_id: 7, members: [
+        { user_id: 20, status: 'active', full_name: 'Player B' },
+        { user_id: 30, status: 'active', full_name: 'Player C' },
+      ] },
+      { id: 11, participant_type: 'pair', competition_id: 9, members: [
+        { user_id: 60, status: 'active', full_name: 'Player E' },
+      ] },
+    ];
+    await openPairModal();
+    // Player B is already paired in competition 7 → shown with a reason, not addable.
+    expect(candidates().getAllByText('Already in a pair/team').length).toBeGreaterThan(0);
+    expect((candidates().getByText('Player B').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    // Player E is active in a DIFFERENT competition → still available here.
+    expect((candidates().getByText('Player E').closest('button') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('requires an explicit competition when the tournament has several', async () => {
+    __state.competitions = [{ id: 7, name: 'Group A' }, { id: 8, name: 'Group B' }];
+    await openPairModal();
+    await waitFor(() => expect(competitionSelect()).toBeTruthy());
+    expect(submitBtn().disabled).toBe(true);
+    expect(screen.getByText('Select a competition before creating a pair.')).toBeTruthy();
+    fireEvent.change(competitionSelect(), { target: { value: '8' } });
+    fireEvent.click(candidates().getByText('Player A'));
+    fireEvent.click(candidates().getByText('Player D'));
+    await waitFor(() => expect(submitBtn().disabled).toBe(false));
+  });
+
+  it('an active participant with UNKNOWN competition association is never offered as available', async () => {
+    __state.competitions = [{ id: 7, name: 'Doubles Open' }];
+    __state.participants = [
+      ...__state.participants,
+      // The real response may carry a null association — it must NOT become a false
+      // "available": the player is shown with an explicit unverifiable reason.
+      { id: 12, participant_type: 'pair', competition_id: null, members: [
+        { user_id: 50, status: 'active', full_name: 'Player D' },
+      ] },
+    ];
+    await openPairModal();
+    expect(
+      candidates().getAllByText('Availability cannot be verified for the selected competition').length,
+    ).toBeGreaterThan(0);
+    expect((candidates().getByText('Player D').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    // …and it cannot be submitted (the candidate is not selectable).
+    expect(submitBtn().disabled).toBe(true);
+  });
+
+  it('removes stale selected players when the competition scope changes', async () => {
+    __state.competitions = [{ id: 7, name: 'Group A' }, { id: 8, name: 'Group B' }];
+    await openPairModal();
+    await waitFor(() => expect(competitionSelect()).toBeTruthy());
+    fireEvent.change(competitionSelect(), { target: { value: '7' } });
+    fireEvent.click(candidates().getByText('Player A'));
+    fireEvent.click(candidates().getByText('Player D'));
+    await waitFor(() => expect(selected().getByText('Player A')).toBeTruthy());
+
+    fireEvent.change(competitionSelect(), { target: { value: '8' } });
+
+    await waitFor(() => expect(screen.getByLabelText('Selected players').textContent).toBe(''));
+    expect(submitBtn().disabled).toBe(true);
+  });
+
+  it('org mode uses the ORG-scoped registrations query and never the platform endpoint', async () => {
+    renderPage('org');
+    fireEvent.click(await screen.findByText('Add Pair'));
+    await screen.findByLabelText('Players (search by name)');
+    const urls = (api.get as any).mock.calls.map((c: any[]) => String(c[0]));
+    expect(urls.some((u) => u.includes('/org/6/tournaments/1/registrations'))).toBe(true);
+    expect(urls.some((u) => u.includes('/admin/tournaments/1/registrations'))).toBe(false);
+  });
 });
 
 describe('TournamentParticipantsPage — Group 5 foundation', () => {
@@ -205,10 +340,11 @@ describe('TournamentParticipantsPage — pair/team management (Group 7)', () => 
     renderPage();
     await screen.findAllByText('Player A');
     fireEvent.click(screen.getByText('Add Team'));
-    expect(await screen.findByText(/Enter the player user IDs/)).toBeTruthy();
-    const numberInputs = document.querySelectorAll('input[type="number"]');
-    fireEvent.change(numberInputs[0], { target: { value: '10' } });
-    fireEvent.change(numberInputs[1], { target: { value: '20' } });
+    // B4 — the numeric user-id fields were replaced by the name-search picker.
+    expect(await screen.findByText(/Select registered players by name/)).toBeTruthy();
+    const list = within(screen.getByLabelText('Registered players'));
+    fireEvent.click(list.getByText('Player A'));
+    fireEvent.click(list.getByText('Player B'));
     fireEvent.click(screen.getByText('Create Participant'));
     await waitFor(() => expect((api.post as any).mock.calls.length).toBeGreaterThan(0));
     const [url, body] = (api.post as any).mock.calls.find((c: any[]) => c[0].includes('/teams'));
