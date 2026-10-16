@@ -1,48 +1,25 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { authMiddleware, requireRole, adminGuard } from '../../../shared/middleware/auth.middleware.js';
+import type { FastifyInstance } from 'fastify';
+import { authMiddleware, eitherRoleOrPermission } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './reports.controller.js';
-import { getPool } from '../../../database/mysql.js';
 
-const superAdminGuard = requireRole(['super_admin', 'super-admin']);
-function reportGuard(permission?: string) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!permission) return;
-    const userId = (request as any).userId;
-    if (!userId) return reply.status(401).send({ error: 'AUTHENTICATION_ERROR' });
-
-    try {
-      const pool = getPool();
-      const [rows] = (await pool.execute(
-        `SELECT DISTINCT r.slug FROM user_roles ur
-         JOIN roles r ON r.id = ur.role_id
-         WHERE ur.user_id = ? AND ur.is_active = TRUE
-           AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
-           AND r.is_active = TRUE AND r.deleted_at IS NULL`,
-        [userId]
-      )) as unknown as any[];
-      const userRoles = rows.map((r: any) => r.slug);
-      if (userRoles.includes('super_admin') || userRoles.includes('super-admin')) return;
-
-      const [permRows] = (await pool.execute(
-        `SELECT DISTINCT p.permission_key FROM user_roles ur
-         JOIN role_permissions rp ON rp.role_id = ur.role_id
-         JOIN permissions p ON p.id = rp.permission_id
-         WHERE ur.user_id = ? AND ur.is_active = TRUE
-           AND (ur.expires_at IS NULL OR ur.expires_at > NOW())`,
-        [userId]
-      )) as unknown as any[];
-      if (permRows.some((r: any) => r.permission_key === permission)) return;
-      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Insufficient permissions' });
-    } catch {
-      return reply.status(500).send({ error: 'INTERNAL_ERROR' });
-    }
-  };
-}
+/**
+ * P1-03 — Reports authorization.
+ *
+ * Every report read endpoint is permission-driven via `reports.view`, with an
+ * explicit Super Admin role bypass (`super_admin` / `super-admin`). Uses the
+ * shared `eitherRoleOrPermission` guard so the check fails closed and performs
+ * no database access in the presentation layer.
+ *
+ * There is no backend export endpoint — export is a frontend-only capability
+ * (`reports.export` gates the CSV button on the Reports page). No read route is
+ * therefore gated on `reports.export`, and no route is left on a role-only guard.
+ */
+const reportsViewGuard = eitherRoleOrPermission(['super_admin', 'super-admin'], ['reports.view']);
 
 export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
-  const g = superAdminGuard;
+  const g = reportsViewGuard;
 
   // Financial
   app.get('/reports/financial/summary', { preHandler: [g] }, ctrl.financialSummary);
