@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, TOURNAMENT_FINANCE_REPORT_KEYS, invalidateTournamentFinanceReports, invalidateOrgTournamentList, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment, invalidateAcademySessionCancelled } from './useRealtimeCacheUpdates';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, TOURNAMENT_FINANCE_REPORT_KEYS, invalidateTournamentFinanceReports, invalidateOrgTournamentList, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment, invalidateAcademySessionCancelled, REFEREE_LIFECYCLE_INVALIDATIONS, REFEREE_LIFECYCLE_EVENTS, invalidateRefereeAssignment } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -604,5 +604,35 @@ describe('G11.10 — G7 org Tournament P&L + finance-report realtime invalidatio
     expect(orgListPredicate!({ queryKey: ['org-7-tournaments', {}] })).toBe(true);
     expect(orgListPredicate!({ queryKey: ['admin-tournaments', {}] })).toBe(false);
     expect(orgListPredicate!({ queryKey: ['tournaments'] })).toBe(false);
+  });
+});
+
+describe('P1-04B — referee assignment realtime strategy', () => {
+  it('subscribes to both referee lifecycle socket event names', () => {
+    expect([...REFEREE_LIFECYCLE_EVENTS]).toEqual(['referee.assigned', 'referee.unassigned']);
+  });
+
+  it('invalidates the referee assignments list and dashboard counters', () => {
+    const flat = REFEREE_LIFECYCLE_INVALIDATIONS.map((k) => k.join('.'));
+    expect(flat).toContain('referee-assignments');
+    expect(flat).toContain('referee-dashboard');
+  });
+
+  it('does not invalidate admin/tournament/league or unrelated surfaces', () => {
+    const roots = REFEREE_LIFECYCLE_INVALIDATIONS.map((k) => k[0]);
+    for (const forbidden of ['admin', 'tournament', 'tournaments', 'league-matches', 'bookings', 'wallet', 'marketplace', 'notifications', 'coaches']) {
+      expect(roots).not.toContain(forbidden);
+    }
+    for (const key of REFEREE_LIFECYCLE_INVALIDATIONS) {
+      expect(key.length).toBeGreaterThan(0);
+      expect(key[0]).not.toBe('');
+    }
+  });
+
+  it('invalidateRefereeAssignment runs through the query client (exact keys, no duplicates)', () => {
+    const invalidated: string[][] = [];
+    const fakeQc = { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => invalidated.push([...queryKey]) };
+    invalidateRefereeAssignment(fakeQc as any);
+    expect(invalidated).toEqual([['referee-assignments'], ['referee-dashboard']]);
   });
 });

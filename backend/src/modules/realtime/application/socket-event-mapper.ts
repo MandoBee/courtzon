@@ -118,6 +118,7 @@ export function mapDomainEvent(eventName: string, payload: Record<string, unknow
     if (eventName.startsWith('organisation:') || eventName.startsWith('subscription:')) return mapOrganisationEvent(eventName, payload);
     if (eventName.startsWith('academy:') || eventName.startsWith('coaching:')) return mapAcademyEvent(eventName, payload);
     if (eventName.startsWith('coach:')) return mapCoachEvent(eventName, payload);
+    if (eventName.startsWith('referee:')) return mapRefereeEvent(eventName, payload);
     if (eventName.startsWith('attendance:')) return mapAttendanceEvent(eventName, payload);
     if (eventName.startsWith('membership:')) return mapMembershipEvent(eventName, payload);
     if (eventName.startsWith('registration.')) {
@@ -815,6 +816,33 @@ function mapCoachEvent(eventName: string, p: Record<string, any>): MappedSocketE
   return {
     type: `coach.${eventName.split(':').slice(1).join('.')}`,
     payload: { ...p, timestamp: Date.now() },
+    rooms,
+  };
+}
+
+/**
+ * P1-04B — referee assignment lifecycle (assigned / unassigned).
+ *
+ * Routed to the assigned referee's personal room (`user:{userId}`) plus the admin
+ * room. Both emitters resolve the referee's `user_id` and only emit when it
+ * exists, so `userId` is reliable. Never the match/player/organisation/branch
+ * rooms: the payload carries no such scope and the assignment is operational.
+ * Always returns a mapping (ADMIN_ROOM alone when `userId` is invalid) so the
+ * socket publisher never counts these events as dropped.
+ */
+function mapRefereeEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
+  const sub = eventName.split(':')[1] || 'updated';
+  const rooms: string[] = [ADMIN_ROOM];
+  const userId = numericId(p.userId);
+  if (userId != null) rooms.push(userRoom(userId));
+  return {
+    type: `referee.${sub}`,
+    payload: {
+      matchId: p.matchId,
+      refereeId: p.refereeId,
+      userId: p.userId,
+      matchType: p.matchType,
+    },
     rooms,
   };
 }

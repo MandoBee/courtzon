@@ -328,6 +328,28 @@ export const COACH_LIFECYCLE_INVALIDATIONS = [
 ] as const;
 
 /**
+ * P1-04B — referee assignment lifecycle. A `referee.assigned` / `referee.unassigned`
+ * socket event changes only the referee's own assignment surfaces. The event
+ * payload (matchId/refereeId/userId/matchType) carries NO tournament/league scope,
+ * so id-scoped admin match lists are intentionally NOT targeted here — doing so
+ * would require guessed keys. The referee's own assignments list and dashboard
+ * counters are the demonstrably affected caches.
+ */
+export const REFEREE_LIFECYCLE_INVALIDATIONS = [
+  ['referee-assignments'],
+  ['referee-dashboard'],
+] as const;
+
+/** Client socket event names for the referee assignment lifecycle (P1-04B). */
+export const REFEREE_LIFECYCLE_EVENTS = ['referee.assigned', 'referee.unassigned'] as const;
+
+export function invalidateRefereeAssignment(qc: QueryClient): void {
+  for (const queryKey of REFEREE_LIFECYCLE_INVALIDATIONS) {
+    qc.invalidateQueries({ queryKey });
+  }
+}
+
+/**
  * Group 5 — canonical socket event names for the Match / Result surface. Kept
  * here so the cache hook and its tests share ONE source of truth with the
  * backend subscription list.
@@ -1015,6 +1037,12 @@ export function useRealtimeCacheUpdates(): void {
         qc.invalidateQueries({ queryKey });
       }
     });
+  }
+
+  // P1-04B — referee assignment lifecycle. Delivered to the assigned referee's
+  // `user:{id}` room; refresh their own assignment list + dashboard counters live.
+  for (const eventName of REFEREE_LIFECYCLE_EVENTS) {
+    useSocketEvent(eventName, () => invalidateRefereeAssignment(qc));
   }
 
   // Coach service-locations change — emitted after a coach saves their branch
