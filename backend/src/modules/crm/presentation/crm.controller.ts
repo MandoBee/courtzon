@@ -33,7 +33,7 @@ export async function listCustomersHandler(request: FastifyRequest, reply: Fasti
             (SELECT COUNT(*) FROM bookings b WHERE b.user_id = u.id) AS total_bookings,
             (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS total_orders,
             (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.player_id = u.id) AS total_enrollments,
-            (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.user_id = u.id) AS total_tournaments,
+            (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.player_id = u.id) AS total_tournaments,
             (SELECT MAX(greatest(
               COALESCE((SELECT MAX(b.created_at) FROM bookings b WHERE b.user_id = u.id), '1970-01-01'),
               COALESCE((SELECT MAX(o.created_at) FROM orders o WHERE o.user_id = u.id), '1970-01-01'),
@@ -79,7 +79,7 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
   );
 
   const [tournaments] = await pool.execute<RowData>(
-    `SELECT COUNT(*) AS total FROM tournament_registrations WHERE user_id = ?`, [userId]
+    `SELECT COUNT(*) AS total FROM tournament_registrations WHERE player_id = ?`, [userId]
   );
 
   const [leagueTeams] = await pool.execute<RowData>(
@@ -91,7 +91,7 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
       COALESCE((SELECT MAX(created_at) FROM bookings WHERE user_id = ?), '1970-01-01'),
       COALESCE((SELECT MAX(created_at) FROM orders WHERE user_id = ?), '1970-01-01'),
       COALESCE((SELECT MAX(created_at) FROM academy_enrollments WHERE player_id = ?), '1970-01-01'),
-      COALESCE((SELECT MAX(created_at) FROM tournament_registrations WHERE user_id = ?), '1970-01-01')
+      COALESCE((SELECT MAX(registered_at) FROM tournament_registrations WHERE player_id = ?), '1970-01-01')
     )) AS last_activity`, [userId, userId, userId, userId]
   );
 
@@ -123,7 +123,7 @@ export async function getCustomerTimelineHandler(request: FastifyRequest, reply:
      UNION ALL
      SELECT created_at, 'enrollment', id, status, NULL FROM academy_enrollments WHERE player_id = ?
      UNION ALL
-     SELECT created_at, 'tournament_registration', id, status, NULL FROM tournament_registrations WHERE user_id = ?
+     SELECT registered_at, 'tournament_registration', id, status, NULL FROM tournament_registrations WHERE player_id = ?
      UNION ALL
      SELECT wt.created_at, 'wallet_transaction', wt.id, wt.transaction_type, wt.amount FROM wallet_transactions wt JOIN user_wallets uw ON uw.id = wt.wallet_id WHERE uw.user_id = ?
      UNION ALL
