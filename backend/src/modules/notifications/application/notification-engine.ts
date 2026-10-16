@@ -1223,6 +1223,16 @@ class NotificationEngine {
       'academy:attendance-updated',
       'coaching:session-scheduled', 'coaching:session-reminder', 'coaching:session-cancelled',
       'coach:invited', 'coach:agreement-added',
+      // P1-04A — coach lifecycle + platform/org-agreement events. The handler map
+      // (eventGroups) already defines these; they were omitted from this subscription
+      // list, so their handlers never registered and the notifications were dropped.
+      'coach:application-submitted', 'coach:application-approved', 'coach:application-rejected',
+      'coach:verified',
+      'coach:platform-activated', 'coach:platform-suspended', 'coach:platform-deactivated',
+      'coach:org-accepted', 'coach:org-rejected', 'coach:org-suspended', 'coach:org-resumed', 'coach:org-ended',
+      'coach:invite-accepted', 'coach:invite-rejected',
+      // P1-04A — referee assignment lifecycle events (handler map already defines them).
+      'referee:assigned', 'referee:unassigned',
       'tournament:created', 'tournament:registration-open', 'tournament:registration-closed',
       'tournament:starting-soon', 'tournament:match-scheduled', 'tournament:result',
       'tournament:bracket-generated', 'tournament:stage-completed', 'tournament:match-created',
@@ -1276,6 +1286,13 @@ class NotificationEngine {
       'subscription:request-submitted', 'subscription:request-approved', 'subscription:request-rejected', 'subscription:request-reopened',
       'setting:updated', 'setting:profile-applied',
     ];
+
+    // Documented no-op subscriptions (known exceptions): `system:digest` and
+    // `setting:profile-applied` are subscribed but currently have no handler in
+    // `eventGroups`, so start() registers a no-op listener for them. They are the
+    // only allowed subscribed-without-handler events and are asserted as such in
+    // notification-engine-subscriptions.spec.ts, so any NEW drift fails the test.
+    // Activating handlers for these is out of P1-04A scope.
 
     const eventMap = buildEventMap(eventGroups);
 
