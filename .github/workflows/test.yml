@@ -74,6 +74,87 @@ jobs:
           REDIS_PORT: 6379
           NODE_ENV: test
 
+  test-integration:
+    name: Backend Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: courtzon2026
+          MYSQL_DATABASE: courtzon_v3
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -u root -pcourtzon2026"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends default-mysql-client
+      - name: Apply baseline schema to courtzon_v3
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -P 3307 -uroot -pcourtzon2026 -e "DROP DATABASE IF EXISTS courtzon_v3; CREATE DATABASE courtzon_v3 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          # Import WITHOUT --force so any SQL error fails the job, matching the
+          # canonical import paths (scripts/migrate.sh and backend/docker-entrypoint.sh).
+          # This keeps ALTER TABLE / CREATE TRIGGER / reference INSERT failures
+          # fail-closed, not just missing tables.
+          mysql -h 127.0.0.1 -P 3307 -uroot -pcourtzon2026 courtzon_v3 -e "source ../database/baseline/001_courtzon_v3.sql"
+          # Secondary check: the authoritative baseline declares exactly one
+          # CREATE TABLE per table (328 as of this commit) and creates no views;
+          # every declared table must exist.
+          expected_tables=$(grep -o 'CREATE TABLE' ../database/baseline/001_courtzon_v3.sql | wc -l)
+          actual_tables=$(mysql -h 127.0.0.1 -P 3307 -uroot -pcourtzon2026 -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='courtzon_v3' AND table_type='BASE TABLE'")
+          echo "baseline tables in courtzon_v3: ${actual_tables} (expected ${expected_tables})"
+          if [ "${actual_tables}" -ne "${expected_tables}" ]; then
+            echo "FAIL: baseline import incomplete - expected ${expected_tables} tables, found ${actual_tables}"
+            exit 1
+          fi
+      - name: Seed database (canonical seed mechanism)
+        run: node scripts/seed.js
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3307
+          DB_NAME: courtzon_v3
+          DB_USER: root
+          DB_PASSWORD: courtzon2026
+          NODE_ENV: test
+      - name: Run integration tests
+        run: npm run test:int
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3307
+          DB_USER: root
+          DB_PASSWORD: courtzon2026
+          DB_NAME: courtzon_v3
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          REDIS_DB: 0
+          NODE_ENV: test
+
   test-frontend:
     name: Frontend Tests
     runs-on: ubuntu-latest
