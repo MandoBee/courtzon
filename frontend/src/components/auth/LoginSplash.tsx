@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { useTranslation } from '../../i18n';
 import SiteBrand from '../branding/SiteBrand';
@@ -11,10 +11,17 @@ const FADE_MS = 400;
 export default function LoginSplash() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [fading, setFading] = useState(false);
   const dismissedRef = useRef(false);
+
+  // Latest pathname, always current inside the deferred timer callback.
+  const currentPathRef = useRef(location.pathname);
+  currentPathRef.current = location.pathname;
+  // Pathname when the splash appeared (the user's landing route).
+  const splashPathRef = useRef<string | null>(null);
 
   const dismiss = useCallback(() => {
     if (dismissedRef.current) return;
@@ -24,13 +31,23 @@ export default function LoginSplash() {
       sessionStorage.removeItem(LOGIN_SPLASH_KEY);
       setVisible(false);
       setFading(false);
-      navigate('/app', { replace: true });
+      // Send the user to their player home ONLY if they have not navigated at any
+      // point while the welcome splash was visible. Without this guard the
+      // deferred redirect silently overrides an intentional in-app navigation
+      // (or deep link) performed during the splash/fade window.
+      if (splashPathRef.current === currentPathRef.current) {
+        navigate('/app', { replace: true });
+      }
     }, FADE_MS);
   }, [navigate]);
 
   useEffect(() => {
     if (!user) return;
     if (sessionStorage.getItem(LOGIN_SPLASH_KEY) !== '1') return;
+    // Capture the landing route once, on the first effect run. Guarding with the
+    // null check keeps the original landing route even if this effect re-runs
+    // (e.g. the auth store replaces the user object during the splash).
+    if (splashPathRef.current === null) splashPathRef.current = currentPathRef.current;
     setVisible(true);
     const timer = window.setTimeout(dismiss, DISPLAY_MS);
     return () => window.clearTimeout(timer);
