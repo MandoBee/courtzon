@@ -1,5 +1,6 @@
 import client from 'prom-client';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { createModuleLogger } from '../../shared/utils/logger.js';
 
 /**
  * Prometheus metrics registry. Exposes default Node/process metrics plus
@@ -35,11 +36,26 @@ export const aggregateVersionConflictsTotal = new client.Counter({
 
 const METRICS_PATH = '/metrics';
 
+const log = createModuleLogger('metrics');
+let warnedMissingTokenInProd = false;
+
+/** True in production — mirrors the `isProd` convention in `config/env.ts`. */
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
 /**
  * Wires per-request instrumentation and the scrape endpoint into the app.
- * The /metrics route is optionally protected: if METRICS_TOKEN is set, callers
- * must present it via `Authorization: Bearer <token>` or `?token=`. When unset
- * (typical for internal-network scraping over the Docker network) it is open.
+ *
+ * CZ-F26 — fail-closed protection for `GET /metrics`:
+ *  - Production WITHOUT a configured token (`METRICS_TOKEN` missing/empty):
+ *    the endpoint is treated as absent → 404 (never served unauthenticated).
+ *  - A configured token: authentication is required through the
+ *    `Authorization: Bearer <token>` header ONLY (query-string `?token=` is not
+ *    supported — it leaks via proxies, access logs and browser history). Missing
+ *    or invalid credentials → 401.
+ *  - Development/test without a token: historical open behavior is preserved.
+ * The token value is never logged.
  */
 export function registerMetrics(app: FastifyInstance): void {
   app.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -58,15 +74,32 @@ export function registerMetrics(app: FastifyInstance): void {
   });
 
   app.get(METRICS_PATH, async (request: FastifyRequest, reply: FastifyReply) => {
-    const token = process.env.METRICS_TOKEN;
-    if (token) {
-      const header = request.headers['authorization'];
-      const bearer = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
-      const queryToken = (request.query as any)?.token;
-      if (bearer !== token && queryToken !== token) {
-        return reply.status(401).send({ error: 'AUTHENTICATION_ERROR', message: 'Invalid metrics token' });
+    // `|| undefined` treats an empty string as "not configured".
+    const token = process.env.METRICS_TOKEN || undefined;
+
+    if (!token) {
+      if (isProduction()) {
+        // Fail closed: never expose metrics unauthenticated in production.
+        if (!warnedMissingTokenInProd) {
+          warnedMissingTokenInProd = true;
+          log.warn('METRICS_TOKEN is not set in production — GET /metrics is disabled (404)');
+        }
+        return reply.status(404).send({ error: 'NOT_FOUND', message: 'Not Found' });
       }
+      // Development/test: preserve the historical open scrape endpoint.
+      reply.header('Content-Type', registry.contentType);
+      return reply.send(await registry.metrics());
     }
+
+    // A token is configured — require it via the Authorization: Bearer header.
+    const header = request.headers['authorization'];
+    const bearer = typeof header === 'string' && header.startsWith('Bearer ')
+      ? header.slice('Bearer '.length)
+      : undefined;
+    if (bearer !== token) {
+      return reply.status(401).send({ error: 'AUTHENTICATION_ERROR', message: 'Invalid metrics token' });
+    }
+
     reply.header('Content-Type', registry.contentType);
     return reply.send(await registry.metrics());
   });
