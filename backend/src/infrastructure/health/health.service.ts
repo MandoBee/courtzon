@@ -108,10 +108,12 @@ export async function healthRedis(): Promise<{
 }
 
 export async function healthStorage(): Promise<{
-  status: string; uploadDir: string; writable: boolean; freeDiskMb: number; error?: string;
+  status: string; writable: boolean; error?: string;
 }> {
+  // MB-03 — the PUBLIC response intentionally does NOT expose the internal
+  // upload path or free-disk capacity (infrastructure disclosure). Only the
+  // health status / writability remain, which is what the probes consume.
   try {
-    const { statfsSync } = await import('node:fs');
     const uploadDir = join(import.meta.dirname, '..', '..', '..', 'uploads');
     accessSync(uploadDir, constants.F_OK);
     let writable = true;
@@ -120,24 +122,16 @@ export async function healthStorage(): Promise<{
     } catch {
       writable = false;
     }
-    let freeDiskMb = 0;
-    try {
-      const s = statfsSync(uploadDir);
-      freeDiskMb = Math.round((s.bsize * s.bavail) / (1024 * 1024));
-    } catch { /* statfs may not be available */ }
     return {
       status: writable ? 'ok' : 'degraded',
-      uploadDir,
       writable,
-      freeDiskMb,
     };
-  } catch (err: any) {
+  } catch {
+    // Generic message: the raw fs error would include the internal path.
     return {
       status: 'down',
-      uploadDir: '',
       writable: false,
-      freeDiskMb: 0,
-      error: err.message,
+      error: 'upload directory check failed',
     };
   }
 }

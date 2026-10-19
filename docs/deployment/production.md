@@ -166,27 +166,33 @@ In production, the backend redirects HTTP to HTTPS automatically when `x-forward
 | `GET /health/database` | DB connectivity | 200 / 503 |
 | `GET /health/redis` | Redis connectivity | 200 / 503 |
 | `GET /health/storage` | Storage backend | 200 / 503 |
-| `GET /metrics` | Prometheus metrics | 200 (requires `METRICS_TOKEN`) |
+| `GET /metrics` | Prometheus metrics (fail-closed) | 200 with `Authorization: Bearer <METRICS_TOKEN>`; 401 if a token is set but credentials are missing/invalid; 404 in production when `METRICS_TOKEN` is unset |
 
 ### Docker healthchecks
 
 Both backend and frontend containers have built-in healthchecks defined in their Dockerfiles and `docker-compose.yml`.
 
-### Prometheus + Grafana
+### Prometheus + Grafana (optional, not deployed by default)
 
-A monitoring stack is available via `docker-compose.monitoring.yml`:
+A monitoring stack is defined as an optional Docker Compose profile in
+`docker-compose.yml` (services `prometheus` and `grafana`). It does not start
+with a plain `docker compose up -d`; enable it explicitly:
 
 ```bash
-docker compose -f docker-compose.monitoring.yml up -d
+docker compose --profile monitoring up -d prometheus grafana
 ```
 
-This starts Grafana (port 3001) pre-configured with dashboards for:
+The repository provides the Prometheus scrape configuration
+(`monitoring/prometheus.yml`, job `courtzon-backend`), alert rules
+(`monitoring/alerts.yml`) and a Grafana datasource
+(`monitoring/grafana-datasources.yml`). No Grafana dashboards are provisioned in
+the repository. Deployment status is not asserted here; see
+`docs/operations/production-readiness.md`.
 
-- Node.js process metrics (event loop, memory, GC)
-- HTTP request rate, latency, errors
-- Redis cache hit rate
-- MySQL query performance
-- BullMQ queue depth
+Note: with the fail-closed `/metrics` behavior, an authenticated scrape also
+requires `METRICS_TOKEN` to be set on the backend and presented as a Bearer
+token by the scraper (the in-repo `monitoring/prometheus.yml` does not configure
+scrape authentication).
 
 ### Uptime monitoring
 

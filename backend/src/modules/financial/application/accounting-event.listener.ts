@@ -756,15 +756,15 @@ async function postMembershipPaymentAccounting(
 /** Resolve a membership installment by its payment_transactions id. */
 async function lookupInstallmentByPayment(paymentId: number): Promise<any | null> {
   if (!(paymentId > 0)) return null;
-  try {
-    const [rows] = await getPool().execute<RowData>(
-      `SELECT id, amount, commission_amount, currency FROM membership_installments WHERE payment_transaction_id = ? LIMIT 1`,
-      [paymentId],
-    );
-    return (rows as any[])[0] || null;
-  } catch {
-    return null;
-  }
+  // CZ-F22 Stage 2.4a-6: do NOT swallow a read failure here. A genuinely missing
+  // row already returns null WITHOUT throwing, so any thrown error is a real DB
+  // failure that must propagate (the caller rethrows) instead of being silently
+  // converted into an "installment not found" no-op that loses the posting.
+  const [rows] = await getPool().execute<RowData>(
+    `SELECT id, amount, commission_amount, currency FROM membership_installments WHERE payment_transaction_id = ? LIMIT 1`,
+    [paymentId],
+  );
+  return (rows as any[])[0] || null;
 }
 
 /**
@@ -881,6 +881,20 @@ async function resolveOrgId(referenceType: string, referenceId: number): Promise
   return null;
 }
 
+/**
+ * CZ-F22 Stage 2.4a-9 — a duplicate-key error is an idempotent success ONLY for
+ * the `ledgerRepository.createEntries` INSERT. Its table (`ledger_entries`) has
+ * exactly ONE unique key (`uk_dedup`); the AUTO_INCREMENT primary key and every
+ * other index are non-unique, so any ER_DUP_ENTRY raised by THAT statement is
+ * necessarily `uk_dedup`. `mysql2` exposes no structured constraint name, so the
+ * attribution is done by SCOPE (the dedicated try around that single call),
+ * never by parsing `sqlMessage`. Duplicates from `projectEntries`/`commit` or
+ * anywhere else are NOT the expected dedup and must propagate.
+ */
+function isDuplicateKeyError(err: any): boolean {
+  return err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062;
+}
+
 async function postAccountingEvent(
   eventType: string,
   sourceType: SourceType,
@@ -965,7 +979,22 @@ async function postAccountingEvent(
   try {
     await conn.beginTransaction();
 
-    const leIds = await ledgerRepository.createEntries(entries, conn);
+    // CZ-F22 Stage 2.4a-9 — the expected `uk_dedup` conflict is scoped to THIS
+    // single statement (see `isDuplicateKeyError`). `ledger_entries` has no other
+    // unique key this INSERT can violate, so an ER_DUP_ENTRY here is unambiguously
+    // the idempotent "a concurrent delivery already posted this event" case:
+    // roll back (no partial rows) and report success to the caller.
+    let leIds: number[];
+    try {
+      leIds = await ledgerRepository.createEntries(entries, conn);
+    } catch (err: any) {
+      if (isDuplicateKeyError(err)) {
+        await conn.rollback();
+        log.info({ err: err.message }, 'Duplicate uk_dedup (ledger_entries) — idempotent skip');
+        return;
+      }
+      throw err;
+    }
 
     const projectable = entries.map((e, i) => ({
       sourceType: e.sourceType,
@@ -994,11 +1023,11 @@ async function postAccountingEvent(
       organisationId,
     });
   } catch (err: any) {
+    // CZ-F22 Stage 2.4a-9 — anything that is NOT the scoped `uk_dedup` conflict
+    // (projectEntries, commit, or a non-duplicate createEntries error) stays on
+    // the error-propagation path so the delivery is retried and `processed_events`
+    // is never recorded for a delivery whose posting was not written.
     await conn.rollback();
-    if (err?.code === 'ER_DUP_ENTRY') {
-      log.info({ err: err.message }, 'Duplicate — idempotent rollback from DB constraint');
-      return;
-    }
     throw err;
   } finally {
     conn.release();
@@ -2497,11 +2526,15 @@ export function registerAccountingEventListeners(): void {
         `${referenceType} #${referenceId} payment`,
       );
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') {
-        log.info({ err: err.message }, 'Duplicate ledger entry — idempotent skip');
-        return;
-      }
       log.error({ err, eventType: data.referenceType }, 'Accounting event failed');
+      // CZ-F22 — do NOT swallow a retryable posting failure. The durable replay
+      // worker (`subscriber.worker.ts`) records `processed_events` ONLY when the
+      // handler RESOLVES; swallowing here permanently loses the posting (this is
+      // exactly how the 8 tournament-cash postings were lost). Rethrowing lets
+      // the worker retry with its explicit attempts/backoff and skip the
+      // processed marker, while `hasPosting` + `ledger_entries.uk_dedup` keep
+      // both the platform and the organisation ledger idempotent.
+      throw err;
     }
   });
 
@@ -2627,8 +2660,10 @@ export function registerAccountingEventListeners(): void {
         `${referenceType} #${referenceId} refund`,
       );
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Accounting refund event failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2705,8 +2740,10 @@ export function registerAccountingEventListeners(): void {
         log.info({ seriesId }, 'Allocation refund: no organisationId — organization reversal skipped (CourtZon reversed)');
       }
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate allocation refund entry — idempotent skip'); return; }
       log.error({ err }, 'Allocation refund accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2742,8 +2779,10 @@ export function registerAccountingEventListeners(): void {
 
       await postMarketplaceCashCommissionAccounting(orderId, currency);
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace start-processing (cash) accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2762,8 +2801,10 @@ export function registerAccountingEventListeners(): void {
       if (econ.cashHolder !== 'org') return;
       log.info({ orderId }, 'Marketplace delivered — cash accounting already released at start processing; no-op');
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace delivery accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2779,8 +2820,10 @@ export function registerAccountingEventListeners(): void {
 
       await postMarketplaceCashReversalAccounting(orderId, currency, 'refunded');
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace refund accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2796,8 +2839,10 @@ export function registerAccountingEventListeners(): void {
 
       await postMarketplaceCashReversalAccounting(orderId, currency, 'cancelled');
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Marketplace cancel accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2817,8 +2862,10 @@ export function registerAccountingEventListeners(): void {
         `Withdrawal #${withdrawalId} requested`,
       );
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Withdrawal request accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2836,8 +2883,10 @@ export function registerAccountingEventListeners(): void {
         `Withdrawal #${withdrawalId} completed`,
       );
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Withdrawal completion accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2859,8 +2908,10 @@ export function registerAccountingEventListeners(): void {
       if (!sourceId || gross <= 0) return;
       await postGatewaySettlementAccounting(sourceId, gross, net, fee, currency);
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Payment gateway settlement accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2878,8 +2929,10 @@ export function registerAccountingEventListeners(): void {
       if (!sourceId || gross <= 0) return;
       await postGatewaySettlementReversalAccounting(sourceId, gross, net, fee, currency);
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Payment gateway settlement reversal accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2967,8 +3020,10 @@ export function registerAccountingEventListeners(): void {
         );
       }
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err }, 'Settlement paid accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2984,8 +3039,10 @@ export function registerAccountingEventListeners(): void {
       if (!bookingId) return;
       await postBookingPaymentAccounting(Number(bookingId), data.paymentMethod || 'cod', currency);
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err, bookingId: data.bookingId }, 'Booking paid accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -2997,8 +3054,10 @@ export function registerAccountingEventListeners(): void {
       if (!bookingId || refundAmount <= 0) return;
       await postBookingRefundAccounting(Number(bookingId), refundAmount, currency);
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err, bookingId: data.bookingId }, 'Booking refund accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -3014,8 +3073,10 @@ export function registerAccountingEventListeners(): void {
       if (!awardId) return;
       await postPrizeAwardAccounting(awardId);
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err, awardId: data.awardId }, 'Prize award accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -3025,8 +3086,10 @@ export function registerAccountingEventListeners(): void {
       if (!awardId) return;
       await postPrizeRefundAccounting(awardId);
     } catch (err: any) {
-      if (err?.code === 'ER_DUP_ENTRY') { log.info({ err: err.message }, 'Duplicate — skip'); return; }
       log.error({ err, awardId: data.awardId }, 'Prize refund accounting failed');
+      // CZ-F22 Stage 2.4a-6: propagate so the durable replay worker retries and
+      // does NOT record processed_events; idempotent via hasPosting/uk_dedup.
+      throw err;
     }
   });
 
@@ -3085,7 +3148,11 @@ function replayDispatch(eventName: string, payload: unknown): Promise<void> {
     try {
       results.push(Promise.resolve(h(payload)));
     } catch (err) {
+      // CZ-F22 Stage 2.4a-6: a SYNCHRONOUS handler throw must also fail the
+      // delivery (never be swallowed as success). Re-surface it through the
+      // rejected-promise set so Promise.all rejects and the worker retries.
       log.error({ err, eventName }, 'Accounting replay dispatch failed');
+      results.push(Promise.reject(err));
     }
   }
   return Promise.all(results).then(() => undefined);

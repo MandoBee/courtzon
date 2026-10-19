@@ -48,11 +48,26 @@ Any change to these guarantees is a breaking change and requires a new ADR:
 Recommended (not yet implemented):
 
 1. `/payments/health` schema validation — verify response shape matches v1 contract
-2. `/health/version` schema validation — verify all v1 fields present
+2. `/health` schema validation — verify the retained v1 fields are present and explicitly exclude the five intentionally removed fields (`uploadDir`/`freeDiskMb` on `/health/storage`; `user`/`pid`/`ppid` on `/health/version`; see ADR 008)
 3. Webhook idempotency — send same payload twice, verify second is idempotent
 4. Manual recovery — recover an already-paid transaction, verify idempotent response
 
 Implementation: Add to existing test suite or CI pipeline. Use Zod schema validation against contract types.
+
+> **Approved security exception (project owner decision, 2026-10-19):** the
+> health-contract field removal documented in
+> `docs/contracts/health-endpoints-v1.md` is an approved exception to
+> `docs/api-versioning-policy.md` and to the frozen v1 removal rules. The decision
+> is recorded in `docs/adr/008-health-contract-security-redaction.md` (ADR 008,
+> in the `docs/adr/` governance stream; see the ADR-Freeze rule above; it is not
+> moved or duplicated into `docs/architecture/adr/`). The project owner
+> explicitly waived, for these five fields only, the null-retention rule and the
+> deprecation-period / `X-Deprecated` / `Sunset` requirements. Consequently the
+> "verify all v1 fields present" contract check above must preserve assertions
+> for the retained fields and **explicitly exclude** `uploadDir`, `freeDiskMb`,
+> `user`, `pid`, `ppid`. **Approval boundary:** this is the project owner's
+> decision; the repository defines no separate organizational approval workflow
+> and none is claimed.
 
 ---
 

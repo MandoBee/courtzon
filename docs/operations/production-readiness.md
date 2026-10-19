@@ -40,7 +40,7 @@ GET /health             — composite of all component checks
 GET /health/database    — DB connection + replication lag
 GET /health/redis       — Redis PING + memory usage
 GET /health/queues      — queue depth, stalled jobs, dead-letter count
-GET /health/storage     — disk space, upload directory writable
+GET /health/storage     — upload directory writable (path/disk capacity not exposed)
 GET /health/version     — build metadata
 ```
 
@@ -104,7 +104,12 @@ GET /health/version     — build metadata
 ### Endpoint
 
 ```
-GET /metrics — protected by METRICS_TOKEN environment variable
+GET /metrics — fail-closed:
+  production without METRICS_TOKEN        -> 404
+  METRICS_TOKEN set + valid Bearer token  -> 200 (Prometheus exposition)
+  METRICS_TOKEN set + missing/invalid     -> 401
+  `?token=` query auth is NOT supported
+  development/test without a token        -> 200
 ```
 
 ---
@@ -115,7 +120,7 @@ GET /metrics — protected by METRICS_TOKEN environment variable
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| Prometheus metrics endpoint | ✅ | `/metrics` on the backend |
+| Prometheus metrics endpoint | ✅ (fail-closed) | `/metrics` exists; production requires `METRICS_TOKEN` (404 without it) |
 | Grafana dashboards | ❌ Not deployed | No dashboards configured |
 | AlertManager rules | ⚠ Partial | Alert rules defined in `monitoring/alerts.yml` but not deployed |
 
@@ -123,7 +128,7 @@ GET /metrics — protected by METRICS_TOKEN environment variable
 
 | Alert | Condition | Severity |
 |-------|-----------|----------|
-| BackendDown | `up{job="backend"} == 0` for 1m | critical |
+| BackendDown | `up{job="courtzon-backend"} == 0` for 1m | critical |
 | HighErrorRate | `rate(courtzon_http_requests_total{status=~"5.."}[5m]) > 0.05` | warning |
 | HighLatency | `histogram_quantile(0.95, rate(courtzon_http_request_duration_seconds_bucket[5m])) > 2` | warning |
 | QueueDepthHigh | Queue depth > 1000 | warning |
