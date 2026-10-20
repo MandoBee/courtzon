@@ -34,6 +34,25 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # CI-only .env for the disposable test stack. `docker compose` aborts
+      # because backend declares `env_file: [.env]`, which is gitignored and
+      # absent on a fresh runner. Values are non-production test placeholders
+      # derived from docker-compose.yml + backend/src/config/env.ts (production
+      # fail-fast): MYSQL_ROOT_PASSWORD must equal DB_PASSWORD, DB_USER is root
+      # (database/Dockerfile creates no app_user), and PAYMENT_GATEWAY_PROVIDER
+      # must not be "mock" in production. REDIS_PASSWORD stays empty, matching
+      # the compose ${REDIS_PASSWORD:+...} command/healthcheck. Never committed.
+      - name: Create CI-only .env
+        run: |
+          cat > .env <<'EOF'
+          MYSQL_ROOT_PASSWORD=ci_test_root_pw
+          DB_USER=root
+          DB_PASSWORD=ci_test_root_pw
+          DB_NAME=courtzon_v3
+          SESSION_SECRET=ci_only_test_session_secret_at_least_32_chars_long
+          PAYMENT_GATEWAY_PROVIDER=paymob
+          REDIS_PASSWORD=
+          EOF
       - run: docker compose build backend frontend
       - run: docker compose up -d
       - run: sleep 10

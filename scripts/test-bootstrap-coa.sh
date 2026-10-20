@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Test-only bootstrap for migration-created global COA reference data.
 #
-# Applies ONLY the data-only, idempotent COA migrations in dependency order:
-#   099 -> 118 -> 155
+# Applies ONLY the data-only, idempotent COA + org-accounting RBAC migrations in
+# dependency order:
+#   099 -> 104 -> 118 -> 121 -> 155
 # then reruns seed 005 (its INSERT ... SELECT mappings depend on accounts that
-# those migrations create), then runs a read-only COA preflight.
+# those migrations create), then runs read-only COA + RBAC preflights.
 #
 # This is NOT the historical migration chain and must never be used on
 # production. It is guarded to test environments and loopback databases.
@@ -89,9 +90,22 @@ if [ -n "$base_missing" ]; then
 fi
 
 # --- Data-only COA migrations, in dependency order --------------------------
+# 104 is applied AFTER 099 because its Equity L2/L3 rows attach under the
+# EQUITY L1 root that 099 creates (see 104_year_close.sql Part 1).
+#
+# 121 registers the org-scoped manual-journal permission keys and grants them by
+# role slug (org-admin/accountant/...). The permission KEY is already shipped by
+# seed 001_baseline.sql, but seed 001 carries NO role_permissions grant for it
+# (the key postdates its grant snapshot), and no other seed/harness path grants
+# it — so without 121 the org-admin grant is absent and the org-journal RBAC
+# integration spec fails. 121 touches only permissions/role_permissions/roles/
+# permission_modules (all populated by seed 001), so it has no COA dependency and
+# is safe anywhere in this ordered list.
 for migration in \
   099_coa_hierarchy.sql \
+  104_year_close.sql \
   118_l4_default_catalog.sql \
+  121_org_manual_journal_permissions.sql \
   155_revenue_account_separation.sql
 do
   migration_file="$MIGRATIONS_DIR/$migration"
@@ -99,6 +113,38 @@ do
   printf 'Applying %s\n' "$migration"
   mysql_exec < "$migration_file" || die "Failed to apply $migration"
 done
+
+# --- Re-assert 099's intended L3 parents (test-harness reconciliation) -------
+# Seed 004 (run earlier by the canonical seed step) pre-parents a subset of
+# platform-global accounts directly under an L1 root: 1100/2100/2200 -> their
+# class root and 4100 -> 4000. Migration 099 later re-parents the same codes,
+# but its UPDATEs are guarded by "AND parent_id IS NULL", so on this bootstrap
+# order they are silently skipped and those mapped posting accounts stay at
+# Level 2 (non-postable) — e.g. "Account 6317 (4100) is at level 2". Migration
+# 104 creates the Equity hierarchy but does not touch these codes.
+#
+# This idempotent re-parent restores exactly the hierarchy 099 intends (it is a
+# no-op once correct, and never touches organisation-owned rows). Since 004 is
+# a canonical seed, fixing the order here keeps the change test-harness-only:
+# no migration, seed, or production accounting behaviour is altered.
+RECONCILE_SQL="$(cat <<'SQL'
+UPDATE chart_of_accounts c
+JOIN chart_of_accounts p
+  ON p.organisation_id IS NULL
+ AND p.code = CASE c.code
+   WHEN '1100' THEN 'ASSETS-CLEARING'
+   WHEN '2100' THEN 'LIABILITIES-WALLET'
+   WHEN '2200' THEN 'LIABILITIES-PAYABLES'
+   WHEN '4100' THEN 'REVENUE-COURT'
+ END
+SET c.parent_id = p.id
+WHERE c.organisation_id IS NULL
+  AND c.code IN ('1100', '2100', '2200', '4100')
+  AND c.parent_id <> p.id;
+SQL
+)"
+printf 'Re-asserting 099 intended L3 parents for seed-004 pre-parented accounts\n'
+mysql_exec -e "$RECONCILE_SQL" || die "Failed to reconcile seed-004/099 parent conflict"
 
 # 005 ran before 118/155 in the normal seed step. Its INSERT ... SELECT rows
 # for 2202/4160/1161/4191 were silently skipped; rerun it now that they exist.
@@ -151,6 +197,35 @@ if ! missing="$(mysql_exec -e "$PREFLIGHT_SQL" 2>/dev/null)"; then
 fi
 if [ -n "$missing" ]; then
   printf 'Missing global COA account codes:\n%s\n' "$missing" >&2
+  exit 1
+fi
+
+# --- Read-only RBAC preflight ------------------------------------------------
+# Migration 121 grants org.accounting.journal.create. The org-journal RBAC
+# integration spec asserts the org-admin role holds it; migration 121 resolves
+# roles by SLUG so both org-admin rows (global + org-scoped) are covered. This
+# preflight fails closed if the grant is ever missing again.
+RBAC_PREFLIGHT_SQL="$(cat <<'SQL'
+SELECT r.slug
+FROM roles r
+WHERE r.slug IN ('super_admin', 'org-admin', 'accountant')
+  AND r.deleted_at IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM role_permissions rp
+    JOIN permissions p ON p.id = rp.permission_id
+    WHERE rp.role_id = r.id
+      AND p.permission_key = 'org.accounting.journal.create'
+  )
+ORDER BY r.slug;
+SQL
+)"
+
+if ! rbac_missing="$(mysql_exec -e "$RBAC_PREFLIGHT_SQL" 2>/dev/null)"; then
+  die "Org accounting RBAC preflight failed (database connection or query failed)"
+fi
+if [ -n "$rbac_missing" ]; then
+  printf 'Missing org.accounting.journal.create grant for roles:\n%s\n' "$rbac_missing" >&2
   exit 1
 fi
 
