@@ -12,6 +12,8 @@ jobs:
   dependency-scan:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     strategy:
       matrix:
         dir: [backend, frontend]
@@ -27,7 +29,7 @@ jobs:
       - run: npm audit --audit-level=high
         working-directory: ${{ matrix.dir }}
       - name: Run Snyk (if configured)
-        if: ${{ secrets.SNYK_TOKEN != '' }}
+        if: ${{ env.SNYK_TOKEN != '' }}
         run: |
           npm install -g snyk
           snyk test --all-projects
