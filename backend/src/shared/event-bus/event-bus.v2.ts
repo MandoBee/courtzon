@@ -138,21 +138,32 @@ class EventBusV2 {
           }
         }
 
-        try {
-          for (const handler of handlers) {
-            handler(envelope.payload);
+        for (const handler of handlers) {
+          try {
+            // CZ-F22 — handlers are async; attach a rejection handler so a failed
+            // in-memory handler is LOGGED instead of becoming an unhandled
+            // rejection (which would crash the process, since no global
+            // unhandledRejection handler exists). Retry + `processed_events` are
+            // owned by the durable replay worker, not by this fire-and-forget path.
+            Promise.resolve(handler(envelope.payload)).catch((err) => {
+              log.error({ err, eventName }, 'event.in_memory_handler_failed');
+            });
+          } catch (err) {
+            log.error({ err, eventName }, 'event.in_memory_handler_failed');
           }
-        } catch (err) {
-          log.error({ err, eventName }, 'event.in_memory_handler_failed');
         }
       });
     } else {
-      try {
-        for (const handler of handlers) {
-          handler(envelope.payload);
+      for (const handler of handlers) {
+        try {
+          // CZ-F22 — see the in-transaction branch above: rejections must be
+          // observed here, never left unhandled.
+          Promise.resolve(handler(envelope.payload)).catch((err) => {
+            log.error({ err, eventName }, 'event.in_memory_handler_failed');
+          });
+        } catch (err) {
+          log.error({ err, eventName }, 'event.in_memory_handler_failed');
         }
-      } catch (err) {
-        log.error({ err, eventName }, 'event.in_memory_handler_failed');
       }
 
       if (subs.length > 0) {

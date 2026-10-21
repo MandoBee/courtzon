@@ -31,14 +31,14 @@ async function withTestRows(table: string, count: number, fn: () => Promise<void
     table === 'design_tokens'
       ? '(token_key, token_type, default_value, category)'
       : table === 'users'
-      ? '(full_name, email, phone_number, full_phone, password_hash, gender, country_id)'
+      ? '(public_id, full_name, email, phone_number, full_phone, password_hash, gender, country_id)'
       : '(id)';
 
   const valFn =
     table === 'design_tokens'
       ? (i: number) => `('test_key_${i}', 'color', '#000000', 'general')`
       : table === 'users'
-      ? (i: number) => `('Test User ${i}', 'test${i}@example.com', '010126377${String(i).padStart(2, '0')}', '+2010126377${String(i).padStart(2, '0')}', '$2b$10$placeholder', 'male', 1)`
+      ? (i: number) => `(UUID(), 'Test User ${i}', 'test${i}@example.com', '010126377${String(i).padStart(2, '0')}', '+2010126377${String(i).padStart(2, '0')}', '$2b$10$placeholder', 'male', 1)`
       : () => '()';
 
   const values = Array.from({ length: count }, (_, i) => valFn(i + 1)).join(', ');

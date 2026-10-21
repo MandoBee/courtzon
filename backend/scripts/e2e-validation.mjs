@@ -6,12 +6,23 @@ const BASE = 'http://127.0.0.1:3000';
 const PASS = '✅';
 const FAIL = '❌';
 const SKIP = '⏭️';
+const WARN = '⚠️';
 
 const results = [];
 
 function record(workflow, step, pass, detail = '') {
   results.push({ workflow, step, pass, detail });
   console.log(`${pass ? PASS : FAIL} ${workflow}: ${step}${detail ? ' — ' + detail : ''}`);
+}
+
+/**
+ * CZ-RELEASE-BLOCKERS-17 — non-fatal expectation. Warnings are counted
+ * separately in the summary: they are neither passes nor failures, so they can
+ * never hide a genuine failure and are never reported as successful checks.
+ */
+function recordWarn(workflow, step, detail = '') {
+  results.push({ workflow, step, pass: false, warn: true, detail });
+  console.log(`${WARN} ${workflow}: ${step}${detail ? ' — ' + detail : ''}`);
 }
 
 async function api(method, path, opts = {}) {
@@ -36,6 +47,53 @@ async function api(method, path, opts = {}) {
     if (body) req.write(body);
     req.end();
   });
+}
+
+/**
+ * CZ-F26 — `GET /metrics` is fail-closed, so the same deployment can legitimately
+ * answer an unauthenticated probe with three different statuses:
+ *   - 200 + Prometheus text: open (development/test without METRICS_TOKEN);
+ *   - 401 + AUTHENTICATION_ERROR: a token is configured, none was supplied;
+ *   - 404 + NOT_FOUND: production without METRICS_TOKEN (endpoint disabled).
+ *
+ * All three are intended protection outcomes. A 5xx, a proxy/gateway error, or a
+ * generic Fastify "Route GET:/metrics not found" 404 is NOT protection and must
+ * fail. The body/content-type is checked so an unrelated success cannot pass.
+ */
+function metricsOutcome(res) {
+  const body = typeof res.body === 'string' ? res.body : JSON.stringify(res.body ?? '');
+  const looksLikeMetrics = body.includes('courtzon_') && body.includes('# HELP ');
+  const isJson = !!res.body && typeof res.body === 'object';
+  const contentType = String(res.headers?.['content-type'] || '');
+
+  if (res.status === 200) {
+    const pass = looksLikeMetrics && contentType.includes('text/plain');
+    return {
+      pass,
+      detail: pass
+        ? `open (200, ${contentType})`
+        : `200 but not a Prometheus metrics response (${contentType || 'no content-type'})`,
+    };
+  }
+  if (res.status === 401) {
+    const pass = isJson && res.body.error === 'AUTHENTICATION_ERROR' && !looksLikeMetrics;
+    return {
+      pass,
+      detail: pass
+        ? 'token configured — unauthenticated request rejected (401)'
+        : '401 without the expected AUTHENTICATION_ERROR body (not our protection)',
+    };
+  }
+  if (res.status === 404) {
+    const pass = isJson && res.body.error === 'NOT_FOUND' && res.body.message === 'Not Found' && !looksLikeMetrics;
+    return {
+      pass,
+      detail: pass
+        ? 'production without METRICS_TOKEN — endpoint disabled (404)'
+        : '404 without the expected NOT_FOUND body (route missing or proxy error)',
+    };
+  }
+  return { pass: false, detail: `unexpected status ${res.status}` };
 }
 
 // ── 1. AUTHENTICATION ──
@@ -164,7 +222,8 @@ try {
   record(WH, 'Version endpoint', r.status === 200 && r.body.nodeVersion);
 
   r = await api('GET', '/metrics');
-  record(WH, 'Metrics endpoint', r.status === 200, `type=${typeof r.body}`);
+  const metrics = metricsOutcome(r);
+  record(WH, 'Metrics endpoint', metrics.pass, metrics.detail);
 } catch (e) {
   record('Health', 'Health suite', false, e.message);
 }
@@ -362,51 +421,32 @@ try {
   record('Security', 'Security suite', false, e.message);
 }
 
-// ── FINAL SUMMARY ──
-console.log('\n═══════════════════════════════════════');
-console.log('  CourtZon E2E Validation Report');
-console.log('═══════════════════════════════════════');
-const passed = results.filter(r => r.pass).length;
-const failed = results.filter(r => !r.pass).length;
-console.log(`  Total checks: ${results.length}`);
-console.log(`  Passed: ${passed}`);
-console.log(`  Failed: ${failed}`);
-console.log(`  Score: ${Math.round((passed / results.length) * 100)}%`);
-console.log('═══════════════════════════════════════');
-
-if (failed > 0) {
-  console.log('\nFailed checks:');
-  for (const r of results.filter(r => !r.pass)) {
-    console.log(`  ${FAIL} ${r.workflow}: ${r.step} — ${r.detail}`);
-  }
-}
-
 // ── Workflow 9: Notification Templates Validation ──
-results.nt = [];
 try {
-  const { default: mysql } = await import('mysql2/promise');
+  const mysql = await import('mysql2/promise');
   const pool = mysql.createPool({ host:'127.0.0.1', port:3307, user:'root', password:'courtzon2026', database:'courtzon_v3' });
   const [tpls] = await pool.execute(
     `SELECT event_name, locale FROM notification_templates WHERE is_active = TRUE ORDER BY event_name, locale`
   );
   const tplMap = new Map();
-  for (const r of tpls) tplMap.set(`${r.event_name}:${r.locale}`, true);
+  for (const row of tpls) tplMap.set(`${row.event_name}:${row.locale}`, true);
 
   const required = ['booking:created:en', 'payment:completed:en', 'match:invitation:en', 'system:announcement:en', 'system:digest:en', 'security:suspicious-login:en'];
   for (const key of required) {
-    if (tplMap.has(key)) add({ workflow:'notifications', step:'templates', status:'pass', detail:key });
-    else add({ workflow:'notifications', step:'templates', status:'fail', detail:`Missing template: ${key}` });
+    record('Notifications', `Template ${key}`, tplMap.has(key), tplMap.has(key) ? 'present' : 'missing');
   }
 
   const [providers] = await pool.execute('SELECT slug FROM notification_providers WHERE is_enabled = TRUE');
-  add({ workflow:'notifications', step:'providers', status: providers.length >= 2 ? 'pass' : 'warn', detail:`${providers.length} enabled` });
+  if (providers.length >= 2) record('Notifications', 'Providers enabled', true, `${providers.length} enabled`);
+  else recordWarn('Notifications', 'Providers enabled', `${providers.length} enabled (expected >= 2)`);
 
   const [flags] = await pool.execute('SELECT flag_key FROM notification_feature_flags WHERE is_enabled = TRUE');
-  add({ workflow:'notifications', step:'feature-flags', status: flags.length >= 4 ? 'pass' : 'warn', detail:`${flags.length} flags` });
+  if (flags.length >= 4) record('Notifications', 'Feature flags enabled', true, `${flags.length} flags`);
+  else recordWarn('Notifications', 'Feature flags enabled', `${flags.length} flags (expected >= 4)`);
 
   await pool.end();
 } catch (e) {
-  add({ workflow:'notifications', step:'db', status:'fail', detail:e.message });
+  record('Notifications', 'DB validation', false, e.message);
 }
 
 // ── Workflow 10: Client Error Reporting Endpoint ──
@@ -414,9 +454,11 @@ try {
   const r = await api('POST', '/client/errors', {
     body: { errorType:'test', errorMessage:'E2E validation test', pageUrl:'/test', platform:'node' }
   });
-  add({ workflow:'client-errors', step:'report', status: r.success && r.json?.received ? 'pass' : 'fail', detail:r.success ? 'accepted' : r.detail });
+  record('Client errors', 'Report accepted',
+    r.status === 200 && r.body?.received === true,
+    `status=${r.status} received=${r.body?.received}`);
 } catch (e) {
-  add({ workflow:'client-errors', step:'report', status:'fail', detail:e.message });
+  record('Client errors', 'Report accepted', false, e.message);
 }
 
 // ── Workflow 11: Web Vitals Endpoint ──
@@ -424,9 +466,11 @@ try {
   const r = await api('POST', '/client/web-vitals', {
     body: { metrics:[{ name:'LCP', value:1234, rating:'good' },{ name:'CLS', value:0.01, rating:'good' }], pageUrl:'/test' }
   });
-  add({ workflow:'web-vitals', step:'report', status: r.success ? 'pass' : 'fail', detail:r.success ? 'accepted' : r.detail });
+  record('Web vitals', 'Report accepted',
+    r.status === 200 && r.body?.received === true && r.body?.count === 2,
+    `status=${r.status} received=${r.body?.received} count=${r.body?.count}`);
 } catch (e) {
-  add({ workflow:'web-vitals', step:'report', status:'fail', detail:e.message });
+  record('Web vitals', 'Report accepted', false, e.message);
 }
 
 // Cleanup test data
@@ -443,3 +487,36 @@ try {
   await pool.end();
   console.log('\nTest data cleaned up.');
 } catch {}
+
+// ── FINAL SUMMARY (single, after every workflow and cleanup) ──
+const warns = results.filter(r => r.warn).length;
+const passed = results.filter(r => r.pass && !r.warn).length;
+const failed = results.filter(r => !r.pass && !r.warn).length;
+const score = results.length > 0 ? Math.round((passed / results.length) * 100) : 0;
+
+console.log('\n═══════════════════════════════════════');
+console.log('  CourtZon E2E Validation Report');
+console.log('═══════════════════════════════════════');
+console.log(`  Total checks: ${results.length}`);
+console.log(`  Passed: ${passed}`);
+console.log(`  Warnings: ${warns}`);
+console.log(`  Failed: ${failed}`);
+console.log(`  Score: ${score}%`);
+console.log('═══════════════════════════════════════');
+
+if (warns > 0) {
+  console.log('\nWarnings:');
+  for (const r of results.filter(r => r.warn)) {
+    console.log(`  ${WARN} ${r.workflow}: ${r.step} — ${r.detail}`);
+  }
+}
+
+if (failed > 0) {
+  console.log('\nFailed checks:');
+  for (const r of results.filter(r => !r.pass && !r.warn)) {
+    console.log(`  ${FAIL} ${r.workflow}: ${r.step} — ${r.detail}`);
+  }
+}
+
+// Non-zero exit when a check genuinely failed; warnings alone do not fail.
+process.exitCode = failed > 0 ? 1 : 0;

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFormValue } from './EligibilityFormSection';
 import EligibilitySummary from './EligibilitySummary';
 
-vi.mock('../services/api', () => ({
+vi.mock('../../services/api', () => ({
   default: {
     get: vi.fn((url: string) =>
       url === '/player-levels'

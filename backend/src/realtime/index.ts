@@ -6,6 +6,7 @@ import { registerUserDevice } from '../modules/notifications/application/cross-d
 import { userRoom, orgRoom, branchRoom, bookingRoom, matchRoom, conversationRoom, room, ADMIN_ROOM, PLAYER_ROOM } from '../modules/realtime/domain/realtime-rooms.js';
 import { eventBusV2 } from '../shared/event-bus/event-bus.v2.js';
 import { ALLOWED_ORIGINS } from '../app.js';
+import { corsOriginCallback } from '../shared/middleware/cors-origin.js';
 import { getPool } from '../database/mysql.js';
 import { canAccessOrganisation, isPlatformAdmin } from '../shared/middleware/org-access.js';
 
@@ -25,16 +26,17 @@ function slog(socketId: string, msg: string) {
 }
 
 export function setupRealtime(app: FastifyInstance): SocketIOServer {
-  const isDev = process.env.NODE_ENV === 'development';
-  const isDockerLocal = process.env.DOCKER_ENV === 'true';
+  // MB-05 — align with the HTTP CORS policy: `isDev` is the sole permissive
+  // switch (running in Docker does NOT imply development), and production only
+  // allows the shared production-safe allowlist.
+  const isDev = process.env.NODE_ENV !== 'production';
 
   io = new SocketIOServer(app.server, {
     cors: {
-      origin: (origin, cb) => {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
-        else if (isDev || isDockerLocal) cb(null, true);
-        else cb(new Error('Not allowed by CORS'), false);
-      },
+      // MB-05 — shared policy: a disallowed origin is rejected with cb(null,
+      // false) (never an Error, which would surface as a handshake failure),
+      // and `isDev` is the only permissive switch.
+      origin: corsOriginCallback(ALLOWED_ORIGINS, isDev),
       credentials: true,
       methods: ['GET', 'POST'],
     },

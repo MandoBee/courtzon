@@ -529,7 +529,10 @@ describe('Phase 1 parity gate — org sidebar (buildOrgNavItems vs Navigation Re
 
   function assertOrgParity(can: (p: string) => boolean, orgId: string, t: (k: string) => string) {
     const legacy = buildLegacyOrgNavItems(can, orgId) as unknown as ResolvedNavItem[];
-    const registry = resolveOrgNav(can, orgId, t);
+    // G11.22 P1 added the org Membership domain (registry-first). The legacy
+    // fixtures are intentionally frozen at the pre-Membership migration surface,
+    // so the post-migration Membership subtree is excluded from this comparison.
+    const registry = resolveOrgNav(can, orgId, t).filter((i) => i.id !== 'nav.org.domain.membership');
     const diff = firstDiff(registry, legacy);
     expect(diff).toBeNull();
   }
@@ -590,6 +593,28 @@ describe('Org sidebar — Manual Journal removed (org-facing journal lives in Ac
     expect(ORG_NAV.some((n) => n.permissionKey === 'org.accounting.journal.view')).toBe(false);
     expect(ORG_ID_TO_KEY.has('nav.org.accounting-journal')).toBe(false);
     expect(ORG_LEGACY_KEY_TO_ID.has('org.accounting.journal.view')).toBe(false);
+  });
+});
+
+describe('G11.22 P1 — Membership navigation entries (registry-first, post-migration)', () => {
+  it('keeps the org Membership domain and its children in the registry', () => {
+    const ids = collectIds(ORG_NAV);
+    expect(ids).toContain('nav.org.domain.membership');
+    expect(ids).toContain('nav.org.membership-plans');
+    expect(ids).toContain('nav.org.membership-settings');
+    expect(ids).toContain('nav.org.membership-subscriptions');
+    expect(ORG_LEGACY_KEY_TO_ID.get('membership.view')).toEqual([
+      'nav.org.membership-plans',
+      'nav.org.membership-settings',
+      'nav.org.membership-subscriptions',
+    ]);
+  });
+
+  it('keeps the player My Memberships entry in the registry', () => {
+    const mine = PLAYER_MORE_ITEMS.filter((i) => i.id === 'nav.player.my_memberships');
+    expect(mine).toHaveLength(1);
+    expect(mine[0].path).toBe('/my/membership/subscriptions');
+    expect(mine[0].permissionKey).toBe('membership.view');
   });
 });
 
@@ -692,12 +717,17 @@ describe('Phase 1 parity gate — player nav (BottomNav vs Navigation Registry)'
           path: i.path,
           ...(i.perm ? { permissionKey: i.perm } : {}),
         }));
-        const registry = PLAYER_MORE_ITEMS.filter((i) => !i.sellerOnly || isSeller).map((i) => ({
-          label: resolveLabel(i.label, t),
-          icon: i.icon,
-          path: i.path,
-          ...(i.permissionKey !== undefined ? { permissionKey: i.permissionKey } : {}),
-        }));
+        // G11.22 P1 added My Memberships (registry-first); the legacy fixture is
+        // intentionally frozen at the pre-Membership migration surface.
+        const registry = PLAYER_MORE_ITEMS
+          .filter((i) => i.id !== 'nav.player.my_memberships')
+          .filter((i) => !i.sellerOnly || isSeller)
+          .map((i) => ({
+            label: resolveLabel(i.label, t),
+            icon: i.icon,
+            path: i.path,
+            ...(i.permissionKey !== undefined ? { permissionKey: i.permissionKey } : {}),
+          }));
         expectSameFields(registry as unknown as ResolvedNavItem[], legacy as unknown as ResolvedNavItem[]);
       }
     }
@@ -727,7 +757,9 @@ describe('Phase 1 parity gate — player nav (BottomNav vs Navigation Registry)'
                 ...(i.perm ? { permissionKey: i.perm } : {}),
               }),
             );
-            const registry = resolvePlayerMoreItems(t, { isSeller, chatEnabled, can });
+            // Same frozen-surface scoping as the raw definitions above.
+            const registry = resolvePlayerMoreItems(t, { isSeller, chatEnabled, can })
+              .filter((i) => i.id !== 'nav.player.my_memberships');
             try {
               expectSameFields(registry, legacy as unknown as ResolvedNavItem[]);
             } catch (e) {
@@ -763,8 +795,10 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const orgIds = collectIds(ORG_NAV);
     expect(orgIds.every((id) => id.startsWith('nav.org.'))).toBe(true);
-    expect(orgIds.length).toBe(42);
-    expect(ORG_ID_TO_KEY.size).toBe(36);
+    // Includes the G11.22 P1 Membership domain + 3 children (+4 ids and +3
+    // permission mappings). Legacy fixtures remain frozen at 42/36.
+    expect(orgIds.length).toBe(46);
+    expect(ORG_ID_TO_KEY.size).toBe(39);
     // Category domains carry no permission key (they render when a permitted child passes);
     // every node that DOES carry a key must be registered in the id→key map.
     for (const id of ORG_ID_TO_KEY.keys()) expect(orgIds.includes(id)).toBe(true);
@@ -783,8 +817,10 @@ describe('Navigation registry integrity (immutable ids)', () => {
 
     const playerIds = [...PLAYER_CORE_TABS.map((i) => i.id), ...PLAYER_MORE_ITEMS.map((i) => i.id)];
     expect(playerIds.every((id) => id.startsWith('nav.player.'))).toBe(true);
-    expect(playerIds.length).toBe(20);
-    expect(new Set(playerIds).size).toBe(20);
+    // Includes G11.22 P1 `nav.player.my_memberships` (+1 id). The legacy
+    // fixtures remain frozen at 20.
+    expect(playerIds.length).toBe(21);
+    expect(new Set(playerIds).size).toBe(21);
     for (const id of playerIds) {
       const hasPermission = [...PLAYER_MORE_ITEMS].find((i) => i.id === id)?.permissionKey !== undefined;
       if (hasPermission) expect(PLAYER_ID_TO_KEY.has(id)).toBe(true);
@@ -856,8 +892,9 @@ describe('Navigation registry integrity (immutable ids)', () => {
   });
 
   it('maps player legacy permission keys to their nav.player.* nodes', () => {
-    expect(PLAYER_ID_TO_KEY.size).toBe(14);
-    expect(PLAYER_LEGACY_KEY_TO_ID.size).toBe(14);
+    // G11.22 P1 `nav.player.my_memberships` carries `membership.view` (+1 key).
+    expect(PLAYER_ID_TO_KEY.size).toBe(15);
+    expect(PLAYER_LEGACY_KEY_TO_ID.size).toBe(15);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('coaches.view')).toEqual(['nav.player.coaches']);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('player.wallet.view')).toEqual(['nav.player.wallet']);
     expect(PLAYER_LEGACY_KEY_TO_ID.get('community.chat.view')).toEqual(['nav.player.messages']);

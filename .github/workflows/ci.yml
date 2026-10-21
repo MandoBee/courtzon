@@ -29,50 +29,30 @@ jobs:
       - run: npm run build --if-present
         working-directory: ${{ matrix.workspace }}
 
-  test-backend:
-    name: Backend Tests
-    runs-on: ubuntu-24.04
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: testpass
-          MYSQL_DATABASE: courtzon_test
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-      - run: npm ci
-        working-directory: backend
-      - run: npx vitest run --reporter=verbose
-        working-directory: backend
-        env:
-          NODE_ENV: test
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_USER: root
-          DB_PASSWORD: testpass
-          DB_NAME: courtzon_test
-          REDIS_HOST: 127.0.0.1
-          REDIS_PORT: 6379
-          SESSION_SECRET: ci-test-session-secret-32-chars-long!!
-
   docker-build:
     name: Docker Build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # CI-only .env for the disposable test stack. `docker compose` aborts
+      # because backend declares `env_file: [.env]`, which is gitignored and
+      # absent on a fresh runner. Values are non-production test placeholders
+      # derived from docker-compose.yml + backend/src/config/env.ts (production
+      # fail-fast): MYSQL_ROOT_PASSWORD must equal DB_PASSWORD, DB_USER is root
+      # (database/Dockerfile creates no app_user), and PAYMENT_GATEWAY_PROVIDER
+      # must not be "mock" in production. REDIS_PASSWORD stays empty, matching
+      # the compose ${REDIS_PASSWORD:+...} command/healthcheck. Never committed.
+      - name: Create CI-only .env
+        run: |
+          cat > .env <<'EOF'
+          MYSQL_ROOT_PASSWORD=ci_test_root_pw
+          DB_USER=root
+          DB_PASSWORD=ci_test_root_pw
+          DB_NAME=courtzon_v3
+          SESSION_SECRET=ci_only_test_session_secret_at_least_32_chars_long
+          PAYMENT_GATEWAY_PROVIDER=paymob
+          REDIS_PASSWORD=
+          EOF
       - run: docker compose build backend frontend
       - run: docker compose up -d
       - run: sleep 10

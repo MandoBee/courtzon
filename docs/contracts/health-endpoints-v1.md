@@ -2,6 +2,25 @@
 
 > **Status:** Frozen as of 2026-07-04  
 > **Breaking changes require:** New version prefix + migration + CI contract test update
+>
+> **Security exception (APPROVED — project owner decision, 2026-10-19):** the
+> five fields `uploadDir` and `freeDiskMb` (`/health/storage`) and `user`, `pid`,
+> `ppid` (`/health/version`) are removed under an explicitly approved security
+> exception. Rationale: an internal filesystem path, free-disk capacity and
+> process identifiers must not be exposed on a public endpoint. The decision is
+> recorded in `docs/adr/008-health-contract-security-redaction.md` (ADR 008, in
+> the `docs/adr/` governance stream per `docs/GOVERNANCE.md`; it is not moved or
+> duplicated into `docs/architecture/adr/`). For these five fields only, the
+> decision explicitly waives the frozen-v1 field-removal rule, the "retain as
+> `null` for one version cycle" rule, and the deprecation-period /
+> `X-Deprecated` / `Sunset` requirements. No internal consumer of the removed
+> fields exists (`scripts/ci-arch-check.sh` and `backend/scripts/e2e-validation.mjs`
+> use only retained fields); external consumers are unknown. **Approval
+> boundary:** this is the project owner's decision; the repository defines no
+> separate organizational approval workflow and none is claimed.
+> **Contract-validation follow-up:** preserve assertions for the retained fields
+> and explicitly exclude these five fields from any "all v1 fields present"
+> check.
 
 ---
 
@@ -34,9 +53,6 @@
   "applicationVersion": "1.0.0",
   "expectedMigration": "10_deduplicate_gateway_ref_index",
   "nodeVersion": "v22.22.3",
-  "user": 100,
-  "pid": 7,
-  "ppid": 1,
   "storageProvider": "local"
 }
 ```
@@ -54,6 +70,9 @@
 - `gitCommitMismatch`: `true` when a lower-priority source reports a different
   commit (e.g. a stale image bake). `imageGitCommit` / `platformGitCommit`
   expose both raw values for diagnosis.
+- **Process details are not exposed (MB-03):** `user`, `pid`, and `ppid` were
+  removed from this response; the endpoint returns build/deployment metadata
+  only (the fields shown above). Consumers must not rely on the removed fields.
 - **Expected production state (verified configuration):** Coolify supplies
   `SOURCE_COMMIT` at **build time only** and does not expose it to the running
   container, so `/health/version` normally returns `gitCommitSource: "image"`

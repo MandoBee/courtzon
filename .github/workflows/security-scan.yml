@@ -12,6 +12,8 @@ jobs:
   dependency-scan:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     strategy:
       matrix:
         dir: [backend, frontend]
@@ -27,7 +29,7 @@ jobs:
       - run: npm audit --audit-level=high
         working-directory: ${{ matrix.dir }}
       - name: Run Snyk (if configured)
-        if: ${{ secrets.SNYK_TOKEN != '' }}
+        if: ${{ env.SNYK_TOKEN != '' }}
         run: |
           npm install -g snyk
           snyk test --all-projects
@@ -44,10 +46,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/download/v0.50.1/trivy_0.50.1_Linux-64bit.deb
-          sudo dpkg -i trivy_0.50.1_Linux-64bit.deb
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.76.0_Linux-64bit.deb
       - name: Scan backend image with Trivy
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 courtzon-backend:scan
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format json \
+            --output trivy-report.json \
+            courtzon-backend:scan
+      - name: Upload Trivy JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-docker-scan-report
+          path: trivy-report.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   secrets-scan:
     name: Secrets Detection
