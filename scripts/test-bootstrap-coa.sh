@@ -123,6 +123,15 @@ done
 # Level 2 (non-postable) — e.g. "Account 6317 (4100) is at level 2". Migration
 # 104 creates the Equity hierarchy but does not touch these codes.
 #
+# Seed 004 also leaves five LEGACY child accounts attached to the mapped posting
+# accounts: 1101/1102/1103 under 1100, and 2101/2102 under 2100. Even after
+# 1100/2100 are re-parented to L4, CoaLevelValidator rejects them because they
+# "have children" (only leaf accounts are postable). Those legacy children are
+# not part of the 099 hierarchy and are not referenced by any accounting
+# concept, so they are moved to their existing L2 class roots
+# (ASSETS-CURRENT / LIABILITIES-CURRENT) as structural rows. This keeps 1100 and
+# 2100 as leaf posting nodes without inventing codes or making semantic claims.
+#
 # This idempotent re-parent restores exactly the hierarchy 099 intends (it is a
 # no-op once correct, and never touches organisation-owned rows). Since 004 is
 # a canonical seed, fixing the order here keeps the change test-harness-only:
@@ -136,14 +145,22 @@ JOIN chart_of_accounts p
    WHEN '2100' THEN 'LIABILITIES-WALLET'
    WHEN '2200' THEN 'LIABILITIES-PAYABLES'
    WHEN '4100' THEN 'REVENUE-COURT'
+   -- Seed-004 legacy children: detach from the mapped posting accounts so
+   -- 1100/2100 remain postable leaves (existing L2 class roots only).
+   WHEN '1101' THEN 'ASSETS-CURRENT'
+   WHEN '1102' THEN 'ASSETS-CURRENT'
+   WHEN '1103' THEN 'ASSETS-CURRENT'
+   WHEN '2101' THEN 'LIABILITIES-CURRENT'
+   WHEN '2102' THEN 'LIABILITIES-CURRENT'
  END
 SET c.parent_id = p.id
 WHERE c.organisation_id IS NULL
-  AND c.code IN ('1100', '2100', '2200', '4100')
-  AND c.parent_id <> p.id;
+  AND c.code IN ('1100', '2100', '2200', '4100',
+                 '1101', '1102', '1103', '2101', '2102')
+  AND (c.parent_id IS NULL OR c.parent_id <> p.id);
 SQL
 )"
-printf 'Re-asserting 099 intended L3 parents for seed-004 pre-parented accounts\n'
+printf 'Re-asserting 099 hierarchy and detaching seed-004 legacy child accounts\n'
 mysql_exec -e "$RECONCILE_SQL" || die "Failed to reconcile seed-004/099 parent conflict"
 
 # 005 ran before 118/155 in the normal seed step. Its INSERT ... SELECT rows
