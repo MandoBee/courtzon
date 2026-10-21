@@ -24,7 +24,13 @@ COPY frontend/src/i18n/translation-keys.registry.ts ./frontend-registry.ts
 
 COPY backend/package.json backend/package-lock.json ./
 COPY packages/ /packages/
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+# Install production dependencies, then remove npm tooling from the runtime image.
+# The application runs with Node.js and does not require npm/npx at runtime.
+RUN npm ci --omit=dev --ignore-scripts \
+    && npm cache clean --force \
+    && rm -rf /usr/local/lib/node_modules/npm \
+              /usr/local/bin/npm \
+              /usr/local/bin/npx
 
 COPY --from=builder /app/dist/ dist/
 COPY --from=builder /app/generated/ dist/generated/
