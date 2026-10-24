@@ -40,6 +40,9 @@ export default defineConfig({
     include: [
       "src/shared/utils/pagination.integration.spec.ts",
       "src/tests/app.http.integration.spec.ts",
+      // Membership P1: starts its own Testcontainers like the specs above and
+      // must never depend on the persistent-DB globalSetup.
+      "src/modules/membership/__tests__/membership-p1.integration.spec.ts",
     ],
     testTimeout: 180000,
     hookTimeout: 180000,

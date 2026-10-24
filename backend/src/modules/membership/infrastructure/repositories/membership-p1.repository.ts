@@ -1,4 +1,5 @@
 import { getPool } from '../../../../database/mysql.js';
+import type { PoolConnection } from 'mysql2/promise';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { generateUUID } from '../../../../shared/utils/token.js';
 
@@ -420,9 +421,25 @@ class MembershipP1Repository {
     }
   }
 
-  async findSubscription(subscriptionId: number): Promise<Row | null> {
-    const pool = getPool();
-    const [rows] = await pool.execute<Row[]>(`SELECT * FROM membership_subscriptions WHERE id = ? LIMIT 1`, [subscriptionId]);
+  async findSubscription(subscriptionId: number, conn?: PoolConnection): Promise<Row | null> {
+    const [rows] = await (conn ?? getPool()).execute<Row[]>(
+      `SELECT * FROM membership_subscriptions WHERE id = ? LIMIT 1`,
+      [subscriptionId],
+    );
+    return rows[0] || null;
+  }
+
+  /**
+   * Lock the subscription row for the duration of the caller's transaction.
+   * Used by finalisation so two concurrent confirmations (operator request +
+   * `payment:succeeded` listener, or two simultaneous requests) serialise and
+   * the second one observes the settled state instead of racing.
+   */
+  async findSubscriptionForUpdate(conn: PoolConnection, subscriptionId: number): Promise<Row | null> {
+    const [rows] = await conn.execute<Row[]>(
+      `SELECT * FROM membership_subscriptions WHERE id = ? LIMIT 1 FOR UPDATE`,
+      [subscriptionId],
+    );
     return rows[0] || null;
   }
 
@@ -453,24 +470,28 @@ class MembershipP1Repository {
     return rows;
   }
 
-  async listSubscriptionComponents(subscriptionId: number): Promise<Row[]> {
-    const pool = getPool();
-    const [rows] = await pool.execute<Row[]>(
+  async listSubscriptionComponents(subscriptionId: number, conn?: PoolConnection): Promise<Row[]> {
+    const [rows] = await (conn ?? getPool()).execute<Row[]>(
       'SELECT * FROM membership_subscription_components WHERE subscription_id = ? ORDER BY sort_order, id',
       [subscriptionId],
     );
     return rows;
   }
 
-  async activateSubscription(subscriptionId: number, invoiceId: number | null, paymentMethod: string): Promise<void> {
-    const pool = getPool();
-    await pool.execute<ResultSetHeader>(
+  async activateSubscription(
+    subscriptionId: number,
+    invoiceId: number | null,
+    paymentMethod: string,
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const [res] = await (conn ?? getPool()).execute<ResultSetHeader>(
       `UPDATE membership_subscriptions
        SET status = 'active', payment_status = 'paid', invoice_id = ?, payment_method = ?,
            aggregate_version = aggregate_version + 1
        WHERE id = ? AND status = 'pending'`,
       [invoiceId, paymentMethod, subscriptionId],
     );
+    return Number(res.affectedRows ?? 0);
   }
 
   // ── Payments (reuse payment_transactions) ────────────────────────────────
@@ -501,9 +522,8 @@ class MembershipP1Repository {
     return res.insertId;
   }
 
-  async markPaymentPaid(paymentId: number): Promise<void> {
-    const pool = getPool();
-    await pool.execute(
+  async markPaymentPaid(paymentId: number, conn?: PoolConnection): Promise<void> {
+    await (conn ?? getPool()).execute(
       `UPDATE payment_transactions SET payment_status = 'paid', paid_at = NOW() WHERE id = ? AND payment_status != 'paid'`,
       [paymentId],
     );
@@ -525,14 +545,18 @@ class MembershipP1Repository {
       paidAmount?: number;
       items: Array<{ description: string; quantity: number; unitPrice: number; netAmount: number; totalAmount: number; taxRateId?: number | null }>;
     },
+    /**
+     * When supplied, the insert is executed on the caller's connection and the
+     * caller owns the transaction. A nested `beginTransaction()` would issue an
+     * implicit COMMIT on MySQL and silently break the caller's atomicity, so it
+     * is deliberately skipped in this mode.
+     */
+    conn?: PoolConnection,
   ): Promise<number> {
-    const pool = getPool();
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
+    const insert = async (c: PoolConnection): Promise<number> => {
       const status = input.status ?? 'paid';
       const paidAmount = input.paidAmount != null ? input.paidAmount : input.total;
-      const [res] = await conn.execute<ResultSetHeader>(
+      const [res] = await c.execute<ResultSetHeader>(
         `INSERT INTO invoices
          (organisation_id, user_id, invoice_number, invoice_type, status, issue_date, subtotal, tax_amount, total,
           paid_amount, reference_type, reference_id, created_by)
@@ -544,20 +568,29 @@ class MembershipP1Repository {
       );
       const invoiceId = res.insertId;
       for (const item of input.items) {
-        await conn.execute(
+        await c.execute(
           `INSERT INTO invoice_items (invoice_id, description, quantity, price_type, tax_treatment, net_amount, unit_price, tax_rate, tax_amount, tax_rate_id, total)
            VALUES (?, ?, ?, 'net', 'zero_rated', ?, ?, 0, 0, NULL, ?)`,
           [invoiceId, item.description, item.quantity, item.netAmount, item.unitPrice, item.totalAmount],
         );
       }
-      // Reuse invoice_items for the CourtZon commission line when present.
-      await conn.commit();
+      return invoiceId;
+    };
+
+    if (conn) return insert(conn);
+
+    const pool = getPool();
+    const own = await pool.getConnection();
+    try {
+      await own.beginTransaction();
+      const invoiceId = await insert(own);
+      await own.commit();
       return invoiceId;
     } catch (err) {
-      await conn.rollback();
+      await own.rollback();
       throw err;
     } finally {
-      conn.release();
+      own.release();
     }
   }
 }
