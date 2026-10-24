@@ -140,6 +140,7 @@ jobs:
           DB_PASSWORD: courtzon2026
           DB_NAME: courtzon_v3
           NODE_ENV: test
+          ALLOW_PERSISTENT_SEED: 'true'
 
       - name: Run integration tests
         run: npm run test:int
