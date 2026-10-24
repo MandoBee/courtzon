@@ -1496,8 +1496,9 @@ async function postAcademyPaymentAccounting(enrollmentId: number, paymentMethod:
 async function postAcademyPaymentAccountingInner(enrollmentId: number, paymentMethod: string, currency: string): Promise<void> {
   const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
   if (!snapshot?.id) {
-    log.error({ enrollmentId }, 'Academy snapshot not found — skipping academy accounting');
-    return;
+    // The durable accounting replay must retry, never mark this delivery as
+    // successfully processed when the immutable economics are absent.
+    throw new Error(`Academy payment snapshot missing for enrollment ${enrollmentId}`);
   }
 
   const gross = Math.round(Number(snapshot.gross_amount || 0) * 100) / 100;
@@ -1641,8 +1642,9 @@ async function postAcademyRefundAccounting(enrollmentId: number, paymentMethod: 
 async function postAcademyRefundAccountingInner(enrollmentId: number, paymentMethod: string, currency: string): Promise<void> {
   const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
   if (!snapshot?.id) {
-    log.error({ enrollmentId }, 'Academy snapshot not found — skipping academy refund accounting');
-    return;
+    // Refund reversal economics are immutable and snapshot-based. A missing
+    // snapshot is retryable, not a successful no-op.
+    throw new Error(`Academy refund snapshot missing for enrollment ${enrollmentId}`);
   }
 
   const r2 = (v: any) => Math.round(Number(v || 0) * 100) / 100;
@@ -2487,8 +2489,11 @@ export function registerAccountingEventListeners(): void {
       // academy_enrollment_payments snapshot (never recomputed). The posting
       // mirrors booking custody: commission → 4191, org share → merchant
       // payable (card/wallet) or org book receivable (cash).
+      // Posted by the academy:enrollment-paid handler below, never here.
       if (referenceType === 'academy') {
-        await postAcademyPaymentAccounting(referenceId, paymentMethod, currency);
+        // Academy accounting is triggered by academy:enrollment-paid, which the
+        // academy listener emits only after the immutable snapshot is durable.
+        // Never fall through to generic payment accounting for academy.
         return;
       }
 
@@ -2534,6 +2539,27 @@ export function registerAccountingEventListeners(): void {
       // the worker retry with its explicit attempts/backoff and skip the
       // processed marker, while `hasPosting` + `ledger_entries.uk_dedup` keep
       // both the platform and the organisation ledger idempotent.
+      throw err;
+    }
+  });
+
+  // G8 ordering fix: academy accounting must run only after the academy
+  // payment snapshot has been persisted. The academy listener emits this event
+  // after ensureSnapshotForPayment() and the enrollment acknowledgment.
+  eventBusV2.on('academy:enrollment-paid', async (data: any) => {
+    try {
+      const enrollmentId = Number(data?.enrollmentId);
+      if (!enrollmentId) return;
+      const paymentMethod: string = data?.paymentMethod || 'card';
+      const currency: string = data?.currency || 'EGP';
+      await postAcademyPaymentAccounting(enrollmentId, paymentMethod, currency);
+    } catch (err) {
+      log.error(
+        { err, enrollmentId: data?.enrollmentId },
+        'Academy enrollment-paid accounting failed',
+      );
+      // Let the durable accounting replay subscriber retry; do not record
+      // processed_events for a delivery whose posting was not written.
       throw err;
     }
   });
@@ -3118,6 +3144,10 @@ export function registerAccountingEventListeners(): void {
  */
 const ACCOUNTING_REPLAY_EVENTS = [
   'payment:succeeded',
+  // G8 - academy accounting is ordered after the immutable payment snapshot.
+  // The payment event still recreates/repairs snapshots; this event posts the
+  // accounting once the snapshot is guaranteed to exist.
+  'academy:enrollment-paid',
   'payment:refunded',
   // R5-D2-C — per-allocation partial refund line (crash-safe durable replay).
   'payment:allocation-refunded',

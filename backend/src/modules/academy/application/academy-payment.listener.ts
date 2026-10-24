@@ -20,10 +20,10 @@ export function resetAcademyPaymentListenersForTest(): void {
  * durable snapshot + acknowledgment and emits `academy:enrollment-paid`.
  *
  * The snapshot creation is idempotent (`uk_sep_enrollment`) and safe to run
- * after the offline cash flow already created one. Accounting is NOT posted
- * here — the financial module's `payment:succeeded` handler posts the
- * academy_* entries (guarded by hasPosting), and the durable entitlement
- * subscriber consumes `academy:enrollment-paid`.
+ * after the offline cash flow already created one. Accounting is posted by the
+ * financial module's `academy:enrollment-paid` handler, which runs only after
+ * this listener has persisted the snapshot (guarded by hasPosting/uk_dedup).
+ * The durable entitlement subscriber consumes the same event.
  */
 export function registerAcademyPaymentListeners(): void {
   if (academyPaymentListenersRegistered) {
@@ -52,8 +52,7 @@ export function registerAcademyPaymentListeners(): void {
 
       const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
       if (!snapshot?.id) {
-        log.error({ enrollmentId }, 'Academy snapshot missing after payment succeeded');
-        return;
+        throw new Error(`Academy snapshot missing after payment succeeded for enrollment ${enrollmentId}`);
       }
 
       log.info(
@@ -61,7 +60,7 @@ export function registerAcademyPaymentListeners(): void {
         'Academy enrollment paid — emitting academy:enrollment-paid',
       );
 
-      eventBusV2.emit('academy:enrollment-paid', {
+      await eventBusV2.emit('academy:enrollment-paid', {
         enrollmentId,
         programId: snapshot.program_id,
         groupId: snapshot.group_id ?? null,
@@ -79,6 +78,10 @@ export function registerAcademyPaymentListeners(): void {
         { err, paymentId, enrollmentId },
         'Academy payment succeeded handler failed (snapshot/ack)',
       );
+      // Durable payment replay must retry snapshot creation/publication; the
+      // live EventBus path logs this rejection without swallowing the event's
+      // authoritative published_events row.
+      throw err;
     }
   });
 

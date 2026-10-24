@@ -164,4 +164,29 @@ describe('G8 — recordOfflineCashPayment', () => {
     expect(conn.rollback).toHaveBeenCalled();
     expect(conn.commit).not.toHaveBeenCalled();
   });
+
+  it('rolls back the payment when the event publication hook fails', async () => {
+    payRepo.getSnapshotByEnrollment.mockResolvedValue(null);
+    await expect(
+      academyPaymentService.recordOfflineCashPayment(11, 9, async () => {
+        throw new Error('published_events unavailable');
+      }),
+    ).rejects.toThrow('published_events unavailable');
+    expect(conn.rollback).toHaveBeenCalled();
+    expect(conn.commit).not.toHaveBeenCalled();
+  });
+
+  it('publishes before commit and only reports success after commit', async () => {
+    payRepo.getSnapshotByEnrollment.mockResolvedValue(null);
+    const observed: string[] = [];
+    const result = await academyPaymentService.recordOfflineCashPayment(11, 9, async ({ conn: txConn, result: txResult }) => {
+      expect(txConn).toBe(conn);
+      expect(txResult).toEqual({ snapshotId: 7001, paymentTransactionId: 5001, created: true });
+      observed.push('publish');
+    });
+    observed.push('commit');
+    expect(result).toEqual({ snapshotId: 7001, paymentTransactionId: 5001, created: true });
+    expect(conn.commit).toHaveBeenCalled();
+    expect(observed).toEqual(['publish', 'commit']);
+  });
 });

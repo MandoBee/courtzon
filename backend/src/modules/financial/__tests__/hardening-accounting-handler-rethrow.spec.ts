@@ -39,6 +39,7 @@ const bus = vi.hoisted(() => {
 });
 
 const ledger = vi.hoisted(() => ({ hasPosting: vi.fn(), createEntries: vi.fn() }));
+const academyRepo = vi.hoisted(() => ({ getSnapshotByEnrollment: vi.fn() }));
 const eng = vi.hoisted(() => ({
   resolveMapping: vi.fn(),
   validateAccounts: vi.fn(),
@@ -60,6 +61,9 @@ const conn = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({ eventBusV2: bus }));
+vi.mock('../../academy/infrastructure/repositories/academy-payment.repository.js', () => ({
+  academyPaymentRepository: academyRepo,
+}));
 vi.mock('../infrastructure/repositories/ledger.repository.js', () => ({ ledgerRepository: ledger }));
 vi.mock('../application/accounting-engine.service.js', () => ({ accountingEngineService: eng }));
 vi.mock('../application/gl-projection.service.js', () => ({ glProjectionService: gl }));
@@ -106,6 +110,7 @@ beforeEach(() => {
   resetAccountingEventListenersForTest();
   registerAccountingEventListeners();
 
+  academyRepo.getSnapshotByEnrollment.mockResolvedValue(null);
   ledger.hasPosting.mockResolvedValue(false);
   ledger.createEntries.mockResolvedValue([11]);
   eng.resolveMapping.mockResolvedValue([{ accountId: 1, concept: 'x' }]);
@@ -159,6 +164,86 @@ describe('Stage 2.4a-6 — genuine posting failures propagate to the worker', ()
     ).rejects.toThrow('db down');
 
     expect(ledger.hasPosting).toHaveBeenCalledWith('wallet', 77, 'wallet_topup');
+  });
+
+  it('academy payment:succeeded does not post and never falls through to generic accounting', async () => {
+    await handlerFor('payment:succeeded')({
+      paymentId: 88,
+      referenceType: 'academy',
+      referenceId: 11,
+      amount: 200,
+      metadata: { paymentMethod: 'card', currency: 'EGP' },
+    });
+    expect(ledger.hasPosting).not.toHaveBeenCalled();
+  });
+
+  it('academy:enrollment-paid rethrows when the immutable snapshot is missing', async () => {
+    await expect(
+      handlerFor('academy:enrollment-paid')({
+        enrollmentId: 11,
+        paymentMethod: 'card',
+        currency: 'EGP',
+      }),
+    ).rejects.toThrow(/Academy payment snapshot missing/);
+  });
+
+  it('academy refund rethrows when the immutable snapshot is missing', async () => {
+    await expect(
+      handlerFor('payment:refunded')({
+        paymentId: 88,
+        referenceType: 'academy',
+        referenceId: 11,
+        amount: 200,
+        metadata: { paymentMethod: 'card', currency: 'EGP' },
+      }),
+    ).rejects.toThrow(/Academy refund snapshot missing/);
+  });
+
+  it('academy:enrollment-paid posts one set and duplicate delivery is idempotent', async () => {
+    academyRepo.getSnapshotByEnrollment.mockResolvedValue({
+      id: 7001,
+      enrollment_id: 11,
+      organisation_id: 7,
+      gross_amount: 200,
+      commission_amount: 30,
+      organization_earning_amount: 170,
+      court_rental_amount: 30,
+      currency: 'EGP',
+      payment_method: 'card',
+    });
+
+    const handler = handlerFor('academy:enrollment-paid');
+    const payload = { enrollmentId: 11, paymentMethod: 'card', currency: 'EGP' };
+
+    await handler(payload);
+    expect(ledger.createEntries).toHaveBeenCalledTimes(2);
+
+    ledger.hasPosting.mockResolvedValue(true);
+    await handler(payload);
+    expect(ledger.createEntries).toHaveBeenCalledTimes(2);
+  });
+
+  it('academy:enrollment-paid propagates a transient failure and posts on retry', async () => {
+    academyRepo.getSnapshotByEnrollment.mockResolvedValue({
+      id: 7001,
+      enrollment_id: 11,
+      organisation_id: 7,
+      gross_amount: 200,
+      commission_amount: 30,
+      organization_earning_amount: 170,
+      court_rental_amount: 30,
+      currency: 'EGP',
+      payment_method: 'card',
+    });
+    ledger.createEntries.mockRejectedValueOnce(new Error('transient ledger outage'));
+
+    const handler = handlerFor('academy:enrollment-paid');
+    const payload = { enrollmentId: 11, paymentMethod: 'card', currency: 'EGP' };
+    await expect(handler(payload)).rejects.toThrow('transient ledger outage');
+    expect(ledger.createEntries).toHaveBeenCalledTimes(1);
+
+    await handler(payload);
+    expect(ledger.createEntries).toHaveBeenCalledTimes(3);
   });
 });
 

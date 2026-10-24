@@ -107,13 +107,45 @@ describe('G8.3 — academy:enrollment-paid event payload', () => {
     expect(bus.emit).not.toHaveBeenCalledWith('academy:enrollment-paid', expect.anything());
   });
 
-  it('does not emit when the snapshot is missing after payment', async () => {
+  it('rejects when the snapshot is missing after payment and does not emit', async () => {
     registerAcademyPaymentListeners();
     payRepo.getSnapshotByEnrollment.mockResolvedValue(null);
-    await firePaid({
+    await expect(firePaid({
+      paymentId: 5001, referenceType: 'academy', referenceId: 11, amount: 200,
+      metadata: { paymentMethod: 'card' },
+    })).rejects.toThrow(/snapshot missing/);
+    expect(bus.emit).not.toHaveBeenCalledWith('academy:enrollment-paid', expect.anything());
+  });
+
+  it('propagates a failure to publish academy:enrollment-paid', async () => {
+    registerAcademyPaymentListeners();
+    bus.emit.mockRejectedValueOnce(new Error('outbox unavailable'));
+    await expect(firePaid({
+      paymentId: 5001, referenceType: 'academy', referenceId: 11, amount: 200,
+      metadata: { paymentMethod: 'card' },
+    })).rejects.toThrow('outbox unavailable');
+  });
+
+  it('waits for the delayed snapshot before emitting academy:enrollment-paid', async () => {
+    registerAcademyPaymentListeners();
+    let releaseSnapshot!: (value: any) => void;
+    paySvc.ensureSnapshotForPayment.mockReturnValueOnce(
+      new Promise((resolve) => { releaseSnapshot = resolve; }),
+    );
+
+    const pending = firePaid({
       paymentId: 5001, referenceType: 'academy', referenceId: 11, amount: 200,
       metadata: { paymentMethod: 'card' },
     });
+
+    await Promise.resolve();
     expect(bus.emit).not.toHaveBeenCalledWith('academy:enrollment-paid', expect.anything());
+
+    releaseSnapshot({ snapshotId: 7001, created: true });
+    await pending;
+    expect(bus.emit).toHaveBeenCalledWith(
+      'academy:enrollment-paid',
+      expect.objectContaining({ enrollmentId: 11, paymentTransactionId: 5001 }),
+    );
   });
 });
