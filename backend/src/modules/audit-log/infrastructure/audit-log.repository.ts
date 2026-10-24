@@ -1,3 +1,4 @@
+import type { PoolConnection } from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
 import { limitClause, buildPagination, paginationClause } from '../../../shared/utils/pagination.js';
 
@@ -14,8 +15,8 @@ export interface AuditLogCreate {
 }
 
 class AuditLogRepository {
-  async create(entry: AuditLogCreate): Promise<void> {
-    const pool = getPool();
+  async create(entry: AuditLogCreate, conn?: PoolConnection): Promise<void> {
+    const pool = conn ?? getPool();
     await pool.execute(
       `INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, before_state, after_state, reason, ip_address, user_agent, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,

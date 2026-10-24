@@ -38,7 +38,7 @@ Health checks are registered as Fastify routes. The service runs component-level
 | `GET /health/ready` | Readiness (DB + Redis up) | `health.service.ts:59-76` filtered |
 | `GET /health/database` | DB connectivity + table count | `health.service.ts:78-94` |
 | `GET /health/redis` | Redis ping check | `health.service.ts:96-108` |
-| `GET /health/storage` | Upload dir writability + disk space | `health.service.ts:110-143` |
+| `GET /health/storage` | Upload dir writability (path/disk capacity not exposed — MB-03) | `health.service.ts:110-143` |
 | `GET /health/version` | Build metadata | Reads `/app/git-commit.txt`, etc. |
 
 ### 1.3 Composite Health Check
@@ -130,10 +130,12 @@ Default Node.js metrics include: CPU, memory, event loop lag, garbage collection
 
 ### 2.3 Scrape Endpoint
 
-`GET /metrics` — protected by optional `METRICS_TOKEN`:
-- If `METRICS_TOKEN` env is set, callers must provide via `Authorization: Bearer <token>` or `?token=`
-- If unset (internal Docker network), endpoint is open
-- Returns `registry.contentType` content type
+`GET /metrics` — fail-closed (CZ-F26):
+- Production (`NODE_ENV=production`) without a configured `METRICS_TOKEN`: **404** (the endpoint is treated as absent and is never served unauthenticated)
+- With `METRICS_TOKEN` set: callers must provide `Authorization: Bearer <token>`; missing or invalid credentials → **401**
+- The `?token=` query-string form is **not** supported (it leaks through proxies, access logs and browser history)
+- Development/test without a token: historical open behavior (**200**)
+- On success returns `registry.contentType` content type
 
 ### 2.4 Auto-Instrumentation
 

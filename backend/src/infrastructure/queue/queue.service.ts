@@ -1,4 +1,4 @@
-import { Queue, type JobsOptions } from 'bullmq';
+import { Queue, type JobsOptions, type BackoffStrategy } from 'bullmq';
 import { getRedisClient } from '../redis/redis.client.js';
 import { createModuleLogger } from '../../shared/utils/logger.js';
 
@@ -179,9 +179,33 @@ export type JobPayloadMap = {
 export const DEFAULT_QUEUE_NAME = 'default';
 export const NOTIFICATION_QUEUE_NAME = 'notifications';
 
-function customBackoff(attemptsMade: number): number {
-  return Math.min(2000 * Math.pow(4, attemptsMade - 1), 3_600_000);
-}
+/**
+ * Event-subscriber backoff strategy (BullMQ `WorkerOptions.settings.backoffStrategy`).
+ *
+ * Why this is exported: subscriber jobs are produced with
+ * `backoff: { type: 'custom', delay }` (see {@link QueueService.addToQueue} +
+ * the outbox poller / in-memory emit). BullMQ only knows the built-in `fixed`
+ * and `exponential` strategies; for any other type it requires the strategy to
+ * be REGISTERED on the consumer (`Worker` → `settings.backoffStrategy`),
+ * otherwise retry scheduling throws `Unknown backoff strategy custom…`. The
+ * event-bus subscriber worker registers exactly this function.
+ *
+ * Signature follows the installed BullMQ (`BackoffStrategy =
+ * (attemptsMade, type?, err?, job?) => number`). It honours the job's own
+ * `backoff.delay` (so producer and consumer agree) and falls back to
+ * {@link EVENT_BACKOFF_BASE_DELAY_MS}, growing ×4 per attempt, capped at 1h.
+ */
+export const EVENT_BACKOFF_BASE_DELAY_MS = 2000;
+export const EVENT_BACKOFF_MAX_DELAY_MS = 3_600_000;
+
+export const customBackoff: BackoffStrategy = (attemptsMade, _type, _err, job) => {
+  const backoff = job?.opts?.backoff;
+  const base =
+    typeof backoff === 'object' && backoff !== null && typeof backoff.delay === 'number'
+      ? backoff.delay
+      : EVENT_BACKOFF_BASE_DELAY_MS;
+  return Math.min(base * Math.pow(4, attemptsMade - 1), EVENT_BACKOFF_MAX_DELAY_MS);
+};
 
 class QueueService {
   private queues = new Map<string, Queue>();

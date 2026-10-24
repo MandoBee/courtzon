@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -23,6 +23,23 @@ import api from '../../services/api';
 import OrgSubscriptionPage from './OrgSubscriptionPage';
 
 const mockGet = vi.mocked(api.get);
+
+/**
+ * The fixtures use absolute dates (current period ends 2026-09-22). Pin "now"
+ * before that date so the page deterministically renders "Expires:" rather
+ * than "Expired:" as the calendar advances. Only Date is faked, so React
+ * Query / Testing Library timers keep working.
+ */
+const FIXED_NOW = new Date('2026-09-01T12:00:00.000Z');
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_NOW);
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 function wrap(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

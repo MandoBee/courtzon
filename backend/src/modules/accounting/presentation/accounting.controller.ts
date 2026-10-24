@@ -2147,23 +2147,27 @@ export async function updateTaxRateHandler(request: FastifyRequest, reply: Fasti
 }
 
 export async function processPendingEventsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const pool = getPool();
-  const body = request.body as any;
-  const userId = (request as any).userId;
-
-  const eventsProcessed = 0;
-
+  // CZ-F25 — This endpoint never processed anything: it always returned
+  // `eventsProcessed: 0` and there is no `pending_events`/event-to-journal
+  // pipeline in the codebase (accounting postings are applied automatically
+  // from domain events: eventBusV2 -> accounting-event.listener). It used to
+  // answer HTTP 200, which falsely implied the work was performed. No supported
+  // client calls this route (only documentation references it), so an honest
+  // 501 is safe and follows the API error convention ({ error, message }).
   recordAudit({
-    actorId: userId,
-    action: 'ACCOUNTING.PROCESS_EVENTS',
+    actorId: (request as any).userId,
+    action: 'ACCOUNTING.PROCESS_EVENTS.NOT_IMPLEMENTED',
     entityType: 'event_to_journal',
     entityId: 0,
-    afterState: { eventsProcessed, source: body.source || 'manual' },
+    afterState: { note: 'no-op endpoint; accounting is event-driven' },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
 
-  return reply.send({ data: { eventsProcessed, message: 'Event-to-journal processing completed. 0 events processed.' } });
+  return reply.status(501).send({
+    error: 'NOT_IMPLEMENTED',
+    message: 'Event-to-journal processing is not implemented. Accounting postings are applied automatically from domain events (event bus); there is no pending-event queue to process.',
+  });
 }
 
 // ── Accounting Event Mappings ──

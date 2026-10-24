@@ -13,19 +13,10 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Unit tests are database-free. MySQL is intentionally NOT provisioned here;
+    # DB-dependent specs are named `*.integration.spec.ts` and run in the
+    # `test-integration` job. Redis remains for specs that need the service.
     services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: test_root
-          MYSQL_DATABASE: courtzon_v2_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd "mysqladmin ping -h localhost -u root -ptest_root"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
       redis:
         image: redis:7-alpine
         ports:
@@ -44,24 +35,6 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - name: Install MySQL client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends default-mysql-client
-      - name: Create fresh schema (baseline)
-        # Mirrors the Docker entrypoint / integration harness: the baseline is the
-        # full final schema; its appended section emits a non-fatal "table already
-        # exists" warning, so --force is used and the exit status is tolerated.
-        run: |
-          mysql -h 127.0.0.1 -P 3306 -uroot -ptest_root -e "DROP DATABASE IF EXISTS courtzon_v2_test; CREATE DATABASE courtzon_v2_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-          mysql -h 127.0.0.1 -P 3306 -uroot -ptest_root --force courtzon_v2_test -e "source ../database/baseline/001_courtzon_v3.sql" || echo "baseline residual warnings tolerated"
-      - name: Seed database (canonical seed mechanism)
-        run: node scripts/seed.js
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_NAME: courtzon_v2_test
-          DB_USER: root
-          DB_PASSWORD: test_root
-          NODE_ENV: test
       - name: Run unit tests
         run: npm run test:unit
         env:
@@ -134,7 +107,9 @@ jobs:
             exit 1
           fi
       - name: Seed database (canonical seed mechanism)
-        run: node scripts/seed.js
+        run: |
+          set -o pipefail
+          node scripts/seed.js 2>&1 | tee seed-step.log
         env:
           DB_HOST: 127.0.0.1
           DB_PORT: 3307
@@ -142,6 +117,31 @@ jobs:
           DB_USER: root
           DB_PASSWORD: courtzon2026
           NODE_ENV: test
+          # `courtzon_v3` here is the EPHEMERAL MySQL service container created for
+          # this job on the GitHub Actions runner — NOT a local developer database.
+          ALLOW_PERSISTENT_SEED: 'true'
+
+      - name: Upload seed diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-diagnostics
+          path: backend/seed-step.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Bootstrap integration COA reference data
+        run: bash scripts/test-bootstrap-coa.sh
+        working-directory: .
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3307
+          DB_USER: root
+          DB_PASSWORD: courtzon2026
+          DB_NAME: courtzon_v3
+          NODE_ENV: test
+          ALLOW_PERSISTENT_SEED: 'true'
+
       - name: Run integration tests
         run: npm run test:int
         env:

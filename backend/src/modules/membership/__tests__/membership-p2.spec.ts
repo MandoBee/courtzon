@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import {
   allocateInstallmentCommissions,
   verifyProportionalAllocationExample,
@@ -10,6 +10,23 @@ import {
   addDaysISO,
   isRefundableBeforeStart,
 } from '../domain/membership-p2.types.js';
+
+/**
+ * The eligibility fixtures below are intentionally absolute dates. Pin "now"
+ * inside their intended window (end 2026-10-01 < now <= graceUntil 2026-10-10)
+ * so the suite stays deterministic instead of expiring with the calendar.
+ * Only Date is faked; timers/promises are untouched.
+ */
+const FIXED_NOW = new Date('2026-10-05T12:00:00.000Z');
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_NOW);
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe('G11.22 P2 — commission allocation (decisions #8/#17/#18)', () => {
   it('FIXED commission is allocated proportionally → 100 on 2000 split 1000/600/400 = 50/30/20', () => {

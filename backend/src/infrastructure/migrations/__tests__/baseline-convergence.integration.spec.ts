@@ -42,7 +42,20 @@ const DB_PORT = 3307;
 const DB_USER = 'root';
 const DB_PASSWORD = 'courtzon2026';
 const REFERENCE_DB = 'courtzon_v3'; // chain-applied reference (read-only use)
-const MYSQL_CONTAINER = 'courtzon-mysql';
+
+// MySQL CLI resolved from the environment (test-harness convention, matching
+// tests/helpers/integration-setup.ts). CI's integration job installs the client
+// and publishes MySQL on DB_HOST:DB_PORT.
+const MYSQL_BIN = process.env.MYSQL_BIN ?? 'mysql';
+
+// Runtime migration bookkeeping. It is created by the runner/entrypoint (see
+// scripts/migrate.sh and backend/docker-entrypoint.sh) and is deliberately
+// absent from the baseline — f23-baseline-integrity.spec.ts documents the
+// baseline table count as "minus migration_history which the runner creates".
+// It is therefore NOT part of the converged application schema; the
+// cross-database comparison below excludes it. Its presence and content are
+// asserted separately (historyCount() assertions D).
+const RUNTIME_METADATA_TABLES = new Set(['migration_history']);
 
 const MIGRATIONS_DIR = join(projectRoot, 'database', 'migrations');
 const BASELINE_PATH = join(projectRoot, 'database', 'baseline', '001_courtzon_v3.sql');
@@ -59,14 +72,38 @@ let schemaAfterRestart: Record<string, string[]>;
 let historyTotal: number;
 let appliedOnRestart: string[];
 
-/** Run SQL with the REAL mysql client inside the MySQL container. */
+/**
+ * Run SQL through the REAL mysql client against the configured test server
+ * (DB_HOST:DB_PORT — 127.0.0.1:3307 in CI, the published MySQL service port).
+ *
+ * The script is fed on STDIN, so the client itself parses the baseline's
+ * `DELIMITER ;;` trigger blocks — the same import convention as
+ * scripts/migrate.sh and backend/docker-entrypoint.sh. Credentials travel via
+ * MYSQL_PWD and never appear in argv.
+ */
 function mysqlImport(sql: string): { status: number; stdout: string; stderr: string } {
   const r = spawnSync(
-    'docker',
-    ['exec', '-i', MYSQL_CONTAINER, 'mysql', '-N', '-B', '-h', '127.0.0.1', '-P', '3306', '-u', DB_USER, `-p${DB_PASSWORD}`, dbName],
-    { input: sql, encoding: 'utf8', timeout: 600000, maxBuffer: 64 * 1024 * 1024 },
+    MYSQL_BIN,
+    [
+      '--host', DB_HOST,
+      '--port', String(DB_PORT),
+      '--user', DB_USER,
+      '--database', dbName,
+      '--batch',
+      '--skip-column-names',
+    ],
+    {
+      input: sql,
+      encoding: 'utf8',
+      timeout: 600000,
+      maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, MYSQL_PWD: DB_PASSWORD },
+    },
   );
-  return { status: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+  const stderr = r.stderr && r.stderr.length > 0
+    ? r.stderr
+    : r.error ? String(r.error.message) : '';
+  return { status: r.status ?? -1, stdout: r.stdout ?? '', stderr };
 }
 
 async function conn(database?: string) {
@@ -220,9 +257,15 @@ describe('A — fresh baseline hydration carries the full production-safe schema
     expect(await tableExists(dbName, 'academy_enrollments')).toBe(true);
   }, 60000);
 
-  it('hydrated table set (incl. runtime migration_history) == chain-applied reference table set', async () => {
-    const fresh = (await tableNames(dbName)).sort();
-    const reference = (await tableNames(REFERENCE_DB)).sort();
+  // Application schema only: runtime migration metadata (migration_history) is
+  // runner bookkeeping, intentionally absent from the baseline, and its own
+  // integrity/count assertions live in describe('D'). Comparing it across a
+  // baseline-hydrated DB and a chain-applied reference would assert a table the
+  // baseline is documented never to contain.
+  it('application table set (excluding runtime migration_history) == chain-applied reference table set', async () => {
+    const appTables = (names: string[]) => names.filter((t) => !RUNTIME_METADATA_TABLES.has(t)).sort();
+    const fresh = appTables(await tableNames(dbName));
+    const reference = appTables(await tableNames(REFERENCE_DB));
     expect(fresh).toEqual(reference);
   }, 60000);
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { ensureOpenPlatformAccountingPeriod, dropCurrentPlatformAccountingPeriods } from './prize-period-fixture.js';
+import { ensureOpenPlatformAccountingPeriod, dropCreatedPlatformAccountingPeriod } from './prize-period-fixture.js';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +67,8 @@ async function waitFor<T>(probe: () => Promise<T>, isReady: (value: T) => boolea
 }
 
 let pool: mysql.Pool;
+// Id of the platform period created by THIS spec (null when one already existed).
+let createdPeriodId: number | null = null;
 const tournamentIds: number[] = [];
 const regIds: number[] = [];
 const prizeIds: number[] = [];
@@ -300,7 +302,7 @@ async function registerApp() {
 
 beforeAll(async () => {
   pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5 });
-  await ensureOpenPlatformAccountingPeriod(pool as any);
+  createdPeriodId = await ensureOpenPlatformAccountingPeriod(pool as any);
 
   const [evBase] = await pool.execute<RowData>('SELECT COALESCE(MAX(id), 0) AS m FROM published_events');
   const [prBase] = await pool.execute<RowData>('SELECT COALESCE(MAX(id), 0) AS m FROM processed_events');
@@ -323,7 +325,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanupAll();
-  await dropCurrentPlatformAccountingPeriods(pool as any);
+  await dropCreatedPlatformAccountingPeriod(pool as any, createdPeriodId);
   const { closePool } = await import('../../../database/mysql.js');
   await closePool();
   await pool.end();

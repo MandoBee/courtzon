@@ -1,4 +1,6 @@
 import { getPool } from '../../../database/mysql.js';
+import type { PoolConnection } from 'mysql2/promise';
+import { withTransaction } from '../../../database/database.transaction.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { getCommissionRate, clearSubscriptionCache } from '../../organisations/application/current-subscription.service.js';
@@ -236,39 +238,57 @@ export const membershipSubscriptionService = {
 
   /** Operator confirmation of a CASH membership payment (full amount). */
   async confirmCashPayment(orgId: number, subscriptionId: number, actorId: number): Promise<void> {
-    const subscription = await membershipP1Repository.findSubscription(subscriptionId);
-    if (!subscription || Number(subscription.organisation_id) !== orgId) throw notFoundError('Membership subscription');
-    if (subscription.status !== 'pending') throw conflictError('Subscription is not pending');
-    if (await membershipInstallmentService.subscriptionHasInstallments(subscriptionId)) {
-      throw conflictError('This subscription is paid in installments — use the per-installment confirm endpoint');
-    }
-    const payment = await this.findPendingPayment(subscriptionId, 'cash', Number(subscription.user_id));
-    if (!payment) throw conflictError('No pending cash payment found for this subscription');
-    await membershipP1Repository.markPaymentPaid(Number(payment.id));
-    this.emitPaymentSucceeded(subscriptionId, Number(payment.id), 'cash', Number(subscription.total_amount), String(subscription.currency));
-    await this.finalizePaidSubscription(subscriptionId, 'cash');
-    recordAudit({ actorId, action: 'MEMBERSHIP_SUBSCRIPTION.CONFIRM_CASH', entityType: 'membership_subscription', entityId: subscriptionId, afterState: { subscriptionId } });
+    await withTransaction(async (conn) => {
+      // Authoritative pending check happens under the row lock: a concurrent
+      // confirmation blocks here, then observes the settled state and exits
+      // BEFORE marking the payment, emitting `payment:succeeded`, or creating
+      // any invoice/activation/audit/ledger side effect.
+      const subscription = await membershipP1Repository.findSubscriptionForUpdate(conn, subscriptionId);
+      if (!subscription || Number(subscription.organisation_id) !== orgId) throw notFoundError('Membership subscription');
+      if (subscription.status !== 'pending') throw conflictError('Subscription is not pending');
+      if (await membershipInstallmentService.subscriptionHasInstallments(subscriptionId)) {
+        throw conflictError('This subscription is paid in installments — use the per-installment confirm endpoint');
+      }
+      const payment = await this.findPendingPayment(subscriptionId, 'cash', Number(subscription.user_id), conn);
+      if (!payment) throw conflictError('No pending cash payment found for this subscription');
+      await membershipP1Repository.markPaymentPaid(Number(payment.id), conn);
+      await this.emitPaymentSucceeded(subscriptionId, Number(payment.id), 'cash', Number(subscription.total_amount), String(subscription.currency));
+      const activated = await this.finalizePaidSubscription(subscriptionId, 'cash', conn);
+      if (activated) {
+        await recordAudit(
+          { actorId, action: 'MEMBERSHIP_SUBSCRIPTION.CONFIRM_CASH', entityType: 'membership_subscription', entityId: subscriptionId, afterState: { subscriptionId } },
+          { conn, throwOnError: true },
+        );
+      }
+    });
   },
 
   /** Operator fallback for a CARD membership payment (offline/webhook stand-in). */
   async completeCardPayment(orgId: number, subscriptionId: number, actorId: number): Promise<void> {
-    const subscription = await membershipP1Repository.findSubscription(subscriptionId);
-    if (!subscription || Number(subscription.organisation_id) !== orgId) throw notFoundError('Membership subscription');
-    if (subscription.status !== 'pending') throw conflictError('Subscription is not pending');
-    if (await membershipInstallmentService.subscriptionHasInstallments(subscriptionId)) {
-      throw conflictError('This subscription is paid in installments — use the per-installment confirm endpoint');
-    }
-    const payment = await this.findPendingPayment(subscriptionId, 'card', Number(subscription.user_id));
-    if (!payment) throw conflictError('No pending card payment found for this subscription');
-    await membershipP1Repository.markPaymentPaid(Number(payment.id));
-    this.emitPaymentSucceeded(subscriptionId, Number(payment.id), 'card', Number(subscription.total_amount), String(subscription.currency));
-    await this.finalizePaidSubscription(subscriptionId, 'card');
-    recordAudit({ actorId, action: 'MEMBERSHIP_SUBSCRIPTION.COMPLETE_CARD', entityType: 'membership_subscription', entityId: subscriptionId, afterState: { subscriptionId } });
+    await withTransaction(async (conn) => {
+      // Same lock-first ordering as the CASH path (see confirmCashPayment).
+      const subscription = await membershipP1Repository.findSubscriptionForUpdate(conn, subscriptionId);
+      if (!subscription || Number(subscription.organisation_id) !== orgId) throw notFoundError('Membership subscription');
+      if (subscription.status !== 'pending') throw conflictError('Subscription is not pending');
+      if (await membershipInstallmentService.subscriptionHasInstallments(subscriptionId)) {
+        throw conflictError('This subscription is paid in installments — use the per-installment confirm endpoint');
+      }
+      const payment = await this.findPendingPayment(subscriptionId, 'card', Number(subscription.user_id), conn);
+      if (!payment) throw conflictError('No pending card payment found for this subscription');
+      await membershipP1Repository.markPaymentPaid(Number(payment.id), conn);
+      await this.emitPaymentSucceeded(subscriptionId, Number(payment.id), 'card', Number(subscription.total_amount), String(subscription.currency));
+      const activated = await this.finalizePaidSubscription(subscriptionId, 'card', conn);
+      if (activated) {
+        await recordAudit(
+          { actorId, action: 'MEMBERSHIP_SUBSCRIPTION.COMPLETE_CARD', entityType: 'membership_subscription', entityId: subscriptionId, afterState: { subscriptionId } },
+          { conn, throwOnError: true },
+        );
+      }
+    });
   },
 
-  async findPendingPayment(subscriptionId: number, method: string, userId: number): Promise<Row | null> {
-    const pool = getPool();
-    const [rows] = await pool.execute<Row[]>(
+  async findPendingPayment(subscriptionId: number, method: string, userId: number, conn?: PoolConnection): Promise<Row | null> {
+    const [rows] = await (conn ?? getPool()).execute<Row[]>(
       `SELECT id, amount FROM payment_transactions
        WHERE reference_type = 'membership_subscription' AND reference_id = ? AND payment_method = ?
          AND user_id = ? AND payment_status = 'pending'
@@ -278,8 +298,13 @@ export const membershipSubscriptionService = {
     return rows[0] || null;
   },
 
-  emitPaymentSucceeded(subscriptionId: number, paymentId: number, method: string, amount: number, currency: string): void {
-    eventBusV2.emit('payment:succeeded', {
+  /**
+   * Publish `payment:succeeded`. Inside a transaction the event bus writes the
+   * Outbox row through the caller's connection and defers delivery to the
+   * after-commit hooks, so this MUST be awaited there.
+   */
+  async emitPaymentSucceeded(subscriptionId: number, paymentId: number, method: string, amount: number, currency: string): Promise<void> {
+    await eventBusV2.emit('payment:succeeded', {
       referenceType: 'membership_subscription',
       referenceId: subscriptionId,
       paymentId,
@@ -293,22 +318,39 @@ export const membershipSubscriptionService = {
 
   /**
    * Finalise a membership subscription once its full payment is confirmed.
-   * Idempotent — activates only a 'pending' subscription and creates the invoice
-   * exactly once (invoice_id already set ⇒ skip).
+   *
+   * Idempotent AND concurrency-safe: the subscription row is locked
+   * (`SELECT … FOR UPDATE`) inside a transaction and the state is re-checked
+   * after the lock, so the operator path and the `payment:succeeded` listener
+   * can never create two invoices/activations. When `conn` is supplied the
+   * caller owns the transaction; otherwise a transaction is opened here.
    */
-  async finalizePaidSubscription(referenceId: number, paymentMethod: string): Promise<void> {
-    const subscription = await membershipP1Repository.findSubscription(referenceId);
-    if (!subscription || subscription.status !== 'pending') return;
+  async finalizePaidSubscription(referenceId: number, paymentMethod: string, conn?: PoolConnection): Promise<boolean> {
+    if (conn) {
+      return this.finalizePaidSubscriptionTx(referenceId, paymentMethod, conn);
+    }
+    return withTransaction(async (txConn) => {
+      return this.finalizePaidSubscriptionTx(referenceId, paymentMethod, txConn);
+    });
+  },
+
+  async finalizePaidSubscriptionTx(
+    referenceId: number,
+    paymentMethod: string,
+    conn: PoolConnection,
+  ): Promise<boolean> {
+    const subscription = await membershipP1Repository.findSubscriptionForUpdate(conn, referenceId);
+    if (!subscription || subscription.status !== 'pending') return false;
     // P2: installment-mode subscriptions are finalised by the per-installment
     // flow (first installment activates). The legacy full-payment path must
     // never touch them (it would wrongly mark the subscription fully paid).
-    if (await membershipInstallmentService.subscriptionHasInstallments(referenceId)) return;
+    if (await membershipInstallmentService.subscriptionHasInstallments(referenceId)) return false;
     const userId = Number(subscription.user_id);
     const orgId = Number(subscription.organisation_id);
 
     let invoiceId: number | null = subscription.invoice_id != null ? Number(subscription.invoice_id) : null;
     if (invoiceId == null) {
-      const components = await membershipP1Repository.listSubscriptionComponents(referenceId);
+      const components = await membershipP1Repository.listSubscriptionComponents(referenceId, conn);
       const subtotal = components.reduce((s, c) => s + Number(c.total_amount), 0);
       const total = Math.round(subtotal * 100) / 100;
       invoiceId = await membershipP1Repository.createInvoice({
@@ -328,24 +370,33 @@ export const membershipSubscriptionService = {
           netAmount: Number(c.total_amount),
           totalAmount: Number(c.total_amount),
         })),
-      });
+      }, conn);
     }
 
-    await membershipP1Repository.activateSubscription(referenceId, invoiceId, paymentMethod);
+    const activated = await membershipP1Repository.activateSubscription(referenceId, invoiceId, paymentMethod, conn);
+    if (activated === 0) return false;
 
-    recordAudit({
-      actorId: userId,
-      action: 'MEMBERSHIP_SUBSCRIPTION.ACTIVATED',
-      entityType: 'membership_subscription',
-      entityId: referenceId,
-      afterState: { subscriptionId: referenceId, invoiceId, paymentMethod },
-    });
+    await recordAudit(
+      {
+        actorId: userId,
+        action: 'MEMBERSHIP_SUBSCRIPTION.ACTIVATED',
+        entityType: 'membership_subscription',
+        entityId: referenceId,
+        afterState: { subscriptionId: referenceId, invoiceId, paymentMethod },
+      },
+      { conn, throwOnError: true },
+    );
 
-    eventBusV2.emit('membership:activated', {
+    // Emitted inside the transaction: the Outbox row participates in the
+    // COMMIT and delivery is deferred to onAfterCommit, so a rollback can
+    // never publish a phantom activation.
+    await eventBusV2.emit('membership:activated', {
       subscriptionId: referenceId, userId, organisationId: orgId, paymentMethod,
     } as Record<string, unknown>, {
       aggregateType: 'membership_subscription', aggregateId: String(referenceId), aggregateVersion: 1,
     });
+
+    return true;
   },
 
   async listOrgSubscriptions(orgId: number): Promise<any[]> {

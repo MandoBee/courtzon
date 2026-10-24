@@ -13,18 +13,10 @@ export default function SystemHealthPage() {
     queryFn: () => api.get('/admin/security/redis').then(r => r.data?.data ?? {}),
   });
 
-  const { data: metrics } = useQuery({
-    queryKey: ['admin', 'metrics'],
-    queryFn: () => api.get('/metrics').then(r => {
-      const lines = r.data.split('\n').filter((l: string) => l.startsWith('courtzon_') && !l.startsWith('#'));
-      const parsed: Record<string, number> = {};
-      for (const line of lines) {
-        const [name, val] = line.split(' ');
-        if (name && val) parsed[name.split('{')[0]] = Number(val);
-      }
-      return parsed;
-    }).catch(() => ({})),
-  });
+  // The Prometheus `/metrics` summary was removed: `GET /metrics` is fail-closed
+  // in production (404 without METRICS_TOKEN, 401 without a valid Bearer token),
+  // and the token must never be exposed to the browser — so an unauthenticated
+  // browser fetch can only fail. Metrics are scraped server-side instead.
 
   if (isLoading) return <div className="space-y-4"><SkeletonRow count={6} /></div>;
 
@@ -64,18 +56,6 @@ export default function SystemHealthPage() {
             <div><span className="text-xs text-[var(--color-text-muted)]">Peak</span><p className="font-medium">{redis.usedMemoryPeak || redis.used_memory_peak || '—'}</p></div>
             <div><span className="text-xs text-[var(--color-text-muted)]">Clients</span><p className="font-medium">{redis.connectedClients || redis.connected_clients || '—'}</p></div>
             <div><span className="text-xs text-[var(--color-text-muted)]">Hit Rate</span><p className="font-medium">{redis.hitRate || redis.hit_rate || '—'}</p></div>
-          </div>
-        </div>
-      )}
-
-      {/* Prometheus metrics summary */}
-      {metrics && Object.keys(metrics).length > 0 && (
-        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
-          <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Metrics Summary</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            {Object.entries(metrics).slice(0, 8).map(([key, val]) => (
-              <div key={key}><span className="text-xs text-[var(--color-text-muted)]">{key.replace(/^courtzon_/, '').replace(/_/g, ' ')}</span><p className="font-medium">{val ?? 0}</p></div>
-            ))}
           </div>
         </div>
       )}
