@@ -30,6 +30,8 @@ describe('Organisation accounting reports — org scoping & isolation', () => {
   let revenueId: number;
   let orgBCashId: number;
   let periodId: number;
+  // Platform period created by this suite (deleted only by exact id).
+  let createdPeriodId: number | null = null;
 
   const reply = { status: (c: number) => ({ send: (b: any) => b }), send: (b: any) => b };
 
@@ -51,8 +53,14 @@ describe('Organisation accounting reports — org scoping & isolation', () => {
     const [oc] = await pool.execute<RowData>(`INSERT INTO chart_of_accounts (organisation_id, code, name, type, normal_side, parent_id, is_system, is_active) VALUES (?, 'ORGB-CASH', 'Org B Cash', 'asset', 'debit', ?, 0, 1)`, [orgB, (l3 as any[])[0].id]);
     orgBCashId = (oc as any).insertId;
 
-    const [per] = await pool.execute<RowData>(`SELECT id FROM accounting_periods WHERE '2026-08-14' BETWEEN start_date AND end_date LIMIT 1`);
-    periodId = (per as any[])[0].id;
+    // Own platform period covering the fixture dates. Never borrow a period
+    // created by another suite (organisation-scoped or otherwise).
+    const [per] = await pool.execute<RowData>(
+      `INSERT INTO accounting_periods (organisation_id, fiscal_year, period_number, start_date, end_date, status)
+       VALUES (NULL, 2026, 8, '2026-08-01', '2026-08-31', 'open')`,
+    );
+    periodId = Number((per as any).insertId);
+    createdPeriodId = periodId;
 
     // Org A ledger: 100 DR cash / 100 CR revenue on 2026-08-14
     await pool.execute(
@@ -80,12 +88,25 @@ describe('Organisation accounting reports — org scoping & isolation', () => {
   });
 
   afterAll(async () => {
+    // fk_gl_period is RESTRICT: every general_ledger row referencing the period
+    // this suite created must be removed before the period is deleted. Guarded
+    // so cleanup is safe if beforeAll failed before creating it.
+    if (createdPeriodId != null) {
+      await pool.execute(`DELETE FROM general_ledger WHERE period_id = ?`, [createdPeriodId]);
+      await pool.execute(`DELETE FROM ledger_entries WHERE period_id = ?`, [createdPeriodId]);
+    }
     for (const orgId of [orgA, orgB]) {
       await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [orgId]);
       await pool.execute(`DELETE FROM organisation_coa_customizations WHERE organisation_id = ?`, [orgId]);
     }
     await pool.execute(`DELETE FROM chart_of_accounts WHERE id = ?`, [orgBCashId]);
     await pool.execute(`DELETE FROM organisations WHERE id IN (?, ?)`, [orgA, orgB]);
+    if (createdPeriodId != null) {
+      await pool.execute(
+        `DELETE FROM accounting_periods WHERE id = ? AND organisation_id IS NULL`,
+        [createdPeriodId],
+      );
+    }
     await pool.end();
   });
 

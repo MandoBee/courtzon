@@ -163,6 +163,31 @@ SQL
 printf 'Re-asserting 099 hierarchy and detaching seed-004 legacy child accounts\n'
 mysql_exec -e "$RECONCILE_SQL" || die "Failed to reconcile seed-004/099 parent conflict"
 
+# Migration 106 creates the global INPUT-TAX posting account, but it also
+# ALTERs tax_rates/invoice_items, so it cannot be replayed against the baseline
+# schema in this harness. Seed 005 maps purchase_invoice_* to INPUT-TAX through
+# INSERT ... SELECT, which silently skips a missing account — so INPUT-TAX must
+# exist BEFORE seed 005 is rerun below. This is test-only reference data and is
+# idempotent: it inserts nothing when a global INPUT-TAX already exists.
+INPUT_TAX_SQL="$(cat <<'SQL'
+INSERT INTO chart_of_accounts
+  (organisation_id, code, name, type, normal_side, parent_id, is_system, is_active, description)
+SELECT NULL, 'INPUT-TAX', 'Input Tax', 'asset', 'debit', p.id, 1, 1,
+       'Level 4 - Recoverable input tax on purchases'
+FROM chart_of_accounts p
+WHERE p.code = 'ASSETS-RECEIVABLES'
+  AND p.organisation_id IS NULL
+  AND p.is_active = 1
+  AND p.parent_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM chart_of_accounts
+    WHERE code = 'INPUT-TAX' AND organisation_id IS NULL
+  );
+SQL
+)"
+printf 'Ensuring global INPUT-TAX posting account\n'
+mysql_exec -e "$INPUT_TAX_SQL" || die "Failed to ensure global INPUT-TAX account"
+
 # 005 ran before 118/155 in the normal seed step. Its INSERT ... SELECT rows
 # for 2202/4160/1161/4191 were silently skipped; rerun it now that they exist.
 # Pass the password through MYSQL_PWD and blank DB_PASSWORD for this child so
@@ -191,6 +216,7 @@ FROM (
   UNION ALL SELECT '4192'
   UNION ALL SELECT '4193'
   UNION ALL SELECT '5210'
+  UNION ALL SELECT 'INPUT-TAX'
   UNION ALL SELECT 'ASSETS-CASH'
   UNION ALL SELECT 'ASSETS-CLEARING'
   UNION ALL SELECT 'ASSETS-RECEIVABLES'

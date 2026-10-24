@@ -29,6 +29,17 @@ INSERT INTO chart_of_accounts (code, name, type, description) VALUES
 ('6200', 'Rent', 'expense', 'Rent expense'),
 ('6300', 'Utilities', 'expense', 'Utility expenses');
 
+-- 4100 is a revenue account. Seed 005 uses INSERT IGNORE and therefore cannot
+-- repair the row created above, so set its natural side here for genuinely
+-- fresh or restored databases. Only NULL is filled: a manually maintained
+-- value is never overwritten, and organisation-owned accounts are untouched.
+UPDATE chart_of_accounts
+SET normal_side = 'credit'
+WHERE organisation_id IS NULL
+  AND code = '4100'
+  AND type = 'revenue'
+  AND normal_side IS NULL;
+
 -- Resolve parents by code (platform-global accounts only; roots stay NULL).
 -- 3001 must sit under 3000 (Equity); 4100-4103 must sit under 4000 (Revenue).
 UPDATE chart_of_accounts c

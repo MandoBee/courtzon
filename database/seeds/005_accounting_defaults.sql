@@ -370,6 +370,23 @@ INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept
 SELECT 'marketplace_merchant_refund', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_merchant_refund' AND organisation_id IS NULL AND concept = 'payment_clearing');
 
+-- Marketplace wallet-funded refund: credit wallet liability, never payment
+-- clearing. Canonical accounts per migrations 148/155 and the marketplace
+-- custody block above: 2202 merchant payable, 4160 commission revenue,
+-- 2300 tax liability, 2100 wallet liability.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'merchant_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2202'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'merchant_payable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4160'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'tax_liability');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'wallet_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'wallet_liability');
+
 -- 23. Referee / Provider compensation (universal provider parties)
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'referee_payout', NULL, 'referee_expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5200'
