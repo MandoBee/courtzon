@@ -41,7 +41,7 @@ async function registerAndLogin(): Promise<AuthResponse> {
   const phone = nextPhone();
   await authService.register(
     {
-      countryId: 1,
+      countryId: 3,
       phoneNumber: phone,
       password: 'test123456',
       fullName: `Session Tester ${phone}`,

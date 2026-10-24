@@ -236,8 +236,12 @@ beforeAll(async () => {
   schedProgram = await createProgram(orgId, branchId);
   courtE = await createResource(branchId);
   courtH = await createResource(branchId);
-  const start = daysFromNow(8);
-  const end = daysFromNow(10); // 3 calendar days, all weekdays
+  // Start beyond the 7-day player-booking horizon. The horizon is computed from
+  // UTC "now" and evaluated in the branch timezone (Africa/Cairo), so day+8 can
+  // fall inside it late in the UTC day. Day+10 keeps a safe margin and preserves
+  // the conflict/court-hold semantics of TEST H.
+  const start = daysFromNow(10);
+  const end = daysFromNow(12); // 3 calendar days, all weekdays
 
   gE = await createGroup(schedProgram, `${PREFIX}_e`);
   sE = await createSchedule(gE, courtE, start, end);
@@ -248,7 +252,7 @@ beforeAll(async () => {
 
   // TEST H — two-day window on a dedicated court with a pre-seeded manual hold.
   gH = await createGroup(schedProgram, `${PREFIX}_h`);
-  sH = await createSchedule(gH, courtH, start, daysFromNow(9));
+  sH = await createSchedule(gH, courtH, start, daysFromNow(11));
   await pool.query(
     `INSERT INTO academy_group_sessions (group_id, session_date, start_time, end_time, court_id, status, reservation_status)
      VALUES (?, ?, '10:00', '11:00', ?, 'scheduled', 'resolved')`,
@@ -441,14 +445,14 @@ describe('TEST E/F/G/H — regeneration transaction, idempotency and conflict re
 
     // First date collides with the pre-seeded resolved manual hold →
     // deterministic CONFLICT (conflict_metadata + no pending expiry).
-    const conflicted = rows.find((row) => row.session_date === daysFromNow(8));
+    const conflicted = rows.find((row) => row.session_date === daysFromNow(10));
     expect(conflicted).toBeTruthy();
     expect(conflicted.reservation_status).toBe('conflict');
     expect(conflicted.conflict_metadata).toBeTruthy();
     expect(conflicted.pending_expires_at).toBeFalsy();
 
     // Second date is vacant → pending_court hold with an expiry.
-    const held = rows.find((row) => row.session_date === daysFromNow(9));
+    const held = rows.find((row) => row.session_date === daysFromNow(11));
     expect(held).toBeTruthy();
     expect(held.reservation_status).toBe('pending_court');
     expect(held.pending_expires_at).toBeTruthy();

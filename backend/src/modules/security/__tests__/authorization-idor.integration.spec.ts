@@ -24,7 +24,7 @@ async function registerPlayer(phone: string, email: string, name: string): Promi
     method: 'POST',
     url: '/auth/register-player',
     payload: {
-      countryId: 1,
+      countryId: 3,
       phoneNumber: phone,
       password: 'test123456',
       fullName: name,

@@ -66,7 +66,7 @@ describe('Org portal IDOR', () => {
         method: 'POST',
         url: '/auth/register-player',
         payload: {
-          countryId: 1,
+          countryId: 3,
           phoneNumber: '05000000001',
           password: 'test123456',
           fullName: 'IDOR Player',
