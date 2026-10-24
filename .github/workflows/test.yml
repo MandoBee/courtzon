@@ -117,6 +117,9 @@ jobs:
           DB_USER: root
           DB_PASSWORD: courtzon2026
           NODE_ENV: test
+          # `courtzon_v3` here is the EPHEMERAL MySQL service container created for
+          # this job on the GitHub Actions runner — NOT a local developer database.
+          ALLOW_PERSISTENT_SEED: 'true'
 
       - name: Upload seed diagnostics on failure
         if: failure()

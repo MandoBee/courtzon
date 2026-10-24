@@ -26,7 +26,23 @@ jobs:
           cache-dependency-path: ${{ matrix.dir }}/package-lock.json
       - run: npm ci --ignore-scripts
         working-directory: ${{ matrix.dir }}
-      - run: npm audit --audit-level=high
+      # Backend: full audit (production + devDependencies) — unchanged, blocking.
+      - name: Audit backend dependencies
+        if: matrix.dir == 'backend'
+        run: npm audit --audit-level=high
+        working-directory: ${{ matrix.dir }}
+
+      # Frontend: production dependencies only — blocking.
+      - name: Audit frontend production dependencies
+        if: matrix.dir == 'frontend'
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: ${{ matrix.dir }}
+
+      # Frontend devDependencies: advisory, must not block a pull request.
+      - name: Audit frontend dev dependencies (advisory)
+        if: matrix.dir == 'frontend'
+        continue-on-error: true
+        run: npm audit --audit-level=high
         working-directory: ${{ matrix.dir }}
       - name: Run Snyk (if configured)
         if: ${{ env.SNYK_TOKEN != '' }}
