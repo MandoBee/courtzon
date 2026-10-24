@@ -158,6 +158,19 @@ WHERE c.organisation_id IS NULL
   AND c.code IN ('1100', '2100', '2200', '4100',
                  '1101', '1102', '1103', '2101', '2102')
   AND (c.parent_id IS NULL OR c.parent_id <> p.id);
+
+-- 5300 is created by seed 005 (which runs before 099) and is missing from
+-- 099's Level-4 re-parent list, so it would remain non-postable with
+-- parent_id NULL. Parent it under the same Level-3 expense root as 5100/5200.
+-- NULL-only: a manually configured parent is never overwritten.
+UPDATE chart_of_accounts c
+JOIN chart_of_accounts p
+  ON p.organisation_id IS NULL
+ AND p.code = 'EXPENSES-GENERAL'
+SET c.parent_id = p.id
+WHERE c.organisation_id IS NULL
+  AND c.code = '5300'
+  AND c.parent_id IS NULL;
 SQL
 )"
 printf 'Re-asserting 099 hierarchy and detaching seed-004 legacy child accounts\n'

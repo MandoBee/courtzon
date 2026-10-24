@@ -18,6 +18,12 @@ INSERT IGNORE INTO chart_of_accounts (organisation_id, code, name, type, normal_
 (NULL, '4200', 'Cost of Revenue', 'contra_revenue', 'debit', 1, 1, 'Revenue share owed to organizations'),
 (NULL, '4300', 'Revenue Contra', 'contra_revenue', 'debit', 1, 1, 'Refund reversals of recognized revenue'),
 (NULL, '5100', 'Bad Debt', 'expense', 'debit', 1, 1, 'Written-off failed/declined payments'),
+-- 5200 is the universal provider/referee/coach expense posting account:
+-- mappings in migrations 117/130 resolve referee_expense, provider_expense and
+-- coach_expense to this code, and migration 099 re-parents it under
+-- EXPENSES-GENERAL. It was missing from this list, so those mappings were
+-- silently skipped by their INSERT ... SELECT guards.
+(NULL, '5200', 'General Expense', 'expense', 'debit', 1, 1, 'Platform-global general expense for provider, referee and coaching payouts'),
 (NULL, '5300', 'Salary Expense', 'expense', 'debit', 1, 1, 'Employee salaries and wages');
 
 -- ── Default Accounting Event Mappings (Simple Mode: org_id = NULL) ──
