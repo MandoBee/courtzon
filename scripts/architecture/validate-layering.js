@@ -41,6 +41,54 @@ const FORBIDDEN_IMPORTS = {
   infrastructure: ['presentation'],
 };
 
+// Frontend test files execute in Vitest (Node context) and are never reachable
+// from the browser entry point; they are not browser-production source.
+// Only these four suffixes are exempt — every production .ts/.tsx file keeps
+// the full browser-layering rules.
+const FRONTEND_TEST_FILE = /\.(test|spec)\.(ts|tsx)$/i;
+const NODE_BUILTINS = ['fs', 'path', 'os', 'crypto', 'http', 'child_process', 'async_hooks'];
+
+/** Normalize separators so Windows paths match the same suffix rule. */
+function normalizePath(filePath) {
+  return String(filePath).replace(/\\/g, '/');
+}
+
+export function isFrontendTestFile(filePath) {
+  return FRONTEND_TEST_FILE.test(normalizePath(filePath));
+}
+
+/**
+ * Browser-layering rules for one frontend source file.
+ * Returns violation messages in the existing order (backend import first, then
+ * Node.js builtins). Test files never produce violations because they are not
+ * browser-production source.
+ */
+export function scanFrontendSource(relativePath, content) {
+  const path = normalizePath(relativePath);
+  const violations = [];
+  if (isFrontendTestFile(path)) return violations;
+
+  if (content.includes('from \'../../backend') || content.includes('from "../../backend') ||
+      content.includes("from '../backend") || content.includes('from "../backend') ||
+      content.includes('/backend/src/')) {
+    // Check if it's importing from @courtzon/shared which is allowed
+    if (!content.includes('@courtzon/shared')) {
+      violations.push('Frontend imports backend code');
+    }
+  }
+
+  for (const mod of NODE_BUILTINS) {
+    if (content.includes(`from '${mod}'`) || content.includes(`from "${mod}"`)) {
+      // Vite config is allowed to import from 'path'
+      if (!path.includes('vite.config')) {
+        violations.push(`Frontend imports Node.js builtin: ${mod}`);
+      }
+    }
+  }
+
+  return violations;
+}
+
 export async function validate() {
   const v = new Validator('Layer Architecture');
 
@@ -94,34 +142,18 @@ export async function validate() {
     }
   }
 
-  // Frontend must not import backend code
+  // Frontend browser-production rules: backend imports and Node.js builtins.
+  // Test files are excluded at collection time — they run in Vitest/Node and
+  // are never part of the browser bundle.
   const frontendSrc = ROOT + '/frontend/src';
-  const frontendFiles = collectFiles(frontendSrc, f => f.endsWith('.ts') || f.endsWith('.tsx'));
+  const frontendFiles = collectFiles(
+    frontendSrc,
+    f => (f.endsWith('.ts') || f.endsWith('.tsx')) && !isFrontendTestFile(f),
+  );
   for (const file of frontendFiles) {
-    const content = readFile(file);
     const relativePath = shortPath(file);
-    if (content.includes('from \'../../backend') || content.includes('from "../../backend') ||
-        content.includes("from '../backend") || content.includes('from "../backend') ||
-        content.includes('/backend/src/')) {
-      // Check if it's importing from @courtzon/shared which is allowed
-      if (!content.includes('@courtzon/shared')) {
-        v.fail('Frontend imports backend code', relativePath);
-      }
-    }
-  }
-
-  // Frontend must not import Node.js builtins
-  const nodeBuiltins = ['fs', 'path', 'os', 'crypto', 'http', 'child_process', 'async_hooks'];
-  for (const file of frontendFiles) {
-    const content = readFile(file);
-    const relativePath = shortPath(file);
-    for (const mod of nodeBuiltins) {
-      if (content.includes(`from '${mod}'`) || content.includes(`from "${mod}"`)) {
-        // Vite config is allowed to import from 'path'
-        if (!relativePath.includes('vite.config')) {
-          v.fail(`Frontend imports Node.js builtin: ${mod}`, relativePath);
-        }
-      }
+    for (const message of scanFrontendSource(relativePath, readFile(file))) {
+      v.fail(message, relativePath);
     }
   }
 

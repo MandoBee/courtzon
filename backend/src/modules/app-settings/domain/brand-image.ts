@@ -1,5 +1,3 @@
-import type { ProcessOptions } from '../../upload/infrastructure/sharp-processor.js';
-
 export type AppBrandAssetType = 'favicon' | 'favicon-dark' | 'site-logo' | 'site-logo-dark' | 'pwa-192' | 'pwa-512' | 'splash-image' | 'splash-image-dark';
 
 export interface ImageDimensions {
@@ -17,6 +15,25 @@ export interface BrandImageValidationResult {
   errors: string[];
 }
 
+/**
+ * Domain-owned image processing contract for brand assets.
+ *
+ * Structurally identical to the upload module's `ProcessOptions`, which is the
+ * shape `uploadService.replaceEntityFile()` (and the sharp processor behind it)
+ * consumes. Declaring it here keeps the domain layer free of infrastructure
+ * imports without changing runtime behavior: the spec objects below are still
+ * passed through unchanged and are structurally assignable at the call site.
+ */
+export interface BrandImageProcessOptions {
+  maxWidth?: number;
+  maxHeight?: number;
+  quality?: number;
+  stripMetadata?: boolean;
+  fit?: 'cover' | 'inside' | 'contain';
+  keepTransparency?: boolean;
+  outputFormat?: 'webp' | 'png';
+}
+
 export interface BrandImageSpec {
   settingKey: string;
   label: string;
@@ -30,7 +47,7 @@ export interface BrandImageSpec {
   squareTolerance?: number;
   minAspectRatio?: number;
   maxAspectRatio?: number;
-  process: ProcessOptions;
+  process: BrandImageProcessOptions;
   hints: string[];
 }
 

@@ -4,7 +4,7 @@ import { rbacRepository } from '../infrastructure/repositories/rbac.repository.j
 import { permissionMatchesTemplate, TEMPLATE_SLUGS } from './role-permission-templates.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
 import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
-import { eventBus } from '../../../shared/event-bus/index.js';
+import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
@@ -14,6 +14,23 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 import type { Command } from '../../../shared/command/command-base.js';
 
 const log = createModuleLogger('rbac');
+
+/**
+ * Phase 4B-1 — legacy EventBus facade payload compatibility.
+ *
+ * The facade injected `eventId`/`timestamp` into every payload before
+ * delegating to `eventBusV2`. Realtime (socket-event-mapper reads
+ * `payload.timestamp`) and notification consumers expect that shape, so it is
+ * preserved verbatim. None of the RBAC payloads below carry a `correlationId`,
+ * so the envelope keeps generating one — exactly as the facade did.
+ */
+function withEventFields(data: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...data,
+    eventId: (data.eventId as string) || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    timestamp: (data.timestamp as string) || new Date().toISOString(),
+  };
+}
 
 type RowData = mysql.RowDataPacket[];
 
@@ -122,12 +139,23 @@ export class RBACService {
         [userId],
       );
     }
-    try { eventBus.emit('user.role.changed' as any, { userId, roleId, roleSlug: role.slug, assignedBy }); } catch {}
+    // Publication is fire-and-forget: it must never fail the assignment, but
+    // the returned promise is handled explicitly so a publish failure can never
+    // surface as an unhandled rejection.
+    eventBusV2.emit(
+      'user.role.changed',
+      withEventFields({ userId, roleId, roleSlug: role.slug, assignedBy }),
+      { aggregateType: 'user.role.changed', aggregateId: String(userId), aggregateVersion: 1 },
+    ).catch((err) => log.error({ err, eventName: 'user.role.changed', userId }, 'rbac.event.publish_failed'));
   }
 
   async removeUserRole(userId: number, roleId: number) {
     await rbacRepository.removeUserRole(userId, roleId);
-    try { eventBus.emit('user.role.changed' as any, { userId, roleId, action: 'removed' }); } catch {}
+    eventBusV2.emit(
+      'user.role.changed',
+      withEventFields({ userId, roleId, action: 'removed' }),
+      { aggregateType: 'user.role.changed', aggregateId: String(userId), aggregateVersion: 1 },
+    ).catch((err) => log.error({ err, eventName: 'user.role.changed', userId }, 'rbac.event.publish_failed'));
   }
 
   async getUserRoles(userId: number) {
@@ -163,9 +191,17 @@ export class RBACService {
     const coachChanged = await rbacRepository.updateUser(userId, data);
     if (data.accountStatus && data.accountStatus !== prevStatus) {
       if (data.accountStatus === 'suspended') {
-        try { eventBus.emit('user:suspended' as any, { userId, reason: 'Admin action' }); } catch {}
+        eventBusV2.emit(
+          'user:suspended',
+          withEventFields({ userId, reason: 'Admin action' }),
+          { aggregateType: 'user', aggregateId: String(userId), aggregateVersion: 1 },
+        ).catch((err) => log.error({ err, eventName: 'user:suspended', userId }, 'rbac.event.publish_failed'));
       } else if (data.accountStatus === 'active' && prevStatus === 'suspended') {
-        try { eventBus.emit('user:activated' as any, { userId }); } catch {}
+        eventBusV2.emit(
+          'user:activated',
+          withEventFields({ userId }),
+          { aggregateType: 'user', aggregateId: String(userId), aggregateVersion: 1 },
+        ).catch((err) => log.error({ err, eventName: 'user:activated', userId }, 'rbac.event.publish_failed'));
       }
     }
     // Round 2 (Item 2) — a self-declared level/sport change must immediately
@@ -233,7 +269,14 @@ export class RBACService {
         throw new NotFoundError('User');
       }
       await conn.commit();
-      try { eventBus.emit('user:deleted' as any, { userId, actorId }); } catch {}
+      // Post-commit only: the deletion is already durable, so publication is
+      // fire-and-forget and its rejection is logged, never rethrown into the
+      // transaction catch below (which would wrongly roll back a committed delete).
+      eventBusV2.emit(
+        'user:deleted',
+        withEventFields({ userId, actorId }),
+        { aggregateType: 'user', aggregateId: String(userId), aggregateVersion: 1 },
+      ).catch((err) => log.error({ err, eventName: 'user:deleted', userId }, 'rbac.event.publish_failed'));
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -249,7 +292,11 @@ export class RBACService {
     if (user.coach_status !== 'pending') throw new Error('Coach application is not pending');
     await rbacRepository.updateCoachStatus(userId, 'approved');
     const coach = await rbacRepository.getCoachByUserId(userId);
-    eventBus.emit('coach:application-approved' as any, { userId, coachId: coach?.id });
+    eventBusV2.emit(
+      'coach:application-approved',
+      withEventFields({ userId, coachId: coach?.id }),
+      { aggregateType: 'coach', aggregateId: String(userId), aggregateVersion: 1 },
+    ).catch((err) => log.error({ err, eventName: 'coach:application-approved', userId }, 'rbac.event.publish_failed'));
     return this.getUserById(userId);
   }
 
@@ -259,7 +306,11 @@ export class RBACService {
     if (user.coach_status !== 'pending') throw new Error('Coach application is not pending');
     await rbacRepository.updateCoachStatus(userId, 'rejected', reason);
     const coach = await rbacRepository.getCoachByUserId(userId);
-    eventBus.emit('coach:application-rejected' as any, { userId, coachId: coach?.id, reason });
+    eventBusV2.emit(
+      'coach:application-rejected',
+      withEventFields({ userId, coachId: coach?.id, reason }),
+      { aggregateType: 'coach', aggregateId: String(userId), aggregateVersion: 1 },
+    ).catch((err) => log.error({ err, eventName: 'coach:application-rejected', userId }, 'rbac.event.publish_failed'));
     return this.getUserById(userId);
   }
 
@@ -267,21 +318,33 @@ export class RBACService {
     await rbacRepository.updateCoachPlatformStatus(userId, 'suspended');
     const coach = await rbacRepository.getCoachByUserId(userId);
     const user = await rbacRepository.getUserById(userId);
-    try { eventBus.emit('coach:platform-suspended' as any, { userId, coachId: coach?.id, coachName: user?.full_name }); } catch {}
+    eventBusV2.emit(
+      'coach:platform-suspended',
+      withEventFields({ userId, coachId: coach?.id, coachName: user?.full_name }),
+      { aggregateType: 'coach', aggregateId: String(userId), aggregateVersion: 1 },
+    ).catch((err) => log.error({ err, eventName: 'coach:platform-suspended', userId }, 'rbac.event.publish_failed'));
   }
 
   async reactivateCoach(userId: number) {
     await rbacRepository.updateCoachPlatformStatus(userId, 'active');
     const coach = await rbacRepository.getCoachByUserId(userId);
     const user = await rbacRepository.getUserById(userId);
-    try { eventBus.emit('coach:platform-activated' as any, { userId, coachId: coach?.id, coachName: user?.full_name }); } catch {}
+    eventBusV2.emit(
+      'coach:platform-activated',
+      withEventFields({ userId, coachId: coach?.id, coachName: user?.full_name }),
+      { aggregateType: 'coach', aggregateId: String(userId), aggregateVersion: 1 },
+    ).catch((err) => log.error({ err, eventName: 'coach:platform-activated', userId }, 'rbac.event.publish_failed'));
   }
 
   async deactivateCoach(userId: number) {
     await rbacRepository.updateCoachPlatformStatus(userId, 'deactivated');
     const coach = await rbacRepository.getCoachByUserId(userId);
     const user = await rbacRepository.getUserById(userId);
-    try { eventBus.emit('coach:platform-deactivated' as any, { userId, coachId: coach?.id, coachName: user?.full_name }); } catch {}
+    eventBusV2.emit(
+      'coach:platform-deactivated',
+      withEventFields({ userId, coachId: coach?.id, coachName: user?.full_name }),
+      { aggregateType: 'coach', aggregateId: String(userId), aggregateVersion: 1 },
+    ).catch((err) => log.error({ err, eventName: 'coach:platform-deactivated', userId }, 'rbac.event.publish_failed'));
   }
 
   async getUserBookings(userId: number) {
