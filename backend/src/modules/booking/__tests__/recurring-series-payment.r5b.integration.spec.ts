@@ -1898,7 +1898,17 @@ describe('R5-C4 — series CASH confirmation (operator-confirmed, no payment_tra
   });
 
   it('K — per-occurrence cash entitlements are created with collector=org (correct amounts)', async () => {
-    await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    const res = await recurringPayment.confirmSeriesCash(series.seriesId, ADMIN);
+    // CI has no BullMQ consumer for the entitlement subscriber (it is registered
+    // only by the running backend — server.ts:231-233), so drive the SAME
+    // production handler the queue worker would run, for exactly the
+    // occurrences confirmed by this call. The handler is idempotent (it skips
+    // when getEntitlementsBySource already returns rows) and reads the
+    // PERSISTED booking row, so this cannot bypass production rules.
+    const { handleBookingConfirmed } = await import('../../financial/application/entitlement-booking.listener.js');
+    for (const bookingId of res.confirmedOccurrenceIds) {
+      await handleBookingConfirmed({ payload: { bookingId } } as any);
+    }
     const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
     const occ = await occurrenceRows(series.seriesId);
     for (const o of occ) {
