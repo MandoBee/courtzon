@@ -107,7 +107,9 @@ describe('Session Expiry Regression (090_user_sessions_expires_at_no_on_update)'
     await touchLastActivity(tokenHash);
 
     const after = await getExpiresAt(tokenHash);
-    expect(after).toBe(before);
+    // mysql2 returns DATETIME columns as Date instances: compare instants, not
+    // object identity.
+    expect(new Date(after as any).getTime()).toBe(new Date(before as any).getTime());
   });
 
   it('refresh rotates the session and issues a fresh expiry', async () => {
@@ -115,6 +117,11 @@ describe('Session Expiry Regression (090_user_sessions_expires_at_no_on_update)'
     const oldTokenHash = hashToken(result.session.sessionToken);
     const oldExpiry = await getExpiresAt(oldTokenHash);
 
+    // createSession() derives the new expiry from Date.now() + TTL and stores it
+    // in a second-precision DATETIME, so refresh inside the same second would
+    // legitimately produce an equal value. Wait for the next second so the test
+    // asserts a strictly fresh expiry instead of a clock-resolution artefact.
+    await sleep(1100);
     const refreshed = await authService.refresh(result.session.refreshToken);
     expect(refreshed.session.sessionToken).not.toBe(result.session.sessionToken);
     expect(refreshed.session.refreshToken).not.toBe(result.session.refreshToken);
@@ -147,7 +154,7 @@ describe('Session Expiry Regression (090_user_sessions_expires_at_no_on_update)'
     await sleep(1100);
     await touchLastActivity(tokenHash);
     const unchanged = await getExpiresAt(tokenHash);
-    expect(unchanged).toBe(before);
+    expect(new Date(unchanged as any).getTime()).toBe(new Date(before as any).getTime());
 
     const [oldRows] = await pool.execute<RowData>(
       `SELECT refresh_token_expires_at FROM user_sessions WHERE session_token_hash = ? LIMIT 1`,

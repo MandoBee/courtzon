@@ -69,9 +69,18 @@ describe('COD booking:paid owner routing (BUG 3)', () => {
       [PHONE, EMAIL],
     );
     userId = (u as any).insertId;
+
+    // Accounting posting is an in-process consequence of booking:paid
+    // (booking_cod_payment). Register the listeners so the polled ledger
+    // reflects the real async consumer, without changing the production flow.
+    const { registerAccountingEventListeners } = await import('../../financial/application/accounting-event.listener.js');
+    registerAccountingEventListeners();
   });
 
   afterAll(async () => {
+    const { resetAccountingEventListenersForTest } = await import('../../financial/application/accounting-event.listener.js');
+    resetAccountingEventListenersForTest();
+
     await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM bookings WHERE organisation_id = ?`, [orgId]);
     await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [orgId]);
