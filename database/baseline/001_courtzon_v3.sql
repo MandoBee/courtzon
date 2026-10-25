@@ -7640,6 +7640,57 @@ ALTER TABLE `bookings`
 
 
 -- ============================================================================
+-- R5-D2-A (migration 178) — payment allocation foundation
+-- One recurring series CARD payment -> its canonical booking occurrence units.
+-- Source of truth = database/migrations/178_payment_allocations.sql (structure
+-- only: the migration's idempotent backfill is intentionally NOT part of the
+-- baseline, which is schema authority and hydrates empty databases).
+-- ============================================================================
+CREATE TABLE `payment_allocations` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `payment_transaction_id` bigint unsigned NOT NULL,
+  `series_id` bigint unsigned DEFAULT NULL,
+  `booking_id` bigint unsigned NOT NULL,
+
+  -- Historical financial snapshot (copied verbatim from the booking row).
+  `subtotal` decimal(14,2) NOT NULL,
+  `tax_amount` decimal(14,2) NOT NULL,
+  `commission_amount` decimal(14,2) NOT NULL,
+  `org_net_amount` decimal(14,2) NOT NULL,
+  `gross_amount` decimal(14,2) NOT NULL,
+  `currency` char(3) NOT NULL DEFAULT 'EGP',
+
+  -- Allocation lifecycle foundation (today every row is 'allocated').
+  `refunded_amount` decimal(14,2) NOT NULL DEFAULT 0,
+  `status` enum('allocated','partially_refunded','refunded') NOT NULL DEFAULT 'allocated',
+
+  -- Reuses the canonical payment method representation (same values as
+  -- payment_transactions.payment_method) so the model stays method-neutral.
+  `payment_method` enum('wallet','cash','card','bank_transfer','online') NOT NULL DEFAULT 'card',
+
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  -- One paid occurrence is allocated exactly once per payment.
+  UNIQUE KEY `uk_pa_payment_booking` (`payment_transaction_id`,`booking_id`),
+  KEY `idx_pa_series` (`series_id`),
+  KEY `idx_pa_booking` (`booking_id`),
+  KEY `idx_pa_payment` (`payment_transaction_id`),
+
+  -- Financial-data policy: allocations are permanent history. Payments and
+  -- bookings are never cascade-deleted away from their allocation ledger; the
+  -- loose series reference is SET NULL if a series is ever removed.
+  CONSTRAINT `fk_pa_payment_transaction` FOREIGN KEY (`payment_transaction_id`)
+    REFERENCES `payment_transactions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pa_booking_series` FOREIGN KEY (`series_id`)
+    REFERENCES `booking_series` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_pa_booking` FOREIGN KEY (`booking_id`)
+    REFERENCES `bookings` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================================
 -- G11.22 P1 � membership plan versioning + subscriptions (appended to baseline;
 -- source of truth = migrations 191/192 which carry COURTZON_MIGRATION_ENV markers)
 -- ============================================================================
