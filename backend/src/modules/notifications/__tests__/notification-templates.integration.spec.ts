@@ -6,6 +6,12 @@ describe('Notification Template Integration', () => {
     const ctx = await startContainers();
     applyTestProcessEnv(ctx);
     await runSchema(ctx.mysqlPort);
+    // Notification templates are code-defined and provisioned by the same
+    // production seeder the server runs at startup (server.ts). The schema
+    // bootstrap seeds providers/flags/cleanup policies (seed 009) but never
+    // the templates, so seed them here; the seeder is idempotent.
+    const { seedTemplates } = await import('../application/template.service.js');
+    await seedTemplates();
   }, 180000);
 
   afterAll(async () => {

@@ -143,6 +143,28 @@ export function buildAccountingSeedSteps(
   }));
 }
 
+const NOTIFICATION_REFERENCE_SEED_FILES = [
+  '009_notification_reference.sql',
+] as const;
+
+/**
+ * Notification-platform reference rows (providers, feature flags, cleanup
+ * policies). Their authoritative source is migration 015, which also carries
+ * non-idempotent ALTER TABLE statements and therefore cannot be replayed on a
+ * baseline-hydrated schema; seed 009 mirrors only its INSERT IGNORE blocks.
+ * Applied after the accounting seeds and before the COA bootstrap.
+ */
+export function buildNotificationReferenceSeedSteps(
+  opts: { projectRoot?: string } = {},
+): SchemaSetupStep[] {
+  const root = opts.projectRoot ?? resolve(__dirname, '../../../../');
+  const seedScript = resolve(root, 'backend/scripts/seed.js');
+  return NOTIFICATION_REFERENCE_SEED_FILES.map((file) => ({
+    cmd: process.execPath,
+    args: [seedScript, '--seed-file', file],
+  }));
+}
+
 /**
  * Test-only COA bootstrap: applies the data-only migrations 099/118/155,
  * reruns seed 005, and runs the read-only COA preflight. It never runs the
@@ -230,6 +252,10 @@ export async function runSchema(mysqlPort: number): Promise<void> {
   }
 
   for (const step of buildAccountingSeedSteps({ projectRoot })) {
+    await runStep(step, { cwd: projectRoot, env });
+  }
+
+  for (const step of buildNotificationReferenceSeedSteps({ projectRoot })) {
     await runStep(step, { cwd: projectRoot, env });
   }
 
