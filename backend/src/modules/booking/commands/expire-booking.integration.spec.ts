@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   booking_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_method VARCHAR(50) DEFAULT NULL,
+  aggregate_version INT UNSIGNED NOT NULL DEFAULT 1,
   notes TEXT DEFAULT NULL,
   expires_at DATETIME DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -102,7 +103,7 @@ describe('ExpireBooking — Integration', () => {
     const pool = getPool(); const conn = await pool.getConnection();
     try {
       const cmd: Command = { commandId: generateUlid(), commandType: 'ExpireBooking', aggregateType: 'booking', aggregateId: String(bookingId), payload: { bookingId } };
-      await expect(expireBookingHandler.execute(cmd, conn)).rejects.toThrow('Only pending bookings can expire');
+      await expect(expireBookingHandler.execute(cmd, conn)).rejects.toThrow('Only pending/pending_payment bookings can expire');
     } finally { conn.release(); }
   });
 

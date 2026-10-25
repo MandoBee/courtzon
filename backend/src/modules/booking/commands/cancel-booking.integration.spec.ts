@@ -28,8 +28,9 @@ CREATE TABLE IF NOT EXISTS bookings (
   payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_method VARCHAR(50) DEFAULT NULL,
   -- Mirrors baseline bookings.aggregate_version
-  -- (001_courtzon_v3.sql: int unsigned NOT NULL DEFAULT 1); the repository
-  -- increments/compares it on persistTransition.
+  -- (001_courtzon_v3.sql, int unsigned NOT NULL DEFAULT 1) and the repository
+  -- increments/compares it on persistTransition. Keep this comment free of
+  -- semicolons, because the DDL below is executed split on that delimiter.
   aggregate_version INT UNSIGNED NOT NULL DEFAULT 1,
   notes TEXT DEFAULT NULL,
   expires_at DATETIME DEFAULT NULL,

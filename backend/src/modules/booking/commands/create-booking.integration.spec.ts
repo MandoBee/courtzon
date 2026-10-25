@@ -26,10 +26,40 @@ CREATE TABLE IF NOT EXISTS bookings (
   booking_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_method VARCHAR(50) DEFAULT NULL,
+  tax_rate DECIMAL(5,2) NOT NULL DEFAULT 0,
+  tax_rate_id INT UNSIGNED DEFAULT NULL,
+  tax_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  tax_treatment VARCHAR(20) NOT NULL DEFAULT 'taxable',
+  price_type VARCHAR(10) NOT NULL DEFAULT 'net',
+  coach_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  aggregate_version INT UNSIGNED NOT NULL DEFAULT 1,
+  series_id INT UNSIGNED DEFAULT NULL,
   notes TEXT DEFAULT NULL,
   expires_at DATETIME DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS resources (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS branches (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  organisation_id INT UNSIGNED NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS academy_group_sessions (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  court_id INT UNSIGNED DEFAULT NULL,
+  session_date DATE NOT NULL,
+  start_time TIME DEFAULT NULL,
+  end_time TIME DEFAULT NULL,
+  reservation_status ENUM('pending_court','conflict','pending_expired','deferred','resolved','confirmed') DEFAULT NULL,
+  pending_expires_at DATETIME DEFAULT NULL,
+  status ENUM('scheduled','in_progress','completed','cancelled') NOT NULL DEFAULT 'scheduled'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
 
@@ -57,6 +87,12 @@ beforeAll(async () => {
   for (const stmt of DDL.split(';').filter(s => s.trim())) {
     await pool.execute(stmt.trim());
   }
+
+  // Fixtures matching the ids used by the command payload (branch 10,
+  // organisation 5, resource 42). checkSlotAvailability locks the resources
+  // row, and findById joins both tables by name.
+  await pool.execute('INSERT IGNORE INTO resources (id, name) VALUES (?, ?)', [42, 'Test Court']);
+  await pool.execute('INSERT IGNORE INTO branches (id, name, organisation_id) VALUES (?, ?, ?)', [10, 'Test Branch', 5]);
 }, 120000);
 
 afterAll(async () => {
@@ -118,7 +154,7 @@ describe('CreateBooking — Integration', () => {
     expect((after as any[])[0].cnt).toBe(0);
   });
 
-  it('emits booking.created event with correct fields', () => {
+  it('emits booking:created event with correct fields', () => {
     const command: Command = {
       commandId: generateUlid(),
       commandType: 'CreateBooking',
@@ -134,7 +170,7 @@ describe('CreateBooking — Integration', () => {
     const events = createBookingHandler.events!(command, result);
 
     expect(events.length).toBe(1);
-    expect(events[0].eventName).toBe('booking.created');
+    expect(events[0].eventName).toBe('booking:created');
     expect(events[0].payload.bookingId).toBe(42);
     expect(events[0].context.aggregateId).toBe('42');
     expect(events[0].context.correlationId).toBe('integ-corr-001');
