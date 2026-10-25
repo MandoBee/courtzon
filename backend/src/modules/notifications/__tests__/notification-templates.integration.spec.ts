@@ -13,7 +13,7 @@ describe('Notification Template Integration', () => {
   });
 
   it('should have all required notification templates seeded', async () => {
-    const { getPool } = await import('../../database/mysql.js');
+    const { getPool } = await import('../../../database/mysql.js');
     const pool = getPool();
 
     const requiredTemplates = [
@@ -36,7 +36,7 @@ describe('Notification Template Integration', () => {
   });
 
   it('should have templates in both English and Arabic for core events', async () => {
-    const { getPool } = await import('../../database/mysql.js');
+    const { getPool } = await import('../../../database/mysql.js');
     const pool = getPool();
 
     const bilingualEvents = [
@@ -60,7 +60,7 @@ describe('Notification Template Integration', () => {
   });
 
   it('should have notification_providers registered', async () => {
-    const { getPool } = await import('../../database/mysql.js');
+    const { getPool } = await import('../../../database/mysql.js');
     const pool = getPool();
 
     const [rows] = await pool.execute(
@@ -72,7 +72,7 @@ describe('Notification Template Integration', () => {
   });
 
   it('should have feature flags initialized', async () => {
-    const { getPool } = await import('../../database/mysql.js');
+    const { getPool } = await import('../../../database/mysql.js');
     const pool = getPool();
 
     const requiredFlags = [
@@ -89,7 +89,7 @@ describe('Notification Template Integration', () => {
   });
 
   it('should have cleanup policies configured', async () => {
-    const { getPool } = await import('../../database/mysql.js');
+    const { getPool } = await import('../../../database/mysql.js');
     const pool = getPool();
 
     const [rows] = await pool.execute(
@@ -99,7 +99,7 @@ describe('Notification Template Integration', () => {
   });
 
   it('should create notification and queue rows immediately for a normal event', async () => {
-    const { getPool } = await import('../../database/mysql.js');
+    const { getPool } = await import('../../../database/mysql.js');
     const { dispatchToUser } = await import('../application/dispatcher.service.js');
     const pool = getPool();
     const bookingId = Date.now();

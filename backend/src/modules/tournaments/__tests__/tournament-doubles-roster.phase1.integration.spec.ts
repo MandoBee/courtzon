@@ -126,7 +126,7 @@ async function addTeamParticipants(tid: number, compId: number, teams: number[][
     for (let k = 0; k < members.length; k++) {
       await exec(
         `INSERT INTO tournament_participant_members (tournament_id, participant_id, user_id, member_order, status) VALUES (?, ?, ?, ?, ?)`,
-        [tid, pid, members[k], k, k < active ? 'active' : 'inactive'],
+        [tid, pid, members[k], k, k < active ? 'active' : 'left'],
       );
     }
   }
@@ -365,7 +365,7 @@ describe('Phase 1 — doubles match rosters (real match_participants rows)', () 
     );
     const victim = Number((rank1 as any[])[0].id);
     await exec(
-      `UPDATE tournament_participant_members SET status='inactive' WHERE tournament_id = ? AND participant_id = ? AND member_order = 1`,
+      `UPDATE tournament_participant_members SET status='left' WHERE tournament_id = ? AND participant_id = ? AND member_order = 1`,
       [tid, victim],
     );
 
