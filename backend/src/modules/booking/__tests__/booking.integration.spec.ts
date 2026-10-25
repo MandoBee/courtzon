@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startContainers, runSchema, stopContainers, applyTestProcessEnv, TestContext } from '../../../tests/helpers/integration-setup.js';
-import { createPool } from '../../../database/mysql.js';
+import { createPool, getPool } from '../../../database/mysql.js';
 
 let ctx: TestContext;
 let redis: { disconnect: () => void; ping: () => Promise<string> };
@@ -17,6 +17,25 @@ beforeAll(async () => {
     password: 'test',
     database: 'courtzon_test',
   });
+
+  // Seeds provide organisations, branches and resource_types, but no resources.
+  // The seed-contract test below asserts a priced resource exists, so create an
+  // explicit fixture instead of depending on seed data that is not shipped.
+  const fixturePool = getPool();
+  const [priced] = await fixturePool.execute<any[]>(
+    'SELECT COUNT(*) AS cnt FROM resources WHERE hourly_price IS NOT NULL AND hourly_price > 0',
+  );
+  if (Number(priced[0].cnt) === 0) {
+    const [branch] = await fixturePool.execute<any[]>('SELECT id FROM branches ORDER BY id LIMIT 1');
+    const [type] = await fixturePool.execute<any[]>('SELECT id FROM resource_types ORDER BY id LIMIT 1');
+    if (branch.length && type.length) {
+      await fixturePool.execute(
+        `INSERT INTO resources (public_id, name, resource_type_id, branch_id, hourly_price, is_active, opening_time, closing_time)
+         VALUES (UUID(), 'Seed Fixture Court', ?, ?, 50, 1, '08:00', '22:00')`,
+        [type[0].id, branch[0].id],
+      );
+    }
+  }
 
   const ioredis = await import('ioredis');
   const RedisClient = (ioredis as any).default || ioredis;

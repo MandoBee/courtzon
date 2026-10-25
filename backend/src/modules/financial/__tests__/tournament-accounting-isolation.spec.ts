@@ -170,12 +170,16 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
 import { tournamentRepository } from '../../tournaments/infrastructure/repositories/tournament.repository.js';
 
-function capturePaymentSucceededHandler() {
+function captureHandler(eventName: string) {
   const handlers: Record<string, (data: any) => Promise<void> | void> = {};
   for (const call of (eventBusV2.on as any).mock.calls) {
     handlers[call[0] as string] = call[1];
   }
-  return handlers['payment:succeeded'];
+  return handlers[eventName];
+}
+
+function capturePaymentSucceededHandler() {
+  return captureHandler('payment:succeeded');
 }
 
 const PAID = (overrides: Record<string, unknown> = {}) => ({
@@ -310,9 +314,17 @@ describe('Group 3A — existing payment consumers still reach the accounting bou
     expect(ledgerRepository.createEntries).toHaveBeenCalled();
   });
 
-  it('Academy payment:succeeded → academy accounting boundary is reached', async () => {
-    const handler = capturePaymentSucceededHandler();
-    await handler(PAID({ referenceType: 'academy', referenceId: 88, amount: 200, metadata: { paymentMethod: 'card', currency: 'EGP' } }));
+  it('Academy posting is deferred from payment:succeeded to academy:enrollment-paid', async () => {
+    const paidHandler = capturePaymentSucceededHandler();
+    await paidHandler(PAID({ referenceType: 'academy', referenceId: 88, amount: 200, metadata: { paymentMethod: 'card', currency: 'EGP' } }));
+
+    // payment:succeeded only ensures the snapshot + emits the canonical event.
+    expect(ledgerRepository.hasPosting).not.toHaveBeenCalled();
+    expect(ledgerRepository.createEntries).not.toHaveBeenCalled();
+
+    const academyHandler = captureHandler('academy:enrollment-paid');
+    expect(academyHandler).toBeDefined();
+    await academyHandler!({ enrollmentId: 88, paymentMethod: 'card', currency: 'EGP' });
 
     expect(ledgerRepository.hasPosting).toHaveBeenCalled();
     expect(ledgerRepository.createEntries).toHaveBeenCalled();

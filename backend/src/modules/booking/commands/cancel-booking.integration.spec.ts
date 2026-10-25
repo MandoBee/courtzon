@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS bookings (
   booking_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_method VARCHAR(50) DEFAULT NULL,
+  -- Mirrors baseline bookings.aggregate_version
+  -- (001_courtzon_v3.sql, int unsigned NOT NULL DEFAULT 1) and the repository
+  -- increments/compares it on persistTransition. Keep this comment free of
+  -- semicolons, because the DDL below is executed split on that delimiter.
+  aggregate_version INT UNSIGNED NOT NULL DEFAULT 1,
   notes TEXT DEFAULT NULL,
   expires_at DATETIME DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -158,7 +163,7 @@ describe('CancelBooking — Integration', () => {
     }
   });
 
-  it('emits booking.cancelled event with correct fields', () => {
+  it('emits booking:cancelled event with correct fields', () => {
     const command: Command = {
       commandId: generateUlid(), commandType: 'CancelBooking',
       aggregateType: 'booking', aggregateId: '42',
@@ -167,7 +172,7 @@ describe('CancelBooking — Integration', () => {
     };
 
     const events = cancelBookingHandler.events!(command, { bookingId: 42 });
-    expect(events[0].eventName).toBe('booking.cancelled');
+    expect(events[0].eventName).toBe('booking:cancelled');
     expect(events[0].payload.reason).toBe('Test cancellation');
   });
 

@@ -14,10 +14,21 @@ INSERT IGNORE INTO chart_of_accounts (organisation_id, code, name, type, normal_
 (NULL, '2100', 'Customer Wallet Liability', 'liability', 'credit', 1, 1, 'Platform owes this to wallet holders'),
 (NULL, '2200', 'Org Payable', 'liability', 'credit', 1, 1, 'CourtZon owes this to organizations (settlements)'),
 (NULL, '2300', 'Tax Liability', 'liability', 'credit', 1, 1, 'Tax collected, owed to tax authority'),
+-- 2400 is the platform-global supplier payable used by the purchase-invoice
+-- lifecycle (concept accounts_payable). Migration 099 re-parents it under
+-- LIABILITIES-PAYABLES; it was missing from this list, so purchase mappings
+-- were silently skipped by their INSERT ... SELECT guards.
+(NULL, '2400', 'Accounts Payable', 'liability', 'credit', 1, 1, 'Platform-global supplier payables'),
 (NULL, '4100', 'Court Rental Revenue', 'revenue', 'credit', 1, 1, 'CourtZon court rental and invoiced services revenue'),
 (NULL, '4200', 'Cost of Revenue', 'contra_revenue', 'debit', 1, 1, 'Revenue share owed to organizations'),
 (NULL, '4300', 'Revenue Contra', 'contra_revenue', 'debit', 1, 1, 'Refund reversals of recognized revenue'),
 (NULL, '5100', 'Bad Debt', 'expense', 'debit', 1, 1, 'Written-off failed/declined payments'),
+-- 5200 is the universal provider/referee/coach expense posting account:
+-- mappings in migrations 117/130 resolve referee_expense, provider_expense and
+-- coach_expense to this code, and migration 099 re-parents it under
+-- EXPENSES-GENERAL. It was missing from this list, so those mappings were
+-- silently skipped by their INSERT ... SELECT guards.
+(NULL, '5200', 'General Expense', 'expense', 'debit', 1, 1, 'Platform-global general expense for provider, referee and coaching payouts'),
 (NULL, '5300', 'Salary Expense', 'expense', 'debit', 1, 1, 'Employee salaries and wages');
 
 -- ── Default Accounting Event Mappings (Simple Mode: org_id = NULL) ──
@@ -159,6 +170,29 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'purchase_invoice_cancel', NULL, 'input_tax', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = 'INPUT-TAX'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_cancel' AND organisation_id IS NULL AND concept = 'input_tax' AND is_active = 1);
+
+-- 16a. purchase invoice lifecycle — remaining canonical concepts
+-- (EXPENSE_CONCEPTS.purchase_invoice_issue / _payment / _cancel; codes per
+-- migration 130: expense → 5200, accounts_payable → 2400; cash_bank → 1120).
+-- input_tax is already mapped above and is intentionally not duplicated.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_issue', NULL, 'expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_issue' AND organisation_id IS NULL AND concept = 'expense' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_issue', NULL, 'accounts_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2400'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_issue' AND organisation_id IS NULL AND concept = 'accounts_payable' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_payment', NULL, 'accounts_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2400'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_payment' AND organisation_id IS NULL AND concept = 'accounts_payable' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_payment', NULL, 'cash_bank', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1120'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_payment' AND organisation_id IS NULL AND concept = 'cash_bank' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_cancel', NULL, 'accounts_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2400'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_cancel' AND organisation_id IS NULL AND concept = 'accounts_payable' AND is_active = 1);
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'purchase_invoice_cancel', NULL, 'expense', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '5200'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'purchase_invoice_cancel' AND organisation_id IS NULL AND concept = 'expense' AND is_active = 1);
 
 -- 15. payroll_post
 INSERT IGNORE INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
@@ -369,6 +403,23 @@ AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
 SELECT 'marketplace_merchant_refund', NULL, 'payment_clearing', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '1100'
 AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_merchant_refund' AND organisation_id IS NULL AND concept = 'payment_clearing');
+
+-- Marketplace wallet-funded refund: credit wallet liability, never payment
+-- clearing. Canonical accounts per migrations 148/155 and the marketplace
+-- custody block above: 2202 merchant payable, 4160 commission revenue,
+-- 2300 tax liability, 2100 wallet liability.
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'merchant_payable', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2202'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'merchant_payable');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'platform_commission', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '4160'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'platform_commission');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'tax_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2300'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'tax_liability');
+INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)
+SELECT 'marketplace_wallet_refund', NULL, 'wallet_liability', id, 1 FROM chart_of_accounts WHERE organisation_id IS NULL AND code = '2100'
+AND NOT EXISTS (SELECT 1 FROM accounting_event_mapping_lines WHERE event_type = 'marketplace_wallet_refund' AND organisation_id IS NULL AND concept = 'wallet_liability');
 
 -- 23. Referee / Provider compensation (universal provider parties)
 INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active)

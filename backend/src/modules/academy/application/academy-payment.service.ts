@@ -1,9 +1,13 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../database/mysql.js';
+import { runProvidedTransaction } from '../../../database/database.transaction.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { commissionService } from '../../financial/application/commission.service.js';
-import { academyPaymentRepository } from '../infrastructure/repositories/academy-payment.repository.js';
+import {
+  academyPaymentRepository,
+  type AcademyPaymentContext,
+} from '../infrastructure/repositories/academy-payment.repository.js';
 import type { AcademyEnrollmentPaymentAttributes } from '../domain/academy.types.js';
 
 const log = createModuleLogger('academy-payment');
@@ -18,6 +22,24 @@ export interface RecordOfflinePaymentResult {
   paymentTransactionId: number;
   created: boolean;
 }
+
+/**
+ * Publication hook for the offline cash flow. It runs inside the same
+ * transaction as the payment/snapshot/acknowledgment writes, so a failed
+ * published_events insert rolls back the whole operation instead of returning
+ * success for an already-committed payment with no durable event.
+ */
+export interface OfflineCashPublicationContext {
+  conn: mysql.PoolConnection;
+  enrollment: AcademyPaymentContext;
+  result: RecordOfflinePaymentResult;
+  economics: AcademySnapshotInput | null;
+  snapshot: AcademyEnrollmentPaymentAttributes | null;
+}
+
+export type OfflineCashPublisher = (
+  context: OfflineCashPublicationContext,
+) => Promise<void>;
 
 /** cash is collected by the org; every digital method is collected by CourtZon. */
 export function collectorForMethod(method: string): 'courtzon' | 'org' {
@@ -139,61 +161,87 @@ class AcademyPaymentService {
    *   2. the immutable economics snapshot (write-once)
    *   3. the enrollment payment acknowledgment
    *
-   * Commits once; callers emit `payment:succeeded` after commit so the
-   * accounting + entitlement chain runs against durable state. Idempotent:
+   * Commits once. The optional publisher runs on the same connection before
+   * commit, so canonical events are atomic with the payment + snapshot; the
+   * accounting/entitlement chain then runs against durable state. Idempotent:
    * a re-acknowledgment returns the existing snapshot/payment.
    */
   async recordOfflineCashPayment(
     enrollmentId: number,
     actorId: number,
+    publish?: OfflineCashPublisher,
   ): Promise<RecordOfflinePaymentResult> {
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction();
+      // runProvidedTransaction keeps the AsyncLocalStorage transaction context
+      // active, so EventBus emissions with this connection write
+      // published_events atomically and schedule handlers only after commit.
+      const result = await runProvidedTransaction(conn, async () => {
+        const ctx = await academyPaymentRepository.getPaymentContext(enrollmentId, conn, true);
+        if (!ctx) throw new ConflictError(`Enrollment ${enrollmentId} not found`);
 
-      const ctx = await academyPaymentRepository.getPaymentContext(enrollmentId, conn, true);
-      if (!ctx) throw new ConflictError(`Enrollment ${enrollmentId} not found`);
+        const existing = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
+        if (existing?.id && existing.payment_transaction_id) {
+          await academyPaymentRepository.markEnrollmentPaymentConfirmed(enrollmentId, actorId, conn);
+          const result: RecordOfflinePaymentResult = {
+            snapshotId: Number(existing.id),
+            paymentTransactionId: Number(existing.payment_transaction_id),
+            created: false,
+          };
+          if (publish) {
+            await publish({
+              conn,
+              enrollment: ctx,
+              result,
+              economics: null,
+              snapshot: existing,
+            });
+          }
+          return result;
+        }
 
-      const existing = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
-      if (existing?.id && existing.payment_transaction_id) {
+        const economics = await this.resolveEconomics(enrollmentId, 'cash', conn);
+
+        const paymentTransactionId = await academyPaymentRepository.createCashPaymentTransaction(
+          {
+            userId: ctx.playerId,
+            enrollmentId,
+            amount: economics.gross_amount,
+            currency: economics.currency,
+          },
+          conn,
+        );
+
+        const { id: snapshotId, created } = await academyPaymentRepository.createSnapshot(
+          { ...economics, payment_transaction_id: paymentTransactionId, created_by: actorId },
+          conn,
+        );
+
         await academyPaymentRepository.markEnrollmentPaymentConfirmed(enrollmentId, actorId, conn);
-        await conn.commit();
-        return {
-          snapshotId: Number(existing.id),
-          paymentTransactionId: Number(existing.payment_transaction_id),
-          created: false,
+        const result: RecordOfflinePaymentResult = {
+          snapshotId,
+          paymentTransactionId,
+          created,
         };
-      }
+        if (publish) {
+          await publish({
+            conn,
+            enrollment: ctx,
+            result,
+            economics,
+            snapshot: null,
+          });
+        }
 
-      const economics = await this.resolveEconomics(enrollmentId, 'cash', conn);
+        return result;
+      });
 
-      const paymentTransactionId = await academyPaymentRepository.createCashPaymentTransaction(
-        {
-          userId: ctx.playerId,
-          enrollmentId,
-          amount: economics.gross_amount,
-          currency: economics.currency,
-        },
-        conn,
-      );
-
-      const { id: snapshotId, created } = await academyPaymentRepository.createSnapshot(
-        { ...economics, payment_transaction_id: paymentTransactionId, created_by: actorId },
-        conn,
-      );
-
-      await academyPaymentRepository.markEnrollmentPaymentConfirmed(enrollmentId, actorId, conn);
-
-      await conn.commit();
       log.info(
-        { enrollmentId, snapshotId, paymentTransactionId, created, gross: economics.gross_amount },
+        { enrollmentId, ...result },
         'Academy enrollment offline cash payment recorded',
       );
-      return { snapshotId, paymentTransactionId, created };
-    } catch (err) {
-      await conn.rollback();
-      throw err;
+      return result;
     } finally {
       conn.release();
     }

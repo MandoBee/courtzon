@@ -625,7 +625,34 @@ export class AcademyConfirmationService {
     // G8 offline flow — durable single-tx: lock enrollment → create
     // payment_transactions (paid/cash) + authorized snapshot + mark
     // payment_confirmed_at (write-once). Idempotent on concurrent retries.
-    const result = await academyPaymentService.recordOfflineCashPayment(enrollmentId, actorId);
+    // Publish the canonical events on the SAME connection/transaction as the
+    // payment + snapshot + acknowledgment. A publication failure rolls back the
+    // whole operation, so the API can never report success for a committed
+    // payment whose durable events were not written.
+    const result = await academyPaymentService.recordOfflineCashPayment(
+      enrollmentId,
+      actorId,
+      async ({ conn, enrollment: paymentContext, result: paymentResult, economics, snapshot: existingSnapshot }) => {
+        const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
+        const amount = economics?.gross_amount ?? Number(existingSnapshot?.gross_amount ?? 0);
+        const currency = economics?.currency ?? existingSnapshot?.currency ?? 'EGP';
+
+        await eventBusV2.emit('academy:payment-acknowledged', {
+          programId: paymentContext.programId,
+          userId: paymentContext.playerId,
+          enrollmentId,
+          organisationId: paymentContext.organisationId ?? undefined,
+        } as any, undefined, conn);
+
+        await eventBusV2.emit('payment:succeeded', {
+          paymentId: paymentResult.paymentTransactionId,
+          referenceType: 'academy',
+          referenceId: enrollmentId,
+          amount,
+          metadata: { paymentMethod: 'cash', currency },
+        } as any, undefined, conn);
+      },
+    );
     const paidViaCash = result.created || result.snapshotId != null;
     const snapshot = await academyPaymentRepository.getSnapshotByEnrollment(enrollmentId);
     if (!snapshot) {
@@ -643,28 +670,6 @@ export class AcademyConfirmationService {
       ipAddress: undefined,
       userAgent: undefined,
     });
-
-    // G6 — payment-acknowledged, fired only after a successful acknowledgment.
-    const { eventBusV2 } = await import('../../../shared/event-bus/event-bus.v2.js');
-    eventBusV2.emit('academy:payment-acknowledged', {
-      programId: Number(enrollment.program_id),
-      userId: Number(enrollment.player_id),
-      enrollmentId,
-      organisationId: scope?.organisationId ?? undefined,
-    } as any);
-
-    // G8 — for paid programs, push the offline cash payment through the same
-    // payment:succeeded pipeline as online payments so the snapshot listener /
-    // entitlement / accounting chain runs identically for cash collections.
-    if (paidViaCash && snapshot) {
-      eventBusV2.emit('payment:succeeded', {
-        paymentId: snapshot.payment_transaction_id ?? null,
-        referenceType: 'academy',
-        referenceId: enrollmentId,
-        amount: Math.round(Number(snapshot.gross_amount ?? 0) * 100) / 100,
-        metadata: { paymentMethod: 'cash', currency: snapshot.currency ?? 'USD' },
-      } as any);
-    }
 
     return { id: enrollmentId, payment_confirmed_at: now };
   }

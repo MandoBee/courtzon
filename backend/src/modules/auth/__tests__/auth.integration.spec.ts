@@ -33,7 +33,7 @@ describe('Auth Integration', () => {
   it('should register a new player', async () => {
     const result: AuthResponse = await authService.register(
       {
-        countryId: 1,
+        countryId: 3,
         phoneNumber: '05000000001',
         password: 'test123456',
         fullName: 'Test Player',
@@ -61,7 +61,7 @@ describe('Auth Integration', () => {
     await expect(
       authService.register(
         {
-          countryId: 1,
+          countryId: 3,
           phoneNumber: '05000000001',
           password: 'test123456',
           fullName: 'Duplicate Player',
@@ -79,7 +79,7 @@ describe('Auth Integration', () => {
     await expect(
       authService.register(
         {
-          countryId: 1,
+          countryId: 3,
           phoneNumber: '05000000002',
           password: 'test123456',
           fullName: 'Duplicate Email Player',
@@ -143,7 +143,7 @@ describe('Auth Integration', () => {
   it('should refresh session token', async () => {
     const result = await authService.register(
       {
-        countryId: 1,
+        countryId: 3,
         phoneNumber: '05000000003',
         password: 'test123456',
         fullName: 'Refresh Tester',
@@ -227,7 +227,7 @@ describe('Auth Integration', () => {
   it('should logout and invalidate session', async () => {
     const result: AuthResponse = await authService.register(
       {
-        countryId: 1,
+        countryId: 3,
         phoneNumber: '05000000004',
         password: 'test123456',
         fullName: 'Logout Tester',

@@ -70,22 +70,21 @@ export interface SchemaSetupStep {
 }
 
 /**
- * Build the exact command sequence that initializes a FRESH integration schema:
+ * Build the baseline + foundational reference-data command sequence for a
+ * FRESH integration schema:
  *   1. drop + recreate the test database,
  *   2. import the authoritative baseline schema (`mysql --force`, residual
  *      duplicate-table warnings tolerated — mirrors the Docker entrypoint),
- *   3. apply the fresh-compatible canonical seed files in order via the
- *      repository's seed mechanism (`node backend/scripts/seed.js --seed-file`).
+ *   3. apply the foundational seed files via the repository's seed mechanism
+ *      (`node backend/scripts/seed.js --seed-file`).
  *
- * Seed scope: 001 (reference data — the Docker entrypoint's fresh seed), 002
- * (academy programs) and 003 (player profile extras) apply cleanly to a fresh
- * baseline and are included. The accounting seeds 004-006 are intentionally
- * NOT applied: 004's single multi-row `chart_of_accounts` insert relies on a
- * self-referential FK to auto-increment ids generated within the same statement
- * (a MySQL limitation) and cannot be applied to a fresh empty table; the Docker
- * entrypoint likewise does not apply them on a fresh database (accounting
- * reference data is installed on populated environments via
- * `node backend/scripts/seed.js --seed-file <file>`).
+ * Seed scope here: 001 (reference data — the Docker entrypoint's fresh seed),
+ * 002 (academy programs) and 003 (player profile extras). The accounting seeds
+ * 004-006 are applied separately by buildAccountingSeedSteps() after this
+ * sequence; 004 is now fresh-compatible because it resolves parent ids by code.
+ * runSchema() then applies the test-only COA bootstrap
+ * (scripts/test-bootstrap-coa.sh), which installs the data-only migration
+ * reference rows (099/118/155) and refreshes seed 005.
  *
  * Exported pure for a focused harness regression test. This deliberately does
  * NOT invoke `migrate.js --fresh --seed`: migrate.sh does not support `--seed`,
@@ -120,6 +119,65 @@ export function buildSchemaSetupCommands(
       args: [seedScript, '--seed-file', file],
     })),
   ];
+}
+
+const ACCOUNTING_SEED_FILES = [
+  '004_chart_of_accounts.sql',
+  '005_accounting_defaults.sql',
+  '006_account_templates.sql',
+] as const;
+
+/**
+ * Accounting-domain seeds, applied after the foundational 001-003 seeds.
+ * Kept separate from buildSchemaSetupCommands() so the baseline/foundational
+ * harness contract remains explicit; runSchema() composes both sequences.
+ */
+export function buildAccountingSeedSteps(
+  opts: { projectRoot?: string } = {},
+): SchemaSetupStep[] {
+  const root = opts.projectRoot ?? resolve(__dirname, '../../../../');
+  const seedScript = resolve(root, 'backend/scripts/seed.js');
+  return ACCOUNTING_SEED_FILES.map((file) => ({
+    cmd: process.execPath,
+    args: [seedScript, '--seed-file', file],
+  }));
+}
+
+const NOTIFICATION_REFERENCE_SEED_FILES = [
+  '009_notification_reference.sql',
+] as const;
+
+/**
+ * Notification-platform reference rows (providers, feature flags, cleanup
+ * policies). Their authoritative source is migration 015, which also carries
+ * non-idempotent ALTER TABLE statements and therefore cannot be replayed on a
+ * baseline-hydrated schema; seed 009 mirrors only its INSERT IGNORE blocks.
+ * Applied after the accounting seeds and before the COA bootstrap.
+ */
+export function buildNotificationReferenceSeedSteps(
+  opts: { projectRoot?: string } = {},
+): SchemaSetupStep[] {
+  const root = opts.projectRoot ?? resolve(__dirname, '../../../../');
+  const seedScript = resolve(root, 'backend/scripts/seed.js');
+  return NOTIFICATION_REFERENCE_SEED_FILES.map((file) => ({
+    cmd: process.execPath,
+    args: [seedScript, '--seed-file', file],
+  }));
+}
+
+/**
+ * Test-only COA bootstrap: applies the data-only migrations 099/118/155,
+ * reruns seed 005, and runs the read-only COA preflight. It never runs the
+ * historical migration chain or a fresh-database migration runner.
+ */
+export function buildCoaBootstrapStep(
+  opts: { projectRoot?: string } = {},
+): SchemaSetupStep {
+  const root = opts.projectRoot ?? resolve(__dirname, '../../../../');
+  return {
+    cmd: 'bash',
+    args: [resolve(root, 'scripts/test-bootstrap-coa.sh')],
+  };
 }
 
 /**
@@ -176,7 +234,7 @@ function runStep(step: SchemaSetupStep, opts: { cwd: string; env: NodeJS.Process
   });
 }
 
-/** Apply full schema + required seed via the same commands the CI/entrypoint use. */
+/** Apply the full test schema, accounting seeds and COA bootstrap via the canonical commands. */
 export async function runSchema(mysqlPort: number): Promise<void> {
   const projectRoot = resolve(__dirname, '../../../../');
   const env = {
@@ -192,6 +250,16 @@ export async function runSchema(mysqlPort: number): Promise<void> {
   for (const step of buildSchemaSetupCommands(mysqlPort, { projectRoot })) {
     await runStep(step, { cwd: projectRoot, env });
   }
+
+  for (const step of buildAccountingSeedSteps({ projectRoot })) {
+    await runStep(step, { cwd: projectRoot, env });
+  }
+
+  for (const step of buildNotificationReferenceSeedSteps({ projectRoot })) {
+    await runStep(step, { cwd: projectRoot, env });
+  }
+
+  await runStep(buildCoaBootstrapStep({ projectRoot }), { cwd: projectRoot, env });
 
   // Test-only: open a platform accounting period covering the run's business
   // date so GL-posting integrations can resolve a period (a fresh schema has

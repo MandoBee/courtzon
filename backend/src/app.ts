@@ -9,6 +9,7 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { buildCorsAllowlist, corsOriginCallback } from "./shared/middleware/cors-origin.js";
 import { bookingRoutes } from "./modules/booking/presentation/booking.routes.js";
 import { marketplaceRoutes } from "./modules/marketplace/presentation/marketplace.routes.js";
 import { activitiesRoutes } from "./modules/activities/presentation/activities.routes.js";
@@ -82,7 +83,7 @@ import { mobileRoutes } from "./modules/mobile/index.js";
 import { createPool, getPool } from "./database/mysql.js";
 import type mysql from "mysql2/promise";
 import { AppError } from "./shared/errors/app-error.js";
-import { getAppVersion, getBuildTime, getExpectedMigration, getGitCommitInfo } from "./shared/utils/build-info.js";
+import { buildVersionPayload } from "./shared/utils/build-info.js";
 import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error.util.js";
 import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
@@ -97,7 +98,9 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 const appUrl = process.env.APP_URL || '';
 const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : [];
-export const ALLOWED_ORIGINS = [
+
+/** Explicitly approved production origins. */
+const PRODUCTION_ORIGINS = [
   'https://courtzon.com',
   'https://www.courtzon.com',
   'https://admin.courtzon.com',
@@ -105,13 +108,35 @@ export const ALLOWED_ORIGINS = [
   'https://courtzon.cloud',
   'https://www.courtzon.cloud',
   'https://admin.courtzon.cloud',
+];
+
+/** Local development origins — NEVER trusted in production (MB-04). */
+const LOCAL_DEV_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
-  ...(appUrl ? [appUrl] : []),
-  ...corsOrigins,
 ];
+
+/**
+ * MB-04 — HTTP CORS / CSP allowlist. In production ONLY the approved origins
+ * and explicitly configured extras (APP_URL, CORS_ORIGINS) are permitted:
+ * localhost / 127.0.0.1 are development-only, and a Docker-local flag never
+ * widens the policy.
+ */
+const HTTP_CORS_ORIGINS = buildCorsAllowlist({
+  productionOrigins: PRODUCTION_ORIGINS,
+  localDevOrigins: LOCAL_DEV_ORIGINS,
+  isDev,
+  appUrl,
+  extraOrigins: corsOrigins,
+});
+
+/**
+ * MB-05 — the realtime (Socket.IO) policy now uses the SAME production-safe
+ * allowlist as HTTP CORS/CSP. Exported for `realtime/index.ts`.
+ */
+export const ALLOWED_ORIGINS = HTTP_CORS_ORIGINS;
 
 export const app = Fastify({
   logger: {
@@ -143,7 +168,7 @@ await app.register(helmet, {
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "blob:"],
       imgSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "data:", "https://fonts.gstatic.com", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
-      connectSrc: ["'self'", ...ALLOWED_ORIGINS, "https://*.checkout.paymob.com"],
+      connectSrc: ["'self'", ...HTTP_CORS_ORIGINS, "https://*.checkout.paymob.com"],
       formAction: ["'self'"],
       frameAncestors: ["'none'"],
       manifestSrc: ["'self'", "blob:"],
@@ -204,15 +229,7 @@ await app.register(cookie, {
 });
 
 await app.register(cors, {
-  origin: (origin, cb) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-      cb(null, true);
-    } else if (isDev || isDockerLocal) {
-      cb(null, true);
-    } else {
-      cb(new Error('Not allowed by CORS'), false);
-    }
-  },
+  origin: corsOriginCallback(HTTP_CORS_ORIGINS, isDev),
   credentials: true,
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Fingerprint', 'X-Request-Id'],
@@ -489,26 +506,9 @@ app.get("/health/socket", async (_request, reply) => {
 });
 
 app.get("/health/version", async (_request, reply) => {
-  const git = getGitCommitInfo();
-  return reply.send({
-    buildTime: getBuildTime(),
-    // Report the actual deployed commit, with explicit provenance. `gitCommit`
-    // is only marked consistent when no available source contradicts it, so a
-    // stale value can never be presented silently as the running revision.
-    gitCommit: git.commit,
-    gitCommitSource: git.source,
-    gitCommitConsistent: git.consistent,
-    gitCommitMismatch: git.mismatch,
-    imageGitCommit: git.imageCommit,
-    platformGitCommit: git.platformCommit,
-    applicationVersion: getAppVersion(),
-    expectedMigration: getExpectedMigration(),
-    nodeVersion: process.version,
-    user: process.getuid?.() ?? 'unknown',
-    pid: process.pid,
-    ppid: process.ppid,
-    storageProvider: process.env.STORAGE_PROVIDER || 'local',
-  });
+  // MB-03 — build/deployment metadata only; process details (uid/pid/ppid) are
+  // NOT exposed on this public endpoint. See buildVersionPayload().
+  return reply.send(buildVersionPayload());
 });
 
 registerMetrics(app);

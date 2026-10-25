@@ -958,8 +958,18 @@ export async function getOrgPaymentSettingsHandler(request: FastifyRequest, repl
   const { orgId } = request.params as any;
   const pool = getPool();
   type RowData = import('mysql2').RowDataPacket[];
+  // CZ-F17 — `branch_financial_details` stores the bank details as
+  // bank_account_name / bank_account_number / bank_name / iban / swift (there is
+  // NO account_holder_name / account_number / swift_code / tax_id column on this
+  // table). The real columns are aliased to the established response keys so the
+  // API contract is unchanged. `tax_id` has no authoritative per-branch storage
+  // (the only tax_id lives on `organisations`) so it is NOT projected rather than
+  // invented.
   const [branches] = await pool.query<RowData>(
-    `SELECT b.id, b.name, bfd.account_holder_name, bfd.account_number, bfd.bank_name, bfd.iban, bfd.swift_code, bfd.tax_id
+    `SELECT b.id, b.name,
+            bfd.bank_account_name AS account_holder_name,
+            bfd.bank_account_number AS account_number,
+            bfd.bank_name, bfd.iban, bfd.swift AS swift_code
      FROM branches b
      LEFT JOIN branch_financial_details bfd ON bfd.branch_id = b.id
      WHERE b.organisation_id = ? AND b.deleted_at IS NULL ORDER BY b.name`,
@@ -977,13 +987,18 @@ export async function updateOrgPaymentSettingsHandler(request: FastifyRequest, r
   const body = request.body as any;
   const pool = getPool();
   if (body.branchId && body.financialDetails) {
-    const { account_holder_name, account_number, bank_name, iban, swift_code, tax_id } = body.financialDetails;
+    // CZ-F17 — persist into the REAL `branch_financial_details` columns. The API
+    // keeps its account_holder_name / account_number / swift_code field names for
+    // compatibility; they map to bank_account_name / bank_account_number / swift.
+    // `tax_id` has no per-branch column and is intentionally NOT written
+    // (unresolved field).
+    const { account_holder_name, account_number, bank_name, iban, swift_code } = body.financialDetails;
     await pool.execute(
-      `INSERT INTO branch_financial_details (branch_id, account_holder_name, account_number, bank_name, iban, swift_code, tax_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE account_holder_name = VALUES(account_holder_name), account_number = VALUES(account_number),
-       bank_name = VALUES(bank_name), iban = VALUES(iban), swift_code = VALUES(swift_code), tax_id = VALUES(tax_id)`,
-      [Number(body.branchId), account_holder_name, account_number, bank_name, iban, swift_code, tax_id],
+      `INSERT INTO branch_financial_details (branch_id, bank_account_name, bank_account_number, bank_name, iban, swift)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE bank_account_name = VALUES(bank_account_name), bank_account_number = VALUES(bank_account_number),
+       bank_name = VALUES(bank_name), iban = VALUES(iban), swift = VALUES(swift)`,
+      [Number(body.branchId), account_holder_name, account_number, bank_name, iban, swift_code],
     );
   }
   recordAudit({

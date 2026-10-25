@@ -1,7 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 
 // Scripted pool: each test registers responses keyed by SQL signature.
 const scripted: ((sql: string) => any[] | null)[] = [];
+
+/**
+ * Pin "now" inside the fixture windows (active 2026-08-18 → 2026-09-18,
+ * future renewal 2026-09-19 → 2026-10-19). Absolute dates are intentional;
+ * the clock is controlled so the resolution semantics stay deterministic.
+ * Only Date is faked; timers/promises are untouched.
+ */
+const FIXED_NOW = new Date('2026-09-01T12:00:00.000Z');
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_NOW);
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 vi.mock('../../../database/mysql.js', () => ({
   getPool: () => ({

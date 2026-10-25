@@ -68,9 +68,10 @@ describe('Exception 3: durable accounting replay', () => {
   it('registers replay subscribers for every accounting event', async () => {
     const { registerAccountingReplaySubscribers } = await import('../application/accounting-event.listener.js');
     registerAccountingReplaySubscribers();
-    const events = ['payment:succeeded', 'payment:refunded', 'marketplace:order-delivered',
-      'marketplace:order-refunded', 'marketplace:order-cancelled', 'wallet:withdrawal-submitted',
-      'wallet:withdrawal-completed', 'settlement:paid', 'booking:paid', 'booking:refunded'];
+    const events = ['payment:succeeded', 'academy:enrollment-paid', 'payment:refunded',
+      'marketplace:order-delivered', 'marketplace:order-refunded', 'marketplace:order-cancelled',
+      'wallet:withdrawal-submitted', 'wallet:withdrawal-completed', 'settlement:paid',
+      'booking:paid', 'booking:refunded'];
     for (const e of events) {
       expect(eventBusV2.getSubscribersFor(e).length).toBeGreaterThan(0);
     }
@@ -90,6 +91,38 @@ describe('Exception 3: durable accounting replay', () => {
 
     expect(called).toHaveLength(1);
     expect(called[0]).toEqual(PAYLOAD);
+  });
+
+  it('replay dispatches academy:enrollment-paid after the snapshot event', async () => {
+    const called: unknown[] = [];
+    eventBusV2.on('academy:enrollment-paid', (data: any) => { called.push(data); });
+
+    const { registerAccountingReplaySubscribers } = await import('../application/accounting-event.listener.js');
+    registerAccountingReplaySubscribers();
+    const sub = eventBusV2.getSubscribersFor('academy:enrollment-paid')[0];
+
+    await sub.handler({
+      eventName: 'academy:enrollment-paid',
+      payload: { enrollmentId: 11, paymentMethod: 'card', currency: 'EGP' },
+    });
+
+    expect(called).toHaveLength(1);
+    expect(called[0]).toEqual({ enrollmentId: 11, paymentMethod: 'card', currency: 'EGP' });
+  });
+
+  it('propagates a replay handler failure so the durable worker retries', async () => {
+    eventBusV2.on('academy:enrollment-paid', async () => {
+      throw new Error('snapshot missing');
+    });
+
+    const { registerAccountingReplaySubscribers } = await import('../application/accounting-event.listener.js');
+    registerAccountingReplaySubscribers();
+    const sub = eventBusV2.getSubscribersFor('academy:enrollment-paid')[0];
+
+    await expect(sub.handler({
+      eventName: 'academy:enrollment-paid',
+      payload: { enrollmentId: 11 },
+    })).rejects.toThrow('snapshot missing');
   });
 
   it('replay is idempotent: hasPosting short-circuits a re-delivered event', async () => {

@@ -10,6 +10,8 @@ import { coaValidator } from '../../financial/application/coa-validator.service.
 import { calculateFiscalYearNetIncome, type FiscalYearBalance } from './year-close.netincome.js';
 import { createLedgerLines, validateLedgerBalance, type LedgerLineInput, type EntrySide } from '../../financial/domain/ledger-aggregate.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { ConflictError } from '../../../shared/errors/app-error.js';
+import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 
 const log = createModuleLogger('year-closing');
 type RowData = RowDataPacket[];
@@ -350,14 +352,31 @@ export class YearClosingService {
       params,
     );
 
-    if ((periods as any[]).length !== 12) throw new Error(`Fiscal year ${fiscalYear} has ${(periods as any[]).length} periods (expected 12)`);
+    if ((periods as any[]).length !== 12) {
+      // CZ-F23 — a clear domain conflict instead of a raw Error (which surfaced
+      // as an opaque HTTP 500). Uses the existing ConflictError + the existing
+      // PERIOD_NOT_FOUND code (no new error code required).
+      throw new ConflictError(
+        `Fiscal year ${fiscalYear} has ${(periods as any[]).length} accounting periods (expected 12) — generate the accounting periods before previewing/closing the year`,
+        ErrorCodes.PERIOD_NOT_FOUND,
+        { fiscalYear, organisationId, periodsFound: (periods as any[]).length, expected: 12 },
+      );
+    }
 
     for (const p of periods as any[]) {
       if (p.period_number <= 11 && p.status !== 'closed' && p.status !== 'locked') {
-        throw new Error(`Period ${p.period_number} must be closed (current: ${p.status})`);
+        throw new ConflictError(
+          `Accounting period ${p.period_number} must be closed (current: ${p.status})`,
+          ErrorCodes.PERIOD_ALREADY_CLOSED,
+          { fiscalYear, organisationId, periodNumber: p.period_number, status: p.status },
+        );
       }
       if (p.period_number === 12 && requireOpen12 && p.status !== 'open') {
-        throw new Error(`Period 12 must be open for year close (current: ${p.status})`);
+        throw new ConflictError(
+          `Accounting period 12 must be open for year close (current: ${p.status})`,
+          ErrorCodes.PERIOD_ALREADY_CLOSED,
+          { fiscalYear, organisationId, periodNumber: 12, status: p.status },
+        );
       }
     }
 
@@ -373,7 +392,13 @@ export class YearClosingService {
       `SELECT id FROM accounting_periods WHERE fiscal_year = ? AND period_number = 12 AND ${orgWhere}`,
       params,
     );
-    if (!periods.length) throw new Error(`Period 12 not found for fiscal year ${fiscalYear}`);
+    if (!periods.length) {
+      throw new ConflictError(
+        `Accounting period 12 not found for fiscal year ${fiscalYear}`,
+        ErrorCodes.PERIOD_NOT_FOUND,
+        { fiscalYear, organisationId, periodNumber: 12 },
+      );
+    }
     return (periods as any[])[0].id;
   }
 

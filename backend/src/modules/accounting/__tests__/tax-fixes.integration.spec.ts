@@ -20,6 +20,10 @@ describe('Accounting Tax & Payroll Fixes', () => {
   let plainOrgId: number;     // org WITHOUT overrides (global fallback)
   let orgTaxAccountId: number;
   let invSeq = 0;
+  // Periods created by this suite: one organisation-scoped decoy (plainOrgId)
+  // and the platform period platform invoices must actually use.
+  let plainPeriodId: number | null = null;
+  let platformPeriodId: number | null = null;
 
   beforeAll(async () => {
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3', connectionLimit: 5, charset: 'utf8mb4' });
@@ -45,11 +49,39 @@ describe('Accounting Tax & Payroll Fixes', () => {
       await pool.execute(`INSERT INTO accounting_event_mapping_lines (event_type, organisation_id, concept, account_id, is_active) VALUES (?, ?, 'tax_liability', ?, 1)`, [et, orgId, orgTaxAccountId]);
     }
 
-    // Open period covering the invoice date (Aug 2026)
-    await pool.execute(`INSERT INTO accounting_periods (organisation_id, fiscal_year, period_number, start_date, end_date, status) VALUES (?, 2026, 8, '2026-08-01', '2026-08-31', 'open')`, [plainOrgId]);
+    // Organisation-scoped period covering the invoice date (Aug 2026). It
+    // belongs to an UNRELATED organisation: no platform invoice may post here.
+    const [plainPeriod] = await pool.execute<RowData>(
+      `INSERT INTO accounting_periods (organisation_id, fiscal_year, period_number, start_date, end_date, status) VALUES (?, 2026, 8, '2026-08-01', '2026-08-31', 'open')`,
+      [plainOrgId],
+    );
+    plainPeriodId = Number((plainPeriod as any).insertId);
+
+    // Platform period covering the same date. Platform invoices
+    // (organisation_id NULL) must post here, and organisation invoices without
+    // their own period fall back here — never to another organisation's period.
+    const [platformPeriod] = await pool.execute<RowData>(
+      `INSERT INTO accounting_periods (organisation_id, fiscal_year, period_number, start_date, end_date, status) VALUES (NULL, 2026, 8, '2026-08-01', '2026-08-31', 'open')`,
+    );
+    platformPeriodId = Number((platformPeriod as any).insertId);
   });
 
   afterAll(async () => {
+    // fk_gl_period is RESTRICT, so every general_ledger row that references a
+    // period must be gone before that period can be deleted. The
+    // organisation-scoped deletes below are not sufficient on their own:
+    // platform postings (organisation_id NULL) can reference an
+    // organisation-owned period, so they are invisible to a delete scoped by
+    // organisation_id. Delete by period_id first.
+    const [suitePeriods] = await pool.execute<RowData>(
+      `SELECT id FROM accounting_periods WHERE organisation_id IN (?, ?)`,
+      [plainOrgId, orgId],
+    );
+    for (const row of suitePeriods as any[]) {
+      await pool.execute(`DELETE FROM general_ledger WHERE period_id = ?`, [row.id]);
+      await pool.execute(`DELETE FROM ledger_entries WHERE period_id = ?`, [row.id]);
+    }
+
     for (const id of [plainOrgId, orgId]) {
       await pool.execute(`DELETE FROM general_ledger WHERE organisation_id = ?`, [id]);
       await pool.execute(`DELETE FROM ledger_entries WHERE organisation_id = ?`, [id]);
@@ -59,6 +91,18 @@ describe('Accounting Tax & Payroll Fixes', () => {
       await pool.execute(`DELETE FROM accounting_periods WHERE organisation_id = ?`, [id]);
       await pool.execute(`DELETE FROM chart_of_accounts WHERE organisation_id = ? AND code LIKE 'TX-FIXES-%'`, [id]);
       await pool.execute(`DELETE FROM organisations WHERE id = ?`, [id]);
+    }
+
+    // The platform period is owned by no organisation, so it is removed
+    // explicitly by id (and never the shared platform period created by the
+    // integration global setup).
+    if (platformPeriodId != null) {
+      await pool.execute(`DELETE FROM general_ledger WHERE period_id = ?`, [platformPeriodId]);
+      await pool.execute(`DELETE FROM ledger_entries WHERE period_id = ?`, [platformPeriodId]);
+      await pool.execute(
+        `DELETE FROM accounting_periods WHERE id = ? AND organisation_id IS NULL`,
+        [platformPeriodId],
+      );
     }
     await pool.end();
   });
@@ -200,6 +244,121 @@ describe('Accounting Tax & Payroll Fixes', () => {
     const taxEntry = entries.find(e => e.side === 'credit' && Number(e.amount) === 100);
     expect(taxEntry).toBeTruthy();
     expect((taxEntry as any).chart_account_id).toBe(orgTaxAccountId);
+
+    await pool.execute(`DELETE FROM invoice_items WHERE invoice_id = ?`, [invId]);
+    await pool.execute(`DELETE FROM invoices WHERE id = ?`, [invId]);
+  });
+
+  // ── Period-ownership scoping (regression) ──
+
+  it('5c. platform invoice posts into the platform period, never an organisation period', async () => {
+    const mod = await import('../presentation/accounting.controller.js');
+    const mockReply = { status: (c: number) => ({ send: (b: any) => b }), send: (b: any) => b };
+    const invId = await createDraftInvoice(null, 100, 10);
+
+    await mod.issueInvoiceHandler({ params: { id: invId }, userId: 1, ip: '', headers: {} } as any, mockReply as any);
+
+    const [glRows] = await pool.execute<RowData>(
+      `SELECT organisation_id, period_id FROM general_ledger WHERE reference_type = 'invoice' AND reference_id = ?`,
+      [invId],
+    );
+    const rows = glRows as any[];
+    expect(rows.length).toBeGreaterThan(0);
+    // Platform invoice → platform organisation only.
+    expect(rows.every((r) => r.organisation_id === null)).toBe(true);
+    // …and the platform period, not the unrelated organisation's open period.
+    expect(rows.every((r) => Number(r.period_id) === platformPeriodId)).toBe(true);
+    expect(rows.some((r) => Number(r.period_id) === plainPeriodId)).toBe(false);
+
+    await pool.execute(`DELETE FROM invoice_items WHERE invoice_id = ?`, [invId]);
+    await pool.execute(`DELETE FROM invoices WHERE id = ?`, [invId]);
+  });
+
+  it('5d. organisation invoice without its own period falls back to the platform period', async () => {
+    const mod = await import('../presentation/accounting.controller.js');
+    const mockReply = { status: (c: number) => ({ send: (b: any) => b }), send: (b: any) => b };
+    // orgId has no period of its own; plainOrgId's identical-date period is the decoy.
+    const invId = await createDraftInvoice(orgId, 100, 10);
+
+    await mod.issueInvoiceHandler({ params: { id: invId }, userId: 1, ip: '', headers: {} } as any, mockReply as any);
+
+    const [glRows] = await pool.execute<RowData>(
+      `SELECT organisation_id, period_id FROM general_ledger WHERE reference_type = 'invoice' AND reference_id = ?`,
+      [invId],
+    );
+    const rows = glRows as any[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => Number(r.organisation_id) === orgId)).toBe(true);
+    expect(rows.every((r) => Number(r.period_id) === platformPeriodId)).toBe(true);
+    // Must never borrow another organisation's period.
+    expect(rows.some((r) => Number(r.period_id) === plainPeriodId)).toBe(false);
+
+    await pool.execute(`DELETE FROM invoice_items WHERE invoice_id = ?`, [invId]);
+    await pool.execute(`DELETE FROM invoices WHERE id = ?`, [invId]);
+  });
+
+  it('5e. platform invoice payment posts into the platform period, never an organisation period', async () => {
+    const mod = await import('../presentation/accounting.controller.js');
+    const mockReply = { status: (c: number) => ({ send: (b: any) => b }), send: (b: any) => b };
+    const invId = await createDraftInvoice(null, 100, 10);
+
+    await mod.recordInvoicePaymentHandler(
+      { params: { id: invId }, body: { amount: 40 }, userId: 1, ip: '', headers: {} } as any,
+      mockReply as any,
+    );
+
+    const [glRows] = await pool.execute<RowData>(
+      `SELECT gl.organisation_id, gl.period_id,
+              p.organisation_id AS period_organisation_id,
+              (CURDATE() BETWEEN p.start_date AND p.end_date) AS period_covers_today
+         FROM general_ledger gl
+         JOIN accounting_periods p ON p.id = gl.period_id
+        WHERE gl.reference_type = 'invoice_payment' AND gl.reference_id = ?`,
+      [invId],
+    );
+    const rows = glRows as any[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.organisation_id === null)).toBe(true);
+    // Payments are dated today (CURDATE()), not the invoice issue date: the
+    // period must be a PLATFORM period covering today — never the August
+    // fixture period and never an organisation period.
+    expect(rows.every((r) => r.period_organisation_id === null)).toBe(true);
+    expect(rows.every((r) => Number(r.period_covers_today) === 1)).toBe(true);
+    expect(rows.some((r) => Number(r.period_id) === plainPeriodId)).toBe(false);
+
+    await pool.execute(`DELETE FROM invoice_items WHERE invoice_id = ?`, [invId]);
+    await pool.execute(`DELETE FROM invoices WHERE id = ?`, [invId]);
+  });
+
+  it('5f. organisation invoice payment without its own period falls back to the platform period', async () => {
+    const mod = await import('../presentation/accounting.controller.js');
+    const mockReply = { status: (c: number) => ({ send: (b: any) => b }), send: (b: any) => b };
+    // orgId has no period of its own; plainOrgId's identical-date period is the decoy.
+    const invId = await createDraftInvoice(orgId, 100, 10);
+
+    await mod.recordInvoicePaymentHandler(
+      { params: { id: invId }, body: { amount: 40 }, userId: 1, ip: '', headers: {} } as any,
+      mockReply as any,
+    );
+
+    const [glRows] = await pool.execute<RowData>(
+      `SELECT gl.organisation_id, gl.period_id,
+              p.organisation_id AS period_organisation_id,
+              (CURDATE() BETWEEN p.start_date AND p.end_date) AS period_covers_today
+         FROM general_ledger gl
+         JOIN accounting_periods p ON p.id = gl.period_id
+        WHERE gl.reference_type = 'invoice_payment' AND gl.reference_id = ?`,
+      [invId],
+    );
+    const rows = glRows as any[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => Number(r.organisation_id) === orgId)).toBe(true);
+    // No organisation period exists for this org, so the payment falls back to
+    // a platform period covering today — never the unrelated organisation's
+    // August period.
+    expect(rows.every((r) => r.period_organisation_id === null)).toBe(true);
+    expect(rows.every((r) => Number(r.period_covers_today) === 1)).toBe(true);
+    expect(rows.some((r) => Number(r.period_id) === plainPeriodId)).toBe(false);
 
     await pool.execute(`DELETE FROM invoice_items WHERE invoice_id = ?`, [invId]);
     await pool.execute(`DELETE FROM invoices WHERE id = ?`, [invId]);

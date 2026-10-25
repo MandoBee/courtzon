@@ -1,7 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 
 // Scripted pool: feeds the Padel Edge history rows to the listing query.
 const scriptedRows: any[] = [];
+
+/**
+ * Pin "now" inside the incident window (old 2026-07-17 → 2026-08-17 expired,
+ * renewed 2026-08-18 → 2026-09-18 active). Absolute dates are intentional;
+ * the clock is controlled so status derivation stays deterministic.
+ * Only Date is faked; timers/promises are untouched.
+ */
+const FIXED_NOW = new Date('2026-09-01T12:00:00.000Z');
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_NOW);
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 vi.mock('../../../database/mysql.js', () => ({
   getPool: () => ({

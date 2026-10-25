@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   booking_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
   payment_method VARCHAR(50) DEFAULT NULL,
+  aggregate_version INT UNSIGNED NOT NULL DEFAULT 1,
   notes TEXT DEFAULT NULL,
   expires_at DATETIME DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -156,14 +157,14 @@ describe('ConfirmBooking — Integration', () => {
       };
 
       await expect(confirmBookingHandler.execute(command, conn)).rejects.toThrow(
-        'Cannot confirm a cancelled or no-show booking',
+        'Illegal booking state transition: cancelled → confirmed',
       );
     } finally {
       conn.release();
     }
   });
 
-  it('emits booking.confirmed event with correct fields', () => {
+  it('emits booking:confirmed event with correct fields', () => {
     const command: Command = {
       commandId: generateUlid(),
       commandType: 'ConfirmBooking',
@@ -176,7 +177,7 @@ describe('ConfirmBooking — Integration', () => {
     const events = confirmBookingHandler.events!(command, { bookingId: 42 });
 
     expect(events).toHaveLength(1);
-    expect(events[0].eventName).toBe('booking.confirmed');
+    expect(events[0].eventName).toBe('booking:confirmed');
     expect(events[0].payload.bookingId).toBe(42);
     expect(events[0].context.correlationId).toBe('integ-corr-001');
   });

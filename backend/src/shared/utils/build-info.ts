@@ -175,3 +175,45 @@ export function getAppVersion(): string {
 export function getExpectedMigration(): string {
   return readBuildValue('/app/expected-migration.txt', ['EXPECTED_MIGRATION']);
 }
+
+/**
+ * MB-03 — public payload for `GET /health/version`.
+ *
+ * Exposes build/deployment METADATA only. Process details that were previously
+ * returned (uid `user`, `pid`, `ppid`) are intentionally NOT included: they are
+ * internal runtime information with no monitoring value on a public endpoint.
+ *
+ * `gitCommit` is accompanied by its provenance. `gitCommitConsistent` is only
+ * true when no available source contradicts the value, so a stale commit can
+ * never be presented silently as the running revision.
+ */
+export interface VersionPayload {
+  buildTime: string;
+  gitCommit: string;
+  gitCommitSource: GitCommitSource;
+  gitCommitConsistent: boolean;
+  gitCommitMismatch: boolean;
+  imageGitCommit: string;
+  platformGitCommit: string;
+  applicationVersion: string;
+  expectedMigration: string;
+  nodeVersion: string;
+  storageProvider: string;
+}
+
+export function buildVersionPayload(): VersionPayload {
+  const git = getGitCommitInfo();
+  return {
+    buildTime: getBuildTime(),
+    gitCommit: git.commit,
+    gitCommitSource: git.source,
+    gitCommitConsistent: git.consistent,
+    gitCommitMismatch: git.mismatch,
+    imageGitCommit: git.imageCommit,
+    platformGitCommit: git.platformCommit,
+    applicationVersion: getAppVersion(),
+    expectedMigration: getExpectedMigration(),
+    nodeVersion: process.version,
+    storageProvider: process.env.STORAGE_PROVIDER || 'local',
+  };
+}

@@ -1675,6 +1675,43 @@ export async function getInvoiceHandler(request: FastifyRequest, reply: FastifyR
   return reply.send({ data: { ...invoices[0], items } });
 }
 
+/**
+ * Resolve the accounting period an invoice posting must use.
+ *
+ * Ownership rule — a posting may never cross an organisation boundary:
+ *  - organisation-owned invoice → that organisation's period covering the date;
+ *    when the organisation has no period for that date, the platform period
+ *    (`organisation_id IS NULL`) is the documented backward-compatible fallback
+ *    (same rule as `GlProjectionService.resolvePostingPeriod`).
+ *  - platform invoice (`organisation_id IS NULL`) → platform period only.
+ *
+ * The resolved period must be open. A closed period in the invoice's own scope
+ * is rejected instead of silently posting into another organisation's period.
+ */
+export async function resolveInvoicePostingPeriod(
+  entryDate: string | Date,
+  organisationId: number | null,
+  dateLabel: string,
+): Promise<number> {
+  let period: { id: number; status: string };
+  try {
+    period = await glProjectionService.resolvePostingPeriod(entryDate as any, organisationId);
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('No accounting period found for date ')) {
+      throw new AppError(`No open accounting period for ${dateLabel}`, 400, 'VALIDATION_ERROR');
+    }
+    throw err;
+  }
+  if (period.status !== 'open') {
+    throw new AppError(
+      `Accounting period ${period.id} for ${dateLabel} is closed`,
+      400,
+      'VALIDATION_ERROR',
+    );
+  }
+  return period.id;
+}
+
 export async function issueInvoiceHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const { id } = request.params as any;
@@ -1691,13 +1728,8 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
     throw new AppError('Only draft invoices can be issued', 400, 'VALIDATION_ERROR');
   }
 
-  const [periods] = await pool.execute<RowData>(
-    `SELECT id FROM accounting_periods WHERE ? BETWEEN start_date AND end_date AND status = 'open' LIMIT 1`,
-    [inv.issue_date]
-  );
-  if (!periods.length) {
-    throw new AppError('No open accounting period for the invoice date', 400, 'VALIDATION_ERROR');
-  }
+  const orgId: number | null = inv.organisation_id ?? null;
+  const periodId = await resolveInvoicePostingPeriod(inv.issue_date, orgId, 'the invoice date');
 
   // Resolve accounts via concepts-based mapping (no hard-coded IDs)
   const isPurchase = inv.invoice_type === 'purchase';
@@ -1711,7 +1743,6 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
   } else {
     eventType = 'invoice_issue';
   }
-  const orgId: number | null = inv.organisation_id ?? null;
   const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
   const mapping = await accountingEngineService.resolveMapping(eventType, orgId);
 
@@ -1728,7 +1759,6 @@ export async function issueInvoiceHandler(request: FastifyRequest, reply: Fastif
     await conn.execute(
       `UPDATE invoices SET status = 'issued' WHERE id = ?`, [Number(id)]
     );
-    const periodId = periods[0].id;
 
     if (eventType === 'purchase_invoice_issue') {
       const expenseId = conceptToAccount.get('expense');
@@ -1843,16 +1873,17 @@ export async function recordInvoicePaymentHandler(request: FastifyRequest, reply
   const newPaidAmount = Number(inv.paid_amount) + paymentAmount;
   const newStatus = newPaidAmount >= Number(inv.total) ? 'paid' : 'partially_paid';
 
-  const [periods] = await pool.execute<RowData>(
-    `SELECT id FROM accounting_periods WHERE CURDATE() BETWEEN start_date AND end_date AND status = 'open' LIMIT 1`
+  // Payment entries are dated today. Resolve the period inside the invoice's
+  // own scope — never another organisation's period.
+  const orgId: number | null = inv.organisation_id ?? null;
+  const [todayRows] = await pool.execute<RowData>(
+    `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS today`
   );
-  if (!periods.length) {
-    throw new AppError('No open accounting period for today', 400, 'VALIDATION_ERROR');
-  }
+  const today = String((todayRows as any[])[0].today);
+  const periodId = await resolveInvoicePostingPeriod(today, orgId, 'today');
 
   // Resolve accounts via concepts-based mapping
   const eventType = inv.invoice_type === 'purchase' ? 'purchase_invoice_payment' : 'invoice_payment';
-  const orgId: number | null = inv.organisation_id ?? null;
   const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
   const mapping = await accountingEngineService.resolveMapping(eventType, orgId);
   const conceptToAccount = new Map<string, number>();
@@ -1868,7 +1899,6 @@ export async function recordInvoicePaymentHandler(request: FastifyRequest, reply
       `UPDATE invoices SET paid_amount = ?, status = ? WHERE id = ?`,
       [newPaidAmount, newStatus, Number(id)]
     );
-    const periodId = periods[0].id;
 
     if (eventType === 'purchase_invoice_payment') {
       const payableId = conceptToAccount.get('accounts_payable');
@@ -1952,16 +1982,17 @@ export async function cancelInvoiceHandler(request: FastifyRequest, reply: Fasti
     throw new AppError('Cannot cancel a paid invoice', 400, 'VALIDATION_ERROR');
   }
 
-  const [periods] = await pool.execute<RowData>(
-    `SELECT id FROM accounting_periods WHERE CURDATE() BETWEEN start_date AND end_date AND status = 'open' LIMIT 1`
+  // The cancellation entry is dated today (existing behaviour). Resolve the
+  // period inside the invoice's own scope — never another organisation's period.
+  const orgId: number | null = inv.organisation_id ?? null;
+  const [todayRows] = await pool.execute<RowData>(
+    `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS today`
   );
-  if (!periods.length) {
-    throw new AppError('No open accounting period for today', 400, 'VALIDATION_ERROR');
-  }
+  const today = String((todayRows as any[])[0].today);
+  const periodId = await resolveInvoicePostingPeriod(today, orgId, 'today');
 
   // Resolve accounts via concepts-based mapping
   const eventType = inv.invoice_type === 'purchase' ? 'purchase_invoice_cancel' : 'invoice_cancel';
-  const orgId: number | null = inv.organisation_id ?? null;
   const { accountingEngineService } = await import('../../financial/application/accounting-engine.service.js');
   const mapping = await accountingEngineService.resolveMapping(eventType, orgId);
   const conceptToAccount = new Map<string, number>();
@@ -1976,7 +2007,6 @@ export async function cancelInvoiceHandler(request: FastifyRequest, reply: Fasti
     await conn.execute(
       `UPDATE invoices SET status = 'cancelled' WHERE id = ?`, [Number(id)]
     );
-    const periodId = periods[0].id;
 
     if (eventType === 'purchase_invoice_cancel') {
       const payableId = conceptToAccount.get('accounts_payable');
@@ -2147,23 +2177,27 @@ export async function updateTaxRateHandler(request: FastifyRequest, reply: Fasti
 }
 
 export async function processPendingEventsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const pool = getPool();
-  const body = request.body as any;
-  const userId = (request as any).userId;
-
-  const eventsProcessed = 0;
-
+  // CZ-F25 — This endpoint never processed anything: it always returned
+  // `eventsProcessed: 0` and there is no `pending_events`/event-to-journal
+  // pipeline in the codebase (accounting postings are applied automatically
+  // from domain events: eventBusV2 -> accounting-event.listener). It used to
+  // answer HTTP 200, which falsely implied the work was performed. No supported
+  // client calls this route (only documentation references it), so an honest
+  // 501 is safe and follows the API error convention ({ error, message }).
   recordAudit({
-    actorId: userId,
-    action: 'ACCOUNTING.PROCESS_EVENTS',
+    actorId: (request as any).userId,
+    action: 'ACCOUNTING.PROCESS_EVENTS.NOT_IMPLEMENTED',
     entityType: 'event_to_journal',
     entityId: 0,
-    afterState: { eventsProcessed, source: body.source || 'manual' },
+    afterState: { note: 'no-op endpoint; accounting is event-driven' },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
 
-  return reply.send({ data: { eventsProcessed, message: 'Event-to-journal processing completed. 0 events processed.' } });
+  return reply.status(501).send({
+    error: 'NOT_IMPLEMENTED',
+    message: 'Event-to-journal processing is not implemented. Accounting postings are applied automatically from domain events (event bus); there is no pending-event queue to process.',
+  });
 }
 
 // ── Accounting Event Mappings ──
