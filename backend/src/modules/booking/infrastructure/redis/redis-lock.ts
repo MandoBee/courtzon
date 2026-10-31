@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getRedisClient } from '../../../../infrastructure/redis/redis.client.js';
 
 const LOCK_TTL_MS = 15000;
@@ -5,6 +6,16 @@ const PREPARE_LOCK_TTL_MS = 600000; // 10 min — long enough for user to fill c
 const LOCK_PREFIX = 'booking:lock:';
 const COACH_LOCK_PREFIX = 'booking:lock:coach:';
 const PREPARE_LOCK_PREFIX = 'booking:prepare:';
+
+/**
+ * Ownership token for one lock acquisition. It MUST be unique per acquisition:
+ * the compare-and-delete release cannot distinguish two acquisitions that share
+ * a token, so a stale release (after TTL expiry) would delete a newer holder's
+ * lock. Scope is kept for observability (e.g. `user:42:<uuid>`).
+ */
+export function createLockOwner(scope: string): string {
+  return `${scope}:${randomUUID()}`;
+}
 
 export class RedisLock {
   private redis: any;

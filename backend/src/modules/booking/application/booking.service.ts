@@ -5,7 +5,7 @@ import { transactionService } from '../../financial/application/transaction.serv
 import { transactionRepository } from '../../financial/infrastructure/transaction.repository.js';
 import { walletRepository } from '../../wallet/infrastructure/repositories/wallet.repository.js';
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
-import { redisLock } from '../infrastructure/redis/redis-lock.js';
+import { redisLock, createLockOwner } from '../infrastructure/redis/redis-lock.js';
 import { getRedisClient } from '../../../infrastructure/redis/redis.client.js';
 import { getPool } from '../../../database/mysql.js';
 import { withTransaction, runProvidedTransaction } from '../../../database/database.transaction.js';
@@ -373,7 +373,7 @@ export class BookingService {
     const isGatewayOrWallet = paymentMethod !== 'cash' && paymentMethod !== 'cod';
 
     // Acquire distributed Redis locks for ALL slots to prevent concurrent bookings
-    const lockOwner = `user:${userId}`;
+    const lockOwner = createLockOwner(`user:${userId}`);
     const lockSlots = individualSlots.map((s) => ({
       resourceId: input.resourceId,
       date: bookingDate,
@@ -674,7 +674,7 @@ export class BookingService {
     const clubAmount = economics.clubAmount;
 
     // Redis lock with prepare TTL (10 min)
-    const lockOwner = `user:${userId}`;
+    const lockOwner = createLockOwner(`user:${userId}`);
     const lockSlots = individualSlots.map((s) => ({
       resourceId: input.resourceId,
       date: bookingDate,

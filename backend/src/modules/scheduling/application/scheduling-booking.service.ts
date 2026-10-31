@@ -3,7 +3,7 @@ import { commissionService } from '../../financial/application/commission.servic
 import { resourceRepository } from '../../organisations/infrastructure/repositories/resource.repository.js';
 import { activitiesRepository } from '../../activities/infrastructure/repositories/activities.repository.js';
 import { pricingEngine } from '../../booking/domain/pricing-engine.js';
-import { redisLock } from '../../booking/infrastructure/redis/redis-lock.js';
+import { redisLock, createLockOwner } from '../../booking/infrastructure/redis/redis-lock.js';
 import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { getPool } from '../../../database/mysql.js';
@@ -44,7 +44,7 @@ export interface BookSessionRequest {
 export class SchedulingBookingService {
   async bookSession(request: BookSessionRequest, userId: number) {
     const { coachId, resourceId, date, startTime, endTime } = request;
-    const lockOwner = `scheduling:${userId}:${Date.now()}`;
+    const lockOwner = createLockOwner(`scheduling:${userId}`);
 
     log.info({ userId, coachId, resourceId, date, startTime, endTime }, 'Booking session requested');
 

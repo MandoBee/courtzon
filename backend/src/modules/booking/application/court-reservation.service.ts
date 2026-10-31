@@ -1,7 +1,7 @@
 import { getPool } from '../../../database/mysql.js';
 import { bookingRepository } from '../infrastructure/repositories/booking.repository.js';
 import { courtReservationRepository } from '../infrastructure/repositories/court-reservation.repository.js';
-import { redisLock } from '../infrastructure/redis/redis-lock.js';
+import { redisLock, createLockOwner } from '../infrastructure/redis/redis-lock.js';
 import { slotGenerator } from '../domain/slot-generator.js';
 import { ConflictError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
@@ -274,7 +274,7 @@ export class CourtReservationService {
       throw new ConflictError('Booking range does not cover any complete slot');
     }
     const lockSlots = slots.map((s) => ({ resourceId: input.resourceId, date: input.date, slotStart: s.start }));
-    const lockOwner = `tournament:${input.userId}:${input.matchId}`;
+    const lockOwner = createLockOwner(`tournament:${input.userId}:${input.matchId}`);
     return { slots, lockSlots, lockOwner };
   }
 }
