@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import WithdrawalPage from './pages/player/WithdrawalPage';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -39,7 +39,9 @@ import RoleSwitcher from './components/workspace/RoleSwitcher';
 import CoachLayout from './components/layout/CoachLayout';
 import RefereeLayout from './components/layout/RefereeLayout';
 import { isOrganisationPendingApproval, orgPortalPath } from './utils/organisation';
-import { resolveUserHome, useWorkspaceStore } from './store/workspace.store';
+import { resolveUserHome } from './store/workspace.store';
+import { AdminRoute, ProtectedRoute } from './app/routes/RouteGuards';
+import { hasPlatformAdminAccess } from './permissions/platformAccess';
 
 // Route-level code splitting: every page/layout below is lazily imported so the
 // initial bundle only ships the shell (guards, navbar, stores). See G8.
@@ -336,39 +338,11 @@ function BrandedSplash() {
   return <SplashScreen onFinish={() => { if (!isLoading && appSettingsLoaded) setShowApp(true); }} />;
 }
 
-function ProtectedRoute() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const user = useAuthStore((s) => s.user);
-  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
-  const location = useLocation();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'admin' || r === 'super_admin' || r === 'master-admin' || r === 'accountant');
-  if (isAdmin && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/org') && !location.pathname.startsWith('/notifications')) {
-    return <Navigate to="/admin" replace />;
-  }
-  if (!isAdmin && location.pathname === '/app' && activeWorkspace !== 'player') {
-    const home = resolveUserHome();
-    if (home.workspace !== 'player' && home.path !== '/app') {
-      return <Navigate to={home.path} replace />;
-    }
-  }
-  return <Outlet />;
-}
-
 function LandingRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   if (isAuthenticated) {
     return <Navigate to={resolveUserHome().path} replace />;
   }
-  return <Outlet />;
-}
-
-function AdminRoute() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const user = useAuthStore((s) => s.user);
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const isAdmin = user?.roles?.some(r => r === 'super-admin' || r === 'super_admin' || r === 'admin' || r === 'master-admin' || r === 'accountant');
-  if (!isAdmin) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 
@@ -433,9 +407,9 @@ function Navbar() {
   const firstOrg = orgScopes[0];
   const orgNavPath = firstOrg ? orgPortalPath(firstOrg) : null;
   const orgNavLabel = firstOrg?.name?.trim() || t('nav.organization');
-  const isAdminUser = !!user?.roles?.some((r) =>
-    r === 'super-admin' || r === 'super_admin' || r === 'admin' || r === 'master-admin' || r === 'accountant'
-  );
+  // Navigation mirrors the `/admin` route guard: same permission predicate, no role strings.
+  const { can } = useCan();
+  const isAdminUser = hasPlatformAdminAccess(can);
 
   const navLinkClass = (path: string) =>
     `text-sm transition-colors ${
@@ -545,10 +519,10 @@ function AppContent() {
 
   // True when the page was (re)loaded to apply a PWA update. The reload splash is
   // kept visible until the app is fully initialized, then hidden without flicker.
-  const pendingReloadRef = useRef<boolean>(
-    typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PENDING_RELOAD_KEY) === '1',
+  // Captured once via a lazy state initializer (read-only; no ref access in render).
+  const [pendingReload] = useState<boolean>(
+    () => typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PENDING_RELOAD_KEY) === '1',
   );
-  const pendingReload = pendingReloadRef.current;
   const [reloadSplashDismissed, setReloadSplashDismissed] = useState(false);
   const appReady = !isLoading && appSettingsLoaded;
 

@@ -28,6 +28,12 @@ vi.mock('./useSocket', () => ({
     if (!captured[eventType]) captured[eventType] = [];
     captured[eventType].push(handler);
   },
+  useSocketEvents: (eventTypes: readonly string[], handler: (eventType: string, payload: any) => void) => {
+    for (const eventType of eventTypes) {
+      if (!captured[eventType]) captured[eventType] = [];
+      captured[eventType].push((payload: any) => handler(eventType, payload));
+    }
+  },
 }));
 
 vi.mock('./socket-client', () => ({

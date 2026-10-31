@@ -180,7 +180,7 @@ open → full → in_progress → completed
 9. Register permission keys in `frontend/src/permissions/registry.ts`
 10. Run `node backend/scripts/sync-ui-registry.js`
 11. Add role patterns to `backend/scripts/role-permission-templates.mjs`
-12. Run `node backend/scripts/sync-role-permissions.mjs`
+12. Run `node backend/scripts/sync-role-permissions.mjs --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>`
 13. Create migration in `database/migrations/`
 14. Add tests in `__tests__/`
 

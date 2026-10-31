@@ -119,8 +119,13 @@ Database setup happens automatically via `docker-entrypoint.sh` on first run. Th
 # After the stack is running
 docker compose exec backend node scripts/migrate.js
 
-# Full reset (first deploy only — destroys data)
-docker compose exec backend node scripts/migrate.js --fresh --seed
+# Full reset (first deploy only — destroys data; explicit confirmation required,
+# and --fresh --seed is rejected)
+docker compose exec backend node scripts/migrate.js --fresh --confirm-destructive-fresh
+
+# Seed separately, from the repo root, against the target database
+# (the backend image does not ship scripts/seed.sh)
+DB_HOST=<db-host> DB_PORT=<db-port> ./scripts/seed.sh
 ```
 
 Migrations are **manual** — they never run on container startup. This prevents accidental schema changes during restarts.
@@ -291,7 +296,7 @@ docker compose restart backend
 
 ```bash
 # Roll back the last migration
-./scripts/migrate.sh --rollback 042_my_migration.sql
+node backend/scripts/migrate.js --rollback 042_my_migration.sql
 ```
 
 ### Zero-downtime deployment approach

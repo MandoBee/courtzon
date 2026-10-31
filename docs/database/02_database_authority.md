@@ -61,7 +61,7 @@ New in migration #128, this table tracks which migration files have been applied
 | **Future migrations** | Append to `database/schema/` | Append to `database/migrations/` |
 | **Seed data** | 3 SQL files + JS modules | `database/seeds/001_baseline.sql` |
 | **Seed generator** | `export-baseline-seed.mjs` | Same (improved, in `scripts/`) |
-| **Migration runner** | `backend/scripts/migrate.js` | `scripts/migrate.sh` |
+| **Migration runner** | `backend/scripts/migrate.js` | `backend/scripts/migrate.js` (shell engine internal) |
 | **Seed runner** | `migrate.js --seed` | `scripts/seed.sh` |
 | **Seed on startup** | Auto in docker-entrypoint.sh | **REMOVED** — manual only |
 | **Migration on startup** | Auto in docker-entrypoint.sh | **REMOVED** — manual only |
@@ -108,4 +108,4 @@ The following tables contain runtime/transactional data and are **excluded from 
 3. **No inline seeds in code** — all reference data must come from the seed authority file
 4. **No legacy seed paths** — `--seed-legacy`, `--seed-demo`, `run.mjs` will be removed
 5. **Single seed command** — `scripts/seed.sh` is the only seed entry point
-6. **Single migrate command** — `scripts/migrate.sh` is the only migration entry point
+6. **Single migrate command** — `backend/scripts/migrate.js` is the only public migration entry point (`scripts/migrate.sh` is its internal SQL engine)

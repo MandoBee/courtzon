@@ -178,7 +178,7 @@ describe('Multi-seller order split', () => {
     repoMock.findOrdersBySeller = vi.fn(async () => ({ data: [], total: 0, page: 1, limit: 10 }));
     repoMock.findOrderIdsByCheckoutGroup = vi.fn(async () => []);
     repoMock.findOrdersByCheckoutGroup = vi.fn(async () => []);
-    repoMock.updateOrderStatus = vi.fn(async () => {});
+    repoMock.updateOrderStatus = vi.fn(async () => true);
     repoMock.updateOrderTracking = vi.fn(async () => {});
     repoMock.updateOrderFinancials = vi.fn(async () => {});
     repoMock.updateCashCollectionStatus = vi.fn(async () => {});
@@ -748,8 +748,8 @@ describe('Multi-seller order split', () => {
 
       expect(repoMock.restoreStock).toHaveBeenCalledTimes(2);
 
-      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(9501, 'cancelled', 'Gateway timeout');
-      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(9502, 'cancelled', 'Gateway timeout');
+      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(9501, 'cancelled', 'Gateway timeout', expect.anything());
+      expect(repoMock.updateOrderStatus).toHaveBeenCalledWith(9502, 'cancelled', 'Gateway timeout', expect.anything());
 
       expect(mockEmit).toHaveBeenCalledWith('marketplace:order-cancelled', expect.objectContaining({
         orderId: 9501,

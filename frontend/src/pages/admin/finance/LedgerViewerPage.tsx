@@ -16,7 +16,8 @@ import { useCan } from '../../../hooks/useCan';
  */
 export default function LedgerViewerPage() {
   const { can } = useCan();
-  if (!can('sidebar.finance-ledger')) return null;
+  // Derived value, never an early return: hooks must run on every render.
+  const canView = can('financial.view');
   const dr = apiDateRange(30);
   const [from, setFrom] = useState(dr.from);
   const [to, setTo] = useState(localDaysAgo(-1));
@@ -31,7 +32,11 @@ export default function LedgerViewerPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['finance', 'ledger', from, to, accountCode, accountType],
     queryFn: () => api.get('/admin/financial/ledger', { params }).then(r => r.data.data),
+    enabled: canView,
   });
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!canView) return null;
 
   const entries = Array.isArray(data) ? data : [];
   const filtered = search ? entries.filter((e: any) =>

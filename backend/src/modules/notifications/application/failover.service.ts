@@ -4,6 +4,22 @@ import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('failover');
 
+/** Preference JSON can be corrupted by manual edits; never let that break dispatch. */
+function parseChannelList(value: unknown): string[] | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value as string[];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? (parsed as string[]) : null;
+    } catch {
+      log.warn({ value }, 'Malformed channel preference JSON ignored');
+      return null;
+    }
+  }
+  return null;
+}
+
 export async function getFailoverChain(
   userId: number,
   categorySlug: string,
@@ -21,13 +37,7 @@ export async function getFailoverChain(
   const pref = rows[0] as any;
   if (!pref.failover_enabled) return null;
 
-  if (!pref.failover_chain) return null;
-
-  const chain = typeof pref.failover_chain === 'string'
-    ? JSON.parse(pref.failover_chain)
-    : pref.failover_chain;
-
-  return Array.isArray(chain) ? chain : null;
+  return parseChannelList(pref.failover_chain);
 }
 
 export async function getChannelPreferences(
@@ -47,12 +57,11 @@ export async function getChannelPreferences(
   }
 
   const pref = rows[0] as any;
-  const channels: string[] = pref.channels
-    ? (typeof pref.channels === 'string' ? JSON.parse(pref.channels) : pref.channels)
-    : ['in_app'];
+  const parsedChannels = parseChannelList(pref.channels);
+  const channels: string[] = parsedChannels && parsedChannels.length ? parsedChannels : ['in_app'];
 
-  const failoverChain: string[] | null = pref.failover_enabled && pref.failover_chain
-    ? (typeof pref.failover_chain === 'string' ? JSON.parse(pref.failover_chain) : pref.failover_chain)
+  const failoverChain: string[] | null = pref.failover_enabled
+    ? parseChannelList(pref.failover_chain)
     : null;
 
   return { channels, failoverEnabled: !!pref.failover_enabled, failoverChain };

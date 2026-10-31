@@ -104,38 +104,91 @@ Migrations and seeds are **manual** by design — they never run on container st
 node backend/scripts/migrate.js
 
 # Full database reset (drops and recreates DB):
-# NOTE: This destroys all data. Use only for initial setup.
-node backend/scripts/migrate.js --fresh --seed
+# NOTE: This destroys all data. --fresh is refused unless the destructive
+# confirmation flag is supplied, and --fresh --seed is rejected outright.
+node backend/scripts/migrate.js --fresh --confirm-destructive-fresh
+
+# Seeding is always a separate step
+./scripts/seed.sh
 ```
 
-### Via shell scripts (alternative)
+### Via Node runner (canonical entry point)
 
 ```bash
 # Set DB_HOST=localhost if running outside Docker
-DB_HOST=localhost ./scripts/migrate.sh --fresh
+# (--fresh requires the explicit destructive confirmation flag)
+DB_HOST=localhost node backend/scripts/migrate.js --fresh --confirm-destructive-fresh
 DB_HOST=localhost ./scripts/seed.sh
 ```
 
 ### What the seed includes
 
-`--seed` loads the **baseline snapshot** (`database/seed/003_baseline_snapshot.sql`) which contains:
+The seed step (`./scripts/seed.sh`) loads the **baseline snapshot** (`database/seed/003_baseline_snapshot.sql`) which contains:
 
 - Reference data (countries, cities, provinces, sports, amenities)
 - RBAC configuration (roles, permissions, role_permissions)
 - CMS pages and content
 - Subscription plans and features
 - App settings, design tokens, and translations
-- Admin user accounts (if configured via `SUPER_ADMIN_EMAIL`)
+- A pre-provisioned Super Admin account (`users.id = 1`, `super_admin` role) with a committed password hash — verify its status and rotate the credential before production use
 
 After seeding, role permissions are synced automatically via `sync-role-permissions.mjs`.
 
 ### Starting fresh with demo data
 
 ```bash
-node backend/scripts/migrate.js --fresh --seed --seed-demo
+# 1. Destructive schema reset — explicit confirmation required
+node backend/scripts/migrate.js --fresh --confirm-destructive-fresh
+
+# 2. Reference seed data (all seed files, in order)
+./scripts/seed.sh
+
+# 3. Player demo data
+./scripts/seed.sh --seed-file 003_player_demo.sql
 ```
 
 This adds synthetic organisations, bookings, marketplace listings, and coach profiles.
+
+### Creating the Super Admin account
+
+Seeds ship a pre-provisioned Super Admin (`users.id = 1`). The manual bootstrap script creates
+or locates a Super Admin and ensures its role grant — it is not wired into any entrypoint, so it
+only runs when invoked:
+
+```bash
+# From the project root (reads process env, then the root .env)
+node backend/scripts/bootstrap-admin.js \
+  --confirm-host=localhost --confirm-port=3306 --confirm-db=courtzon_v3
+```
+
+All three confirmation flags must match the **resolved** `DB_HOST`, `DB_PORT`, and `DB_NAME`
+exactly (process env wins over `.env`; defaults are `localhost:3306/courtzon_v3`). The script
+refuses `courtzon_v2`, prints the resolved target before connecting, opens no connection until
+confirmation matches, and exits nonzero when a required variable or any confirmation flag is
+missing.
+
+It reads the following variables, creates the `users` row plus the `super_admin` role grant,
+and never prints phone numbers, emails, or passwords:
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `SUPER_ADMIN_PHONE` | ✓ | — | Local **11-digit** number without country code — the exact value typed at login |
+| `SUPER_ADMIN_COUNTRY_ISO` | ✓ | — | **ISO-2** code of an active `countries` row (e.g. `EG`); its `phone_code` prefixes the stored `full_phone` |
+| `SUPER_ADMIN_EMAIL` | ✓ | — | Profile email only (`users.email` is NOT NULL + UNIQUE) — **not** a login identifier |
+| `SUPER_ADMIN_PASSWORD` | ✓ | — | Password (PBKDF2-SHA512 hashed, never logged) |
+| `SUPER_ADMIN_NAME` | | `Super Admin` | `users.full_name` for the new account |
+| `SUPER_ADMIN_GENDER` | | `male` | `male` or `female` (`users.gender` is NOT NULL) |
+
+**Login is phone + password — never email.** At the login screen, select the same country and
+type the same local 11-digit number; the backend resolves the account through
+`full_phone` (`+<country code><local number>`).
+
+The script aborts with a nonzero exit code when a required variable or any target confirmation flag
+is missing, and on an invalid phone, country code, or gender. Re-running is safe: an existing user with
+the same `full_phone` is reused and only the `super_admin` role grant is ensured (a revoked or
+expired grant is reported, never silently reactivated). If permissions look empty afterwards, run
+`sync-role-permissions.mjs` with the same `--confirm-host` / `--confirm-port` / `--confirm-db`
+values. Supply the values at run time and remove them afterwards — never commit real values to a `.env`.
 
 ## Running the Application
 

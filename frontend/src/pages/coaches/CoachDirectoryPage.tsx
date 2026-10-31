@@ -16,11 +16,12 @@ export default function CoachDirectoryPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
     return () => clearTimeout(t);
   }, [search]);
-
-  useEffect(() => { setPage(1); }, [debouncedSearch, sportFilter]);
 
   const params = new URLSearchParams({ limit: '20', page: String(page) });
   if (debouncedSearch) params.set('q', debouncedSearch);
@@ -61,7 +62,7 @@ export default function CoachDirectoryPage() {
         </div>
         <select
           value={sportFilter}
-          onChange={(e) => setSportFilter(e.target.value)}
+          onChange={(e) => { setSportFilter(e.target.value); setPage(1); }}
           className="px-3 py-2 border border-[var(--color-border)] rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]"
         >
           <option value="">All Sports</option>

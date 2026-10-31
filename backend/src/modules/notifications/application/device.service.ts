@@ -128,6 +128,30 @@ export async function getPushTokens(userId: number): Promise<{ token: string; pl
   return rows as any[];
 }
 
+/** List the authenticated user's tokens for the mobile API (never another user's). */
+export async function listPushTokens(userId: number): Promise<any[]> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT id, token, platform, device_name, is_active, created_at, updated_at
+       FROM push_tokens WHERE user_id = ? ORDER BY created_at DESC`,
+    [userId],
+  );
+  return rows as any[];
+}
+
+/** Find one token owned by the user (used for ownership checks before removal). */
+export async function findPushToken(
+  userId: number,
+  token: string,
+): Promise<{ id: number; platform: string; device_name: string | null } | null> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    'SELECT id, platform, device_name FROM push_tokens WHERE user_id = ? AND token = ? LIMIT 1',
+    [userId, token],
+  );
+  return rows.length ? (rows[0] as any) : null;
+}
+
 export async function savePushToken(
   userId: number,
   token: string,

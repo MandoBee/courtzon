@@ -1,6 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { useSocketEvent } from './useSocket';
+import { useSocketEvent, useSocketEvents } from './useSocket';
 import { useAuthStore } from '../store/auth.store';
 import { disconnectSocket, createSocket, getSocketState, onSocketStateChange } from './socket-client';
 
@@ -599,6 +599,121 @@ export function invalidateAcademyAdminEnrollment(qc: { invalidateQueries: (opts:
   qc.invalidateQueries({ queryKey: ['admin', 'academy', 'session-roster'] });
 }
 
+/**
+ * P3-04 — socket event lists consumed by `useSocketEvents`.
+ *
+ * React forbids hooks inside loops, so each former
+ * `for (const ev of list) useSocketEvent(ev, handler)` loop now performs a
+ * single `useSocketEvents(list, handler)` call. The lists live at module scope
+ * so their identity is stable and the subscription effect does not re-run on
+ * every render. Membership and order are unchanged from the previous loops.
+ */
+const WALLET_WITHDRAWAL_EVENTS = [
+  'wallet.withdrawal-submitted', 'wallet.withdrawal-under-review', 'wallet.withdrawal-approved',
+  'wallet.withdrawal-rejected', 'wallet.withdrawal-processing', 'wallet.withdrawal-completed',
+  'wallet.withdrawal-cancelled', 'wallet.withdrawal-assigned',
+] as const;
+
+const MATCH_LIFECYCLE_EXTRA_EVENTS = [
+  'match.created', 'match.status_changed', 'match.cancelled', 'match.completed', 'match.pending',
+] as const;
+
+const PARTICIPANT_SESSION_EVENTS = [
+  'participant.added', 'participant.removed', 'session.started', 'session.completed',
+] as const;
+
+const INVITATION_SOCKET_EVENTS = [
+  'invitation.sent', 'invitation.declined', 'invitation.expired',
+] as const;
+
+const JOIN_REQUEST_EVENTS = [
+  'join_request.submitted', 'join_request.approved', 'join_request.rejected',
+  'join_request.withdrawn', 'join_request.auto_rejected',
+  'waiting_list.entry_added', 'waiting_list.entry_removed', 'waiting_list.promoted',
+] as const;
+
+const COACH_LIFECYCLE_EVENTS = [
+  'coach.application-approved', 'coach.application-rejected',
+  'coach.verified', 'coach.platform-activated', 'coach.platform-suspended',
+  'coach.platform-deactivated', 'coach.availability-changed',
+  'coach.invited', 'coach.agreement-added',
+  'coach.org-accepted', 'coach.org-rejected', 'coach.org-suspended',
+  'coach.org-resumed', 'coach.org-ended',
+  'coach.invite-accepted', 'coach.invite-rejected',
+] as const;
+
+const SUBSCRIPTION_REQUEST_EVENTS = [
+  'subscription.request-submitted', 'subscription.request-approved',
+  'subscription.request-rejected', 'subscription.request-reopened',
+] as const;
+
+const TOURNAMENT_HUB_GENERATION_EVENTS = [
+  'tournament.group-stage-generated', 'tournament.knockout-generated', 'tournament.matches-generated',
+] as const;
+
+const REGISTRATION_LIFECYCLE_EVENTS = [
+  'registration.received', 'tournament.waitlist-promoted',
+] as const;
+
+const TOURNAMENT_PRIZE_EVENTS = [
+  'tournament.prize-awarded', 'tournament.prize-refunded',
+] as const;
+
+const TOURNAMENT_DRAW_EVENTS = [
+  'tournament.draw-generated', 'tournament.draw-updated',
+] as const;
+
+const TOURNAMENT_PARTICIPANT_EVENTS = [
+  'tournament.participant-updated', 'tournament.waitlist-updated', 'tournament.participant-replaced',
+] as const;
+
+const TOURNAMENT_PARTICIPANT_MEMBER_EVENTS = [
+  'tournament.participant-created', 'tournament.participant-members-updated',
+  'tournament.replacement-request-updated',
+] as const;
+
+const TOURNAMENT_MATCH_SCHEDULE_EVENTS = [
+  'tournament.matches-generated', 'tournament.schedule-updated',
+  'tournament.court-reserved', 'tournament.court-released',
+] as const;
+
+const NAV_COUNT_BOOKING_EVENTS = [
+  'booking.created', 'booking.confirmed', 'booking.rejected', 'booking.updated',
+  'booking.rescheduled', 'booking.cancelled', 'booking.expired', 'booking.completed',
+  'booking.no_show', 'booking.checked_in', 'booking.fully-booked',
+  'booking.application-declined', 'booking.paid', 'booking.refunded',
+] as const;
+
+const NAV_COUNT_PAYMENT_EVENTS = [
+  'payment.completed', 'payment.failed', 'payment.cancelled', 'payment.refunded', 'payment.succeeded',
+] as const;
+
+const NAV_COUNT_MARKETPLACE_EVENTS = [
+  'marketplace.order-placed', 'marketplace.order-confirmed', 'marketplace.order-shipped',
+  'marketplace.order-delivered', 'marketplace.order-cancelled', 'marketplace.order-status-changed',
+  'marketplace.order-refunded', 'marketplace.product-status-changed',
+] as const;
+
+const NAV_COUNT_CHAT_EVENTS = [
+  'chat.new-message', 'chat.group-invitation', 'chat.group-created', 'chat.group-joined',
+] as const;
+
+const NAV_COUNT_MATCH_EVENTS = [
+  'match.available', 'match.removed', 'match.updated', 'match.pending', 'match.created',
+  'match.status_changed', 'match.cancelled', 'match.completed', ...MATCH_RESULT_SOCKET_EVENTS,
+] as const;
+
+const NAV_COUNT_ACADEMY_EVENTS = [
+  'academy.enrolled', 'academy.graduated', ...academyEnrollmentEvents,
+] as const;
+
+const NAV_COUNT_TOURNAMENT_EVENTS = [
+  'tournament.created', 'tournament.match-scheduled', 'tournament.result',
+  'tournament.bracket-generated', 'tournament.match-created', 'tournament.match-progressed',
+  'tournament.completed', 'tournament.updated', 'tournament.waitlist-promoted',
+  'registration.received',
+] as const;
+
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
@@ -783,15 +898,13 @@ export function useRealtimeCacheUpdates(): void {
     qc.invalidateQueries({ queryKey: ['transactions'] });
   });
 
-  for (const ev of ['wallet.withdrawal-submitted', 'wallet.withdrawal-under-review', 'wallet.withdrawal-approved', 'wallet.withdrawal-rejected', 'wallet.withdrawal-processing', 'wallet.withdrawal-completed', 'wallet.withdrawal-cancelled', 'wallet.withdrawal-assigned']) {
-    useSocketEvent(ev, () => {
-      qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
-      qc.invalidateQueries({ queryKey: ['my-withdrawals'] });
-      qc.invalidateQueries({ queryKey: ['admin-withdrawals'] });
-      qc.invalidateQueries({ queryKey: ['withdrawal-stats'] });
-      qc.invalidateQueries({ queryKey: ['assignable-admins'] });
-    });
-  }
+  useSocketEvents(WALLET_WITHDRAWAL_EVENTS, () => {
+    qc.invalidateQueries({ queryKey: ['wallet', 'me'] });
+    qc.invalidateQueries({ queryKey: ['my-withdrawals'] });
+    qc.invalidateQueries({ queryKey: ['admin-withdrawals'] });
+    qc.invalidateQueries({ queryKey: ['withdrawal-stats'] });
+    qc.invalidateQueries({ queryKey: ['assignable-admins'] });
+  });
 
   // ── Marketplace events ─────────────────────────────────────────
   useSocketEvent('marketplace.product-status-changed', () => {
@@ -919,48 +1032,38 @@ export function useRealtimeCacheUpdates(): void {
     invalidateMatchKeys(qc, p);
   });
 
-  for (const eventName of ['match.created', 'match.status_changed', 'match.cancelled', 'match.completed', 'match.pending'] as const) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateMatchKeys(qc, p);
-    });
-  }
+  useSocketEvents(MATCH_LIFECYCLE_EXTRA_EVENTS, (_eventType, p: any) => {
+    invalidateMatchKeys(qc, p);
+  });
 
   // Participant/session lifecycle: the roster depth of a match changed.
-  for (const eventName of ['participant.added', 'participant.removed', 'session.started', 'session.completed'] as const) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateMatchKeys(qc, p);
-      qc.invalidateQueries({ queryKey: ['match-applicants'] });
-    });
-  }
+  useSocketEvents(PARTICIPANT_SESSION_EVENTS, (_eventType, p: any) => {
+    invalidateMatchKeys(qc, p);
+    qc.invalidateQueries({ queryKey: ['match-applicants'] });
+  });
 
   // Invitation lifecycle: the recipient's badge + the applicant roster refresh.
-  for (const eventName of ['invitation.sent', 'invitation.declined', 'invitation.expired'] as const) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateMatchKeys(qc, p);
-      qc.invalidateQueries({ queryKey: ['match-applicants'] });
-    });
-  }
+  useSocketEvents(INVITATION_SOCKET_EVENTS, (_eventType, p: any) => {
+    invalidateMatchKeys(qc, p);
+    qc.invalidateQueries({ queryKey: ['match-applicants'] });
+  });
 
   // Join-request / waiting-list changes mutate the applicant roster live.
-  for (const eventName of ['join_request.submitted', 'join_request.approved', 'join_request.rejected', 'join_request.withdrawn', 'join_request.auto_rejected', 'waiting_list.entry_added', 'waiting_list.entry_removed', 'waiting_list.promoted'] as const) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateMatchKeys(qc, p);
-      qc.invalidateQueries({ queryKey: ['match-applicants'] });
-    });
-  }
+  useSocketEvents(JOIN_REQUEST_EVENTS, (_eventType, p: any) => {
+    invalidateMatchKeys(qc, p);
+    qc.invalidateQueries({ queryKey: ['match-applicants'] });
+  });
 
   // Match result lifecycle events (submitted/approved/disputed/resolved/…)
   // reach the participant user rooms + the admin room. Refresh the match
   // detail, the result page, the public/home lists and the admin workbench.
-  for (const eventName of MATCH_RESULT_SOCKET_EVENTS) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateMatchKeys(qc, p);
-      if (p?.matchId) {
-        qc.invalidateQueries({ queryKey: ['match', p.matchId] });
-        qc.invalidateQueries({ queryKey: ['match-result', p.matchId] });
-      }
-    });
-  }
+  useSocketEvents(MATCH_RESULT_SOCKET_EVENTS, (_eventType, p: any) => {
+    invalidateMatchKeys(qc, p);
+    if (p?.matchId) {
+      qc.invalidateQueries({ queryKey: ['match', p.matchId] });
+      qc.invalidateQueries({ queryKey: ['match-result', p.matchId] });
+    }
+  });
 
   // ── Academy events ─────────────────────────────────────────────
   useSocketEvent('academy.enrolled', () => {
@@ -976,19 +1079,17 @@ export function useRealtimeCacheUpdates(): void {
   // G3-A — the G1-emitted cancelled/completed events join the same set.
   // G4-A — enrollment events now also reach admin rooms; refresh the admin
   // roster surface (session roster follows group membership changes).
-  for (const eventName of academyEnrollmentEvents) {
-    useSocketEvent(eventName, (p: any) => {
-      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'dashboard'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'academy', 'capacity'] });
-      invalidateAcademyAdminEnrollment(qc);
-      qc.invalidateQueries({ queryKey: ['my', 'academy', 'enrollments'] });
-      qc.invalidateQueries({ queryKey: ['academy', 'public'] });
-      if (p?.programId) {
-        qc.invalidateQueries({ queryKey: ['academy', 'public', 'program', p.programId] });
-      }
-    });
-  }
+  useSocketEvents(academyEnrollmentEvents, (_eventType, p: any) => {
+    qc.invalidateQueries({ queryKey: ['admin', 'academy', 'enrollments'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'academy', 'dashboard'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'academy', 'capacity'] });
+    invalidateAcademyAdminEnrollment(qc);
+    qc.invalidateQueries({ queryKey: ['my', 'academy', 'enrollments'] });
+    qc.invalidateQueries({ queryKey: ['academy', 'public'] });
+    if (p?.programId) {
+      qc.invalidateQueries({ queryKey: ['academy', 'public', 'program', p.programId] });
+    }
+  });
 
   // ── G4-A — Academy administrative realtime (org/branch/super-admin rooms) ──
   // session-started stays player-scoped: complete the player session-list
@@ -1021,29 +1122,15 @@ export function useRealtimeCacheUpdates(): void {
   });
 
   // ── Coach lifecycle events ─────────────────────────────────────
-  const coachLifecycleEvents = [
-    'coach.application-approved', 'coach.application-rejected',
-    'coach.verified', 'coach.platform-activated', 'coach.platform-suspended',
-    'coach.platform-deactivated', 'coach.availability-changed',
-    'coach.invited', 'coach.agreement-added',
-    'coach.org-accepted', 'coach.org-rejected', 'coach.org-suspended',
-    'coach.org-resumed', 'coach.org-ended',
-    'coach.invite-accepted', 'coach.invite-rejected',
-  ];
-
-  for (const eventName of coachLifecycleEvents) {
-    useSocketEvent(eventName, () => {
-      for (const queryKey of COACH_LIFECYCLE_INVALIDATIONS) {
-        qc.invalidateQueries({ queryKey });
-      }
-    });
-  }
+  useSocketEvents(COACH_LIFECYCLE_EVENTS, () => {
+    for (const queryKey of COACH_LIFECYCLE_INVALIDATIONS) {
+      qc.invalidateQueries({ queryKey });
+    }
+  });
 
   // P1-04B — referee assignment lifecycle. Delivered to the assigned referee's
   // `user:{id}` room; refresh their own assignment list + dashboard counters live.
-  for (const eventName of REFEREE_LIFECYCLE_EVENTS) {
-    useSocketEvent(eventName, () => invalidateRefereeAssignment(qc));
-  }
+  useSocketEvents(REFEREE_LIFECYCLE_EVENTS, () => invalidateRefereeAssignment(qc));
 
   // Coach service-locations change — emitted after a coach saves their branch
   // selection. The acting coach's own profile/location queries and every
@@ -1188,19 +1275,14 @@ export function useRealtimeCacheUpdates(): void {
     }
   });
 
-  const subscriptionRequestEvents = [
-    'subscription.request-submitted', 'subscription.request-approved', 'subscription.request-rejected', 'subscription.request-reopened',
-  ];
-  for (const ev of subscriptionRequestEvents) {
-    useSocketEvent(ev, () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] });
-      qc.invalidateQueries({ queryKey: ['org-subscription-requests'] });
-      qc.invalidateQueries({ queryKey: ['org-subscription-periods'] });
-      qc.invalidateQueries({ queryKey: ['admin-approvals'] });
-      qc.invalidateQueries({ queryKey: ['org-subscription'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
-    });
-  }
+  useSocketEvents(SUBSCRIPTION_REQUEST_EVENTS, () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'subscription-requests'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription-requests'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription-periods'] });
+    qc.invalidateQueries({ queryKey: ['admin-approvals'] });
+    qc.invalidateQueries({ queryKey: ['org-subscription'] });
+    qc.invalidateQueries({ queryKey: ['admin', 'organisation-subscriptions'] });
+  });
 
   // ── Membership events ──────────────────────────────────────────
   useSocketEvent('membership.created', () => {
@@ -1276,33 +1358,25 @@ export function useRealtimeCacheUpdates(): void {
   // bracket/standings/tournament caches — the TournamentDetailPage must
   // refresh live, with no manual reload.
   const tournamentRealtimeEvents = TOURNAMENT_REALTIME_EVENTS;
-  for (const eventName of tournamentRealtimeEvents) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
-      // Step 3H — progression/match-created/stage-completed events must refresh
-      // the Tournament Hub's matches + bracket/standings, not just the player
-      // detail keys.
-      invalidateTournamentHub(qc, p?.tournamentId);
-      const key = eventName === 'tournament.match-progressed' || eventName === 'tournament.completed' ? 'standings' : 'bracket';
-      if (key === 'standings') qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'standings'] });
-      else qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'bracket'] });
-    });
-  }
+  useSocketEvents(tournamentRealtimeEvents, (eventName, p: any) => {
+    invalidateTournamentForOrg(qc, p?.tournamentId, p?.organisationId);
+    // Step 3H — progression/match-created/stage-completed events must refresh
+    // the Tournament Hub's matches + bracket/standings, not just the player
+    // detail keys.
+    invalidateTournamentHub(qc, p?.tournamentId);
+    const key = eventName === 'tournament.match-progressed' || eventName === 'tournament.completed' ? 'standings' : 'bracket';
+    if (key === 'standings') qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'standings'] });
+    else qc.invalidateQueries({ queryKey: ['tournament', String(p?.tournamentId), 'bracket'] });
+  });
 
   // Step 3H — GSK generation + match-set generation parity: the engine emits
   // these with the privacy-slim tournamentRealtimeScope (now allowlisted on the
   // publisher). The Hub listener only invalidates the canonical groups / stages
   // / matches queries for the payload's tournament — it never computes groups,
   // qualification or brackets.
-  for (const eventName of [
-    'tournament.group-stage-generated',
-    'tournament.knockout-generated',
-    'tournament.matches-generated',
-  ] as const) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateTournamentHub(qc, p?.tournamentId);
-    });
-  }
+  useSocketEvents(TOURNAMENT_HUB_GENERATION_EVENTS, (_eventType, p: any) => {
+    invalidateTournamentHub(qc, p?.tournamentId);
+  });
 
   // Group 6 — withdrawal resolution mutates the bracket, participants, waitlist
   // and schedule surfaces; the resolved participant is targeted via its room.
@@ -1320,11 +1394,9 @@ export function useRealtimeCacheUpdates(): void {
 
   // G7-E — registration lifecycle (created/withdrawn/confirmed), eligibility
   // config updates and waitlist promotion reconcile the affected sessions live.
-  for (const eventName of ['registration.received', 'tournament.waitlist-promoted']) {
-    useSocketEvent(eventName, (p: any) => {
-      invalidateRegistrationLifecycle(qc, p);
-    });
-  }
+  useSocketEvents(REGISTRATION_LIFECYCLE_EVENTS, (_eventType, p: any) => {
+    invalidateRegistrationLifecycle(qc, p);
+  });
   // G8-D-MINIMAL — `tournament.updated` is reused by result correction and
   // automatic no-result expiry reconciliation with `standings: true`. Besides
   // the lifecycle refresh, that payload must also invalidate the authoritative
@@ -1384,15 +1456,13 @@ export function useRealtimeCacheUpdates(): void {
   // G5 — prize payout lifecycle: refresh the winner's tournament detail + the
   // awards workbench (existing query key). No new wallet behavior — wallet
   // surfaces refresh via their own wallet/entitlement events.
-  for (const ev of ['tournament.prize-awarded', 'tournament.prize-refunded'] as const) {
-    useSocketEvent(ev, (p: any) => {
-      invalidateTournament(qc, p?.tournamentId);
-      if (p?.tournamentId) {
-        qc.invalidateQueries({ queryKey: ['tournament-awards', String(p.tournamentId)] });
-      }
-      invalidateOrgTournamentList(qc, p?.organisationId);
-    });
-  }
+  useSocketEvents(TOURNAMENT_PRIZE_EVENTS, (_eventType, p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament-awards', String(p.tournamentId)] });
+    }
+    invalidateOrgTournamentList(qc, p?.organisationId);
+  });
 
   // D2 — refund request submitted (G11.3 review flow): refresh the org
   // refund-management screen (existing key) + the tournament detail.
@@ -1453,58 +1523,50 @@ export function useRealtimeCacheUpdates(): void {
     }
   });
 
-  for (const ev of ['tournament.draw-generated', 'tournament.draw-updated']) {
-    useSocketEvent(ev, (p: any) => {
-      invalidateTournament(qc, p?.tournamentId);
-      if (p?.tournamentId) {
-        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'bracket'] });
-        qc.invalidateQueries({ queryKey: ['tournament-draw', p.tournamentId] });
-      }
-    });
-  }
+  useSocketEvents(TOURNAMENT_DRAW_EVENTS, (_eventType, p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'bracket'] });
+      qc.invalidateQueries({ queryKey: ['tournament-draw', p.tournamentId] });
+    }
+  });
 
   // Group 6 — participant lifecycle (withdrawal / waitlist / replacement) state
   // changes refresh the participants + waitlist caches live.
-  for (const ev of ['tournament.participant-updated', 'tournament.waitlist-updated', 'tournament.participant-replaced']) {
-    useSocketEvent(ev, (p: any) => {
-      invalidateTournament(qc, p?.tournamentId);
-      if (p?.tournamentId) {
-        qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
-        qc.invalidateQueries({ queryKey: ['tournament-waitlist', p.tournamentId] });
-        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
-      }
-    });
-  }
+  useSocketEvents(TOURNAMENT_PARTICIPANT_EVENTS, (_eventType, p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament-waitlist', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+    }
+  });
 
   // Group 7 — pair/team member + replacement-request state changes refresh the
   // participants + replacement-request caches live (all authorized Admin/Org).
-  for (const ev of ['tournament.participant-created', 'tournament.participant-members-updated', 'tournament.replacement-request-updated']) {
-    useSocketEvent(ev, (p: any) => {
-      invalidateTournament(qc, p?.tournamentId);
-      if (p?.tournamentId) {
-        qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
-        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
-        qc.invalidateQueries({ queryKey: ['tournament-replacement-requests', p.tournamentId] });
-        if (p?.participantId != null) {
-          qc.invalidateQueries({ queryKey: ['tournament-participant-members', p.tournamentId, p.participantId] });
-        }
+  useSocketEvents(TOURNAMENT_PARTICIPANT_MEMBER_EVENTS, (_eventType, p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament-participants', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'participants'] });
+      qc.invalidateQueries({ queryKey: ['tournament-replacement-requests', p.tournamentId] });
+      if (p?.participantId != null) {
+        qc.invalidateQueries({ queryKey: ['tournament-participant-members', p.tournamentId, p.participantId] });
       }
-    });
-  }
+    }
+  });
 
   // Group 8 — match generation + schedule + court reservation state changes
   // refresh the tournament matches + schedule + courts caches live.
-  for (const ev of ['tournament.matches-generated', 'tournament.schedule-updated', 'tournament.court-reserved', 'tournament.court-released']) {
-    useSocketEvent(ev, (p: any) => {
-      invalidateTournament(qc, p?.tournamentId);
-      if (p?.tournamentId) {
-        qc.invalidateQueries({ queryKey: ['tournament-matches', p.tournamentId] });
-        qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'matches'] });
-        qc.invalidateQueries({ queryKey: ['tournament-courts', p.tournamentId] });
-        qc.invalidateQueries({ queryKey: ['tournament-schedule', p.tournamentId] });
-      }
-    });
-  }
+  useSocketEvents(TOURNAMENT_MATCH_SCHEDULE_EVENTS, (_eventType, p: any) => {
+    invalidateTournament(qc, p?.tournamentId);
+    if (p?.tournamentId) {
+      qc.invalidateQueries({ queryKey: ['tournament-matches', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament', String(p.tournamentId), 'matches'] });
+      qc.invalidateQueries({ queryKey: ['tournament-courts', p.tournamentId] });
+      qc.invalidateQueries({ queryKey: ['tournament-schedule', p.tournamentId] });
+    }
+  });
 
   // ── Presence events ────────────────────────────────────────────
   useSocketEvent('presence.online', (p: any) => {
@@ -1522,40 +1584,13 @@ export function useRealtimeCacheUpdates(): void {
   // the hook is the safety net; these invalidations keep the badges live.
   const invalidateNavCounts = () => qc.invalidateQueries({ queryKey: ['player-nav-counts'] });
 
-  const navCountBookingEvents = [
-    'booking.created', 'booking.confirmed', 'booking.rejected', 'booking.updated',
-    'booking.rescheduled', 'booking.cancelled', 'booking.expired', 'booking.completed',
-    'booking.no_show', 'booking.checked_in', 'booking.fully-booked',
-    'booking.application-declined', 'booking.paid', 'booking.refunded',
-  ];
-  for (const ev of navCountBookingEvents) useSocketEvent(ev, invalidateNavCounts);
-
-  for (const ev of ['payment.completed', 'payment.failed', 'payment.cancelled', 'payment.refunded', 'payment.succeeded']) {
-    useSocketEvent(ev, invalidateNavCounts);
-  }
-
-  const navCountMarketplaceEvents = [
-    'marketplace.order-placed', 'marketplace.order-confirmed', 'marketplace.order-shipped',
-    'marketplace.order-delivered', 'marketplace.order-cancelled', 'marketplace.order-status-changed',
-    'marketplace.order-refunded', 'marketplace.product-status-changed',
-  ];
-  for (const ev of navCountMarketplaceEvents) useSocketEvent(ev, invalidateNavCounts);
-
-  for (const ev of ['chat.new-message', 'chat.group-invitation', 'chat.group-created', 'chat.group-joined']) {
-    useSocketEvent(ev, invalidateNavCounts);
-  }
-
-  for (const ev of ['match.available', 'match.removed', 'match.updated', 'match.pending', 'match.created', 'match.status_changed', 'match.cancelled', 'match.completed', ...MATCH_RESULT_SOCKET_EVENTS]) {
-    useSocketEvent(ev, invalidateNavCounts);
-  }
-
-  for (const ev of ['academy.enrolled', 'academy.graduated', ...academyEnrollmentEvents]) {
-    useSocketEvent(ev, invalidateNavCounts);
-  }
-
-  for (const ev of ['tournament.created', 'tournament.match-scheduled', 'tournament.result', 'tournament.bracket-generated', 'tournament.match-created', 'tournament.match-progressed', 'tournament.completed', 'tournament.updated', 'tournament.waitlist-promoted', 'registration.received']) {
-    useSocketEvent(ev, invalidateNavCounts);
-  }
+  useSocketEvents(NAV_COUNT_BOOKING_EVENTS, invalidateNavCounts);
+  useSocketEvents(NAV_COUNT_PAYMENT_EVENTS, invalidateNavCounts);
+  useSocketEvents(NAV_COUNT_MARKETPLACE_EVENTS, invalidateNavCounts);
+  useSocketEvents(NAV_COUNT_CHAT_EVENTS, invalidateNavCounts);
+  useSocketEvents(NAV_COUNT_MATCH_EVENTS, invalidateNavCounts);
+  useSocketEvents(NAV_COUNT_ACADEMY_EVENTS, invalidateNavCounts);
+  useSocketEvents(NAV_COUNT_TOURNAMENT_EVENTS, invalidateNavCounts);
 
   // ── Security / access events (centralized force logout) ────────
   const forceLogout = useAuthStore((s) => s.forceLogout);

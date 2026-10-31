@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import BookingSettlementPage from './BookingSettlementPage';
 import api from '../../../services/api';
 import { ToastProvider } from '../../../components/ui/Toast';
@@ -20,6 +20,13 @@ vi.mock('../../../hooks/useCan', () => ({
 vi.mock('../../../permissions/Can', () => ({
   Can: ({ children }: any) => <>{children}</>,
 }));
+
+// Wrap (not replace) useQuery so the tests can prove the page's query hooks run
+// even when the permission is missing (P3-03 hook-order regression guard).
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return { ...actual, useQuery: vi.fn(actual.useQuery) };
+});
 
 let mockPermissions = new Set<string>();
 const grant = (...keys: string[]) => { mockPermissions = new Set(keys); };
@@ -166,5 +173,16 @@ describe('BookingSettlementPage — organisation dropdown + entitlement-driven s
     grant('financial.view');
     renderPage();
     expect(screen.queryByText('Booking Settlements')).toBeNull();
+  });
+
+  it('P3-03: runs the page query hooks even when settlements.view is missing', () => {
+    grant('financial.view');
+    vi.mocked(useQuery).mockClear();
+    renderPage();
+    // Two useQuery hooks (org options + eligible bookings) must still run; the
+    // old early return ran zero hooks and changed the hook order on permission
+    // changes.
+    expect(vi.mocked(useQuery).mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(api.get).not.toHaveBeenCalled();
   });
 });

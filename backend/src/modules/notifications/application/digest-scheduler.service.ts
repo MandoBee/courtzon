@@ -37,12 +37,16 @@ export async function processDigest(frequency: DigestFrequency): Promise<void> {
 
   for (const row of rows) {
     try {
-      await queueService.add('process_notification_digest' as any, {
-        userId: row.user_id,
-        frequency,
-        notificationCount: row.notification_count,
-        categories: row.categories,
-      } as any, { attempts: 3, backoff: { type: 'fixed' as any, delay: 5000 } });
+      // Payload MUST match ProcessNotificationDigestJob: the digest worker renders
+      // `count` and files under `categorySlug`. A different shape silently produced
+      // "undefined" digests filed under an undefined category.
+      await queueService.add('process_notification_digest', {
+        userId: Number(row.user_id),
+        categorySlug: 'system',
+        eventName: 'system:digest',
+        windowId: 0,
+        count: Number(row.notification_count),
+      }, { attempts: 3, backoff: { type: 'fixed', delay: 5000 } });
     } catch (err) {
       log.error({ err, userId: row.user_id }, 'digest.enqueue_failed');
     }

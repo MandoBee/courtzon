@@ -7,6 +7,7 @@ import { resolveBranchAccessPolicy } from '../domain/organisation-access-model.j
 import { BranchFinancialDetailsSchema, CreateBranchSchema, CreateResourceSchema, OrganisationAccessModelSchema } from './organisation.dto.js';
 import { auditOrganisationMutation } from './organisation-audit.js';
 import { cancellationPolicyRepository } from '../infrastructure/repositories/cancellation-policy.repository.js';
+import { branchFinancialRepository } from '../infrastructure/repositories/branch-financial.repository.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
@@ -14,6 +15,16 @@ import { positionService } from '../../financial/application/position.service.js
 import { unifiedSettlementService } from '../../settlement/application/unified-settlement.service.js';
 
 const ASSIGNABLE_ROLES = ['org-admin', 'shop-admin', 'branch-mgr', 'resource-mgr', 'coach', 'accountant'] as const;
+// Legacy `/payment-settings` payload keys that this endpoint actually applies.
+// Any other key (except the explicit tax_id rejection) is ignored and must not
+// be reported as updated in the audit trail.
+const PAYMENT_SETTINGS_INPUT_FIELDS = [
+  'account_holder_name',
+  'account_number',
+  'bank_name',
+  'iban',
+  'swift_code',
+] as const;
 const AddStaffSchema = z.object({
   email: z.string().email(),
   roleSlug: z.enum(ASSIGNABLE_ROLES),
@@ -956,15 +967,30 @@ export async function updateBranchHoursHandler(request: FastifyRequest, reply: F
 
 export async function getOrgPaymentSettingsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { orgId } = request.params as any;
+  const oid = Number(orgId);
+
+  // Branches are already scoped by organisation (and ordered by name).
+  const orgBranches = await organisationService.listBranches(oid);
+
+  const branches: any[] = [];
+  for (const branch of orgBranches) {
+    const details = await branchFinancialRepository.getByBranchId(branch.id);
+    branches.push({
+      id: branch.id,
+      name: branch.name,
+      // Preserve the legacy response contract while reading the real columns.
+      account_holder_name: details?.bank_account_name ?? null,
+      account_number: details?.bank_account_number ?? null,
+      bank_name: details?.bank_name ?? null,
+      iban: details?.iban ?? null,
+      swift_code: details?.swift ?? null,
+      // No tax_id column exists on branch_financial_details.
+      tax_id: null,
+    });
+  }
+
   const pool = getPool();
   type RowData = import('mysql2').RowDataPacket[];
-  const [branches] = await pool.query<RowData>(
-    `SELECT b.id, b.name, bfd.account_holder_name, bfd.account_number, bfd.bank_name, bfd.iban, bfd.swift_code, bfd.tax_id
-     FROM branches b
-     LEFT JOIN branch_financial_details bfd ON bfd.branch_id = b.id
-     WHERE b.organisation_id = ? AND b.deleted_at IS NULL ORDER BY b.name`,
-    [Number(orgId)],
-  );
   const [paymentMethods] = await pool.query<RowData>(
     `SELECT pm.* FROM payment_methods pm WHERE pm.is_active = 1 ORDER BY pm.sort_order`,
   );
@@ -974,22 +1000,103 @@ export async function getOrgPaymentSettingsHandler(request: FastifyRequest, repl
 export async function updateOrgPaymentSettingsHandler(request: FastifyRequest, reply: FastifyReply) {
   const userId = getUserId(request);
   const { orgId } = request.params as any;
-  const body = request.body as any;
-  const pool = getPool();
-  if (body.branchId && body.financialDetails) {
-    const { account_holder_name, account_number, bank_name, iban, swift_code, tax_id } = body.financialDetails;
-    await pool.execute(
-      `INSERT INTO branch_financial_details (branch_id, account_holder_name, account_number, bank_name, iban, swift_code, tax_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE account_holder_name = VALUES(account_holder_name), account_number = VALUES(account_number),
-       bank_name = VALUES(bank_name), iban = VALUES(iban), swift_code = VALUES(swift_code), tax_id = VALUES(tax_id)`,
-      [Number(body.branchId), account_holder_name, account_number, bank_name, iban, swift_code, tax_id],
-    );
+  const oid = Number(orgId);
+  const body = (request.body ?? {}) as any;
+  const financialDetails = body.financialDetails;
+
+  if (
+    !Number.isInteger(Number(body.branchId)) ||
+    Number(body.branchId) <= 0 ||
+    !financialDetails ||
+    typeof financialDetails !== 'object' ||
+    Array.isArray(financialDetails)
+  ) {
+    return reply.status(400).send({
+      error: 'VALIDATION_ERROR',
+      message: 'branchId and financialDetails are required',
+    });
   }
+
+  const branchId = Number(body.branchId);
+
+  // tax_id has no storage column here; reject rather than silently dropping it.
+  if (
+    financialDetails.tax_id !== undefined &&
+    financialDetails.tax_id !== null &&
+    String(financialDetails.tax_id).trim() !== ''
+  ) {
+    return reply.status(400).send({
+      error: 'VALIDATION_ERROR',
+      message: 'tax_id is not supported for branch payment settings',
+    });
+  }
+
+  if (!(await orgRepo.branchBelongsToOrg(branchId, oid))) {
+    return reply.status(403).send({
+      error: 'FORBIDDEN',
+      message: 'Branch does not belong to this organisation',
+    });
+  }
+
+  const current = await branchFinancialRepository.getByBranchId(branchId);
+
+  // Stored-data safety: an empty stored email is normalised to NULL (the column
+  // is nullable). A non-empty stored value that is not a valid email is surfaced
+  // explicitly instead of being silently replaced or hidden.
+  let billingEmail: string | null = current?.billing_email ?? null;
+  if (typeof billingEmail === 'string' && billingEmail.trim() === '') {
+    billingEmail = null;
+  } else if (typeof billingEmail === 'string' && !z.string().email().max(255).safeParse(billingEmail).success) {
+    return reply.status(409).send({
+      error: 'STORED_DATA_INVALID',
+      message: 'Stored billing email is invalid; correct it via branch financial details before updating payment settings',
+    });
+  }
+
+  // `!== undefined` (not `??`) so an explicitly supplied empty string can clear
+  // a field, while omitted fields keep their stored value.
+  const pick = (value: any, fallback: any) => (value !== undefined ? value : fallback);
+  const mapped = {
+    bankId: current?.bank_id ?? null,
+    bankBranchId: current?.bank_branch_id ?? null,
+    bankName: pick(financialDetails.bank_name, current?.bank_name ?? null),
+    bankAccountName: pick(financialDetails.account_holder_name, current?.bank_account_name ?? null),
+    bankAccountNumber: pick(financialDetails.account_number, current?.bank_account_number ?? null),
+    iban: pick(financialDetails.iban, current?.iban ?? null),
+    swift: pick(financialDetails.swift_code, current?.swift ?? null),
+    billingAddress: current?.billing_address ?? null,
+    billingEmail,
+    payoutSchedule: current?.payout_schedule ?? 'monthly',
+    currencyId: current?.currency_id ?? null,
+  };
+
+  let parsed;
+  try {
+    parsed = BranchFinancialDetailsSchema.parse(mapped);
+  } catch {
+    return reply.status(400).send({
+      error: 'VALIDATION_ERROR',
+      message: 'Invalid financial details',
+    });
+  }
+
+  await organisationService.upsertBranchFinancialDetails(branchId, parsed);
+
   recordAudit({
-    actorId: userId, action: 'ORG_PAYMENT_SETTINGS.UPDATE', entityType: 'organisation',
-    entityId: Number(orgId), afterState: body,
-    ipAddress: request.ip, userAgent: getUserAgent(request),
+    actorId: userId,
+    action: 'ORG_PAYMENT_SETTINGS.UPDATE',
+    entityType: 'organisation',
+    entityId: oid,
+    // Never persist full account numbers, IBAN/SWIFT values or other financial data.
+    afterState: {
+      branchId,
+      // Only supported fields that were actually applied (undefined = not sent).
+      updatedFields: PAYMENT_SETTINGS_INPUT_FIELDS.filter(
+        (key) => financialDetails[key] !== undefined,
+      ),
+    },
+    ipAddress: request.ip,
+    userAgent: getUserAgent(request),
   });
   return reply.send({ success: true });
 }

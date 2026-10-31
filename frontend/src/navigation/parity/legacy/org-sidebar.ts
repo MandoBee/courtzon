@@ -74,6 +74,15 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
     },
 
     {
+      label: 'Membership', icon: '🎟️', path: p('membership/plans'),
+      children: [
+        { label: 'Plans', icon: '📋', path: p('membership/plans'), permissionKey: 'membership.view' },
+        { label: 'Settings', icon: '⚙️', path: p('membership/settings'), permissionKey: 'membership.view' },
+        { label: 'Subscriptions', icon: '👥', path: p('membership/subscriptions'), permissionKey: 'membership.view' },
+      ],
+    },
+
+    {
       label: 'Organisation', icon: '🏛️', path: p('profile'),
       children: [
         { label: 'Profile & Settings', icon: '🏛️', path: p('profile'), permissionKey: 'org.sidebar.profile' },

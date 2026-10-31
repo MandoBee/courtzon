@@ -163,6 +163,8 @@ vi.mock('../../settlement/application/unified-settlement.service.js', () => ({
 import { bookingSettlementService } from '../application/booking-settlement.service.js';
 import { financialEntitlementService } from '../application/financial-entitlement.service.js';
 import { unifiedSettlementService } from '../../settlement/application/unified-settlement.service.js';
+import { ledgerRepository } from '../infrastructure/repositories/ledger.repository.js';
+import { accountingEngineService } from '../application/accounting-engine.service.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -287,5 +289,70 @@ describe('Phase 2 Step 2 — booking settlement unification', () => {
 
     // Coach untouched on an org-only settle request
     expect(currentBooking.coach_settled_amount).toBe(0);
+  });
+});
+
+/**
+ * P4-08 — recovery-offset projection vs the accounting posting result (B35).
+ *
+ * `settleBookingEconomics` calls `postAccountingEvent(..., conn)` for a recovery
+ * offset and then advances `bookings.org_recovery_collected`. The caller ignores
+ * the posting's boolean result, so when the posting is skipped as an idempotent
+ * duplicate the collected counter still advances. That is safe today (an
+ * entitlement can only be consumed once, so a duplicate settlement consumes
+ * nothing) but it is the same class as B34 and becomes a real drift as soon as
+ * a second legitimate offset collection for one booking is possible — which
+ * needs occurrence-level posting identity (B35 item 1).
+ *
+ * These tests CHARACTERIZE the current behaviour; they are the evidence for the
+ * documented follow-up, not an endorsement of it.
+ */
+describe('P4-08 B35 — recovery collection projection follows money, not journal', () => {
+  beforeEach(() => {
+    currentBooking = {
+      ...bookingRow,
+      club_amount: 900,
+      org_settled_amount: 0,
+      org_recovered_amount: 100,
+      org_recovery_collected: 0,
+    };
+    entitlementsForBooking = [
+      { id: 71, source_type: 'booking', source_id: 5001, status: 'AVAILABLE', collector: 'courtzon', entitlement_type: 'ORGANIZATION_EARNING', amount: 100 },
+    ];
+  });
+
+  it('recovers the full offset and advances the collected projection when the posting succeeds', async () => {
+    vi.mocked(ledgerRepository.hasPosting).mockResolvedValue(false);
+    vi.mocked(accountingEngineService.buildLedgerLines).mockReturnValue([
+      { concept: '', side: 'debit', accountId: 1, amount: 100 },
+      { concept: '', side: 'credit', accountId: 2, amount: 100 },
+    ]);
+
+    const res = await bookingSettlementService.settleBookingEconomics(5001, 0, 100, 1);
+
+    expect(res.orgOffset).toBe(100);
+    expect(res.orgCash).toBe(0);
+    expect(ledgerRepository.createEntries).toHaveBeenCalledTimes(1);
+    const entries = vi.mocked(ledgerRepository.createEntries).mock.calls[0][0] as any[];
+    expect(entries[0].eventType).toBe('booking_recovery_collection');
+
+    const collected = connStub.execute.mock.calls.filter(([sql]: any[]) => /org_recovery_collected = LEAST/.test(sql));
+    expect(collected).toHaveLength(1);
+    expect(collected[0][1]).toEqual([100, 5001]);
+  });
+
+  it('still advances the collected projection when the posting is skipped (documented B35 drift)', async () => {
+    vi.mocked(ledgerRepository.hasPosting).mockResolvedValue(true);
+
+    const res = await bookingSettlementService.settleBookingEconomics(5001, 0, 100, 1);
+
+    expect(res.orgOffset).toBe(100);
+    expect(ledgerRepository.createEntries).not.toHaveBeenCalled();
+
+    // CHARACTERIZATION: the counter advances without a journal entry. Gate this
+    // on the posting result only once occurrence-level posting identity exists.
+    const collected = connStub.execute.mock.calls.filter(([sql]: any[]) => /org_recovery_collected = LEAST/.test(sql));
+    expect(collected).toHaveLength(1);
+    expect(collected[0][1]).toEqual([100, 5001]);
   });
 });

@@ -45,7 +45,11 @@ export default function OrgAccountingRecordsPage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
-  if (!can('org.accounting.view')) return null;
+  // Permissions can change at runtime (role/permission refresh). This must be a
+  // plain value — never an early return — so every hook below is called on every
+  // render and the hook order stays stable. `<Can>` still hides the UI, and the
+  // queries below stay disabled when the permission is missing.
+  const canView = can('org.accounting.view');
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -65,7 +69,7 @@ export default function OrgAccountingRecordsPage() {
       api.get(`/org/${orgId}/accounting/journal-entries`, {
         params: { grouped: true, page, pageSize, dateFrom: appliedFrom || undefined, dateTo: appliedTo || undefined },
       }).then((r: any) => r.data),
-    enabled: !!orgId,
+    enabled: canView && !!orgId,
   });
 
   // Organisation-scoped Chart of Accounts for the manual journal account picker
@@ -73,7 +77,7 @@ export default function OrgAccountingRecordsPage() {
   const { data: accountsData } = useQuery({
     queryKey: ['org', 'accounting', 'coa', orgId],
     queryFn: () => api.get(`/org/${orgId}/accounting/coa`).then((r: any) => r.data.data || r.data),
-    enabled: !!orgId && showForm,
+    enabled: canView && !!orgId && showForm,
   });
   const accountList = useMemo(() => {
     const coa = accountsData || {};
@@ -151,6 +155,10 @@ export default function OrgAccountingRecordsPage() {
   };
 
   const fmt = (n: number) => `${getCurrencySymbol()} ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Permission gate AFTER every hook: hook order stays stable when permissions
+  // change at runtime, while unauthorised users still get no UI and no requests.
+  if (!canView) return null;
 
   return (
     <Can permission="org.accounting.view">

@@ -25,12 +25,17 @@ const QUICK_LINKS = [
 
 export default function AccountingDashboardPage() {
   const { can } = useCan();
-  if (!can('accounting.dashboard')) return null;
+  // Derived value, never an early return: hooks must run on every render.
+  const canView = can('sidebar.accounting');
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['accounting', 'dashboard'],
     queryFn: () => api.get('/admin/accounting/dashboard').then((r: any) => r.data.data || r.data),
+    enabled: canView,
   });
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!canView) return null;
 
   const s: DashboardStats = stats || {
     total_accounts: 0, open_periods: 0, draft_invoices: 0, issued_invoices: 0,

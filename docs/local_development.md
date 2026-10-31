@@ -261,20 +261,18 @@ cd backend && npm run build
 ### Migrations
 
 ```bash
-# Run pending migrations (Node.js — cross-platform)
+# Run pending migrations (canonical Node entry point)
 node backend/scripts/migrate.js
 
-# Run pending migrations (bash — Linux/Mac/WSL)
-./scripts/migrate.sh
-
-# Full reset (⚠️ destroys data)
-node backend/scripts/migrate.js --fresh --seed
+# Full reset (⚠️ destroys data) — explicit confirmation flag is mandatory,
+# and --fresh --seed is rejected: seed separately with scripts/seed.sh
+node backend/scripts/migrate.js --fresh --confirm-destructive-fresh
 
 # Check migration status
-./scripts/migrate.sh --status
+node backend/scripts/migrate.js --status
 
 # Rollback a specific migration
-./scripts/migrate.sh --rollback <filename>
+node backend/scripts/migrate.js --rollback <filename>
 ```
 
 Migrations live in `database/schema/` (Node.js script) or `database/migrations/` (bash script). The Node.js script (`backend/scripts/migrate.js`) is the canonical option.
@@ -291,6 +289,40 @@ node backend/scripts/migrate.js --seed --seed-demo
 # Legacy seeds (001/002)
 node backend/scripts/migrate.js --seed-legacy
 ```
+
+### Super Admin Bootstrap (Local)
+
+The seeds ship a pre-provisioned Super Admin (`users.id = 1`). Run the bootstrap script manually
+when you need to create or locate another Super Admin account:
+
+```bash
+# From the project root — reads process env, then the root .env
+node backend/scripts/bootstrap-admin.js \
+  --confirm-host=localhost --confirm-port=3306 --confirm-db=courtzon_v3
+
+# Or via the backend npm script — reads backend/.env (note the extra --)
+cd backend && npm run bootstrap-admin -- \
+  --confirm-host=localhost --confirm-port=3306 --confirm-db=courtzon_v3
+```
+
+It uses the usual `DB_*` connection settings plus the `SUPER_ADMIN_*` contract below
+(full reference: [Environment Variable Matrix](deployment/environment_matrix.md#super-admin-bootstrap-variables)):
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `SUPER_ADMIN_PHONE` | ✓ | — | Local **11-digit** number without country code — the exact value typed at login |
+| `SUPER_ADMIN_COUNTRY_ISO` | ✓ | — | **ISO-2** code of an active `countries` row (e.g. `EG`); its `phone_code` prefixes the stored `full_phone` |
+| `SUPER_ADMIN_EMAIL` | ✓ | — | Profile email only (`users.email` is NOT NULL + UNIQUE) — **not** a login identifier |
+| `SUPER_ADMIN_PASSWORD` | ✓ | — | Password (PBKDF2-SHA512 hashed, never logged) |
+| `SUPER_ADMIN_NAME` | | `Super Admin` | `users.full_name` |
+| `SUPER_ADMIN_GENDER` | | `male` | `male` or `female` |
+
+- **Login is phone + password, never email.** Use the same country and the same local 11-digit number at the login screen.
+- `--confirm-host`, `--confirm-port`, and `--confirm-db` must match the resolved `DB_HOST`, `DB_PORT`, and `DB_NAME` exactly; the script refuses `courtzon_v2`, prints the target before connecting, and exits nonzero when required variables or any confirmation flag are missing.
+- The script aborts on an invalid phone, country code, or gender.
+- Re-running is safe: the user is located by `full_phone` and only the `super_admin` role grant is ensured. A revoked (`is_active=0`) or expired grant is reported as ineffective and is never reactivated automatically.
+- Permission sync applies to global roles only (`organisation_id IS NULL`); organisation-scoped roles are skipped even if they share a template slug.
+- If role permissions look empty afterwards, run `node backend/scripts/sync-role-permissions.mjs` with the same `--confirm-host` / `--confirm-port` / `--confirm-db` values (add-only; do not pass `--prune`).
 
 ### Refreshing the Baseline Snapshot
 
@@ -314,14 +346,14 @@ Commit both `003_baseline_snapshot.sql` and `baseline-manifest.json`.
 | `build` | `tsc` | TypeScript compilation |
 | `start` | `node dist/server.js` | Run compiled production code |
 | `db:migrate` | `node scripts/migrate.js` | Run pending migrations |
-| `db:reset` | `node scripts/migrate.js --fresh --seed` | Full database reset |
+| `db:reset` | `node scripts/migrate.js --fresh` (needs `--confirm-destructive-fresh`; seed separately) | Full database reset |
 | `db:seed` | `node scripts/migrate.js --seed` | Run seeds |
 | `db:backup` | `bash scripts/backup.sh` | Manual database backup |
 | `test` | `vitest run` | Run unit tests |
 | `test:int` | `vitest run --config vitest.integration.config.ts` | Run integration tests |
 | `test:watch` | `vitest` | Watch mode for unit tests |
 | `verify-deployment` | `node scripts/verify-deployment.js` | Pre-deployment verification |
-| `bootstrap-admin` | `node scripts/bootstrap-admin.js` | Create initial admin user |
+| `bootstrap-admin` | `node scripts/bootstrap-admin.js` | Create or locate the Super Admin (phone + password login); requires `--confirm-host/--confirm-port/--confirm-db` after `--` |
 | `emergency-repair` | `node scripts/emergency-repair.js` | Emergency DB repair tool |
 
 ### Frontend (`frontend/package.json`)

@@ -40,7 +40,7 @@ export default function ProductCardImage({ images, name, className = '' }: Props
     if (!resolved) return '';
     if (retryCount > 0 && retryCount <= 1) {
       const sep = resolved.includes('?') ? '&' : '?';
-      return `${resolved}${sep}cz_retry=${Date.now()}_${retryCount}`;
+      return `${resolved}${sep}cz_retry=${retryCount}`;
     }
     return resolved;
   }, [resolved, retryCount]);

@@ -38,8 +38,12 @@
 | `PAYMOB_MERCHANT_ID` | B | ✓ (paymob) | — | Paymob merchant / integration ID |
 | `PAYMOB_HMAC_SECRET` | B | ✓ (paymob) | — | Paymob HMAC secret (webhook verification) |
 | `PAYMOB_SANDBOX` | B | | `true` | Paymob mode: `true` (test) / `false` (live) |
-| `SUPER_ADMIN_EMAIL` | B | | — | Super admin email for initial seed setup |
-| `SUPER_ADMIN_PASSWORD` | B | | — | Super admin password for initial seed setup |
+| `SUPER_ADMIN_PHONE` | B | ✓ (bootstrap) | — | Local 11-digit phone (no country code), the value typed at login; identity key for the bootstrap |
+| `SUPER_ADMIN_COUNTRY_ISO` | B | ✓ (bootstrap) | — | ISO-2 code of an active `countries` row; its `phone_code` prefixes the stored `full_phone` |
+| `SUPER_ADMIN_EMAIL` | B | ✓ (bootstrap) | — | Profile email only (`users.email`, NOT NULL + UNIQUE) — **not** a login identifier |
+| `SUPER_ADMIN_PASSWORD` | B | ✓ (bootstrap) | — | Bootstrap password (PBKDF2-SHA512 hashed, never logged) |
+| `SUPER_ADMIN_NAME` | B | | `Super Admin` | `users.full_name` for the bootstrapped account |
+| `SUPER_ADMIN_GENDER` | B | | `male` | `male` or `female` (`users.gender` is NOT NULL) |
 | `MAIL_TRANSPORT` | B | | `log` | Mail transport: `log` (console) or `smtp` |
 | `MAIL_HOST` | B | ✓ (smtp) | — | SMTP hostname |
 | `MAIL_PORT` | B | ✓ (smtp) | `587` | SMTP port |
@@ -57,3 +61,31 @@
 | `MYSQL_PASSWORD` | D | | `change-me` | MySQL password (dev compose only) |
 | `FRONTEND_PORT` | D | | `5173` | Host port for frontend Nginx container |
 | `GRAFANA_PASSWORD` | M | | `admin` | Grafana admin password (`docker-compose.monitoring.yml`) |
+
+## Super Admin bootstrap variables
+
+`SUPER_ADMIN_*` are read **only** by `backend/scripts/bootstrap-admin.js`, a manual,
+one-off provisioning script (`node backend/scripts/bootstrap-admin.js --confirm-host=<DB_HOST>
+--confirm-port=<DB_PORT> --confirm-db=<DB_NAME>`, or the same flags after
+`npm run bootstrap-admin --` from `backend/`). Nothing in the application entrypoint, migrations,
+or seeds reads them, and the script is **not** run at startup — provisioning happens only when an
+operator invokes it explicitly.
+
+| Variable | Required | Behaviour |
+|---|---|---|
+| `SUPER_ADMIN_PHONE` | ✓ | Local **11-digit** number without country code — must be the exact value typed at login. Rejected otherwise (`localPhoneNumberSchema` contract). |
+| `SUPER_ADMIN_COUNTRY_ISO` | ✓ | **ISO-2** code of an active `countries` row (e.g. `EG`). `countries.phone_code` is resolved from the row and prefixes the stored `full_phone`. |
+| `SUPER_ADMIN_EMAIL` | ✓ | Profile email only. `users.email` is NOT NULL + UNIQUE and is **not** a login identifier. Must not already belong to another user. |
+| `SUPER_ADMIN_PASSWORD` | ✓ | Hashed with the app's PBKDF2-SHA512 format; never logged or printed. |
+| `SUPER_ADMIN_NAME` | | Defaults to `Super Admin` (`users.full_name`). |
+| `SUPER_ADMIN_GENDER` | | `male` or `female`, defaults to `male` (`users.gender` is NOT NULL with no DB default). |
+
+- The script exits nonzero without writing anything when any required variable is empty, and aborts on an invalid phone, country code, or gender.
+- **Target confirmation is mandatory:** `--confirm-host`, `--confirm-port`, and `--confirm-db` must match the resolved `DB_HOST`, `DB_PORT`, and `DB_NAME` exactly. Bootstrap resolves `process.env` → `./.env` → defaults (`localhost:3306`, `courtzon_v3`); the permission sync resolves `process.env` → `./.env` → `backend/.env` (later file wins) → defaults (`127.0.0.1:3306`, `courtzon_v3`). Both print the resolved target before any connection. `courtzon_v2` is refused unconditionally, and missing variables or confirmation flags exit nonzero.
+- **Login is phone + password, never email.** The stored login identity is `full_phone = <countries.phone_code><SUPER_ADMIN_PHONE>`; re-running reuses an existing user with that `full_phone` and only ensures the `super_admin` role grant.
+- A soft-deleted user holding the same phone is reported clearly instead of failing on the unique index.
+- A revoked (`is_active=0`) or expired `user_roles` grant is reported as ineffective and is **not** reactivated automatically; no `expires_at` value is modified.
+- The role is resolved by `roles.slug = 'super_admin'` with `organisation_id IS NULL` (no hardcoded IDs), so the baseline seeds must be applied first.
+- The baseline seeds already contain a pre-provisioned Super Admin (`users.id = 1`); verify/rotate that credential rather than assuming the seeds create no administrator.
+- If the account's permissions look empty afterwards, run `node backend/scripts/sync-role-permissions.mjs` with the same `--confirm-host` / `--confirm-port` / `--confirm-db` values. It applies template grants to **global** roles only (`organisation_id IS NULL`), is add-only by default, and must not be run with `--prune`.
+- The templates (`deployment/env/.env.example`, `deployment/coolify/.env.production`) keep these keys **commented out** — supply the values at run time and remove them afterwards; never commit real values.

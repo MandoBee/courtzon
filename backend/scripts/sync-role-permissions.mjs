@@ -3,9 +3,14 @@
  * Sync role_permissions from templates so each system role has correct access.
  * Super Admin receives every permission in the database.
  *
+ * Scope: GLOBAL roles only (`roles.organisation_id IS NULL`). Organisation-scoped
+ * roles are skipped even when they reuse a template slug, so syncing never changes
+ * an organisation-owned role. Grants are add-only unless `--prune` is passed.
+ *
  * Usage:
- *   node backend/scripts/sync-role-permissions.mjs
- *   node backend/scripts/sync-role-permissions.mjs --prune   # remove grants outside template
+ *   node backend/scripts/sync-role-permissions.mjs \
+ *     --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>
+ *   (add --prune only with explicit review; it is NOT used for provisioning)
  *
  * Run after: node backend/scripts/sync-ui-registry.js
  */
@@ -13,6 +18,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
 import { loadFileEnv, envFrom } from './load-file-env.js';
+import { resolveDbTlsPolicy } from './db-tls.js';
 import {
   permissionMatchesTemplate,
   TEMPLATE_SLUGS,
@@ -25,22 +31,98 @@ const fileEnv = loadFileEnv([
 ]);
 const env = (k, d) => envFrom(fileEnv, k, d);
 
-function resolveDbHost(host) {
-  if (!host || host === 'host.docker.internal') return '127.0.0.1';
-  return host;
+// ── Target confirmation (keep identical to bootstrap-admin.js) ────────────────
+const CONFIRM_FLAGS = {
+  host: '--confirm-host=',
+  port: '--confirm-port=',
+  db: '--confirm-db=',
+};
+
+function parseTargetConfirmation(argv) {
+  const read = (prefix) => {
+    const arg = argv.find((value) => value.startsWith(prefix));
+    return arg ? arg.slice(prefix.length).trim() : '';
+  };
+  return {
+    host: read(CONFIRM_FLAGS.host),
+    port: read(CONFIRM_FLAGS.port),
+    db: read(CONFIRM_FLAGS.db),
+  };
+}
+
+/**
+ * Fail closed unless the operator confirms the exact resolved host, port and
+ * database. Resolution follows this script's real precedence:
+ * `process.env` → merged `.env` files (`./.env` first, `backend/.env` overrides)
+ * → defaults. The resolved target is printed before any connection is opened.
+ */
+function assertConfirmedTarget(target, confirmation) {
+  if (target.db.toLowerCase() === 'courtzon_v2') {
+    console.error('Role permission sync aborted — refusing to run against the legacy courtzon_v2 database.');
+    return false;
+  }
+  if (!target.host) {
+    console.error('Role permission sync aborted — DB_HOST resolved to an empty value.');
+    return false;
+  }
+  if (!Number.isInteger(target.port) || target.port <= 0) {
+    console.error('Role permission sync aborted — DB_PORT is not a valid TCP port.');
+    return false;
+  }
+  if (!confirmation.host || !confirmation.port || !confirmation.db) {
+    console.error(
+      'Role permission sync aborted — explicit target confirmation is required: ' +
+        'pass --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>.',
+    );
+    return false;
+  }
+  if (confirmation.host.toLowerCase() !== target.host.toLowerCase()) {
+    console.error(
+      `Role permission sync aborted — --confirm-host (${confirmation.host}) does not match the resolved DB_HOST (${target.host}).`,
+    );
+    return false;
+  }
+  if (!Number.isInteger(Number(confirmation.port)) || Number(confirmation.port) !== target.port) {
+    console.error(
+      `Role permission sync aborted — --confirm-port (${confirmation.port}) does not match the resolved DB_PORT (${target.port}).`,
+    );
+    return false;
+  }
+  if (confirmation.db !== target.db) {
+    console.error(
+      `Role permission sync aborted — --confirm-db (${confirmation.db}) does not match the resolved DB_NAME (${target.db}).`,
+    );
+    return false;
+  }
+  return true;
 }
 
 const prune = process.argv.includes('--prune');
 
-const conn = await mysql.createConnection({
-  host: resolveDbHost(env('DB_HOST', '127.0.0.1')),
+// Connect to exactly the resolved DB_HOST — no host remapping of any kind.
+const target = {
+  host: env('DB_HOST', '127.0.0.1'),
   port: Number(env('DB_PORT', '3306')),
+  db: env('DB_NAME', 'courtzon_v3').trim(),
+};
+
+if (!assertConfirmedTarget(target, parseTargetConfirmation(process.argv.slice(2)))) {
+  process.exit(2);
+}
+
+console.log(`Role permission sync target: ${target.host}:${target.port}/${target.db}${prune ? ' (prune on)' : ''}`);
+
+const dbTls = resolveDbTlsPolicy({ ...fileEnv, ...process.env });
+const conn = await mysql.createConnection({
+  host: target.host,
+  port: target.port,
   user: env('DB_USER', 'root'),
   password: env('DB_PASSWORD', ''),
-  database: env('DB_NAME', 'courtzon_v3'),
+  database: target.db,
+  ...dbTls.mysql2,
 });
 
-console.log(`Connected to ${env('DB_NAME', 'courtzon_v3')}${prune ? ' (prune on)' : ''}`);
+console.log('Connection established.');
 
 const [permissions] = await conn.execute(
   'SELECT id, permission_key FROM permissions ORDER BY permission_key',
@@ -58,6 +140,16 @@ let totalPruned = 0;
 for (const role of roles) {
   const templateSlug = role.slug;
   const isSuperAdmin = templateSlug === 'super_admin';
+
+  // Template grants describe the GLOBAL role definitions. Organisation-scoped
+  // rows may reuse a template slug; syncing them would silently change roles
+  // owned by an organisation, so they are never touched (including --prune).
+  if (role.organisation_id !== null) {
+    console.log(
+      `  skip ${role.slug} (id=${role.id}, org=${role.organisation_id}) — organisation-scoped role (global templates only)`,
+    );
+    continue;
+  }
 
   if (!isSuperAdmin && !TEMPLATE_SLUGS.includes(templateSlug)) {
     console.log(`  skip ${role.slug} (id=${role.id}) — no template`);
@@ -113,7 +205,10 @@ for (const role of roles) {
 const platformAdminId = permByKey.get('platform.admin');
 if (platformAdminId) {
   const [superRoles] = await conn.execute(
-    `SELECT id FROM roles WHERE slug IN ('super_admin', 'super-admin') AND deleted_at IS NULL`,
+    `SELECT id FROM roles
+      WHERE slug IN ('super_admin', 'super-admin')
+        AND organisation_id IS NULL
+        AND deleted_at IS NULL`,
   );
   for (const r of superRoles) {
     await conn.execute(

@@ -19,9 +19,12 @@ export default function LoginSplash() {
 
   // Latest pathname, always current inside the deferred timer callback.
   const currentPathRef = useRef(location.pathname);
-  currentPathRef.current = location.pathname;
   // Pathname when the splash appeared (the user's landing route).
   const splashPathRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentPathRef.current = location.pathname;
+  }, [location.pathname]);
 
   const dismiss = useCallback(() => {
     if (dismissedRef.current) return;

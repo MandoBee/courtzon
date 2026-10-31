@@ -6,7 +6,6 @@ import {
   insertOrganisation,
   insertBranch,
   insertResource,
-  cleanup,
 } from '../helpers/database';
 import { api, clearCookies } from '../helpers/api';
 

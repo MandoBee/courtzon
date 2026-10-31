@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../../../services/api', () => ({
@@ -14,8 +14,20 @@ vi.mock('../../../components/ui/ExportCsvButton', () => ({
   ),
 }));
 vi.mock('../../../hooks/useCan', () => ({
-  useCan: () => ({ can: (k: string) => k === 'settlements.view' || k === 'settlements.request' }),
+  useCan: () => ({
+    can: (key: string) => allowed.has(key),
+    permissions: [...allowed],
+  }),
 }));
+
+// Wrap (not replace) useQuery so the P3-03 regression test can prove the query
+// hook still runs when the permission is missing.
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return { ...actual, useQuery: vi.fn(actual.useQuery) };
+});
+
+let allowed = new Set<string>(['settlements.view', 'settlements.request']);
 vi.mock('../../../utils/currency', () => ({
   formatPrice: (n: number, _c?: string) => `${n.toFixed(2)} ${_c || ''}`.trim(),
 }));
@@ -37,6 +49,11 @@ function renderPage() {
 }
 
 describe('UnifiedSettlementListPage — export', () => {
+  beforeEach(() => {
+    allowed = new Set(['settlements.view', 'settlements.request']);
+    mockGet.mockClear();
+  });
+
   it('renders an Export CSV button wired to the settlements export endpoint', async () => {
     mockGet.mockResolvedValue({ data: { data: [], total: 0, page: 1, limit: 20 } });
     renderPage();
@@ -52,5 +69,15 @@ describe('UnifiedSettlementListPage — export', () => {
     const btn = await screen.findByTestId('export-btn');
     // Default status is '' → undefined, so export params are empty
     expect(JSON.parse(btn.getAttribute('data-params') || '{}')).toEqual({ status: undefined });
+  });
+
+  it('P3-03: runs the query hook even when settlements.view is missing', () => {
+    allowed = new Set();
+    vi.mocked(useQuery).mockClear();
+    renderPage();
+    // The old early return ran zero hooks; the fixed page always calls useQuery.
+    expect(vi.mocked(useQuery).mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('Unified Settlements')).toBeNull();
+    expect(mockGet).not.toHaveBeenCalled();
   });
 });

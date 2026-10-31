@@ -1,6 +1,8 @@
 export const testUsers = {
   player: () => ({
-    phoneNumber: '01000000' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
+    // 3-digit Egyptian mobile prefix + 8 digits = the 11-digit local number
+    // required by `localPhoneNumberSchema` (login) and `localPhoneZod` (form).
+    phoneNumber: '010' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
     password: 'test123456',
     fullName: 'E2E Player ' + Date.now(),
     email: `e2e-player-${Date.now()}@test.com`,
@@ -10,12 +12,15 @@ export const testUsers = {
   }),
 
   admin: () => ({
-    email: 'admin@courtzon.cloud',
-    password: process.env.ADMIN_PASSWORD || 'admin123456',
+    // Phone+password only: CourtZon login does not accept email identifiers.
+    phoneNumber: '011' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
+    password: 'test123456',
+    fullName: 'E2E Admin ' + Date.now(),
+    email: `e2e-admin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.com`,
   }),
 
   coach: () => ({
-    phoneNumber: '01000001' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
+    phoneNumber: '012' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
     password: 'test123456',
     fullName: 'E2E Coach ' + Date.now(),
     email: `e2e-coach-${Date.now()}@test.com`,
@@ -26,7 +31,7 @@ export const testUsers = {
   }),
 
   seller: () => ({
-    phoneNumber: '01000002' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
+    phoneNumber: '015' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
     password: 'test123456',
     fullName: 'E2E Seller ' + Date.now(),
     email: `e2e-seller-${Date.now()}@test.com`,
@@ -37,7 +42,7 @@ export const testUsers = {
   }),
 
   secondPlayer: () => ({
-    phoneNumber: '01000003' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
+    phoneNumber: '010' + Math.random().toString().slice(2, 10).padEnd(8, '9'),
     password: 'test123456',
     fullName: 'E2E Player 2 ' + Date.now(),
     email: `e2e-player2-${Date.now()}@test.com`,

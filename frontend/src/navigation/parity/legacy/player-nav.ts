@@ -42,6 +42,7 @@ export function buildPlayerMoreItems(
     { label: t('nav.payments'), icon: '💳', path: '/my/payments', perm: 'player.payments.view' },
     { label: t('nav.rank_history'), icon: '📈', path: '/my/rank-history', perm: 'player.rank.history' },
     { label: t('nav.my_tournaments'), icon: '🥇', path: '/my/tournaments', perm: 'player.tournaments.register' },
+    { label: 'My Memberships', icon: '🎟️', path: '/my/membership/subscriptions', perm: 'membership.view' },
     { label: t('nav.notifications'), icon: '🔔', path: '/notifications' },
     ...(isSeller ? [{ label: t('nav.my_shop'), icon: '🏪', path: '/marketplace/seller' }] : []),
   ];

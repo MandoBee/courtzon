@@ -72,14 +72,50 @@ export function cookieHeader(): string {
     .join('; ');
 }
 
+/**
+ * Country calling code used for E2E users.
+ *
+ * CourtZon login is phone + password only, and the backend resolves the user by
+ * the country-code-prefixed `full_phone` (`authService.login` →
+ * `fullPhone = countryCode + digits`, `auth.service.ts:520–529`). Every E2E user
+ * is seeded with `countryId = 1` (`insertUser` default in
+ * `e2e/helpers/database.ts`, plus `testUsers.*.countryId`), and country 1 is
+ * Egypt with `phone_code = '+20'` (`database/seeds/001_baseline.sql:154`).
+ * `insertUser` derives `full_phone` from that same row, so both sides agree.
+ */
+const E2E_COUNTRY_CODE = '+20';
+
 export const api = {
+  /**
+   * Log in through the production phone + password contract.
+   *
+   * `LoginSchema` (`backend/src/modules/auth/presentation/auth.dto.ts:28–31`)
+   * requires an 11-digit local `phoneNumber` and accepts an optional
+   * `countryCode`; `authService.login` then prefixes it. Sending the bare local
+   * number without a country code is rejected with 401, and sending an
+   * already-prefixed number fails schema validation, so the helper always sends
+   * the local digits plus the country code — exactly like the web client
+   * (`frontend/src/pages/auth/LoginPage.tsx:58–63`).
+   */
   async login(
     phoneNumber: string,
     password: string,
+    countryCode: string = E2E_COUNTRY_CODE,
   ): Promise<{ status: number; data: any }> {
+    if (phoneNumber.trim().startsWith('+')) {
+      // Never double-prefix: an international number cannot be split back into
+      // `countryCode` + 11 local digits without guessing (Egypt drops the
+      // leading 0 in E.164), so fail loudly instead of sending a wrong login.
+      throw new Error(
+        'api.login expects the local 11-digit phone number (optionally with a separate countryCode), ' +
+          `received an international number: ${phoneNumber}`,
+      );
+    }
+
     const res = await request<any>('POST', '/auth/login', {
-      phoneNumber,
+      phoneNumber: phoneNumber.replace(/\D/g, ''),
       password,
+      countryCode: countryCode.startsWith('+') ? countryCode : `+${countryCode}`,
     });
     return { status: res.status, data: res.data };
   },

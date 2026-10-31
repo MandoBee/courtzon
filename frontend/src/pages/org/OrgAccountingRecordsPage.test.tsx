@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import OrgAccountingRecordsPage from './OrgAccountingRecordsPage';
 import api from '../../services/api';
 import { ToastProvider } from '../../components/ui/Toast';
@@ -11,6 +12,13 @@ vi.mock('../../hooks/useCan', () => ({
   useCan: () => ({ can: (permission: string) => mockPermissions.has('*') || mockPermissions.has(permission), permissions: [...mockPermissions] }),
 }));
 vi.mock('../../permissions/Can', () => ({ Can: ({ children }: any) => <>{children}</> }));
+
+// Wrap (not replace) useQuery so the page still uses the real React Query
+// implementation while the test can count how many times the hook ran.
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return { ...actual, useQuery: vi.fn(actual.useQuery) };
+});
 
 let mockPermissions = new Set<string>();
 const grant = (...keys: string[]) => { mockPermissions = new Set(keys); };
@@ -287,5 +295,76 @@ describe('OrgAccountingRecordsPage — canonical journal-entry view', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Post Entry' }));
 
     expect(await screen.findByText('Journal entry is not balanced')).toBeTruthy();
+  });
+
+  // ── Hook-order safety (runtime permission changes) ──
+
+  /**
+   * A host with its own state so updates re-render the same page instance.
+   * `useQuery` is wrapped above, so counting its calls proves whether the
+   * page's hooks ran on a given render path.
+   */
+  function HookOrderHost() {
+    const [, setEpoch] = useState(0);
+    return (
+      <div>
+        <button type="button" onClick={() => setEpoch((n) => n + 1)}>force-page-rerender</button>
+        <OrgAccountingRecordsPage />
+      </div>
+    );
+  }
+
+  const renderHost = () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+    return render(
+      <MemoryRouter initialEntries={['/org/6/accounting/records']}>
+        <Routes>
+          <Route path="/org/:orgId/accounting/records" element={
+            <QueryClientProvider client={qc}>
+              <ToastProvider><HookOrderHost /></ToastProvider>
+            </QueryClientProvider>
+          } />
+        </Routes>
+      </MemoryRouter>
+    );
+  };
+
+  const forceRerender = () => fireEvent.click(screen.getByRole('button', { name: 'force-page-rerender' }));
+  const useQueryMock = vi.mocked(useQuery);
+  // The page declares exactly two useQuery hooks (journal entries + org COA).
+  const PAGE_QUERY_HOOKS = 2;
+
+  it('keeps hook order stable when the view permission is revoked while mounted', async () => {
+    grant(VIEW, CREATE);
+    renderHost();
+    await screen.findByText('Accounting Records');
+    expect(useQueryMock.mock.calls.length).toBeGreaterThanOrEqual(PAGE_QUERY_HOOKS);
+
+    useQueryMock.mockClear();
+    // Permission refresh revokes access on the mounted page. An early return
+    // before the hooks would skip them (React: "Rendered fewer hooks than expected").
+    grant();
+    expect(() => forceRerender()).not.toThrow();
+    // Both query hooks still ran (disabled), i.e. no hook was skipped.
+    expect(useQueryMock.mock.calls.length).toBeGreaterThanOrEqual(PAGE_QUERY_HOOKS);
+    expect(screen.queryByText('Accounting Records')).toBeNull();
+  });
+
+  it('keeps hook order stable when the view permission is granted after mounting denied', async () => {
+    grant();
+    renderHost();
+    // Denied render must still run every hook (queries disabled, no request).
+    expect(useQueryMock.mock.calls.length).toBeGreaterThanOrEqual(PAGE_QUERY_HOOKS);
+    expect(screen.queryByText('Accounting Records')).toBeNull();
+    expect(api.get).not.toHaveBeenCalled();
+
+    useQueryMock.mockClear();
+    // Granting access later must call the same hooks in the same order; an early
+    // return before the hooks would change the count (React: "Rendered more hooks
+    // than during the previous render").
+    grant(VIEW, CREATE);
+    expect(() => forceRerender()).not.toThrow();
+    expect(useQueryMock.mock.calls.length).toBeGreaterThanOrEqual(PAGE_QUERY_HOOKS);
+    expect(await screen.findByText('Accounting Records')).toBeTruthy();
   });
 });

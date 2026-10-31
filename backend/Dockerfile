@@ -17,7 +17,7 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache tini su-exec netcat-openbsd mysql-client
+RUN apk add --no-cache tini su-exec netcat-openbsd mysql-client bash
 
 # Copy frontend registry for translation key sync at startup
 COPY frontend/src/i18n/translation-keys.registry.ts ./frontend-registry.ts
@@ -30,6 +30,10 @@ COPY --from=builder /app/dist/ dist/
 COPY --from=builder /app/generated/ dist/generated/
 COPY backend/scripts/ scripts/
 COPY database/ database/
+# Canonical migration + seed engines (mysql CLI for DELIMITER/triggers).
+COPY scripts/migrate.sh /app/scripts/migrate.sh
+COPY scripts/seed.sh /app/scripts/seed.sh
+RUN chmod +x /app/scripts/migrate.sh /app/scripts/seed.sh
 RUN test -f database/baseline/001_courtzon_v3.sql || test -f database/migrations/.gitkeep || echo "No baseline or migrations found"
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

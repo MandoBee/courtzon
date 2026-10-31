@@ -1226,13 +1226,30 @@ export class OrganisationService {
     return resourceRepository.getMaintenanceRecords(resourceId);
   }
 
-  async createResourceMaintenance(resourceId: number, data: any) {
-    const id = await resourceRepository.createMaintenance({ ...data, resourceId });
+  async createResourceMaintenance(resourceId: number, data: any, createdBy: number | null = null) {
+    // Safe client error when the resource does not exist (NotFoundError → 404).
+    await this.getResource(resourceId);
+    await resourceRepository.createMaintenance({
+      resourceId,
+      reason: data.reason,
+      dateFrom: data.dateFrom,
+      dateTo: data.dateTo,
+      isActive: data.isActive,
+      createdBy,
+    });
     return resourceRepository.getMaintenanceRecords(resourceId);
   }
 
   async updateResourceMaintenance(id: number, data: any) {
-    await resourceRepository.updateMaintenance(id, data);
+    const existing = await resourceRepository.findMaintenanceById(id);
+    if (!existing) throw new NotFoundError('Resource maintenance');
+    // created_by is deliberately not part of the update.
+    await resourceRepository.updateMaintenance(id, {
+      reason: data.reason,
+      dateFrom: data.dateFrom,
+      dateTo: data.dateTo,
+      isActive: data.isActive,
+    });
   }
 
   async deleteResourceMaintenance(id: number) {

@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/auth';
+import { test, expect } from '../../fixtures/auth.fixture';
 import { WalletPage } from '../../pages/WalletPage';
 import { PaymentPage } from '../../pages/PaymentPage';
 

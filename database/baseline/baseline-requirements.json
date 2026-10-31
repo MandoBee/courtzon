@@ -1,0 +1,194 @@
+{
+  "$comment": "Tier A required-object pins for the CourtZon baseline manifest. Curated by hand; the generator fails closed when any pin is not satisfied. Tier B (full inventory) is generated into 001_courtzon_v3.manifest.json and is for CI drift detection only — it is NOT evidence of a hydrated database.",
+  "version": 1,
+  "baselinePath": "database/baseline/001_courtzon_v3.sql",
+  "schemaHead": "205",
+  "contentOnly": ["196", "197", "198", "199", "200", "201"],
+  "schemaHeadEvidence": {
+    "head": "205",
+    "repairs": []
+  },
+  "requiredTables": [
+    { "name": "users" },
+    { "name": "roles" },
+    { "name": "permissions" },
+    { "name": "role_permissions" },
+    { "name": "user_roles" },
+    { "name": "organisations" },
+    { "name": "branches" },
+    { "name": "resources" },
+    { "name": "bookings" },
+    { "name": "booking_slots" },
+    { "name": "booking_series" },
+    { "name": "payment_transactions" },
+    {
+      "name": "payment_allocations",
+      "columnCount": 15,
+      "columns": [
+        "id",
+        "payment_transaction_id",
+        "series_id",
+        "booking_id",
+        "subtotal",
+        "tax_amount",
+        "commission_amount",
+        "org_net_amount",
+        "gross_amount",
+        "currency",
+        "refunded_amount",
+        "status",
+        "payment_method",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    { "name": "user_wallets" },
+    { "name": "wallet_transactions" },
+    { "name": "financial_journal_entries" },
+    { "name": "financial_entitlements" },
+    { "name": "general_ledger" },
+    { "name": "ledger_entries" },
+    { "name": "transactions" },
+    { "name": "transaction_entries" },
+    { "name": "invoices" },
+    { "name": "settlements" },
+    { "name": "audit_logs" },
+    { "name": "notifications" },
+    { "name": "notification_templates" },
+    { "name": "notification_delivery" },
+    { "name": "academy_programs" },
+    { "name": "academy_enrollments" },
+    { "name": "academy_sessions" },
+    { "name": "academy_schedules" },
+    { "name": "tournaments" },
+    { "name": "tournament_matches" },
+    { "name": "tournament_standings" },
+    { "name": "marketplace_complaints" },
+    { "name": "products" },
+    { "name": "orders" },
+    { "name": "memberships" }
+  ],
+  "requiredColumns": [
+    { "table": "notifications", "column": "event_name" },
+    { "table": "payment_transactions", "column": "payment_status" },
+    { "table": "organisation_subscriptions", "column": "subscription_status" },
+    { "table": "organisation_subscriptions", "column": "end_date" },
+    { "table": "professional_services", "column": "professional_profile_id" }
+  ],
+  "requiredIndexes": [
+    {
+      "table": "payment_allocations",
+      "name": "primary",
+      "columns": ["id"],
+      "unique": true
+    },
+    {
+      "table": "payment_allocations",
+      "name": "uk_pa_payment_booking",
+      "columns": ["payment_transaction_id", "booking_id"],
+      "unique": true
+    },
+    {
+      "table": "payment_allocations",
+      "name": "idx_pa_series",
+      "columns": ["series_id"],
+      "unique": false
+    },
+    {
+      "table": "payment_allocations",
+      "name": "idx_pa_booking",
+      "columns": ["booking_id"],
+      "unique": false
+    },
+    {
+      "table": "payment_allocations",
+      "name": "idx_pa_payment",
+      "columns": ["payment_transaction_id"],
+      "unique": false
+    },
+    {
+      "table": "notifications",
+      "name": "idx_notifications_event",
+      "columns": ["event_name"],
+      "unique": false
+    },
+    {
+      "table": "organisation_subscriptions",
+      "name": "idx_status_enddate",
+      "columns": ["subscription_status", "end_date"],
+      "unique": false
+    },
+    {
+      "table": "payment_transactions",
+      "name": "idx_pt_status_created",
+      "columns": ["payment_status", "created_at"],
+      "unique": false
+    },
+    {
+      "table": "professional_services",
+      "name": "idx_ps_pp",
+      "columns": ["professional_profile_id"],
+      "unique": false
+    }
+  ],
+  "requiredForeignKeys": [
+    {
+      "table": "payment_allocations",
+      "name": "fk_pa_payment_transaction",
+      "columns": ["payment_transaction_id"],
+      "referencedTable": "payment_transactions",
+      "referencedColumns": ["id"],
+      "onDelete": "RESTRICT",
+      "onUpdate": null
+    },
+    {
+      "table": "payment_allocations",
+      "name": "fk_pa_booking_series",
+      "columns": ["series_id"],
+      "referencedTable": "booking_series",
+      "referencedColumns": ["id"],
+      "onDelete": "SET NULL",
+      "onUpdate": null
+    },
+    {
+      "table": "payment_allocations",
+      "name": "fk_pa_booking",
+      "columns": ["booking_id"],
+      "referencedTable": "bookings",
+      "referencedColumns": ["id"],
+      "onDelete": "RESTRICT",
+      "onUpdate": null
+    }
+  ],
+  "requiredTriggers": [
+    { "name": "trg_ael_scope_insert", "table": "accounting_event_mapping_lines", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_ael_scope_update", "table": "accounting_event_mapping_lines", "timing": "BEFORE", "event": "UPDATE" },
+    { "name": "trg_coa_org_code_scope_insert", "table": "chart_of_accounts", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_coa_org_code_scope_update", "table": "chart_of_accounts", "timing": "BEFORE", "event": "UPDATE" },
+    { "name": "trg_order_after_insert", "table": "orders", "timing": "AFTER", "event": "INSERT" },
+    { "name": "trg_order_status_change", "table": "orders", "timing": "AFTER", "event": "UPDATE" },
+    { "name": "trg_audit_org_update", "table": "organisations", "timing": "AFTER", "event": "UPDATE" },
+    { "name": "trg_tr_scope_insert", "table": "tax_rates", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_tr_scope_update", "table": "tax_rates", "timing": "BEFORE", "event": "UPDATE" },
+    { "name": "trg_treg_competition_id", "table": "tournament_registrations", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_tpart_competition_id", "table": "tournament_participants", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_tmatch_competition_id", "table": "tournament_matches", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_tplacement_competition_id", "table": "tournament_placements", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_tprize_competition_id", "table": "tournament_prizes", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_tpa_competition_id", "table": "tournament_prize_awards", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_tmember_active_competition_id", "table": "tournament_participant_members", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_audit_user_update", "table": "users", "timing": "AFTER", "event": "UPDATE" },
+    { "name": "trg_yc_scope_insert", "table": "year_closings", "timing": "BEFORE", "event": "INSERT" },
+    { "name": "trg_yc_scope_update", "table": "year_closings", "timing": "BEFORE", "event": "UPDATE" }
+  ],
+  "knownGaps": [
+    {
+      "id": "booking_series_not_idempotent",
+      "detail": "database/baseline/001_courtzon_v3.sql creates booking_series with a bare CREATE TABLE (no DROP TABLE IF EXISTS and no IF NOT EXISTS), so the baseline is not idempotent for that one table. All other table creates in the dump are preceded by DROP TABLE IF EXISTS; the appended convergence block uses IF NOT EXISTS."
+    },
+    {
+      "id": "payment_allocations_docs_column_count",
+      "detail": "Payment-allocation design notes describe 16 columns. The authoritative definitions (migration 178 and the baseline) contain 15 columns; the manifest pins 15 and the documentation count is a documentation defect, not a schema gap."
+    }
+  ]
+}

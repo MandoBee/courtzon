@@ -57,6 +57,8 @@ export default function BookingSettlementPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  // Derived value, never an early return: hooks must run on every render.
+  const canView = can('settlements.view');
   const [page, setPage] = useState(1);
   const [orgId, setOrgId] = useState('');
   const [settleTarget, setSettleTarget] = useState<any | null>(null);
@@ -65,8 +67,6 @@ export default function BookingSettlementPage() {
   const [collectTarget, setCollectTarget] = useState<any | null>(null);
   const [collectParty, setCollectParty] = useState<'coach' | 'org'>('org');
   const [collectAmount, setCollectAmount] = useState('');
-
-  if (!can('settlements.view')) return null;
 
   // Organisation options — reuse the existing admin organisation lookup
   // (financial.view) with a scoped fallback (my/scopes) for org-scoped admins.
@@ -86,11 +86,13 @@ export default function BookingSettlementPage() {
       }
     },
     staleTime: 60_000,
+    enabled: canView,
   });
 
   const { data, isLoading } = useQuery({
     queryKey: ['booking-settlements', page, orgId],
     queryFn: () => api.get('/settlements/bookings/eligible', { params: { page, limit: 20, organisationId: orgId || undefined } }).then((r: any) => r.data),
+    enabled: canView,
   });
 
   const settleMutation = useMutation({
@@ -139,6 +141,9 @@ export default function BookingSettlementPage() {
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [orgsQuery.data]);
   const selectedOrgName = orgOptions.find((o) => String(o.id) === orgId)?.name;
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!canView) return null;
 
   const handleCreate = () => {
     if (!orgId) { showToast('Select an organisation to create a settlement', 'warning'); return; }

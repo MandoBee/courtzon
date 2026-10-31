@@ -53,6 +53,8 @@ export default function UnifiedSettlementCreatePage() {
 
   // Guards a single create→pay sequence against double submission.
   const busyRef = useRef(false);
+  // Render-visible mirror of busyRef (refs must not be read during render).
+  const [submitting, setSubmitting] = useState(false);
 
   // Accessible organisations, loaded when the dropdown opens. Primary source is
   // the admin organisation lookup (financial.view, server-side); falls back to
@@ -156,11 +158,13 @@ export default function UnifiedSettlementCreatePage() {
       }).then((r) => r.data),
     onSuccess: (detail) => {
       busyRef.current = false;
+      setSubmitting(false);
       showToast('Settlement created and finalized as paid');
       invalidateAndGo(detail.settlement.id);
     },
     onError: (e: any) => {
       busyRef.current = false;
+      setSubmitting(false);
       showToast(e?.response?.data?.message || 'Settlement created, but the payment could not be recorded. Record it from the detail page.', 'warning');
       invalidateAndGo(createdSidRef.current ?? 0);
     },
@@ -178,17 +182,19 @@ export default function UnifiedSettlementCreatePage() {
         payMut.mutate(detail.settlement.id);
       } else {
         busyRef.current = false;
+      setSubmitting(false);
         showToast('Settlement created');
         invalidateAndGo(detail.settlement.id);
       }
     },
     onError: (e: any) => {
       busyRef.current = false;
+      setSubmitting(false);
       showToast(e?.response?.data?.message || 'Failed to create settlement', 'error');
     },
   });
 
-  const busy = busyRef.current || createMut.isPending || payMut.isPending;
+  const busy = submitting || createMut.isPending || payMut.isPending;
   const canPay = can('settlements.pay');
   const submitLabel = busy ? (canPay ? 'Creating & paying...' : 'Creating...') : (canPay ? 'Create Settlement & Pay' : 'Create Settlement');
 
@@ -196,6 +202,7 @@ export default function UnifiedSettlementCreatePage() {
     if (busyRef.current || !selectedOrg) return;
     if (!preview.data || selectedEnts.length === 0) return;
     busyRef.current = true;
+    setSubmitting(true);
     createMut.mutate();
   };
 

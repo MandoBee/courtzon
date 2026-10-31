@@ -1,10 +1,12 @@
 /**
  * Minimal env so modules that import config/env.ts can load before the DB-heavy
  * integration specs run. Defaults point at the shared LOCAL Docker MySQL
- * (127.0.0.1:3307 / courtzon_v3 / courtzon2026) — the environment the
- * integration specs exercise. Suites that use an ephemeral Testcontainers DB
- * override these in their own beforeAll.
+ * (127.0.0.1:3307 / courtzon_v3) — the approved test database (Amendment A1).
+ * Suites that use an ephemeral Testcontainers DB override these in their own
+ * beforeAll, which is safe because that DB is disposable by construction.
  */
+import { assertApprovedTestTarget } from '../e2e/helpers/cleanup-guard.js';
+
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.PORT = process.env.PORT || '3000';
 process.env.DB_HOST = process.env.DB_HOST || '127.0.0.1';
@@ -15,3 +17,12 @@ process.env.DB_NAME = process.env.DB_NAME || 'courtzon_v3';
 process.env.REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
 process.env.REDIS_PORT = process.env.REDIS_PORT || '6379';
 process.env.REDIS_DB = process.env.REDIS_DB || '0';
+
+// Fail closed: integration tests must only ever write to the approved local
+// test database (courtzon_v3 on 127.0.0.1:3307). This also blocks accidental
+// env overrides that point at XAMPP (3306), production, or another database.
+assertApprovedTestTarget({
+  host: String(process.env.DB_HOST),
+  port: Number(process.env.DB_PORT),
+  database: String(process.env.DB_NAME),
+});

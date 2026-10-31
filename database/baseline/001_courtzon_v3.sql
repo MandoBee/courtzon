@@ -147,7 +147,6 @@ CREATE TABLE `academy_group_sessions` (
   KEY `idx_group` (`group_id`),
   KEY `idx_date` (`session_date`),
   KEY `idx_coach` (`coach_id`),
-  KEY `fk_session_court` (`court_id`),
   CONSTRAINT `fk_session_coach` FOREIGN KEY (`coach_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_session_court` FOREIGN KEY (`court_id`) REFERENCES `resources` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_session_group` FOREIGN KEY (`group_id`) REFERENCES `academy_groups` (`id`) ON DELETE CASCADE
@@ -3667,6 +3666,7 @@ CREATE TABLE `organisation_subscriptions` (
   KEY `idx_organisation` (`organisation_id`),
   KEY `idx_plan` (`plan_id`),
   KEY `idx_status` (`subscription_status`),
+  KEY `idx_status_enddate` (`subscription_status`,`end_date`),
   CONSTRAINT `fk_os_organisation` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_os_plan` FOREIGN KEY (`plan_id`) REFERENCES `subscription_plans` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=74 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -3949,6 +3949,7 @@ CREATE TABLE `payment_transactions` (
   KEY `idx_status` (`payment_status`),
   KEY `idx_order` (`order_id`),
   KEY `idx_reference` (`reference_type`,`reference_id`),
+  KEY `idx_pt_status_created` (`payment_status`,`created_at`),
   CONSTRAINT `payment_transactions_chk_1` CHECK (json_valid(`gateway_response`))
 ) ENGINE=InnoDB AUTO_INCREMENT=2922 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4528,6 +4529,7 @@ CREATE TABLE `professional_services` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_service` (`professional_profile_id`,`service_key`),
   KEY `idx_ps_profile_active` (`professional_profile_id`,`is_active`),
+  KEY `idx_ps_pp` (`professional_profile_id`),
   CONSTRAINT `fk_ps_pp` FOREIGN KEY (`professional_profile_id`) REFERENCES `professional_profiles` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -6244,7 +6246,8 @@ CREATE TABLE `tournaments` (
   CONSTRAINT `fk_tourn_org` FOREIGN KEY (`organisation_id`) REFERENCES `organisations` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_tourn_match_format` FOREIGN KEY (`match_format_id`) REFERENCES `sport_formats` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_tourn_rule_set` FOREIGN KEY (`rule_set_id`) REFERENCES `sport_rule_sets` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_tourn_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_tourn_sport` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `chk_tournaments_max_events_per_player` CHECK ((max_events_per_player IS NULL) OR (max_events_per_player >= 1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 CREATE TABLE `tournament_age_categories` (
@@ -7858,3 +7861,48 @@ ALTER TABLE `financial_entitlements`
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci
     NOT NULL;
+
+-- ============================================================================
+-- P1 baseline convergence — payment_allocations.
+-- Source of truth: database/migrations/178_payment_allocations.sql
+-- (COURTZON_MIGRATION_ENV: PRODUCTION_SAFE). Additive only: no existing table,
+-- column, trigger or seed is altered. Quoted identifiers follow the baseline
+-- dump style; every column, index and foreign key matches migration 178.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `payment_allocations` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `payment_transaction_id` BIGINT UNSIGNED NOT NULL,
+  `series_id` BIGINT UNSIGNED NULL,
+  `booking_id` BIGINT UNSIGNED NOT NULL,
+
+  -- Historical financial snapshot (copied verbatim from the booking row).
+  `subtotal` DECIMAL(14,2) NOT NULL,
+  `tax_amount` DECIMAL(14,2) NOT NULL,
+  `commission_amount` DECIMAL(14,2) NOT NULL,
+  `org_net_amount` DECIMAL(14,2) NOT NULL,
+  `gross_amount` DECIMAL(14,2) NOT NULL,
+  `currency` CHAR(3) NOT NULL DEFAULT 'EGP',
+
+  -- Allocation lifecycle foundation (today every row is 'allocated').
+  `refunded_amount` DECIMAL(14,2) NOT NULL DEFAULT 0,
+  `status` ENUM('allocated','partially_refunded','refunded') NOT NULL DEFAULT 'allocated',
+
+  -- Canonical payment method representation.
+  `payment_method` ENUM('wallet','cash','card','bank_transfer','online') NOT NULL DEFAULT 'card',
+
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_pa_payment_booking` (`payment_transaction_id`, `booking_id`),
+  KEY `idx_pa_series` (`series_id`),
+  KEY `idx_pa_booking` (`booking_id`),
+  KEY `idx_pa_payment` (`payment_transaction_id`),
+
+  CONSTRAINT `fk_pa_payment_transaction` FOREIGN KEY (`payment_transaction_id`)
+    REFERENCES `payment_transactions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_pa_booking_series` FOREIGN KEY (`series_id`)
+    REFERENCES `booking_series` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_pa_booking` FOREIGN KEY (`booking_id`)
+    REFERENCES `bookings` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

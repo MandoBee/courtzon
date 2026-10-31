@@ -4,6 +4,55 @@ import { generateUUID } from '../../../../shared/utils/token.js';
 
 type RowData = mysql.RowDataPacket[];
 
+export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+
+/**
+ * Derive the legacy `status` without mutating data. All arguments are
+ * `YYYY-MM-DD HH:mm:ss` strings from the database, so the comparison is
+ * timezone-neutral (no JavaScript Date conversion).
+ */
+export function deriveMaintenanceStatus(
+  isActive: number | boolean,
+  dateFrom: string,
+  dateTo: string,
+  now: string,
+): MaintenanceStatus {
+  if (!Number(isActive)) {
+    // The schema stores only is_active; a past inactive row is treated as
+    // completed, a future/current inactive row as cancelled.
+    return dateTo < now ? 'completed' : 'cancelled';
+  }
+  if (now < dateFrom) return 'scheduled';
+  if (now <= dateTo) return 'in_progress';
+  return 'completed';
+}
+
+/** Map a `resource_maintenance` row to the legacy frontend/API contract. */
+export function mapMaintenanceRow(row: any): any {
+  return {
+    id: row.id,
+    resource_id: row.resource_id,
+    // There is only one free-text column; expose it as `title` and blank the
+    // other text fields so an edit resubmission cannot duplicate the text.
+    title: row.reason,
+    description: '',
+    reason: '',
+    start_date: row.start_date,
+    start_time: row.start_time,
+    end_date: row.end_date,
+    end_time: row.end_time,
+    status: deriveMaintenanceStatus(
+      row.is_active,
+      row.date_from_value,
+      row.date_to_value,
+      row.now_value,
+    ),
+    is_active: row.is_active,
+    created_by: row.created_by ?? null,
+    created_at: row.created_at,
+  };
+}
+
 export class ResourceRepository {
   private pool: mysql.Pool;
 
@@ -171,38 +220,59 @@ export class ResourceRepository {
 
   async getMaintenanceRecords(resourceId: number): Promise<any[]> {
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT * FROM resource_maintenance WHERE resource_id = ? ORDER BY start_date DESC`,
+      `SELECT id, resource_id, reason,
+              DATE_FORMAT(date_from, '%Y-%m-%d') AS start_date,
+              DATE_FORMAT(date_from, '%H:%i') AS start_time,
+              DATE_FORMAT(date_to, '%Y-%m-%d') AS end_date,
+              DATE_FORMAT(date_to, '%H:%i') AS end_time,
+              DATE_FORMAT(date_from, '%Y-%m-%d %H:%i:%s') AS date_from_value,
+              DATE_FORMAT(date_to, '%Y-%m-%d %H:%i:%s') AS date_to_value,
+              DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') AS now_value,
+              is_active, created_by, created_at
+         FROM resource_maintenance
+        WHERE resource_id = ?
+        ORDER BY date_from DESC`,
       [resourceId]
     );
-    return rows;
+    return rows.map((row) => mapMaintenanceRow(row));
   }
 
-  async createMaintenance(data: any): Promise<number> {
+  async findMaintenanceById(id: number): Promise<{ id: number; resource_id: number } | null> {
+    const [rows] = await this.pool.execute<RowData>(
+      'SELECT id, resource_id FROM resource_maintenance WHERE id = ? LIMIT 1',
+      [id]
+    );
+    return rows.length ? (rows[0] as any) : null;
+  }
+
+  async createMaintenance(data: {
+    resourceId: number;
+    reason: string;
+    dateFrom: string;
+    dateTo: string;
+    isActive: number;
+    createdBy: number | null;
+  }): Promise<number> {
     const [result] = await this.pool.execute<mysql.ResultSetHeader & RowData>(
-      `INSERT INTO resource_maintenance (resource_id, title, description, start_date, end_date, start_time, end_time, reason, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.resourceId, data.title, data.description || null, data.startDate, data.endDate || null,
-       data.startTime || null, data.endTime || null, data.reason || null, data.status || 'scheduled']
+      `INSERT INTO resource_maintenance
+         (resource_id, reason, date_from, date_to, is_active, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [data.resourceId, data.reason, data.dateFrom, data.dateTo, data.isActive, data.createdBy]
     );
     return result.insertId;
   }
 
-  async updateMaintenance(id: number, data: any): Promise<void> {
-    const fields: string[] = [];
-    const values: any[] = [];
-    const allowed = ['title', 'description', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'status'];
-    for (const key of allowed) {
-      const camelKey = key.replace(/_[a-z]/g, (m: string) => m[1].toUpperCase());
-      if (data[camelKey] !== undefined) {
-        fields.push(`${key} = ?`);
-        values.push(data[camelKey]);
-      }
-    }
-    if (!fields.length) return;
-    values.push(id);
-    await this.pool.execute(
-      `UPDATE resource_maintenance SET ${fields.join(', ')} WHERE id = ?`, values
+  async updateMaintenance(
+    id: number,
+    data: { reason: string; dateFrom: string; dateTo: string; isActive: number }
+  ): Promise<number> {
+    const [result] = await this.pool.execute<mysql.ResultSetHeader & RowData>(
+      `UPDATE resource_maintenance
+          SET reason = ?, date_from = ?, date_to = ?, is_active = ?
+        WHERE id = ?`,
+      [data.reason, data.dateFrom, data.dateTo, data.isActive, id]
     );
+    return result.affectedRows;
   }
 
   async deleteMaintenance(id: number): Promise<void> {

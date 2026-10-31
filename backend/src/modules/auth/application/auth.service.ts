@@ -563,16 +563,22 @@ export class AuthService {
   }
 
   async logout(refreshToken?: string, allDevices?: boolean, userId?: number): Promise<void> {
-    if (allDevices && userId) {
-      await sessionRepository.revokeAllForUser(userId);
-      return;
-    }
+    // `/auth/logout` is a public route, so `request.userId` is usually undefined.
+    // Resolve the owner from the refresh token before honouring `allDevices`,
+    // otherwise "sign out everywhere" silently behaves like a single-device logout.
+    let resolvedUserId = userId;
+    let session: Awaited<ReturnType<typeof sessionRepository.findByRefreshTokenHash>> = null;
     if (refreshToken) {
       const tokenHash = hashToken(refreshToken);
-      const session = await sessionRepository.findByRefreshTokenHash(tokenHash);
-      if (session) {
-        await sessionRepository.revoke(session.id);
-      }
+      session = await sessionRepository.findByRefreshTokenHash(tokenHash);
+      if (!resolvedUserId && session) resolvedUserId = session.user_id;
+    }
+    if (allDevices && resolvedUserId) {
+      await sessionRepository.revokeAllForUser(resolvedUserId);
+      return;
+    }
+    if (session) {
+      await sessionRepository.revoke(session.id);
     }
   }
 

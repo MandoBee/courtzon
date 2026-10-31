@@ -15,28 +15,58 @@ process.env.NODE_ENV = 'test';
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mysql from 'mysql2/promise';
+import {
+  createTestNumericId,
+  createTestRunMarker,
+  testEmail,
+  testPhoneFromId,
+} from '../../../tests/helpers/test-run.js';
 
 let pool: mysql.Pool;
-const TEST_USER = 999997;
+const RUN = createTestRunMarker('payment');
+const TEST_USER = createTestNumericId();
+const TEST_PHONE = testPhoneFromId(TEST_USER);
+const TEST_EMAIL = testEmail('payment', RUN);
+const PAY_REF = `test_pay_${RUN}`;
+const GW = `test_int_${RUN}`;
 
 beforeAll(async () => {
   pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3' });
-  await pool.execute(`DELETE FROM financial_journal_entries WHERE reference_type = 'test_pay'`);
-  await pool.execute(`DELETE FROM payment_transactions WHERE gateway_reference LIKE 'test_int_%'`);
-  await pool.execute(`DELETE FROM payment_transactions WHERE reference_type = 'test_pay'`);
-  await pool.execute(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
-  await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);
 
-  await pool.execute(`INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
-    VALUES (${TEST_USER}, UUID(), 1, '01299999997', '+201299999997', 'test-pay@test.com', '$2b$10$test', 'Test Payer', 'male', 'active')`);
+  await pool.execute(
+    `INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
+     VALUES (?, UUID(), 1, ?, ?, ?, '$2b$10$test', 'Test Payer', 'male', 'active')`,
+    [TEST_USER, TEST_PHONE, `+20${TEST_PHONE.slice(1)}`, TEST_EMAIL],
+  );
 });
 
 afterAll(async () => {
-  await pool.execute(`DELETE FROM financial_journal_entries WHERE reference_type = 'test_pay'`);
-  await pool.execute(`DELETE FROM payment_transactions WHERE gateway_reference LIKE 'test_int_%'`);
-  await pool.execute(`DELETE FROM payment_transactions WHERE reference_type = 'test_pay'`);
-  await pool.execute(`DELETE FROM user_wallets WHERE user_id = ${TEST_USER}`);
-  await pool.execute(`DELETE FROM users WHERE id = ${TEST_USER}`);
+  const [wallets] = await pool.execute<any[]>('SELECT id FROM user_wallets WHERE user_id = ?', [TEST_USER]);
+  const walletIds = wallets.map((w) => Number(w.id));
+  if (walletIds.length) {
+    await pool.execute(
+      `DELETE FROM wallet_transactions WHERE wallet_id IN (${walletIds.map(() => '?').join(',')})`,
+      walletIds,
+    );
+  }
+  await pool.execute('DELETE FROM user_wallets WHERE user_id = ?', [TEST_USER]);
+  await pool.execute('DELETE FROM payment_transactions WHERE user_id = ?', [TEST_USER]);
+  await pool.execute('DELETE FROM financial_journal_entries WHERE reference_type = ?', [PAY_REF]);
+  await pool.execute('DELETE FROM users WHERE id = ?', [TEST_USER]);
+
+  const [left] = await pool.execute<any[]>(
+    `SELECT
+       (SELECT COUNT(*) FROM users WHERE id = ?) AS users,
+       (SELECT COUNT(*) FROM payment_transactions WHERE user_id = ?) AS payments,
+       (SELECT COUNT(*) FROM financial_journal_entries WHERE reference_type = ?) AS journals,
+       (SELECT COUNT(*) FROM wallet_transactions WHERE description LIKE ?) AS walletTxns`,
+    [TEST_USER, TEST_USER, PAY_REF, `%${GW}%`],
+  );
+  expect(Number(left[0].users)).toBe(0);
+  expect(Number(left[0].payments)).toBe(0);
+  expect(Number(left[0].journals)).toBe(0);
+  expect(Number(left[0].walletTxns)).toBe(0);
+
   await pool.end();
 });
 
@@ -44,7 +74,7 @@ describe('Payment Integration', () => {
   it('creates a payment transaction with unique gateway_reference', async () => {
     const [r] = await pool.execute<mysql.ResultSetHeader>(
       `INSERT INTO payment_transactions (user_id, payment_method, gateway_provider, gateway_reference, amount, payment_status)
-       VALUES (${TEST_USER}, 'card', 'paymob', 'test_int_001', 199, 'pending')`,
+       VALUES (${TEST_USER}, 'card', 'paymob', '${GW}_001', 199, 'pending')`,
     );
     expect(r.insertId).toBeGreaterThan(0);
   });
@@ -52,18 +82,19 @@ describe('Payment Integration', () => {
   it('rejects duplicate gateway_reference (UNIQUE constraint)', async () => {
     await expect(
       pool.execute(`INSERT INTO payment_transactions (user_id, payment_method, gateway_provider, gateway_reference, amount, payment_status)
-        VALUES (${TEST_USER}, 'card', 'paymob', 'test_int_001', 199, 'pending')`)
+        VALUES (${TEST_USER}, 'card', 'paymob', '${GW}_001', 199, 'pending')`)
     ).rejects.toThrow();
   });
 
   it('records a journal entry for payment', async () => {
     // Use the correct table: financial_journal_entries
-    // F-7: the test row uses reference_type='test_pay' so the beforeAll/afterAll
+    // F-7: the test row uses a unique reference_type so the afterAll cleanup
     // cleanup deletes it — it must NOT pollute the (dead) gateway_webhook rows
     // that the payment health endpoint no longer reads.
     const [r] = await pool.execute<mysql.ResultSetHeader>(
       `INSERT INTO financial_journal_entries (entry_type, reference_type, reference_id, debit_account, credit_account, amount, description)
-       VALUES ('payment', 'test_pay', 999, 'Cash', 'Revenue', 199, 'Test journal entry')`,
+       VALUES ('payment', ?, 999, 'Cash', 'Revenue', 199, 'Test journal entry')`,
+      [PAY_REF],
     );
     expect(r.insertId).toBeGreaterThan(0);
   });
@@ -71,14 +102,14 @@ describe('Payment Integration', () => {
   it('FOR UPDATE locks payment row for concurrent webhook processing', async () => {
     // Insert a fresh payment
     await pool.execute(`INSERT INTO payment_transactions (user_id, payment_method, gateway_provider, gateway_reference, amount, payment_status)
-      VALUES (${TEST_USER}, 'card', 'paymob', 'test_int_lock', 99, 'pending')`);
+      VALUES (${TEST_USER}, 'card', 'paymob', '${GW}_lock', 99, 'pending')`);
 
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
       const [locked] = await conn.execute<any[]>(
         'SELECT * FROM payment_transactions WHERE gateway_reference = ? FOR UPDATE',
-        ['test_int_lock'],
+        [`${GW}_lock`],
       );
       expect(locked.length).toBe(1);
       expect(locked[0].payment_status).toBe('pending');
@@ -100,7 +131,7 @@ describe('Payment Integration', () => {
   });
 
   it('idempotency: duplicate status update is safely ignored (conditional WHERE)', async () => {
-    const ref = `test_idem_001_${Date.now()}`;
+    const ref = `${GW}_idem_${Date.now()}`;
     await pool.execute(`INSERT INTO payment_transactions (user_id, payment_method, gateway_provider, gateway_reference, amount, payment_status)
       VALUES (${TEST_USER}, 'card', 'paymob', ?, 150, 'pending')`, [ref]);
 
@@ -118,7 +149,7 @@ describe('Payment Integration', () => {
   });
 
   it('idempotency: wallet top-up does NOT double-credit for same gateway_ref', async () => {
-    const gatewayRef = `test_topup_${Date.now()}`;
+    const gatewayRef = `${GW}_topup_${Date.now()}`;
 
     await pool.execute(`INSERT INTO payment_transactions
       (user_id, payment_method, gateway_provider, gateway_reference, amount, reference_type, payment_status)
@@ -149,7 +180,7 @@ describe('Payment Integration', () => {
   });
 
   it('expiry: does NOT expire already-paid payments', async () => {
-    const ref = `test_nxpr_01_${Date.now()}`;
+    const ref = `${GW}_exp_${Date.now()}`;
     await pool.execute(`INSERT INTO payment_transactions (user_id, payment_method, gateway_provider, gateway_reference, amount, payment_status, paid_at)
       VALUES (${TEST_USER}, 'card', 'paymob', ?, 99, 'paid', NOW())`, [ref]);
 

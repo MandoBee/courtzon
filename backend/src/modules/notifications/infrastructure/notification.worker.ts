@@ -3,7 +3,7 @@ import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import {
   createDelivery, updateDeliveryStatus, recordAnalytics, sendToDeadLetter,
-  getFailedDeliveries, retryFromDeadLetter,
+  getFailedDeliveries, retryFromDeadLetter, getDelivery, findDeliveredDelivery,
 } from './repositories/delivery.repository.js';
 import { getTemplate, resolveTemplate } from '../application/template.service.js';
 import { isOnline, queueForReconnect } from '../application/presence.service.js';
@@ -31,10 +31,24 @@ async function logAudit(notificationId: number, userId: number, event: any, opts
 export async function handleProcessNotification(
   job: ProcessNotificationJob & { renderedTitle?: string; renderedBody?: string },
 ): Promise<void> {
-  const pool = getPool();
   const renderedTitle = job.renderedTitle || job.title;
   const renderedBody = job.renderedBody || job.body;
   const channel = job.channel as string;
+
+  // At-least-once queue delivery: never send the same notification/channel twice
+  // when a job is retried after a successful send.
+  const alreadyDelivered = await findDeliveredDelivery(job.notificationId, job.userId, channel);
+  if (alreadyDelivered) {
+    log.info(
+      { notificationId: job.notificationId, userId: job.userId, channel, deliveryId: alreadyDelivered },
+      'Duplicate delivery suppressed — already delivered',
+    );
+    await logAudit(job.notificationId, job.userId, 'duplicate_suppressed', {
+      channel,
+      metadata: { deliveryId: alreadyDelivered },
+    });
+    return;
+  }
 
   const deliveryId = await createDelivery(job.notificationId, job.userId, channel);
   await logAudit(job.notificationId, job.userId, 'queued', { channel });
@@ -70,28 +84,19 @@ export async function handleProcessNotification(
       renderedBody: renderedBody || undefined,
     });
 
-    if (result.success) {
-      await updateDeliveryStatus(deliveryId, 'delivered');
-      await recordAnalytics(job.notificationId, job.userId, 'delivered', channel);
-      await logAudit(job.notificationId, job.userId, 'delivered', {
-        channel,
-        providerSlug: result.provider,
-        metadata: result.metadata,
-      });
-
-      if (channel === 'in_app' || channel === 'push') {
-        const [delivery] = await pool.execute<RowData>(
-          'SELECT attempts, max_retries FROM notification_delivery WHERE id = ?', [deliveryId],
-        );
-        if (delivery.length) {
-          const d = delivery[0] as any;
-          if (d.attempts >= d.max_retries) {
-            await sendToDeadLetter(job.notificationId, job.userId, channel, result.error || 'Max retries exceeded', d.attempts, job as any);
-            await logAudit(job.notificationId, job.userId, 'dead_letter', { channel });
-          }
-        }
-      }
+    if (!result.success) {
+      // A provider that reports failure is a FAILED delivery, not a success:
+      // retry via the queue and dead-letter on terminal exhaustion.
+      throw new Error(result.error || 'Provider delivery failed');
     }
+
+    await updateDeliveryStatus(deliveryId, 'delivered');
+    await recordAnalytics(job.notificationId, job.userId, 'delivered', channel);
+    await logAudit(job.notificationId, job.userId, 'delivered', {
+      channel,
+      providerSlug: result.provider,
+      metadata: result.metadata,
+    });
   } catch (err: any) {
     log.error({ err, job }, 'Failed to process notification');
 
@@ -102,6 +107,19 @@ export async function handleProcessNotification(
       providerSlug: channel,
       metadata: { error: err.message },
     });
+
+    // Terminal failure → persist a replayable dead letter exactly once.
+    const delivery = await getDelivery(deliveryId);
+    if (delivery && delivery.attempts >= delivery.maxRetries) {
+      const deadLetterId = await sendToDeadLetter(
+        job.notificationId, job.userId, channel, err.message, delivery.attempts, job as any,
+      );
+      await updateDeliveryStatus(deliveryId, 'dead_letter', err.message);
+      await logAudit(job.notificationId, job.userId, 'dead_letter', {
+        channel,
+        metadata: { deadLetterId },
+      });
+    }
 
     throw err;
   }

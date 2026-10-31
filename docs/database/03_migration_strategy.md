@@ -25,8 +25,10 @@
 Run the following commands to generate the authoritative baseline:
 
 ```bash
-# Connect to a fresh DB, run all migrations + seed
-node backend/scripts/migrate.js --fresh --seed
+# Connect to a fresh DB, run all migrations (destructive confirmation required),
+# then seed separately — the runner rejects --fresh --seed
+node backend/scripts/migrate.js --fresh --confirm-destructive-fresh
+./scripts/seed.sh
 
 # Dump the cumulative schema (structure only, no data)
 mysqldump --no-data --routines --triggers --events \
@@ -98,20 +100,20 @@ ALTER TABLE users DROP COLUMN preferences;
 
 ```bash
 # Apply all pending migrations
-scripts/migrate.sh
+node backend/scripts/migrate.js
 
 # Check migration status
-scripts/migrate.sh --status
+node backend/scripts/migrate.js --status
 
 # Manual rollback
-scripts/migrate.sh --rollback 20260624_120000
+node backend/scripts/migrate.js --rollback 20260624_120000
 ```
 
 ---
 
 ## 5.4 New Migration Runner Requirements
 
-The replacement for `backend/scripts/migrate.js` (`scripts/migrate.sh`) must be:
+The canonical public entry point is `backend/scripts/migrate.js`; `scripts/migrate.sh` is its internal SQL engine and must not be called directly by operators.
 
 | Requirement | Implementation |
 |-------------|----------------|
@@ -132,7 +134,7 @@ The replacement for `backend/scripts/migrate.js` (`scripts/migrate.sh`) must be:
 | V3 cutover | Archive `database/schema/` → `archive/database/schema/` | During restructuring |
 | V3 cutover | Place `001_courtzon_v3.sql` in `database/baseline/` | During restructuring |
 | V3+ | All new schema changes → `database/migrations/` | Ongoing |
-| V3+ | New runner → `scripts/migrate.sh` | Phase 14 |
+| V3+ | New runner → `backend/scripts/migrate.js` (shell engine `scripts/migrate.sh` is internal) | Phase 14 |
 | V3+ | `migration_history` table tracks all future runs | Ongoing |
 
 ---

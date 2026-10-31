@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/auth';
+import { test, expect } from '../../fixtures/auth.fixture';
 import {
   testCourts,
   organisationPayload,
@@ -36,9 +36,6 @@ test.describe('Cancel Booking', () => {
     const createRes = await api.createBooking(booking);
     const bookingId = createRes.data?.id || createRes.data?.data?.id;
     expect(bookingId).toBeDefined();
-
-    const confirmRes = await api.raw('PATCH', `/bookings/${bookingId}/confirm`);
-    expect(confirmRes.status).toBe(200);
 
     await page.goto('/bookings');
     await page.waitForLoadState('networkidle');

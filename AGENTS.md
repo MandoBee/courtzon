@@ -1,5 +1,23 @@
 # Agent Automation Rules
 
+## ⚠️ MANDATORY: Release Readiness Plan — read before any work
+
+CourtZon is governed by a permanent ten-phase release-readiness roadmap. Every OpenCode session,
+agent, and contributor MUST read both files before starting any task:
+
+- **Plan (authority):** `docs/release/COURTZON_RELEASE_READINESS_PLAN.md`
+- **Live status / checklist:** `docs/release/COURTZON_RELEASE_PROGRESS.md`
+
+Rules for every session:
+1. Identify the current phase and the next `TODO`/`IN_PROGRESS` item in the progress file.
+2. Do not reorder phases, skip acceptance criteria, or start application/dependency/Docker work
+   outside the plan without a documented deviation approved by the user.
+3. After every meaningful operation, update the progress file (status, tests, evidence, blockers,
+   percentages) and reply using the required Arabic report format in the plan.
+4. Never mark a task/phase `DONE` without executed evidence; use `BLOCKED` / `NOT RUN` honestly.
+5. Never truncate or reset `courtzon_v3`; no commit, push, Docker rebuild, or deployment until the
+   applicable phase and user authorization requirements are satisfied.
+
 ## ⚠️ PERMANENT: CourtZon Development Policy (Effective 2026-08-06)
 
 A task is NOT complete unless ALL of the following have been analyzed and implemented where applicable.
@@ -173,7 +191,7 @@ For Docker: import into `courtzon_v3` database on MySQL container (port 3307).
 ## Role permissions
 
 - **Sync UI keys:** `node backend/scripts/sync-ui-registry.js`
-- **Apply role templates:** `node backend/scripts/sync-role-permissions.mjs` (`super_admin` gets all permissions)
+- **Apply role templates:** `node backend/scripts/sync-role-permissions.mjs --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>` (`super_admin` gets all permissions)
 - Templates live in `backend/scripts/role-permission-templates.mjs`
 
 ## ⚠️ Mandatory: Always rebuild & recreate Docker after changes

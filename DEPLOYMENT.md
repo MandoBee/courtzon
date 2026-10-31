@@ -61,8 +61,11 @@ docker exec courtzon-backend node scripts/migrate.js
 # Check migration status
 docker exec courtzon-backend node scripts/migrate.js --status
 
-# Fresh install with seed data
-docker exec courtzon-backend node scripts/migrate.js --fresh --seed
+# Fresh install (destructive; explicit confirmation required), then seed separately
+docker exec courtzon-backend node scripts/migrate.js --fresh --confirm-destructive-fresh
+
+# Seed from the repo root against the target DB (the image ships no scripts/seed.sh)
+./scripts/seed.sh
 ```
 
 ### Migration Environments (fail-closed guard)

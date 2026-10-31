@@ -54,6 +54,9 @@ export default function OrganizationRegisterPage() {
   const [approvedResult, setApprovedResult] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [pollingPaid, setPollingPaid] = useState(false);
+  // Payment id kept in state (not a render-time ref read) so the fallback poller
+  // survives closing the card modal, which clears `paymentInfo`.
+  const [pollingPaymentId, setPollingPaymentId] = useState(0);
   const paymentIdRef = useRef<number>(0);
 
   const [form, setForm] = useState({
@@ -126,6 +129,7 @@ export default function OrganizationRegisterPage() {
 
   const finishApproved = async (msg: string) => {
     setPollingPaid(false);
+    setPollingPaymentId(0);
     setPaymentInfo(null);
     showToast(msg);
     // Card/free flows create an authenticated session, so land the owner on
@@ -174,12 +178,14 @@ export default function OrganizationRegisterPage() {
   const handlePaymentCancel = () => {
     resetConfirm();
     setPaymentInfo(null);
+    setPollingPaymentId(0);
     setStep(5);
     showToast('Payment cancelled — your organization is pending review.', 'warning');
   };
 
   const handlePaymentComplete = async () => {
     const pmId = paymentIdRef.current;
+    setPollingPaymentId(pmId);
     setPaymentInfo(null);
     showToast('Payment submitted — confirming…', 'info');
     if (!pmId) return;
@@ -460,9 +466,9 @@ export default function OrganizationRegisterPage() {
       )}
 
       {/* Fallback polling (webhook will activate the organization) */}
-      {pollingPaid && paymentIdRef.current > 0 && (
+      {pollingPaid && pollingPaymentId > 0 ? (
         <PaymentStatusPoller
-          endpoint={`/payments/status/${paymentIdRef.current}`}
+          endpoint={`/payments/status/${pollingPaymentId}`}
           isComplete={(data: any) => data?.paymentStatus === 'paid'}
           interval={2000}
           timeout={90000}
@@ -473,7 +479,7 @@ export default function OrganizationRegisterPage() {
             showToast('Payment confirmation is taking longer than expected. Your organization will be activated automatically.', 'warning');
           }}
         />
-      )}
+      ) : null}
     </div>
   );
 }

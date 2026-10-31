@@ -23,9 +23,12 @@ export default function PaymobPixelCard({
   const onCompleteRef = useRef(onComplete);
   const onCancelRef = useRef(onCancel);
   const beforePaymentCompleteRef = useRef(beforePaymentComplete);
-  onCompleteRef.current = onComplete;
-  onCancelRef.current = onCancel;
-  beforePaymentCompleteRef.current = beforePaymentComplete;
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onCancelRef.current = onCancel;
+    beforePaymentCompleteRef.current = beforePaymentComplete;
+  }, [onComplete, onCancel, beforePaymentComplete]);
 
   useEffect(() => {
     const container = containerRef.current;

@@ -1,19 +1,44 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SEEDS_DIR="$PROJECT_ROOT/database/seeds"
 
 LOG_FILE="$PROJECT_ROOT/backups/seed.log"
 
 DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-3306}"
+DB_PORT="${DB_PORT:-3307}"
 DB_USER="${DB_USER:-root}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_NAME="${DB_NAME:-courtzon_v3}"
 
-MYSQL_OPTS="-h $DB_HOST -P $DB_PORT -u $DB_USER"
+# ── Load the shared database TLS policy ──────────────────────────────────────
+# Same single source of truth as the migration paths (DB_TLS_MODE: disable |
+# require | verify-ca; DB_TLS_CA_PATH for verify-ca). The policy is sourced, not
+# reimplemented, so seeding can never drift from migration TLS behaviour.
+# Unresolvable policy = fail-closed before the first connection attempt.
+DB_TLS_LIB="$PROJECT_ROOT/backend/scripts/db-tls.sh"
+if [ ! -f "$DB_TLS_LIB" ]; then
+  # Container layout: backend scripts are mounted at /app/scripts.
+  DB_TLS_LIB="$SCRIPT_DIR/db-tls.sh"
+fi
+if [ ! -f "$DB_TLS_LIB" ]; then
+  echo "ERROR: database TLS policy library not found (looked in backend/scripts and $SCRIPT_DIR) — refusing to seed (fail-closed)" >&2
+  exit 1
+fi
+# shellcheck source=../backend/scripts/db-tls.sh
+. "$DB_TLS_LIB"
+
+if ! db_tls_resolve; then
+  exit 1
+fi
+if [ -n "$DB_TLS_WARNINGS" ]; then
+  echo "$DB_TLS_WARNINGS" >&2
+fi
+echo "Database TLS policy: $(db_tls_describe)"
+
+MYSQL_OPTS="-h $DB_HOST -P $DB_PORT -u $DB_USER $DB_TLS_CLI_ARGS"
 [ -n "$DB_PASSWORD" ] && MYSQL_OPTS="$MYSQL_OPTS -p$DB_PASSWORD"
 MYSQL="$MYSQL_OPTS $DB_NAME"
 MYSQL_ADMIN="$MYSQL_OPTS"
@@ -123,4 +148,6 @@ main() {
   log "Seed complete."
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+  main "$@"
+fi

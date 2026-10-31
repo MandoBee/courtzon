@@ -1,7 +1,7 @@
 import { test as base } from '@playwright/test';
 import { testUsers } from '../data/users';
 import { testCourts, organisationPayload, branchPayload, bookingPayload } from '../data/courts';
-import { insertUser, insertOrganisation, insertBranch, insertResource, cleanup } from '../helpers/database';
+import { insertUser, insertOrganisation, insertBranch, insertResource } from '../helpers/database';
 import { api, clearCookies } from '../helpers/api';
 
 type BookingFixtures = {

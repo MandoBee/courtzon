@@ -85,6 +85,12 @@ export async function updateDeliveryStatus(
     setClauses.push('attempts = attempts + 1');
     setClauses.push('processing_at = NULL');
   }
+  if (status === 'failed') {
+    // Every failed provider attempt counts against max_retries; the worker uses
+    // the incremented value to decide when the delivery becomes terminal (DLQ).
+    setClauses.push('attempts = attempts + 1');
+    setClauses.push('processing_at = NULL');
+  }
   if (status === 'processing') {
     setClauses.push('processing_at = NOW()');
   }
@@ -114,6 +120,25 @@ export async function getDelivery(id: number): Promise<DeliveryRecord | null> {
     'SELECT * FROM notification_delivery WHERE id = ?', [id],
   );
   return rows.length ? mapDelivery(rows[0]) : null;
+}
+
+/**
+ * Idempotency guard for at-least-once queue delivery: a notification/channel
+ * pair that was already delivered must never be sent twice on job retry.
+ */
+export async function findDeliveredDelivery(
+  notificationId: number,
+  userId: number,
+  channel: string,
+): Promise<number | null> {
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT id FROM notification_delivery
+      WHERE notification_id = ? AND user_id = ? AND channel = ? AND status = 'delivered'
+      LIMIT 1`,
+    [notificationId, userId, channel],
+  );
+  return rows.length ? Number((rows[0] as any).id) : null;
 }
 
 export async function getPendingDeliveries(
@@ -302,16 +327,46 @@ export async function removeDeadLetter(id: number): Promise<void> {
   );
 }
 
-export async function retryFromDeadLetter(id: number): Promise<void> {
+export async function retryFromDeadLetter(id: number): Promise<boolean> {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
     'SELECT * FROM notification_dead_letter_queue WHERE id = ?', [id],
   );
-  if (!rows.length) return;
+  if (!rows.length) return false;
 
   const dl = rows[0] as any;
-  const newDeliveryId = await createDelivery(dl.notification_id || 0, dl.user_id, dl.channel, dl.failed_attempts + 1);
-  await removeDeadLetter(id);
+
+  // Atomic claim: only one worker may replay a given dead letter.
+  const [claim] = await pool.execute<ResultSetHeader>(
+    'DELETE FROM notification_dead_letter_queue WHERE id = ?', [id],
+  );
+  if (claim.affectedRows === 0) return false;
+
+  try {
+    const maxRetries = Math.max(1, Number(dl.failed_attempts) || 3);
+    const newDeliveryId = await createDelivery(dl.notification_id || 0, dl.user_id, dl.channel, maxRetries);
+    const payload = typeof dl.payload === 'string' ? JSON.parse(dl.payload) : (dl.payload || {});
+    const { queueService } = await import('../../../../infrastructure/queue/queue.service.js');
+    await queueService.add('process_notification', {
+      ...payload,
+      notificationId: dl.notification_id || payload.notificationId,
+      userId: dl.user_id,
+      channel: dl.channel,
+      deliveryId: newDeliveryId,
+    } as any, { attempts: 3 });
+    return true;
+  } catch (err) {
+    // Enqueue failed: put the dead letter back so the replay can be retried later.
+    await pool.execute(
+      `INSERT INTO notification_dead_letter_queue
+        (notification_id, user_id, channel, payload, error_message, failed_attempts, last_error_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [dl.notification_id, dl.user_id, dl.channel,
+        typeof dl.payload === 'string' ? dl.payload : JSON.stringify(dl.payload || {}),
+        dl.error_message, dl.failed_attempts],
+    ).catch(() => {});
+    throw err;
+  }
 }
 
 // ── Mappers ──

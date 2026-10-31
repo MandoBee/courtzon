@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/auth';
+import { test, expect } from '../../fixtures/auth.fixture';
 import { DashboardPage } from '../../pages/DashboardPage';
 
 test.describe('Admin Dashboard', () => {

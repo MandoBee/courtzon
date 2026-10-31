@@ -8,7 +8,21 @@ vi.hoisted(() => {
 
 import mysql from 'mysql2/promise';
 import type { RowDataPacket } from 'mysql2';
+import {
+  createTestNumericId,
+  createTestRunMarker,
+  testEmail,
+  testPhoneFromId,
+} from '../../../tests/helpers/test-run.js';
 type RowData = RowDataPacket[];
+
+const RUN = createTestRunMarker('upload');
+const UPLOADER_PHONE = testPhoneFromId(createTestNumericId());
+const UNAUTH_PHONE = testPhoneFromId(createTestNumericId());
+const UPLOADER_EMAIL = testEmail('uploader', RUN);
+const UNAUTH_EMAIL = testEmail('unauth', RUN);
+const ORG_SLUG = `p01-upload-org-${RUN}`;
+const BRANCH_SLUG = `p01-branch-${RUN}`;
 
 /**
  * P0-1 — Upload routes authorization hardening.
@@ -39,7 +53,8 @@ describe('P0-1 — Upload route authorization (files.* permissions)', () => {
     // ── Uploader: assign the player role (files.upload per template) ──
     const [u] = await pool.execute<RowData>(
       `INSERT INTO users (public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
-       VALUES (UUID(), 1, '01060000001', '+201060000001', 'p01-uploader@test.com', '$2b$10$test', 'P01 Uploader', 'male', 'active')`,
+       VALUES (UUID(), 1, ?, ?, ?, '$2b$10$test', 'P01 Uploader', 'male', 'active')`,
+      [UPLOADER_PHONE, `+20${UPLOADER_PHONE.slice(1)}`, UPLOADER_EMAIL],
     );
     uploaderId = (u as any).insertId;
     const [playerRole] = await pool.execute<RowData>(`SELECT id FROM roles WHERE slug = 'player' LIMIT 1`);
@@ -48,7 +63,8 @@ describe('P0-1 — Upload route authorization (files.* permissions)', () => {
     // ── Unprivileged user: assign a role with NO files.* grant (referee) ──
     const [u2] = await pool.execute<RowData>(
       `INSERT INTO users (public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
-       VALUES (UUID(), 1, '01060000002', '+201060000002', 'p01-unauth@test.com', '$2b$10$test', 'P01 Unprivileged', 'female', 'active')`,
+       VALUES (UUID(), 1, ?, ?, ?, '$2b$10$test', 'P01 Unprivileged', 'female', 'active')`,
+      [UNAUTH_PHONE, `+20${UNAUTH_PHONE.slice(1)}`, UNAUTH_EMAIL],
     );
     unauthUserId = (u2 as any).insertId;
     const [refereeRole] = await pool.execute<RowData>(`SELECT id FROM roles WHERE slug = 'referee' LIMIT 1`);
@@ -65,12 +81,12 @@ describe('P0-1 — Upload route authorization (files.* permissions)', () => {
     const [ot] = await pool.execute<RowData>(`SELECT id FROM organisation_types LIMIT 1`);
     const [o] = await pool.execute<RowData>(
       `INSERT INTO organisations (public_id, org_type_id, owner_id, name, slug, is_active)
-       VALUES (UUID(), ?, ?, 'P01 Upload Org', 'p01-upload-org', 1)`, [(ot as any[])[0].id, adminId],
+       VALUES (UUID(), ?, ?, 'P01 Upload Org', ?, 1)`, [(ot as any[])[0].id, adminId, ORG_SLUG],
     );
     orgId = (o as any).insertId;
     const [b] = await pool.execute<RowData>(
-      `INSERT INTO branches (public_id, organisation_id, name, slug, timezone) VALUES (UUID(), ?, 'P01 Branch', 'p01-branch', 'Africa/Cairo')`,
-      [orgId],
+      `INSERT INTO branches (public_id, organisation_id, name, slug, timezone) VALUES (UUID(), ?, 'P01 Branch', ?, 'Africa/Cairo')`,
+      [orgId, BRANCH_SLUG],
     );
     branchId = (b as any).insertId;
     const [r] = await pool.execute<RowData>(
@@ -135,6 +151,20 @@ describe('P0-1 — Upload route authorization (files.* permissions)', () => {
     await pool.execute(`DELETE FROM organisations WHERE id = ?`, [orgId]);
     await pool.execute(`DELETE FROM user_roles WHERE user_id IN (?, ?)`, [uploaderId, unauthUserId]);
     await pool.execute(`DELETE FROM users WHERE id IN (?, ?)`, [uploaderId, unauthUserId]);
+
+    const [left] = await pool.execute<RowData>(
+      `SELECT
+         (SELECT COUNT(*) FROM organisations WHERE id = ?) AS orgs,
+         (SELECT COUNT(*) FROM branches WHERE id = ?) AS branches,
+         (SELECT COUNT(*) FROM resources WHERE id = ?) AS resources,
+         (SELECT COUNT(*) FROM users WHERE id IN (?, ?)) AS users`,
+      [orgId, branchId, resourceId, uploaderId, unauthUserId],
+    );
+    expect(Number((left as any[])[0].orgs)).toBe(0);
+    expect(Number((left as any[])[0].branches)).toBe(0);
+    expect(Number((left as any[])[0].resources)).toBe(0);
+    expect(Number((left as any[])[0].users)).toBe(0);
+
     await pool.end();
   });
 

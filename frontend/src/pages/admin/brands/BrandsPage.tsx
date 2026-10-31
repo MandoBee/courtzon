@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
@@ -25,18 +25,10 @@ export default function BrandsPage() {
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
 
-  // DEBUG: instance tracking
-  const instanceId = useRef('BP-' + Math.random().toString(36).slice(2, 8));
-  const renderCount = useRef(0);
-  renderCount.current++;
   const perms = user?.permissions ?? [];
   const hasWildcard = perms.includes('*');
   const hasRequiredPermission = perms.includes('sidebar.brands');
   const enabled = hasWildcard || hasRequiredPermission;
-  console.warn('[ADMIN-QUERY-STATE]', { page: 'BrandsPage', instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permissions: perms, permsLen: perms.length, hasWildcard, hasRequiredPermission, enabled });
-  useEffect(() => {
-    return () => { console.warn('[ADMIN-QUERY-UNMOUNT]', { page: 'BrandsPage', instance: instanceId.current }); };
-  }, []);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Brand | null>(null);
   const [name, setName] = useState('');
@@ -50,7 +42,6 @@ export default function BrandsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'brands'],
     queryFn: () => {
-      console.warn('[ADMIN-QUERY-FIRED]', { page: 'BrandsPage', instance: instanceId.current });
       return api.get('/admin/brands').then((r: any) => r.data.data);
     },
     enabled,

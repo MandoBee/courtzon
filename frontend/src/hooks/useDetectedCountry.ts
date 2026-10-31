@@ -25,7 +25,10 @@ export function useDetectedCountry<T extends GeoCountryRow>(
   const detecting = useCurrencyStore((s) => s.detecting);
   const detect = useCurrencyStore((s) => s.detect);
   const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
 
   useEffect(() => {
     if (!enabled) return;

@@ -1,0 +1,2099 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "frontend/scripts/lint-baseline.mjs",
+  "command": "eslint .",
+  "eslintVersion": "10.3.0",
+  "configSha256": "b7a37f3e8b95e5a2e6fb28f4e3032327f7f64ca3e049d3460e5ee17b22be2804",
+  "fileCount": 706,
+  "findingCount": 3377,
+  "errorCount": 3295,
+  "warningCount": 82,
+  "files": [
+    "eslint-rules/require-mutation-toast.mjs",
+    "eslint.config.js",
+    "postcss.config.js",
+    "public/dev-localhost-redirect.js",
+    "scripts/copy-flags.js",
+    "scripts/fix-admin-any-errors.mjs",
+    "scripts/fix-admin-mutation-types.mjs",
+    "scripts/fix-implicit-any-callbacks.mjs",
+    "scripts/inject-push-sw.js",
+    "scripts/lint-baseline.mjs",
+    "scripts/lint-gate-selftest.mjs",
+    "scripts/restore-admin-any-annotations.mjs",
+    "scripts/revert-admin-form-state.mjs",
+    "scripts/strip-admin-explicit-any.mjs",
+    "scripts/theme-class-cleanup.mjs",
+    "src/App.tsx",
+    "src/app/layouts/AdminLayout.tsx",
+    "src/app/layouts/OrgLayout.tsx",
+    "src/app/routes/RouteGuards.tsx",
+    "src/branding/sync-favicon.ts",
+    "src/components/ConnectionStatus.tsx",
+    "src/components/ErrorBoundary.tsx",
+    "src/components/FeatureFlagGuard.tsx",
+    "src/components/InstallPrompt.test.tsx",
+    "src/components/InstallPrompt.tsx",
+    "src/components/RouteGuard.tsx",
+    "src/components/SplashScreen.tsx",
+    "src/components/academy/AcademyCapacityModal.tsx",
+    "src/components/academy/AcademyConfirmationModal.tsx",
+    "src/components/academy/AcademyPaymentPanel.test.tsx",
+    "src/components/academy/AcademyPaymentPanel.tsx",
+    "src/components/accounting/ShowZeroBalancesToggle.test.tsx",
+    "src/components/accounting/ShowZeroBalancesToggle.tsx",
+    "src/components/accounting/financialReports.test.tsx",
+    "src/components/accounting/financialReports.tsx",
+    "src/components/app-settings/AppSettingsImageUpload.tsx",
+    "src/components/auth/LoginSplash.test.tsx",
+    "src/components/auth/LoginSplash.tsx",
+    "src/components/booking/BookingModal.test.tsx",
+    "src/components/booking/BookingModal.tsx",
+    "src/components/booking/BookingsTable.tsx",
+    "src/components/booking/ManageApplicantsPopup.tsx",
+    "src/components/booking/MatchErrorState.tsx",
+    "src/components/booking/SideSelection.test.tsx",
+    "src/components/booking/SideSelection.tsx",
+    "src/components/booking/__tests__/MatchErrorState.spec.tsx",
+    "src/components/branches/BranchAccessControl.tsx",
+    "src/components/branding/SiteBrand.tsx",
+    "src/components/branding/SiteLogo.tsx",
+    "src/components/dashboard/ActionCenter.tsx",
+    "src/components/form/PhoneNumberInput.tsx",
+    "src/components/i18n/LanguageSwitcher.tsx",
+    "src/components/layout/AdminSidebar.tsx",
+    "src/components/layout/BottomNav.tsx",
+    "src/components/layout/CoachBottomNav.tsx",
+    "src/components/layout/CoachLayout.tsx",
+    "src/components/layout/OrgSidebar.tsx",
+    "src/components/layout/RefereeBottomNav.tsx",
+    "src/components/layout/RefereeLayout.tsx",
+    "src/components/legal/LegalConsent.tsx",
+    "src/components/map/MapLocationPicker.tsx",
+    "src/components/marketplace/AdminProductEditModal.tsx",
+    "src/components/marketplace/FreeSellingModal.tsx",
+    "src/components/marketplace/ImageGallery.tsx",
+    "src/components/marketplace/MarketplaceFilters.tsx",
+    "src/components/marketplace/OrgProductFormModal.tsx",
+    "src/components/marketplace/PlayerProductFormModal.tsx",
+    "src/components/marketplace/ProductCardImage.tsx",
+    "src/components/marketplace/ProductVisibilityToggle.test.tsx",
+    "src/components/marketplace/ProductVisibilityToggle.tsx",
+    "src/components/marketplace/SellerProductFormModal.test.tsx",
+    "src/components/marketplace/SellerProductFormModal.tsx",
+    "src/components/match-result/DynamicResultForm.tsx",
+    "src/components/match-result/ResultSummaryView.tsx",
+    "src/components/match-result/__tests__/ResultSummaryView.spec.tsx",
+    "src/components/notifications/NotificationBell.tsx",
+    "src/components/notifications/NotificationDetailModal.tsx",
+    "src/components/notifications/NotificationPreferences.tsx",
+    "src/components/organisations/BranchCancellationPolicy.tsx",
+    "src/components/organisations/OrgCancellationPolicy.tsx",
+    "src/components/organisations/OrganisationForm.test.tsx",
+    "src/components/organisations/OrganisationForm.tsx",
+    "src/components/organisations/organisation-form-paths.ts",
+    "src/components/payment/PaymentStatusPoller.tsx",
+    "src/components/payment/PaymobPixelCard.tsx",
+    "src/components/payment/WalletPaymentOption.tsx",
+    "src/components/pwa/IOSInstallSheet.tsx",
+    "src/components/pwa/OfflineBanner.tsx",
+    "src/components/pwa/PWAUpdatePrompt.tsx",
+    "src/components/pwa/PushSubscriptionManager.tsx",
+    "src/components/pwa/ReloadSplash.tsx",
+    "src/components/reports/DateRangePicker.tsx",
+    "src/components/search/CommandPalette.test.tsx",
+    "src/components/search/CommandPalette.tsx",
+    "src/components/search/EntityPreview.tsx",
+    "src/components/search/GlobalSearchBar.tsx",
+    "src/components/search/SearchProvider.tsx",
+    "src/components/search/adminSearch.ts",
+    "src/components/settings/SettingsPage.tsx",
+    "src/components/subscription/BillingPeriodToggle.tsx",
+    "src/components/subscription/PlanPickerSection.tsx",
+    "src/components/subscription/SubscriptionCard.tsx",
+    "src/components/subscription/SubscriptionPlanCard.tsx",
+    "src/components/subscription/SubscriptionRequestModal.tsx",
+    "src/components/subscription/UpgradeRequestModal.tsx",
+    "src/components/tournaments/CompetitionManager.g11-21-1.test.tsx",
+    "src/components/tournaments/CompetitionManager.g11-21-2.test.tsx",
+    "src/components/tournaments/CompetitionManager.g11-21-3.test.tsx",
+    "src/components/tournaments/CompetitionManager.tsx",
+    "src/components/tournaments/EligibilityForm.g7d.test.tsx",
+    "src/components/tournaments/EligibilityFormGenderAge.phase4.test.tsx",
+    "src/components/tournaments/EligibilityFormSection.tsx",
+    "src/components/tournaments/EligibilitySummary.tsx",
+    "src/components/tournaments/GeneratedRules.tsx",
+    "src/components/tournaments/MatchCard.tsx",
+    "src/components/tournaments/MatchDetailsDrawer.tsx",
+    "src/components/tournaments/PlayerAvatar.tsx",
+    "src/components/tournaments/PrizeEditor.tsx",
+    "src/components/tournaments/PrizeList.tsx",
+    "src/components/tournaments/SponsorEditor.tsx",
+    "src/components/tournaments/SponsorList.tsx",
+    "src/components/tournaments/TournamentBracket.tsx",
+    "src/components/tournaments/TournamentPrintView.tsx",
+    "src/components/tournaments/__tests__/GeneratedRules.f03.spec.tsx",
+    "src/components/tournaments/__tests__/MatchDetailsDrawer.a11y.spec.tsx",
+    "src/components/tournaments/__tests__/MatchDetailsDrawer.navigation.spec.tsx",
+    "src/components/tournaments/__tests__/MatchDetailsDrawer.presentation.spec.tsx",
+    "src/components/tournaments/__tests__/PrizeEditor.spec.tsx",
+    "src/components/tournaments/__tests__/PrizeList.spec.tsx",
+    "src/components/tournaments/__tests__/TournamentBracket.universal.spec.tsx",
+    "src/components/tournaments/__tests__/bracketAnimation.spec.tsx",
+    "src/components/tournaments/__tests__/matchNavigation.spec.ts",
+    "src/components/tournaments/__tests__/matchPresentation.spec.tsx",
+    "src/components/tournaments/__tests__/printView.spec.tsx",
+    "src/components/tournaments/__tests__/tournamentStatusBadges.spec.ts",
+    "src/components/tournaments/hub/GskCompetitionViews.tsx",
+    "src/components/tournaments/hub/MatchesManager.tsx",
+    "src/components/tournaments/hub/TournamentHero.tsx",
+    "src/components/tournaments/hub/TournamentTabs.tsx",
+    "src/components/tournaments/hub/__tests__/MatchesManager.spec.tsx",
+    "src/components/tournaments/matchNavigation.ts",
+    "src/components/tournaments/matchSideLabel.ts",
+    "src/components/tournaments/playerHighlight.ts",
+    "src/components/tournaments/statusBadges.ts",
+    "src/components/tournaments/wizard/CreateWizardStepper.tsx",
+    "src/components/tournaments/wizard/GskConfiguration.tsx",
+    "src/components/tournaments/wizard/TournamentFormatSelector.tsx",
+    "src/components/ui/Badge.tsx",
+    "src/components/ui/Button.tsx",
+    "src/components/ui/Card.tsx",
+    "src/components/ui/CountBadge.tsx",
+    "src/components/ui/CountryFlag.tsx",
+    "src/components/ui/EntityImage.tsx",
+    "src/components/ui/ExportButton.tsx",
+    "src/components/ui/ExportCsvButton.test.tsx",
+    "src/components/ui/ExportCsvButton.tsx",
+    "src/components/ui/Input.tsx",
+    "src/components/ui/Modal.tsx",
+    "src/components/ui/Pagination.tsx",
+    "src/components/ui/PasswordInput.tsx",
+    "src/components/ui/ReactivationModal.tsx",
+    "src/components/ui/Skeleton.tsx",
+    "src/components/ui/Sparkline.tsx",
+    "src/components/ui/Spinner.tsx",
+    "src/components/ui/Toast.tsx",
+    "src/components/ui/index.ts",
+    "src/components/welcome/WelcomeModal.tsx",
+    "src/components/workspace/EmptyStateCard.tsx",
+    "src/components/workspace/QuickActions.tsx",
+    "src/components/workspace/RoleSwitcher.tsx",
+    "src/components/workspace/SectionHeader.tsx",
+    "src/components/workspace/SessionTimeline.test.tsx",
+    "src/components/workspace/SessionTimeline.tsx",
+    "src/components/workspace/StatCard.tsx",
+    "src/components/workspace/SummaryCard.tsx",
+    "src/components/workspace/WorkspaceHero.tsx",
+    "src/components/workspace/index.ts",
+    "src/config/feature-flags.ts",
+    "src/constants/date-formats.ts",
+    "src/constants/login-splash.ts",
+    "src/constants/pwa-reload.ts",
+    "src/hooks/useCan.test.ts",
+    "src/hooks/useCan.ts",
+    "src/hooks/useDetectedCountry.ts",
+    "src/hooks/useFeatureFlag.ts",
+    "src/hooks/useHaptics.ts",
+    "src/hooks/useInactivityTimer.ts",
+    "src/hooks/useNotificationInteraction.ts",
+    "src/hooks/useOnlineStatus.ts",
+    "src/hooks/usePaymentConfirm.ts",
+    "src/hooks/usePlayerNavCounts.ts",
+    "src/hooks/usePullToRefresh.ts",
+    "src/i18n/__tests__/translation-residue.spec.ts",
+    "src/i18n/index.ts",
+    "src/i18n/translation-keys.registry.ts",
+    "src/lib/__tests__/competitionGeneration.test.ts",
+    "src/lib/competitionGeneration.ts",
+    "src/lib/queryClient.ts",
+    "src/lib/tournamentEligibility.test.ts",
+    "src/lib/tournamentEligibility.ts",
+    "src/main.tsx",
+    "src/navigation/admin.registry.ts",
+    "src/navigation/coach.registry.ts",
+    "src/navigation/id-key.ts",
+    "src/navigation/index.ts",
+    "src/navigation/labels.ts",
+    "src/navigation/org.registry.ts",
+    "src/navigation/parity/compare.ts",
+    "src/navigation/parity/legacy/admin-sidebar.ts",
+    "src/navigation/parity/legacy/coach-nav.ts",
+    "src/navigation/parity/legacy/org-sidebar.ts",
+    "src/navigation/parity/legacy/player-nav.ts",
+    "src/navigation/parity/legacy/referee-nav.ts",
+    "src/navigation/parity/legacy/workspace-nav.ts",
+    "src/navigation/parity/parity.test.ts",
+    "src/navigation/parity/tournament-org-permissions.test.ts",
+    "src/navigation/parity/translation-integrity.test.ts",
+    "src/navigation/pipeline.ts",
+    "src/navigation/player.registry.ts",
+    "src/navigation/referee.registry.ts",
+    "src/navigation/resolve.ts",
+    "src/navigation/search.ts",
+    "src/navigation/types.ts",
+    "src/navigation/workspace-layout.ts",
+    "src/pages/NotFoundPage.tsx",
+    "src/pages/academies/AcademyDetailPage.tsx",
+    "src/pages/academies/AcademyListPage.tsx",
+    "src/pages/admin/AdminDashboard.tsx",
+    "src/pages/admin/AuditLogPage.tsx",
+    "src/pages/admin/Matches/AdminMatchesPage.tsx",
+    "src/pages/admin/MembershipPage.tsx",
+    "src/pages/admin/ReceptionDashboard.tsx",
+    "src/pages/admin/SystemAdminPage.tsx",
+    "src/pages/admin/WebhooksPage.tsx",
+    "src/pages/admin/WithdrawalQueuePage.tsx",
+    "src/pages/admin/academies/AcademyAdminPage.tsx",
+    "src/pages/admin/academy/AcademyAttendancePage.tsx",
+    "src/pages/admin/academy/AcademyDashboardPage.tsx",
+    "src/pages/admin/academy/AcademyEnrollmentsPage.tsx",
+    "src/pages/admin/academy/AcademyGroupsPage.tsx",
+    "src/pages/admin/academy/AcademyProgramsPage.tsx",
+    "src/pages/admin/academy/AcademySchedulesPage.tsx",
+    "src/pages/admin/academy/AcademySessionsPage.tsx",
+    "src/pages/admin/accounting/AccountingDashboardPage.tsx",
+    "src/pages/admin/accounting/AccountingPeriodsPage.tsx",
+    "src/pages/admin/accounting/ChartOfAccountsPage.tsx",
+    "src/pages/admin/accounting/EventMappingsPage.tsx",
+    "src/pages/admin/accounting/GeneralLedgerPage.test.tsx",
+    "src/pages/admin/accounting/GeneralLedgerPage.tsx",
+    "src/pages/admin/accounting/InvoicesPage.tsx",
+    "src/pages/admin/accounting/JournalEntryPage.tsx",
+    "src/pages/admin/accounting/ReconciliationPage.test.tsx",
+    "src/pages/admin/accounting/ReconciliationPage.tsx",
+    "src/pages/admin/accounting/TaxRatesPage.tsx",
+    "src/pages/admin/accounting/TaxSummaryPage.tsx",
+    "src/pages/admin/accounting/TemplatesPage.tsx",
+    "src/pages/admin/accounting/__tests__/JournalEntryPage.entity-filter.test.tsx",
+    "src/pages/admin/accounting/__tests__/JournalEntryPage.pagination.spec.tsx",
+    "src/pages/admin/ads/AdsPage.tsx",
+    "src/pages/admin/amenities/AmenitiesPage.tsx",
+    "src/pages/admin/app-settings/AppSettingsPage.tsx",
+    "src/pages/admin/app-settings/BankSettingsTab.tsx",
+    "src/pages/admin/banks/BankBranchesPage.tsx",
+    "src/pages/admin/banks/BanksPage.tsx",
+    "src/pages/admin/bi/BIDashboardPage.tsx",
+    "src/pages/admin/bi/ExportPanel.tsx",
+    "src/pages/admin/bi/ObservabilityPage.tsx",
+    "src/pages/admin/bookings/BookingsPage.tsx",
+    "src/pages/admin/branch-access/BranchAccessPage.tsx",
+    "src/pages/admin/branches/BranchListPage.tsx",
+    "src/pages/admin/brands/BrandsPage.tsx",
+    "src/pages/admin/cms/CmsPage.tsx",
+    "src/pages/admin/coaches/CoachAdminPage.tsx",
+    "src/pages/admin/community/CommunityEventsAdminPage.tsx",
+    "src/pages/admin/countries/CountriesPage.tsx",
+    "src/pages/admin/coupons/CouponListPage.tsx",
+    "src/pages/admin/crm/CRMDashboardPage.tsx",
+    "src/pages/admin/crm/CampaignsPage.tsx",
+    "src/pages/admin/crm/CommunicationsPage.tsx",
+    "src/pages/admin/crm/CustomerDetailPage.tsx",
+    "src/pages/admin/crm/CustomerListPage.tsx",
+    "src/pages/admin/crm/LeadsPage.tsx",
+    "src/pages/admin/crm/SegmentsPage.tsx",
+    "src/pages/admin/currencies/CurrenciesPage.tsx",
+    "src/pages/admin/design-tokens/ColorPickerField.tsx",
+    "src/pages/admin/design-tokens/ColorSchemePanel.tsx",
+    "src/pages/admin/design-tokens/ComponentPreview.tsx",
+    "src/pages/admin/design-tokens/ComponentStudioPanel.tsx",
+    "src/pages/admin/design-tokens/DesignTokensPage.tsx",
+    "src/pages/admin/design-tokens/GradientPickerField.tsx",
+    "src/pages/admin/design-tokens/HeroThemePanel.tsx",
+    "src/pages/admin/design-tokens/LandingBlockPreview.tsx",
+    "src/pages/admin/design-tokens/LandingStudioPanel.tsx",
+    "src/pages/admin/design-tokens/ResetTokenButton.tsx",
+    "src/pages/admin/design-tokens/RoleEditableCheckbox.tsx",
+    "src/pages/admin/design-tokens/RoleThemesPanel.tsx",
+    "src/pages/admin/design-tokens/StickyPreviewPanel.tsx",
+    "src/pages/admin/design-tokens/StylePropertyRow.tsx",
+    "src/pages/admin/design-tokens/ThemePreviewPane.tsx",
+    "src/pages/admin/design-tokens/VisualStyleControl.tsx",
+    "src/pages/admin/feature-flags/FeatureFlagsPage.tsx",
+    "src/pages/admin/finance/FinanceDashboardPage.tsx",
+    "src/pages/admin/finance/FinancialOpsDashboard.tsx",
+    "src/pages/admin/finance/LedgerViewerPage.tsx",
+    "src/pages/admin/finance/ReportCenterPage.tsx",
+    "src/pages/admin/finance/f15-export-completeness.test.ts",
+    "src/pages/admin/finance/p0-fixes.test.ts",
+    "src/pages/admin/finance/permissionHookOrder.test.tsx",
+    "src/pages/admin/gateway-settlements/GatewaySettlementPage.settled.test.tsx",
+    "src/pages/admin/gateway-settlements/GatewaySettlementPage.test.tsx",
+    "src/pages/admin/gateway-settlements/GatewaySettlementPage.tsx",
+    "src/pages/admin/hr/AttendancePage.tsx",
+    "src/pages/admin/hr/DepartmentListPage.tsx",
+    "src/pages/admin/hr/EmployeeDetailPage.tsx",
+    "src/pages/admin/hr/EmployeeListPage.tsx",
+    "src/pages/admin/hr/HRDashboardPage.tsx",
+    "src/pages/admin/hr/LeaveManagementPage.tsx",
+    "src/pages/admin/hr/PayrollPage.tsx",
+    "src/pages/admin/integration/APIDashboardPage.tsx",
+    "src/pages/admin/inventory/InventoryPage.tsx",
+    "src/pages/admin/inventory/PurchaseOrdersPage.tsx",
+    "src/pages/admin/inventory/SuppliersPage.tsx",
+    "src/pages/admin/inventory/WarehousesPage.tsx",
+    "src/pages/admin/languages/LanguagesPage.tsx",
+    "src/pages/admin/league/DivisionManagePage.tsx",
+    "src/pages/admin/league/LeagueDashboardPage.tsx",
+    "src/pages/admin/league/LeagueDetailPage.tsx",
+    "src/pages/admin/league/LeagueListPage.tsx",
+    "src/pages/admin/league/SeasonListPage.tsx",
+    "src/pages/admin/marketplace/AdminApprovalsPage.tsx",
+    "src/pages/admin/marketplace/AdminShippingRatesPage.tsx",
+    "src/pages/admin/marketplace/OrdersPage.tsx",
+    "src/pages/admin/marketplace/ProductDetailPage.tsx",
+    "src/pages/admin/marketplace/ProductsPage.tsx",
+    "src/pages/admin/marketplace/ReviewsPage.tsx",
+    "src/pages/admin/marketplace/SellersPage.tsx",
+    "src/pages/admin/marketplace/UpgradeRequestsPage.tsx",
+    "src/pages/admin/match-results/AdminMatchResultsPage.tsx",
+    "src/pages/admin/match-results/__tests__/AdminMatchResultsPage.spec.tsx",
+    "src/pages/admin/membership/CampaignsPage.tsx",
+    "src/pages/admin/membership/MembershipPlansPage.tsx",
+    "src/pages/admin/membership/RewardsAdminPage.tsx",
+    "src/pages/admin/mobile/MobileDashboardPage.tsx",
+    "src/pages/admin/notifications/AdminAnalyticsPage.tsx",
+    "src/pages/admin/notifications/AdminBroadcastPage.tsx",
+    "src/pages/admin/notifications/AdminDeadLettersPage.tsx",
+    "src/pages/admin/notifications/AdminTemplatesPage.tsx",
+    "src/pages/admin/notifications/NotificationConfigPage.tsx",
+    "src/pages/admin/notifications/NotificationTypesPage.tsx",
+    "src/pages/admin/notifications/TemplatesPage.tsx",
+    "src/pages/admin/organisation-types/OrganisationTypesPage.tsx",
+    "src/pages/admin/organisations/OrganisationListPage.tsx",
+    "src/pages/admin/payment-gateways/PaymentGatewaysPage.tsx",
+    "src/pages/admin/payment-methods/PaymentMethodsPage.tsx",
+    "src/pages/admin/pricing/PricePreviewPage.tsx",
+    "src/pages/admin/pricing/PricingRulesPage.tsx",
+    "src/pages/admin/product-categories/ProductCategoriesPage.tsx",
+    "src/pages/admin/queues/QueueManagementPage.tsx",
+    "src/pages/admin/recurring/RecurringBookingsPage.r5b.test.tsx",
+    "src/pages/admin/recurring/RecurringBookingsPage.tsx",
+    "src/pages/admin/reports/ReportsPage.test.tsx",
+    "src/pages/admin/reports/ReportsPage.tsx",
+    "src/pages/admin/resources/ResourceListPage.tsx",
+    "src/pages/admin/roles/RoleListPage.tsx",
+    "src/pages/admin/security/FailedLoginsPage.tsx",
+    "src/pages/admin/security/OrganisationSecurityPage.tsx",
+    "src/pages/admin/security/RoleAuditPage.tsx",
+    "src/pages/admin/security/SecurityDashboard.tsx",
+    "src/pages/admin/security/SessionsPage.tsx",
+    "src/pages/admin/security/SystemHealthPage.tsx",
+    "src/pages/admin/security/UploadSecurityPage.tsx",
+    "src/pages/admin/settlements/BookingSettlementPage.test.tsx",
+    "src/pages/admin/settlements/BookingSettlementPage.tsx",
+    "src/pages/admin/settlements/UnifiedSettlementCreatePage.test.tsx",
+    "src/pages/admin/settlements/UnifiedSettlementCreatePage.tsx",
+    "src/pages/admin/settlements/UnifiedSettlementDetailPage.test.tsx",
+    "src/pages/admin/settlements/UnifiedSettlementDetailPage.tsx",
+    "src/pages/admin/settlements/UnifiedSettlementListPage.test.tsx",
+    "src/pages/admin/settlements/UnifiedSettlementListPage.tsx",
+    "src/pages/admin/sidebar-layout/SidebarLayoutPage.tsx",
+    "src/pages/admin/sports/RuleSetVisualEditor.tsx",
+    "src/pages/admin/sports/SportFormatsPanel.tsx",
+    "src/pages/admin/sports/SportFormatsSection.tsx",
+    "src/pages/admin/sports/SportsEnginePage.tsx",
+    "src/pages/admin/sports/SportsPage.tsx",
+    "src/pages/admin/sports/__tests__/RuleSetVisualEditor.spec.tsx",
+    "src/pages/admin/sports/__tests__/SportFormatsSection.spec.tsx",
+    "src/pages/admin/subscription/SubscriptionPage.tsx",
+    "src/pages/admin/subscription/SubscriptionRequestsPage.tsx",
+    "src/pages/admin/subscription/ViewAssignments.test.tsx",
+    "src/pages/admin/support/SupportTicketDetail.tsx",
+    "src/pages/admin/support/SupportTicketsPage.tsx",
+    "src/pages/admin/tags/TagsPage.tsx",
+    "src/pages/admin/tournament/TournamentBracketTypesPage.tsx",
+    "src/pages/admin/tournament/TournamentDashboardPage.tsx",
+    "src/pages/admin/tournament/TournamentDetailPage.tsx",
+    "src/pages/admin/tournament/TournamentDrawPage.tsx",
+    "src/pages/admin/tournament/TournamentListPage.tsx",
+    "src/pages/admin/tournament/TournamentParticipantsPage.tsx",
+    "src/pages/admin/tournament/TournamentSchedulePage.tsx",
+    "src/pages/admin/tournament/__tests__/AdminTournamentsRedirect.spec.tsx",
+    "src/pages/admin/tournament/__tests__/GskHub.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentAdminPageRemoval.spec.ts",
+    "src/pages/admin/tournament/__tests__/TournamentBracketTypesPage.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentDashboardPage.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentDetailPage.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentDrawPage.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentHub.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentListPage.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentParticipantsPage.spec.tsx",
+    "src/pages/admin/tournament/__tests__/TournamentSchedulePage.spec.tsx",
+    "src/pages/admin/tournament/__tests__/manage-permission-wiring.g11-p4.spec.ts",
+    "src/pages/admin/tournaments/TournamentAwardsPage.tsx",
+    "src/pages/admin/tournaments/__tests__/TournamentAwardsPage.spec.tsx",
+    "src/pages/admin/translations/LocalePackEditorModal.tsx",
+    "src/pages/admin/translations/TranslationsPage.tsx",
+    "src/pages/admin/ui-permissions/UIPermissionsPage.tsx",
+    "src/pages/admin/users/CoachTab.tsx",
+    "src/pages/admin/users/UserEditModal.tsx",
+    "src/pages/admin/users/UserListPage.tsx",
+    "src/pages/auth/ForgotPasswordPage.tsx",
+    "src/pages/auth/LoginPage.tsx",
+    "src/pages/auth/ResetPasswordPage.tsx",
+    "src/pages/auth/TemporaryResetPasswordPage.tsx",
+    "src/pages/booking/BookingConfirmationPage.tsx",
+    "src/pages/booking/BookingDetailPage.test.tsx",
+    "src/pages/booking/BookingDetailPage.tsx",
+    "src/pages/booking/BookingFormPage.test.tsx",
+    "src/pages/booking/BookingFormPage.tsx",
+    "src/pages/booking/BrowseBranchesPage.tsx",
+    "src/pages/booking/MatchListPage.test.tsx",
+    "src/pages/booking/MatchListPage.tsx",
+    "src/pages/booking/MatchLobbyPage.test.tsx",
+    "src/pages/booking/MatchLobbyPage.tsx",
+    "src/pages/booking/MatchResultHistoryPage.tsx",
+    "src/pages/booking/MatchResultPage.tsx",
+    "src/pages/booking/MyBookingsPage.tsx",
+    "src/pages/booking/ResourceListPage.tsx",
+    "src/pages/booking/__tests__/MatchResultPage.spec.tsx",
+    "src/pages/coaches/CoachAcademySessionsPage.tsx",
+    "src/pages/coaches/CoachAttendancePage.tsx",
+    "src/pages/coaches/CoachDashboard.tsx",
+    "src/pages/coaches/CoachDetailPage.test.tsx",
+    "src/pages/coaches/CoachDetailPage.tsx",
+    "src/pages/coaches/CoachDirectoryPage.tsx",
+    "src/pages/coaches/CoachPlayersPage.tsx",
+    "src/pages/coaches/CoachProfilePage.test.tsx",
+    "src/pages/coaches/CoachProfilePage.tsx",
+    "src/pages/coaches/CoachRevenuePage.tsx",
+    "src/pages/coaches/CoachSessionsPage.tsx",
+    "src/pages/coaches/TodaySessions.test.tsx",
+    "src/pages/coaches/TodaySessions.tsx",
+    "src/pages/community/CommunityEventsPage.tsx",
+    "src/pages/community/MessagesPage.permissionHookOrder.test.tsx",
+    "src/pages/community/MessagesPage.tsx",
+    "src/pages/landing/BlogDetailPage.tsx",
+    "src/pages/landing/LandingLayout.tsx",
+    "src/pages/landing/LandingPage.contact.test.tsx",
+    "src/pages/landing/LandingPage.privacy.test.tsx",
+    "src/pages/landing/LandingPage.terms.test.tsx",
+    "src/pages/landing/LandingPage.tsx",
+    "src/pages/landing/OrganizationRegisterPage.tsx",
+    "src/pages/landing/PlayerRegisterPage.tsx",
+    "src/pages/landing/PreRegisterPage.tsx",
+    "src/pages/landing/SellerRegisterPage.tsx",
+    "src/pages/landing/blocks/BlogPreviewBlock.tsx",
+    "src/pages/landing/blocks/CTABlock.tsx",
+    "src/pages/landing/blocks/ContactFormBlock.tsx",
+    "src/pages/landing/blocks/ContactInfoBlock.test.tsx",
+    "src/pages/landing/blocks/ContactInfoBlock.tsx",
+    "src/pages/landing/blocks/FAQBlock.tsx",
+    "src/pages/landing/blocks/FeaturesBlock.tsx",
+    "src/pages/landing/blocks/HeroBlock.tsx",
+    "src/pages/landing/blocks/LocationMapBlock.test.tsx",
+    "src/pages/landing/blocks/LocationMapBlock.tsx",
+    "src/pages/landing/blocks/PricingPlansBlock.tsx",
+    "src/pages/landing/blocks/StatsBlock.tsx",
+    "src/pages/landing/blocks/StepsBlock.tsx",
+    "src/pages/landing/blocks/TeamBlock.tsx",
+    "src/pages/landing/blocks/TestimonialsBlock.tsx",
+    "src/pages/landing/blocks/TextBlock.tsx",
+    "src/pages/landing/landing-install-paths.ts",
+    "src/pages/marketplace/AdminComplaintsPage.test.tsx",
+    "src/pages/marketplace/AdminComplaintsPage.tsx",
+    "src/pages/marketplace/CartPage.test.tsx",
+    "src/pages/marketplace/CartPage.tsx",
+    "src/pages/marketplace/ComplaintDetailPage.test.tsx",
+    "src/pages/marketplace/ComplaintDetailPage.tsx",
+    "src/pages/marketplace/ComplaintsPage.test.tsx",
+    "src/pages/marketplace/ComplaintsPage.tsx",
+    "src/pages/marketplace/MarketplacePage.tsx",
+    "src/pages/marketplace/OrderDetailPage.complaint.test.tsx",
+    "src/pages/marketplace/OrderDetailPage.tsx",
+    "src/pages/marketplace/OrderListPage.tsx",
+    "src/pages/marketplace/PlayerProductDetailPage.tsx",
+    "src/pages/marketplace/PlayerProductsPage.tsx",
+    "src/pages/marketplace/ProductDetailPage.tsx",
+    "src/pages/marketplace/SellerComplaintsPage.tsx",
+    "src/pages/marketplace/SellerDashboardPage.settlements.test.tsx",
+    "src/pages/marketplace/SellerDashboardPage.tsx",
+    "src/pages/marketplace/WishlistPage.tsx",
+    "src/pages/marketplace/multi-seller-order-view.test.tsx",
+    "src/pages/marketplace/p0-fixes.test.ts",
+    "src/pages/membership/MembershipDashboard.tsx",
+    "src/pages/membership/MembershipStorefrontPage.tsx",
+    "src/pages/membership/MyMembershipsPage.tsx",
+    "src/pages/membership/PlansPage.tsx",
+    "src/pages/membership/RewardsPage.tsx",
+    "src/pages/notifications/NotificationsPage.tsx",
+    "src/pages/org/FinancialPositionPage.test.tsx",
+    "src/pages/org/FinancialPositionPage.tsx",
+    "src/pages/org/Matches/OrgMatchResultsPage.tsx",
+    "src/pages/org/Matches/OrgMatchesPage.tsx",
+    "src/pages/org/Matches/__tests__/OrgMatchResultsPage.spec.tsx",
+    "src/pages/org/OrgAcademiesPage.tsx",
+    "src/pages/org/OrgAccountingDashboardPage.tsx",
+    "src/pages/org/OrgAccountingPeriodsPage.test.tsx",
+    "src/pages/org/OrgAccountingPeriodsPage.tsx",
+    "src/pages/org/OrgAccountingRecordsPage.test.tsx",
+    "src/pages/org/OrgAccountingRecordsPage.tsx",
+    "src/pages/org/OrgAnnouncementsPage.tsx",
+    "src/pages/org/OrgBookingSettlements.tsx",
+    "src/pages/org/OrgBookingSettlementsPage.tsx",
+    "src/pages/org/OrgBookingsPage.tsx",
+    "src/pages/org/OrgBranchesPage.tsx",
+    "src/pages/org/OrgChartOfAccountsPage.tsx",
+    "src/pages/org/OrgCoachesPage.tsx",
+    "src/pages/org/OrgDashboardPage.tsx",
+    "src/pages/org/OrgDocumentsPage.tsx",
+    "src/pages/org/OrgFinancePage.test.tsx",
+    "src/pages/org/OrgFinancePage.tsx",
+    "src/pages/org/OrgFinancialReportsPage.test.tsx",
+    "src/pages/org/OrgFinancialReportsPage.tsx",
+    "src/pages/org/OrgGalleryPage.tsx",
+    "src/pages/org/OrgJournalRedirect.test.tsx",
+    "src/pages/org/OrgLeaguesPage.tsx",
+    "src/pages/org/OrgMarketplacePage.tsx",
+    "src/pages/org/OrgMembersPage.tsx",
+    "src/pages/org/OrgOrderDetailPage.tsx",
+    "src/pages/org/OrgOrdersPage.tsx",
+    "src/pages/org/OrgPendingApprovalPage.tsx",
+    "src/pages/org/OrgProfilePage.tsx",
+    "src/pages/org/OrgRefereesPage.tsx",
+    "src/pages/org/OrgReportsPage.tsx",
+    "src/pages/org/OrgReviewsPage.tsx",
+    "src/pages/org/OrgSettingsPage.tsx",
+    "src/pages/org/OrgShippingRatesPage.tsx",
+    "src/pages/org/OrgStaffPage.tsx",
+    "src/pages/org/OrgSubscriptionPage.test.tsx",
+    "src/pages/org/OrgSubscriptionPage.tsx",
+    "src/pages/org/OrgTaxSummaryPage.tsx",
+    "src/pages/org/OrgTournamentCreatePage.tsx",
+    "src/pages/org/OrgTournamentDetailPage.tsx",
+    "src/pages/org/OrgTournamentsPage.tsx",
+    "src/pages/org/OrgVerificationPage.tsx",
+    "src/pages/org/memberships/OrgMembershipPlansPage.tsx",
+    "src/pages/org/memberships/OrgMembershipSettingsPage.tsx",
+    "src/pages/org/memberships/OrgMembershipSubscriptionsPage.tsx",
+    "src/pages/org/p1-2-fixes.test.ts",
+    "src/pages/org/p1-3-fixes.test.ts",
+    "src/pages/org/p1-4-fixes.test.ts",
+    "src/pages/org/p2-12-fixes.test.ts",
+    "src/pages/org/p2-3-fixes.test.ts",
+    "src/pages/organisations/OrgStorefrontPage.tsx",
+    "src/pages/payment/PaymentReturnPage.tsx",
+    "src/pages/player/AchievementsPage.tsx",
+    "src/pages/player/DashboardPage.tsx",
+    "src/pages/player/DeviceManagementPage.tsx",
+    "src/pages/player/FavoritesPage.tsx",
+    "src/pages/player/PaymentsPage.test.tsx",
+    "src/pages/player/PaymentsPage.tsx",
+    "src/pages/player/PlayerTeamPage.tsx",
+    "src/pages/player/PublicTournamentDetailPage.spec.tsx",
+    "src/pages/player/PublicTournamentDetailPage.tsx",
+    "src/pages/player/PublicTournamentsPage.spec.tsx",
+    "src/pages/player/PublicTournamentsPage.tsx",
+    "src/pages/player/QRProfilePage.tsx",
+    "src/pages/player/RankHistoryPage.tsx",
+    "src/pages/player/StatisticsPage.tsx",
+    "src/pages/player/TournamentsPage.spec.tsx",
+    "src/pages/player/TournamentsPage.tsx",
+    "src/pages/player/WalletPage.tsx",
+    "src/pages/player/WithdrawalPage.test.tsx",
+    "src/pages/player/WithdrawalPage.tsx",
+    "src/pages/player/academy/AcademyBrowsePage.tsx",
+    "src/pages/player/academy/AcademyProgramDetailPage.tsx",
+    "src/pages/player/academy/MyAcademyAttendancePage.tsx",
+    "src/pages/player/academy/MyAcademyPage.tsx",
+    "src/pages/player/academy/MyAcademySessionsPage.tsx",
+    "src/pages/player/legacy-academy-nav.test.ts",
+    "src/pages/players/PlayerPublicProfilePage.tsx",
+    "src/pages/players/PlayerSearchPage.tsx",
+    "src/pages/profile/ProfilePage.tsx",
+    "src/pages/referee/RefereeAssignmentsPage.tsx",
+    "src/pages/referee/RefereeAvailabilityPage.tsx",
+    "src/pages/referee/RefereeDashboardPage.tsx",
+    "src/pages/referee/RefereeMatchHistoryPage.tsx",
+    "src/pages/referee/RefereeProfilePage.tsx",
+    "src/pages/referee/RefereeStatisticsPage.tsx",
+    "src/pages/settings/RoleAppearancePage.tsx",
+    "src/pages/subscription/SubscriptionPlanDetailPage.tsx",
+    "src/pages/tournaments/TournamentCreatePage.tsx",
+    "src/pages/tournaments/TournamentDetailPage.tsx",
+    "src/pages/tournaments/TournamentListPage.tsx",
+    "src/pages/tournaments/__tests__/GskPlayerPublic.spec.tsx",
+    "src/pages/tournaments/__tests__/TournamentCreatePage.spec.tsx",
+    "src/pages/tournaments/__tests__/TournamentDetailPage.spec.tsx",
+    "src/pages/tournaments/__tests__/TournamentListPage.spec.tsx",
+    "src/permissions/Can.test.tsx",
+    "src/permissions/Can.tsx",
+    "src/permissions/adminRoutePermissions.ts",
+    "src/permissions/index.ts",
+    "src/permissions/platformAccess.ts",
+    "src/permissions/registry.ts",
+    "src/permissions/routeGuards.test.tsx",
+    "src/permissions/types.ts",
+    "src/realtime/RealtimeCacheUpdater.tsx",
+    "src/realtime/SocketContext.tsx",
+    "src/realtime/socket-client.ts",
+    "src/realtime/useRealtimeCacheUpdates.g11-10.test.tsx",
+    "src/realtime/useRealtimeCacheUpdates.hub.test.tsx",
+    "src/realtime/useRealtimeCacheUpdates.test.ts",
+    "src/realtime/useRealtimeCacheUpdates.ts",
+    "src/realtime/useResourceRoom.ts",
+    "src/realtime/useSocket.ts",
+    "src/realtime/useSocketEvents.test.tsx",
+    "src/services/academy.ts",
+    "src/services/api.test.ts",
+    "src/services/api.ts",
+    "src/services/appBadge.test.ts",
+    "src/services/appBadge.ts",
+    "src/services/league.ts",
+    "src/services/match-result.api.ts",
+    "src/services/match.api.ts",
+    "src/services/membership.p1.ts",
+    "src/services/membership.ts",
+    "src/services/notificationSound.test.ts",
+    "src/services/notificationSound.ts",
+    "src/services/notifications.ts",
+    "src/services/pricing.ts",
+    "src/services/push.ts",
+    "src/services/socket.ts",
+    "src/services/sportConfig.ts",
+    "src/services/tournament.ts",
+    "src/store/app-settings.store.ts",
+    "src/store/appearance.store.ts",
+    "src/store/auth.store.test.ts",
+    "src/store/auth.store.ts",
+    "src/store/currency.store.ts",
+    "src/store/feature-flags.store.ts",
+    "src/store/notification-sound.store.test.ts",
+    "src/store/notification-sound.store.ts",
+    "src/store/notification.store.read.test.ts",
+    "src/store/notification.store.sound.test.ts",
+    "src/store/notification.store.ts",
+    "src/store/theme.store.ts",
+    "src/store/workspace.store.ts",
+    "src/test/setup.ts",
+    "src/theme/chart-colors.ts",
+    "src/theme/component-styles.ts",
+    "src/theme/gradient-utils.ts",
+    "src/theme/landing-styles.ts",
+    "src/theme/tokens.ts",
+    "src/types/admin/booking.ts",
+    "src/types/admin/common.ts",
+    "src/types/admin/dashboard.ts",
+    "src/types/api.ts",
+    "src/types/match-result.ts",
+    "src/types/match/index.ts",
+    "src/types/tournamentBracket.ts",
+    "src/utils/accountingZero.test.ts",
+    "src/utils/accountingZero.ts",
+    "src/utils/brand-image-specs.test.ts",
+    "src/utils/brand-image-specs.ts",
+    "src/utils/currency.ts",
+    "src/utils/dateRange.ts",
+    "src/utils/errors.ts",
+    "src/utils/formatDate.test.ts",
+    "src/utils/formatDate.ts",
+    "src/utils/geo-country.ts",
+    "src/utils/marketplaceFinancialStatus.test.ts",
+    "src/utils/marketplaceFinancialStatus.ts",
+    "src/utils/media.ts",
+    "src/utils/notificationRoutes.test.ts",
+    "src/utils/notificationRoutes.ts",
+    "src/utils/org-registration-filters.ts",
+    "src/utils/organisation.ts",
+    "src/utils/phone.ts",
+    "src/utils/player-sports.test.ts",
+    "src/utils/player-sports.ts",
+    "src/utils/registration.test.ts",
+    "src/utils/registration.ts",
+    "src/utils/roles.test.ts",
+    "src/utils/roles.ts",
+    "src/utils/scroll.ts",
+    "src/utils/subscription-pricing.ts",
+    "src/utils/subscription-status.test.ts",
+    "src/utils/subscription-status.ts",
+    "src/utils/tournamentResult.ts",
+    "src/utils/tournamentScore.ts",
+    "src/utils/walletTransactions.ts",
+    "src/utils/website.ts",
+    "src/vite-env.d.ts",
+    "tailwind.config.js",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
+  "findings": {
+    "src/App.tsx": {
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/components/ConnectionStatus.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/InstallPrompt.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/RouteGuard.tsx": {
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/components/academy/AcademyPaymentPanel.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/components/academy/AcademyPaymentPanel.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/accounting/financialReports.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/components/accounting/financialReports.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/components/app-settings/AppSettingsImageUpload.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/auth/LoginSplash.test.tsx": {
+      "react-hooks/globals:error": 1
+    },
+    "src/components/auth/LoginSplash.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/booking/BookingModal.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/components/booking/BookingModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 26
+    },
+    "src/components/booking/ManageApplicantsPopup.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/components/booking/MatchErrorState.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/branches/BranchAccessControl.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/layout/AdminSidebar.tsx": {
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/components/map/MapLocationPicker.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/components/marketplace/AdminProductEditModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 13,
+      "courtzon/require-mutation-toast:warning": 1,
+      "no-empty:error": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/marketplace/FreeSellingModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/marketplace/OrgProductFormModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 22,
+      "react-hooks/exhaustive-deps:warning": 1,
+      "react-hooks/set-state-in-effect:error": 2
+    },
+    "src/components/marketplace/PlayerProductFormModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10,
+      "no-empty:error": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/marketplace/ProductCardImage.tsx": {
+      "react-hooks/set-state-in-effect:error": 1,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/components/marketplace/ProductVisibilityToggle.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/marketplace/ProductVisibilityToggle.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/marketplace/SellerProductFormModal.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/components/marketplace/SellerProductFormModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 19,
+      "<no-rule>:warning": 1,
+      "courtzon/require-mutation-toast:warning": 1,
+      "react-hooks/set-state-in-effect:error": 2
+    },
+    "src/components/match-result/DynamicResultForm.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4,
+      "<no-rule>:warning": 1,
+      "react-hooks/set-state-in-effect:error": 1,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/components/match-result/ResultSummaryView.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/components/match-result/__tests__/ResultSummaryView.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/components/notifications/NotificationBell.tsx": {
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/components/notifications/NotificationDetailModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/notifications/NotificationPreferences.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/organisations/BranchCancellationPolicy.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/components/organisations/OrgCancellationPolicy.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/components/organisations/OrganisationForm.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/components/organisations/OrganisationForm.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 139,
+      "@typescript-eslint/no-unused-expressions:error": 1,
+      "@typescript-eslint/no-unused-vars:error": 1,
+      "courtzon/require-mutation-toast:warning": 1,
+      "react-hooks/exhaustive-deps:warning": 1,
+      "react-hooks/set-state-in-effect:error": 7
+    },
+    "src/components/organisations/organisation-form-paths.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/payment/PaymentStatusPoller.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/payment/PaymobPixelCard.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/pwa/ReloadSplash.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/search/CommandPalette.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/components/search/CommandPalette.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10,
+      "no-empty:error": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/search/EntityPreview.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/search/SearchProvider.tsx": {
+      "@typescript-eslint/no-unused-expressions:error": 1
+    },
+    "src/components/settings/SettingsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/subscription/PlanPickerSection.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/subscription/SubscriptionCard.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4,
+      "react-hooks/purity:error": 2
+    },
+    "src/components/subscription/SubscriptionRequestModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8,
+      "react-hooks/set-state-in-effect:error": 2
+    },
+    "src/components/subscription/UpgradeRequestModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/tournaments/CompetitionManager.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/components/tournaments/EligibilityFormSection.tsx": {
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/components/tournaments/EligibilitySummary.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/tournaments/MatchDetailsDrawer.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/tournaments/PlayerAvatar.tsx": {
+      "react-refresh/only-export-components:error": 2
+    },
+    "src/components/tournaments/__tests__/MatchDetailsDrawer.a11y.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/tournaments/__tests__/MatchDetailsDrawer.navigation.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/tournaments/__tests__/MatchDetailsDrawer.presentation.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/tournaments/__tests__/PrizeEditor.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/components/tournaments/__tests__/TournamentBracket.universal.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/components/tournaments/__tests__/bracketAnimation.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/tournaments/hub/GskCompetitionViews.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 30
+    },
+    "src/components/tournaments/hub/MatchesManager.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9,
+      "react-hooks/set-state-in-effect:error": 1,
+      "react-refresh/only-export-components:error": 3
+    },
+    "src/components/tournaments/hub/TournamentTabs.tsx": {
+      "no-useless-assignment:error": 1,
+      "react-refresh/only-export-components:error": 2
+    },
+    "src/components/tournaments/hub/__tests__/MatchesManager.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "@typescript-eslint/no-require-imports:error": 2
+    },
+    "src/components/tournaments/wizard/GskConfiguration.tsx": {
+      "no-useless-assignment:error": 1,
+      "react-refresh/only-export-components:error": 2
+    },
+    "src/components/ui/EntityImage.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/ui/ExportButton.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/components/ui/ExportCsvButton.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/components/ui/ExportCsvButton.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/ui/Input.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/ui/PasswordInput.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/components/ui/Toast.tsx": {
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/components/welcome/WelcomeModal.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/components/workspace/SessionTimeline.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/workspace/SessionTimeline.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/components/workspace/WorkspaceHero.tsx": {
+      "react-hooks/use-memo:error": 2
+    },
+    "src/hooks/useCan.ts": {
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/hooks/usePaymentConfirm.ts": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/i18n/index.ts": {
+      "react-hooks/exhaustive-deps:warning": 1,
+      "react-hooks/use-memo:error": 1
+    },
+    "src/lib/tournamentEligibility.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/navigation/parity/parity.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "preserve-caught-error:error": 1
+    },
+    "src/navigation/parity/tournament-org-permissions.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/academies/AcademyDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/academies/AcademyListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/AuditLogPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/MembershipPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/pages/admin/ReceptionDashboard.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/admin/SystemAdminPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 16
+    },
+    "src/pages/admin/WebhooksPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/WithdrawalQueuePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8
+    },
+    "src/pages/admin/academy/AcademyAttendancePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/pages/admin/academy/AcademyEnrollmentsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/admin/academy/AcademyGroupsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/admin/academy/AcademyProgramsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 22
+    },
+    "src/pages/admin/academy/AcademySchedulesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 28,
+      "courtzon/require-mutation-toast:warning": 1,
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/pages/admin/academy/AcademySessionsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/accounting/AccountingDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/accounting/AccountingPeriodsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/admin/accounting/ChartOfAccountsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 19
+    },
+    "src/pages/admin/accounting/EventMappingsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/accounting/GeneralLedgerPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/accounting/GeneralLedgerPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/admin/accounting/InvoicesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 17,
+      "prefer-const:error": 1
+    },
+    "src/pages/admin/accounting/JournalEntryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/pages/admin/accounting/ReconciliationPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/accounting/ReconciliationPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/accounting/TaxRatesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/accounting/TaxSummaryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/admin/accounting/TemplatesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/accounting/__tests__/JournalEntryPage.entity-filter.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 17
+    },
+    "src/pages/admin/accounting/__tests__/JournalEntryPage.pagination.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/ads/AdsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 29
+    },
+    "src/pages/admin/amenities/AmenitiesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 15
+    },
+    "src/pages/admin/app-settings/AppSettingsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/app-settings/BankSettingsTab.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/banks/BankBranchesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10,
+      "@typescript-eslint/no-unused-expressions:error": 1
+    },
+    "src/pages/admin/banks/BanksPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11,
+      "@typescript-eslint/no-unused-expressions:error": 1
+    },
+    "src/pages/admin/bi/BIDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/bi/ExportPanel.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/bi/ObservabilityPage.tsx": {
+      "react-hooks/exhaustive-deps:warning": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/branch-access/BranchAccessPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 14
+    },
+    "src/pages/admin/branches/BranchListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 76,
+      "react-hooks/exhaustive-deps:warning": 2,
+      "react-hooks/set-state-in-effect:error": 3
+    },
+    "src/pages/admin/brands/BrandsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 14
+    },
+    "src/pages/admin/cms/CmsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 26,
+      "courtzon/require-mutation-toast:warning": 2
+    },
+    "src/pages/admin/coaches/CoachAdminPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/community/CommunityEventsAdminPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/countries/CountriesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 92,
+      "react-hooks/set-state-in-effect:error": 2
+    },
+    "src/pages/admin/crm/CRMDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/crm/CampaignsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 14
+    },
+    "src/pages/admin/crm/CommunicationsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/admin/crm/CustomerDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/crm/CustomerListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/crm/LeadsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/pages/admin/crm/SegmentsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/currencies/CurrenciesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/design-tokens/ComponentPreview.tsx": {
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/pages/admin/design-tokens/DesignTokensPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 20,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/design-tokens/LandingBlockPreview.tsx": {
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/pages/admin/design-tokens/RoleThemesPanel.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/feature-flags/FeatureFlagsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/finance/FinanceDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/pages/admin/finance/FinancialOpsDashboard.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/admin/finance/LedgerViewerPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/admin/finance/ReportCenterPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/pages/admin/gateway-settlements/GatewaySettlementPage.settled.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/admin/gateway-settlements/GatewaySettlementPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/admin/gateway-settlements/GatewaySettlementPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4,
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/pages/admin/hr/AttendancePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/hr/DepartmentListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/hr/EmployeeDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/admin/hr/EmployeeListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/pages/admin/hr/HRDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/hr/LeaveManagementPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 20
+    },
+    "src/pages/admin/hr/PayrollPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 19
+    },
+    "src/pages/admin/integration/APIDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/inventory/InventoryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 27
+    },
+    "src/pages/admin/inventory/PurchaseOrdersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 21
+    },
+    "src/pages/admin/inventory/SuppliersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 14
+    },
+    "src/pages/admin/inventory/WarehousesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/admin/languages/LanguagesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/league/DivisionManagePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/league/LeagueDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/league/LeagueListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/league/SeasonListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/marketplace/AdminApprovalsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/admin/marketplace/AdminShippingRatesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/admin/marketplace/OrdersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5,
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/admin/marketplace/ProductDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8
+    },
+    "src/pages/admin/marketplace/ProductsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 16,
+      "courtzon/require-mutation-toast:warning": 2
+    },
+    "src/pages/admin/marketplace/ReviewsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6,
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/admin/marketplace/SellersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10,
+      "courtzon/require-mutation-toast:warning": 2
+    },
+    "src/pages/admin/marketplace/UpgradeRequestsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6,
+      "courtzon/require-mutation-toast:warning": 2
+    },
+    "src/pages/admin/match-results/AdminMatchResultsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/match-results/__tests__/AdminMatchResultsPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/membership/CampaignsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/membership/MembershipPlansPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/membership/RewardsAdminPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/mobile/MobileDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8
+    },
+    "src/pages/admin/notifications/AdminAnalyticsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/notifications/AdminBroadcastPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/notifications/AdminDeadLettersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/notifications/AdminTemplatesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/notifications/NotificationConfigPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7,
+      "courtzon/require-mutation-toast:warning": 6
+    },
+    "src/pages/admin/notifications/NotificationTypesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/notifications/TemplatesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8
+    },
+    "src/pages/admin/organisation-types/OrganisationTypesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/organisations/OrganisationListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "courtzon/require-mutation-toast:warning": 3,
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/pages/admin/payment-gateways/PaymentGatewaysPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/payment-methods/PaymentMethodsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8
+    },
+    "src/pages/admin/pricing/PricePreviewPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/admin/pricing/PricingRulesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/product-categories/ProductCategoriesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 24
+    },
+    "src/pages/admin/queues/QueueManagementPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/recurring/RecurringBookingsPage.r5b.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 13
+    },
+    "src/pages/admin/recurring/RecurringBookingsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 26,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/reports/ReportsPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/pages/admin/reports/ReportsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 15,
+      "react-hooks/immutability:error": 1,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/pages/admin/resources/ResourceListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 40,
+      "@typescript-eslint/no-unused-expressions:error": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/roles/RoleListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 40,
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/pages/admin/security/FailedLoginsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/security/OrganisationSecurityPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/security/RoleAuditPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/security/SecurityDashboard.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/security/SessionsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3,
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/admin/security/UploadSecurityPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/settlements/BookingSettlementPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/admin/settlements/BookingSettlementPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 15
+    },
+    "src/pages/admin/settlements/UnifiedSettlementCreatePage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/settlements/UnifiedSettlementCreatePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/settlements/UnifiedSettlementDetailPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/settlements/UnifiedSettlementDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/admin/settlements/UnifiedSettlementListPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/settlements/UnifiedSettlementListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/sidebar-layout/SidebarLayoutPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/sports/RuleSetVisualEditor.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/sports/SportFormatsPanel.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/sports/SportsEnginePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/admin/sports/SportsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/admin/sports/__tests__/RuleSetVisualEditor.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/admin/subscription/SubscriptionPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 51,
+      "courtzon/require-mutation-toast:warning": 1,
+      "react-hooks/purity:error": 1
+    },
+    "src/pages/admin/subscription/SubscriptionRequestsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/admin/subscription/ViewAssignments.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/admin/support/SupportTicketDetail.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/admin/support/SupportTicketsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/tags/TagsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/tournament/TournamentBracketTypesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-hooks/exhaustive-deps:warning": 3
+    },
+    "src/pages/admin/tournament/TournamentDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 24,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/tournament/TournamentDrawPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 15,
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/pages/admin/tournament/TournamentListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/admin/tournament/TournamentParticipantsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 19,
+      "react-hooks/exhaustive-deps:warning": 2,
+      "react-hooks/set-state-in-effect:error": 2
+    },
+    "src/pages/admin/tournament/TournamentSchedulePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/tournament/__tests__/AdminTournamentsRedirect.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/pages/admin/tournament/__tests__/GskHub.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/admin/tournament/__tests__/TournamentAdminPageRemoval.spec.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/tournament/__tests__/TournamentBracketTypesPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 19,
+      "no-useless-escape:error": 1
+    },
+    "src/pages/admin/tournament/__tests__/TournamentDetailPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/pages/admin/tournament/__tests__/TournamentDrawPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 8
+    },
+    "src/pages/admin/tournament/__tests__/TournamentHub.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/admin/tournament/__tests__/TournamentListPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/admin/tournament/__tests__/TournamentParticipantsPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 22
+    },
+    "src/pages/admin/tournaments/TournamentAwardsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/pages/admin/tournaments/__tests__/TournamentAwardsPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/admin/translations/LocalePackEditorModal.tsx": {
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/admin/translations/TranslationsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5,
+      "courtzon/require-mutation-toast:warning": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/admin/ui-permissions/UIPermissionsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 18,
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/admin/users/CoachTab.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 30
+    },
+    "src/pages/admin/users/UserEditModal.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 57
+    },
+    "src/pages/admin/users/UserListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 20
+    },
+    "src/pages/auth/ForgotPasswordPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/auth/LoginPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-hooks/incompatible-library:warning": 1
+    },
+    "src/pages/auth/ResetPasswordPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/auth/TemporaryResetPasswordPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/booking/BookingConfirmationPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/booking/BookingDetailPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/pages/booking/BookingDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/booking/BookingFormPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/booking/BookingFormPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12,
+      "react-hooks/incompatible-library:warning": 1
+    },
+    "src/pages/booking/BrowseBranchesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/booking/MatchListPage.test.tsx": {
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/pages/booking/MatchListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5,
+      "prefer-const:error": 1
+    },
+    "src/pages/booking/MatchLobbyPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/booking/MatchLobbyPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/pages/booking/MatchResultPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/booking/MyBookingsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/booking/ResourceListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/booking/__tests__/MatchResultPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/coaches/CoachDashboard.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/coaches/CoachDetailPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/coaches/CoachDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/coaches/CoachDirectoryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/coaches/CoachPlayersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/coaches/CoachProfilePage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 22
+    },
+    "src/pages/coaches/CoachProfilePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 36
+    },
+    "src/pages/coaches/CoachRevenuePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/coaches/CoachSessionsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/coaches/TodaySessions.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/coaches/TodaySessions.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/community/CommunityEventsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3,
+      "courtzon/require-mutation-toast:warning": 2
+    },
+    "src/pages/community/MessagesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 30,
+      "courtzon/require-mutation-toast:warning": 3
+    },
+    "src/pages/landing/LandingLayout.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/landing/LandingPage.contact.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/landing/LandingPage.privacy.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/landing/LandingPage.terms.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/landing/LandingPage.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/landing/OrganizationRegisterPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/landing/PlayerRegisterPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-hooks/immutability:error": 1
+    },
+    "src/pages/landing/SellerRegisterPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/landing/blocks/ContactFormBlock.tsx": {
+      "react-hooks/incompatible-library:warning": 1
+    },
+    "src/pages/landing/blocks/PricingPlansBlock.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/marketplace/AdminComplaintsPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/marketplace/AdminComplaintsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/marketplace/CartPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/marketplace/CartPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 17,
+      "courtzon/require-mutation-toast:warning": 2,
+      "no-empty:error": 2,
+      "no-self-assign:error": 1,
+      "react-hooks/immutability:error": 1,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/marketplace/ComplaintDetailPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/pages/marketplace/ComplaintDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/marketplace/ComplaintsPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/marketplace/ComplaintsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/marketplace/MarketplacePage.tsx": {
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/marketplace/OrderDetailPage.complaint.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/marketplace/OrderDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3,
+      "courtzon/require-mutation-toast:warning": 1
+    },
+    "src/pages/marketplace/OrderListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4,
+      "courtzon/require-mutation-toast:warning": 2
+    },
+    "src/pages/marketplace/PlayerProductsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "no-empty:error": 1
+    },
+    "src/pages/marketplace/ProductDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5,
+      "courtzon/require-mutation-toast:warning": 2
+    },
+    "src/pages/marketplace/SellerComplaintsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/marketplace/SellerDashboardPage.settlements.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/marketplace/SellerDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/marketplace/WishlistPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/marketplace/multi-seller-order-view.test.tsx": {
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/pages/membership/MembershipDashboard.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/membership/MembershipStorefrontPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/membership/MyMembershipsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/membership/PlansPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/membership/RewardsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/notifications/NotificationsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "courtzon/require-mutation-toast:warning": 3
+    },
+    "src/pages/org/FinancialPositionPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/pages/org/FinancialPositionPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-refresh/only-export-components:error": 2
+    },
+    "src/pages/org/Matches/OrgMatchResultsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/Matches/__tests__/OrgMatchResultsPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgAcademiesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgAccountingPeriodsPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 16
+    },
+    "src/pages/org/OrgAccountingPeriodsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/pages/org/OrgAccountingRecordsPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgAccountingRecordsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/pages/org/OrgAnnouncementsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/org/OrgBookingSettlements.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/org/OrgChartOfAccountsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/pages/org/OrgCoachesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/org/OrgDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/org/OrgDocumentsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgFinancePage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 11
+    },
+    "src/pages/org/OrgFinancePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 18
+    },
+    "src/pages/org/OrgFinancialReportsPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 15
+    },
+    "src/pages/org/OrgGalleryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgJournalRedirect.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgLeaguesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgMarketplacePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/org/OrgMembersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgOrderDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/org/OrgOrdersPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/org/OrgRefereesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgReportsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/org/OrgReviewsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/org/OrgShippingRatesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/org/OrgStaffPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 13,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/org/OrgSubscriptionPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4,
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/pages/org/OrgSubscriptionPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 9
+    },
+    "src/pages/org/OrgTaxSummaryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/org/OrgVerificationPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/org/memberships/OrgMembershipPlansPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 32
+    },
+    "src/pages/org/memberships/OrgMembershipSettingsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5,
+      "react-hooks/set-state-in-render:error": 3
+    },
+    "src/pages/org/memberships/OrgMembershipSubscriptionsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 14
+    },
+    "src/pages/player/AchievementsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/player/DashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/player/DeviceManagementPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/player/FavoritesPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/pages/player/PaymentsPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/player/PaymentsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/player/PlayerTeamPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/pages/player/PublicTournamentDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 6
+    },
+    "src/pages/player/PublicTournamentsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/player/QRProfilePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "no-empty:error": 1,
+      "react-hooks/exhaustive-deps:warning": 1
+    },
+    "src/pages/player/RankHistoryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/player/StatisticsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/player/TournamentsPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/player/TournamentsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/pages/player/WalletPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "react-hooks/incompatible-library:warning": 1
+    },
+    "src/pages/player/WithdrawalPage.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/player/WithdrawalPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/players/PlayerSearchPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/profile/ProfilePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 52,
+      "no-empty:error": 1,
+      "react-hooks/incompatible-library:warning": 1
+    },
+    "src/pages/referee/RefereeAssignmentsPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/referee/RefereeAvailabilityPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/pages/referee/RefereeDashboardPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/referee/RefereeMatchHistoryPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/pages/referee/RefereeProfilePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4,
+      "no-useless-assignment:error": 1
+    },
+    "src/pages/settings/RoleAppearancePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/subscription/SubscriptionPlanDetailPage.tsx": {
+      "react-hooks/set-state-in-effect:error": 1
+    },
+    "src/pages/tournaments/TournamentCreatePage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 4,
+      "<no-rule>:warning": 1,
+      "no-extra-boolean-cast:error": 3,
+      "react-hooks/exhaustive-deps:warning": 3,
+      "react-hooks/incompatible-library:warning": 1
+    },
+    "src/pages/tournaments/TournamentDetailPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 18,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/pages/tournaments/TournamentListPage.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/pages/tournaments/__tests__/GskPlayerPublic.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 17
+    },
+    "src/pages/tournaments/__tests__/TournamentCreatePage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 28,
+      "@typescript-eslint/no-require-imports:error": 1
+    },
+    "src/pages/tournaments/__tests__/TournamentDetailPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 22,
+      "@typescript-eslint/no-require-imports:error": 1
+    },
+    "src/pages/tournaments/__tests__/TournamentListPage.spec.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/realtime/SocketContext.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 3,
+      "react-hooks/set-state-in-effect:error": 1,
+      "react-refresh/only-export-components:error": 1
+    },
+    "src/realtime/socket-client.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/realtime/useRealtimeCacheUpdates.g11-10.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 44
+    },
+    "src/realtime/useRealtimeCacheUpdates.hub.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 12
+    },
+    "src/realtime/useRealtimeCacheUpdates.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 40
+    },
+    "src/realtime/useRealtimeCacheUpdates.ts": {
+      "@typescript-eslint/no-explicit-any:error": 81
+    },
+    "src/realtime/useSocket.ts": {
+      "@typescript-eslint/no-explicit-any:error": 3,
+      "react-hooks/exhaustive-deps:warning": 2
+    },
+    "src/realtime/useSocketEvents.test.tsx": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/services/academy.ts": {
+      "@typescript-eslint/no-explicit-any:error": 24
+    },
+    "src/services/api.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/services/appBadge.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/services/league.ts": {
+      "@typescript-eslint/no-explicit-any:error": 18
+    },
+    "src/services/match-result.api.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/services/membership.p1.ts": {
+      "@typescript-eslint/no-explicit-any:error": 5
+    },
+    "src/services/membership.ts": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/services/notificationSound.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 2
+    },
+    "src/services/notificationSound.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/services/notifications.ts": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/services/pricing.ts": {
+      "@typescript-eslint/no-explicit-any:error": 3
+    },
+    "src/services/socket.ts": {
+      "@typescript-eslint/no-explicit-any:error": 2,
+      "@typescript-eslint/no-unused-vars:error": 1
+    },
+    "src/services/tournament.ts": {
+      "@typescript-eslint/no-explicit-any:error": 33
+    },
+    "src/store/auth.store.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 7
+    },
+    "src/store/auth.store.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1,
+      "no-empty:error": 1
+    },
+    "src/store/notification.store.read.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 10
+    },
+    "src/store/notification.store.sound.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 4
+    },
+    "src/store/notification.store.ts": {
+      "@typescript-eslint/no-explicit-any:error": 7,
+      "no-empty:error": 3
+    },
+    "src/utils/notificationRoutes.test.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/utils/roles.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    },
+    "src/utils/tournamentResult.ts": {
+      "@typescript-eslint/no-explicit-any:error": 1
+    }
+  },
+  "directives": {
+    "src/components/marketplace/OrgProductFormModal.tsx": 1,
+    "src/components/marketplace/SellerProductFormModal.tsx": 1,
+    "src/components/match-result/DynamicResultForm.tsx": 1,
+    "src/pages/admin/tournament/TournamentParticipantsPage.tsx": 1,
+    "src/pages/booking/BookingFormPage.tsx": 2,
+    "src/pages/community/MessagesPage.tsx": 2,
+    "src/pages/tournaments/TournamentCreatePage.tsx": 1
+  }
+}

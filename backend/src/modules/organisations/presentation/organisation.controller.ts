@@ -10,7 +10,7 @@ import {
   CreateOrganisationSchema, UpdateOrganisationSchema, CreateBranchSchema,
   CreateResourceSchema, CreateSportSchema, UpdateSportSchema,
   OrgTypeSchema, UpdateOrgTypeSchema, ResourceTypeSchema,
-  BranchFinancialDetailsSchema,
+  BranchFinancialDetailsSchema, ResourceMaintenanceSchema,
 } from './organisation.dto.js';
 
 export async function getSportsHandler(_request: FastifyRequest, reply: FastifyReply) {
@@ -922,22 +922,52 @@ export async function deleteBranchHolidayHandler(request: FastifyRequest, reply:
 
 // ── Resource Maintenance ──
 
+function parsePositiveId(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export async function getResourceMaintenanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const { resourceId } = request.params as any;
-  const records = await organisationService.getResourceMaintenance(Number(resourceId));
+  const rid = parsePositiveId(resourceId);
+  if (rid === null) {
+    return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'Invalid resource id' });
+  }
+  const records = await organisationService.getResourceMaintenance(rid);
   return reply.send({ data: records });
 }
 
 export async function createResourceMaintenanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const { resourceId } = request.params as any;
-  const body = request.body as any;
-  const records = await organisationService.createResourceMaintenance(Number(resourceId), body);
+  const rid = parsePositiveId(resourceId);
+  if (rid === null) {
+    return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'Invalid resource id' });
+  }
+
+  const parsed = ResourceMaintenanceSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.status(400).send({
+      error: 'VALIDATION_ERROR',
+      message: parsed.error.issues[0]?.message || 'Invalid maintenance data',
+    });
+  }
+
+  const records = await organisationService.createResourceMaintenance(
+    rid,
+    parsed.data,
+    (request as any).userId ?? null,
+  );
   recordAudit({
     actorId: (request as any).userId ?? null,
     action: 'RESOURCE_MAINTENANCE.CREATE',
     entityType: 'resource',
-    entityId: Number(resourceId),
-    afterState: body,
+    entityId: rid,
+    afterState: {
+      reason: parsed.data.reason,
+      dateFrom: parsed.data.dateFrom,
+      dateTo: parsed.data.dateTo,
+      isActive: parsed.data.isActive,
+    },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
@@ -946,14 +976,31 @@ export async function createResourceMaintenanceHandler(request: FastifyRequest, 
 
 export async function updateResourceMaintenanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const body = request.body as any;
-  await organisationService.updateResourceMaintenance(Number(id), body);
+  const maintenanceId = parsePositiveId(id);
+  if (maintenanceId === null) {
+    return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'Invalid maintenance id' });
+  }
+
+  const parsed = ResourceMaintenanceSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.status(400).send({
+      error: 'VALIDATION_ERROR',
+      message: parsed.error.issues[0]?.message || 'Invalid maintenance data',
+    });
+  }
+
+  await organisationService.updateResourceMaintenance(maintenanceId, parsed.data);
   recordAudit({
     actorId: (request as any).userId ?? null,
     action: 'RESOURCE_MAINTENANCE.UPDATE',
     entityType: 'resource_maintenance',
-    entityId: Number(id),
-    afterState: body,
+    entityId: maintenanceId,
+    afterState: {
+      reason: parsed.data.reason,
+      dateFrom: parsed.data.dateFrom,
+      dateTo: parsed.data.dateTo,
+      isActive: parsed.data.isActive,
+    },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
@@ -962,12 +1009,16 @@ export async function updateResourceMaintenanceHandler(request: FastifyRequest, 
 
 export async function deleteResourceMaintenanceHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  await organisationService.deleteResourceMaintenance(Number(id));
+  const maintenanceId = parsePositiveId(id);
+  if (maintenanceId === null) {
+    return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'Invalid maintenance id' });
+  }
+  await organisationService.deleteResourceMaintenance(maintenanceId);
   recordAudit({
     actorId: (request as any).userId ?? null,
     action: 'RESOURCE_MAINTENANCE.DELETE',
     entityType: 'resource_maintenance',
-    entityId: Number(id),
+    entityId: maintenanceId,
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });

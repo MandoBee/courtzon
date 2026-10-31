@@ -1,5 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto';
 import mysql from 'mysql2/promise';
+import {
+  assertApprovedTestTarget,
+  runSafeCleanup,
+  type DestructiveCleanupAuthorization,
+} from './cleanup-guard';
+
+export type { DestructiveCleanupAuthorization } from './cleanup-guard';
 
 const DB_CONFIG = {
   host: process.env.TEST_DB_HOST || '127.0.0.1',
@@ -14,6 +21,9 @@ const DB_CONFIG = {
 let pool: mysql.Pool | null = null;
 
 export async function connect(): Promise<mysql.Pool> {
+  // Fail closed before opening a connection: only the approved local test
+  // target (courtzon_v3 on 127.0.0.1:3307) is allowed.
+  assertApprovedTestTarget(DB_CONFIG);
   if (pool) return pool;
   pool = mysql.createPool({
     ...DB_CONFIG,
@@ -68,17 +78,17 @@ const TRUNCATE_TABLES = [
   'users',
 ];
 
-export async function cleanup(): Promise<void> {
-  const p = await connect();
-  await p.query('SET FOREIGN_KEY_CHECKS = 0');
-  for (const table of TRUNCATE_TABLES) {
-    try {
-      await p.query(`TRUNCATE TABLE \`${table}\``);
-    } catch {
-      // table may not exist in some environments
-    }
-  }
-  await p.query('SET FOREIGN_KEY_CHECKS = 1');
+/**
+ * Destructive cleanup — DEFERRED and FAIL-CLOSED.
+ *
+ * Uses the approved local test database (`courtzon_v3`) only, and requires an
+ * explicit `DestructiveCleanupAuthorization` (fixed confirmation token +
+ * campaign id). Run this only once, after the full testing campaign; never
+ * during routine test cases. See `cleanup-guard.ts`.
+ */
+export async function cleanup(authorization?: DestructiveCleanupAuthorization): Promise<void> {
+  assertApprovedTestTarget(DB_CONFIG);
+  await runSafeCleanup(DB_CONFIG.database, authorization, connect, TRUNCATE_TABLES);
 }
 
 export interface InsertUserData {
@@ -116,6 +126,26 @@ export async function insertUser(data: InsertUserData): Promise<number> {
 
   const hashedPassword = hashToken(password);
 
+  // Login looks the user up by the country-code-prefixed `full_phone`
+  // (`authService.login` → `findByPhone`), and registration stores
+  // `${countries.phone_code}${localNumber}`. Seed the same format here so E2E
+  // users can authenticate through the real phone-login contract.
+  const [countryRows] = await query<mysql.RowDataPacket[]>(
+    'SELECT phone_code FROM countries WHERE id = ? LIMIT 1',
+    [countryId],
+  );
+  const countryPhoneCode = (countryRows[0] as any)?.phone_code as string | undefined;
+  if (!countryPhoneCode) {
+    throw new Error(`Cannot seed E2E user: country ${countryId} has no phone_code`);
+  }
+  // `authService.login` normalizes the code to a leading '+', so seed the same.
+  const normalizedCode = countryPhoneCode.startsWith('+')
+    ? countryPhoneCode
+    : `+${countryPhoneCode}`;
+  const fullPhone = phoneNumber.startsWith('+')
+    ? phoneNumber
+    : `${normalizedCode}${phoneNumber}`;
+
   const [result] = await query<mysql.ResultSetHeader>(
     `INSERT INTO users (
       public_id, phone_number, full_phone, password_hash, full_name, email, gender,
@@ -124,7 +154,7 @@ export async function insertUser(data: InsertUserData): Promise<number> {
     ) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
     [
       phoneNumber,
-      phoneNumber,
+      fullPhone,
       hashedPassword,
       fullName,
       email,

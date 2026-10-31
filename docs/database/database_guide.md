@@ -212,17 +212,15 @@ CourtZon uses a **baseline + incremental** migration strategy.
 
 ### Architecture
 
-Two parallel migration systems exist:
+The canonical public runner is the Node script (`backend/scripts/migrate.js`). It owns the
+MySQL advisory lock and delegates SQL execution to `scripts/migrate.sh`, which is an
+internal engine — it must not be called directly by operators.
 
-1. **Node.js script** (`backend/scripts/migrate.js`) — canonical, cross-platform
-   - Schema files: `database/schema/*.sql` (numbered, e.g., `001_courtzon_v3.sql`, `042_add_something.sql`)
-   - Tracking via `migration_history` table in the database
-2. **Bash script** (`scripts/migrate.sh`) — Linux/Mac/WSL
-   - Baseline: `database/baseline/001_courtzon_v3.sql`
-   - Incremental migrations: `database/migrations/*.sql`
-   - Tracking via `migration_history` table
+- Baseline: `database/baseline/001_courtzon_v3.sql`
+- Incremental migrations: `database/migrations/*.sql`
+- Tracking via `migration_history` table in the database
 
-Use the Node.js script (`node backend/scripts/migrate.js`) — it's the recommended option and cross-platform.
+Use `node backend/scripts/migrate.js` for apply/status/rollback.
 
 ### How to Create a New Migration
 
@@ -253,24 +251,28 @@ Use the Node.js script (`node backend/scripts/migrate.js`) — it's the recommen
 5. Verify:
 
    ```bash
-   node backend/scripts/migrate.js --status   # (bash script)
+   node backend/scripts/migrate.js --status   # canonical runner
    ```
 
-### Bash Script Usage
+### Migration Command (canonical Node entry point)
 
 ```bash
 # Apply pending migrations
-./scripts/migrate.sh
+node backend/scripts/migrate.js
 
-# Fresh apply (drop + recreate DB)
-./scripts/migrate.sh --fresh
+# Fresh apply (DESTRUCTIVE: drop + recreate DB; explicit confirmation required,
+# and --fresh --seed is rejected — seed separately with scripts/seed.sh)
+node backend/scripts/migrate.js --fresh --confirm-destructive-fresh
 
 # Migration status
-./scripts/migrate.sh --status
+node backend/scripts/migrate.js --status
 
 # Rollback
-./scripts/migrate.sh --rollback 043_add_coupon_usage_limit.sql
+node backend/scripts/migrate.js --rollback 043_add_coupon_usage_limit.sql
 ```
+
+`scripts/migrate.sh` is the internal SQL engine used by the Node runner; invoke the
+Node command above so the MySQL advisory lock and history contract are enforced.
 
 ## Seed System
 
@@ -351,12 +353,17 @@ Role-to-permission assignments are defined in `backend/scripts/role-permission-t
 # Sync UI registry (new permission keys from code)
 node backend/scripts/sync-ui-registry.js
 
-# Apply role permission templates
-node backend/scripts/sync-role-permissions.mjs
+# Apply role permission templates (target must be confirmed explicitly)
+node backend/scripts/sync-role-permissions.mjs \
+  --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>
 
-# Prune grants outside template (not for super_admin)
-node backend/scripts/sync-role-permissions.mjs --prune
+# Prune grants outside template (reviewed use only; not for provisioning)
+node backend/scripts/sync-role-permissions.mjs \
+  --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME> --prune
 ```
+
+Replace the placeholders with the resolved `DB_HOST`, `DB_PORT`, and `DB_NAME`; the script
+refuses to connect if they do not match and always rejects `courtzon_v2`.
 
 ### Permission Counts (current baseline)
 

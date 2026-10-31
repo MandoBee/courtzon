@@ -293,10 +293,6 @@ export default function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  if (!can('community.chat.view')) {
-    return <p className="text-[var(--color-text-muted)]">You do not have permission to view messages.</p>;
-  }
-
   function handleLookup(e: React.FormEvent) {
     e.preventDefault();
     const phone = newPhone.trim();
@@ -469,6 +465,11 @@ export default function MessagesPage() {
   })();
   const pinnedConvos = dedupedConvos.filter((c: any) => c.pinned_at);
   const unpinnedConvos = dedupedConvos.filter((c: any) => !c.pinned_at);
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!can('community.chat.view')) {
+    return <p className="text-[var(--color-text-muted)]">You do not have permission to view messages.</p>;
+  }
 
   return (
     <div className="space-y-4">

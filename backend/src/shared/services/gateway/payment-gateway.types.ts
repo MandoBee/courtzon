@@ -67,7 +67,10 @@ export interface GatewayConfig {
   publicKey?: string;
   merchantId?: string;
   hmacSecret?: string;
+  /** True when explicitly configured for sandbox/test mode. Never treated as proof of credential scope. */
   sandbox: boolean;
+  /** Optional explicit base URL override. Must remain unset unless explicitly configured and authorized. */
+  baseUrl?: string;
 }
 
 export interface PaymentGateway {

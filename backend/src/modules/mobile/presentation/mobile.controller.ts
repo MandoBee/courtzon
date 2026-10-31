@@ -1,31 +1,60 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod';
 import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { NotFoundError } from '../../../shared/errors/app-error.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
+import {
+  savePushToken,
+  removePushToken,
+  listPushTokens,
+  findPushToken,
+} from '../../notifications/application/device.service.js';
 import mysql from 'mysql2/promise';
 
 type RowData = mysql.RowDataPacket[];
 
-export async function registerPushTokenHandler(request: FastifyRequest, reply: FastifyReply) {
-  const pool = getPool();
-  const userId = (request as any).userId;
-  const body = request.body as any;
+const RegisterPushTokenSchema = z.object({
+  token: z.string().trim().min(1).max(500),
+  platform: z.enum(['ios', 'android', 'web']),
+  deviceName: z.string().max(200).optional(),
+});
 
-  await pool.execute<RowData>(
-    `INSERT INTO push_tokens (user_id, token, platform, device_name, device_id, is_active)
-     VALUES (?, ?, ?, ?, ?, 1)
-     ON DUPLICATE KEY UPDATE platform = VALUES(platform), device_name = VALUES(device_name),
-       device_id = VALUES(device_id), is_active = 1, updated_at = NOW()`,
-    [userId, body.token, body.platform || null, body.deviceName || null, body.deviceId || null]
-  );
+const UnregisterPushTokenSchema = z.object({
+  token: z.string().trim().min(1).max(500),
+});
+
+export async function registerPushTokenHandler(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request as any).userId;
+  const parsed = RegisterPushTokenSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.status(400).send({
+      error: 'VALIDATION_ERROR',
+      message: 'token, platform and deviceName are invalid or missing',
+    });
+  }
+
+  const { token, platform, deviceName } = parsed.data;
+  let tokenId: number;
+  try {
+    tokenId = await savePushToken(userId, token, platform, { deviceName: deviceName || undefined });
+  } catch (err: any) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      return reply.status(409).send({
+        error: 'CONFLICT',
+        message: 'Push token is already registered to another user',
+      });
+    }
+    throw err;
+  }
 
   recordAudit({
     actorId: userId,
     action: 'MOBILE.PUSH.REGISTER',
     entityType: 'push_tokens',
-    entityId: body.token,
-    afterState: { platform: body.platform, deviceName: body.deviceName },
+    // Numeric row id — never the token itself.
+    entityId: tokenId,
+    afterState: { platform, deviceName: deviceName ?? null },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
@@ -34,27 +63,28 @@ export async function registerPushTokenHandler(request: FastifyRequest, reply: F
 }
 
 export async function unregisterPushTokenHandler(request: FastifyRequest, reply: FastifyReply) {
-  const pool = getPool();
   const userId = (request as any).userId;
-  const body = request.body as any;
+  const parsed = UnregisterPushTokenSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.status(400).send({
+      error: 'VALIDATION_ERROR',
+      message: 'token is invalid or missing',
+    });
+  }
 
-  const [existing] = await pool.execute<RowData>(
-    `SELECT id FROM push_tokens WHERE user_id = ? AND token = ?`,
-    [userId, body.token]
-  );
-  if (!existing.length) throw new NotFoundError('Push token', ErrorCodes.PUSH_TOKEN_NOT_FOUND);
+  const { token } = parsed.data;
+  const existing = await findPushToken(userId, token);
+  if (!existing) throw new NotFoundError('Push token', ErrorCodes.PUSH_TOKEN_NOT_FOUND);
 
-  await pool.execute<RowData>(
-    `UPDATE push_tokens SET is_active = 0, updated_at = NOW() WHERE user_id = ? AND token = ?`,
-    [userId, body.token]
-  );
+  // Scoped by user_id — a token owned by another user is never modified.
+  await removePushToken(userId, token);
 
   recordAudit({
     actorId: userId,
     action: 'MOBILE.PUSH.UNREGISTER',
     entityType: 'push_tokens',
-    entityId: body.token,
-    beforeState: { token: body.token },
+    entityId: existing.id,
+    beforeState: { platform: existing.platform, deviceName: existing.device_name },
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],
   });
@@ -63,16 +93,23 @@ export async function unregisterPushTokenHandler(request: FastifyRequest, reply:
 }
 
 export async function listPushTokensHandler(request: FastifyRequest, reply: FastifyReply) {
-  const pool = getPool();
   const userId = (request as any).userId;
 
-  const [rows] = await pool.execute<RowData>(
-    `SELECT id, token, platform, device_name, device_id, is_active, created_at, updated_at
-     FROM push_tokens WHERE user_id = ? ORDER BY created_at DESC`,
-    [userId]
-  );
+  const rows = await listPushTokens(userId);
 
-  return reply.send({ data: rows });
+  // Preserve the legacy response contract; `device_id` has no storage column.
+  return reply.send({
+    data: rows.map((row) => ({
+      id: row.id,
+      token: row.token,
+      platform: row.platform,
+      device_name: row.device_name,
+      device_id: null,
+      is_active: row.is_active,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    })),
+  });
 }
 
 export async function getLatestVersionHandler(request: FastifyRequest, reply: FastifyReply) {

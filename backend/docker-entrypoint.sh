@@ -9,6 +9,22 @@ set -e
 # shellcheck source=./migration-guard.sh
 . /app/scripts/migration-guard.sh
 
+# ── Load the shared database TLS policy ──────────────────────────────
+# Single source of truth (DB_TLS_MODE: disable | require | verify-ca) for how
+# every path in this container negotiates TLS: this entrypoint's CLI queries,
+# the canonical migration runner (scripts/migrate.sh), and the Node/mysql2
+# connections (backend/scripts/db-tls.js). An unresolvable or invalid policy
+# fails closed here — the container never connects with an implicit TLS mode.
+# shellcheck source=./db-tls.sh
+. /app/scripts/db-tls.sh
+if ! db_tls_resolve; then
+  exit 1
+fi
+if [ -n "$DB_TLS_WARNINGS" ]; then
+  echo "$DB_TLS_WARNINGS" >&2
+fi
+echo "Database TLS policy: $(db_tls_describe)"
+
 # ── Fix bind-mounted uploads directory permissions ──────────────────
 # Docker creates bind mount source dirs as root:root with mode 0755.
 # The container runs as root during entrypoint, so we fix ownership
@@ -41,7 +57,7 @@ echo "Redis is ready."
 
 echo "Checking database state..."
 _PASS="${DB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-}}"
-_MYSQL="/usr/bin/mariadb -h $DB_HOST -P $DB_PORT -u $DB_USER -p$_PASS --skip-ssl"
+_MYSQL="/usr/bin/mariadb -h $DB_HOST -P $DB_PORT -u $DB_USER -p$_PASS $DB_TLS_CLI_ARGS"
 _TABLE_COUNT=$($_MYSQL -N -e \
   "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB_NAME'" 2>/dev/null)
 if [ -z "$_TABLE_COUNT" ] || [ "$_TABLE_COUNT" = "0" ]; then
@@ -58,22 +74,27 @@ if [ -z "$_TABLE_COUNT" ] || [ "$_TABLE_COUNT" = "0" ]; then
   # baseline-hydrated database (replays are destructive: e.g. 061 renames
   # academy_enrollments, 138 drops the mislabeled legacy copy). Files whose
   # marker policy would skip them (LOCAL_DOCKER_ONLY outside local) are NOT
-  # stamped and stay pending, exactly like the migration loop below.
+  # stamped and stay pending for the canonical runner below.
   echo "Stamping migration_history for the imported baseline..."
   $_MYSQL "$DB_NAME" -e \
     "CREATE TABLE IF NOT EXISTS migration_history (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      filename VARCHAR(255) NOT NULL UNIQUE,
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      filename VARCHAR(255) NOT NULL,
+      direction ENUM('up', 'down', 'failed') NOT NULL DEFAULT 'up',
       hash VARCHAR(64) NOT NULL,
-      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      execution_ms INT DEFAULT 0
-    )" 2>/dev/null || true
+      hash_kind VARCHAR(32) NOT NULL DEFAULT 'unknown',
+      execution_ms INT NOT NULL DEFAULT 0,
+      applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_mh_filename_id (filename, id),
+      KEY idx_mh_direction (direction)
+    )"
   for f in /app/database/migrations/*.sql; do
     if [ -f "$f" ]; then
       fname=$(basename "$f")
       if courtzon_migration_should_run "$f"; then
         $_MYSQL "$DB_NAME" -e \
-          "INSERT IGNORE INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))" 2>/dev/null || true
+          "INSERT INTO migration_history (filename, direction, hash, hash_kind) VALUES ('$fname', 'up', SHA2('$fname', 256), 'legacy_filename_sha256')"
       fi
     fi
   done
@@ -81,66 +102,32 @@ if [ -z "$_TABLE_COUNT" ] || [ "$_TABLE_COUNT" = "0" ]; then
 else
   echo "Database has $_TABLE_COUNT tables — skipping baseline re-import."
 
-  echo "Applying pending migrations..."
-  if [ -d /app/database/migrations ]; then
-    echo "Migration environment: $(courtzon_migration_env) (COURTZON_MIGRATION_ENV=${COURTZON_MIGRATION_ENV:-<unset>})"
-
-    # Ensure migration_history table exists (may be missing on older DBs)
-    $_MYSQL "$DB_NAME" -e \
-      "CREATE TABLE IF NOT EXISTS migration_history (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        filename VARCHAR(255) NOT NULL UNIQUE,
-        hash VARCHAR(64) NOT NULL,
-        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        execution_ms INT DEFAULT 0
-      )" 2>/dev/null || true
-
-    for f in /app/database/migrations/*.sql; do
-      if [ -f "$f" ]; then
-        fname=$(basename "$f")
-
-        # Migration-environment policy guard (fail-closed). A LOCAL_DOCKER_ONLY
-        # migration is skipped — and never recorded — outside an explicit local
-        # environment, so it can never reach Hostinger/production.
-        if ! courtzon_migration_should_run "$f"; then
-          echo "  SKIP (policy): $fname — $(courtzon_migration_skip_reason "$f" "$fname")"
-          continue
-        fi
-
-        applied=$($_MYSQL "$DB_NAME" -N -e \
-          "SELECT COUNT(*) FROM migration_history WHERE filename='$fname'" 2>/dev/null || echo "0")
-        if [ "$applied" = "0" ]; then
-          echo "  Applying: $fname"
-          set +e
-          _MIG_OUT=$($_MYSQL "$DB_NAME" < "$f" 2>&1)
-          _MIG_EXIT=$?
-          set -e
-          if [ $_MIG_EXIT -ne 0 ]; then
-            if echo "$_MIG_OUT" | grep -qi "duplicate column\|already exists\|duplicate key\|duplicate entry"; then
-              echo "  OK: $fname (already applied, non-fatal)"
-            else
-              echo "  WARNING: $fname had errors (exit $_MIG_EXIT) — marking as applied anyway"
-              echo "  $_MIG_OUT" | head -3
-            fi
-          else
-            echo "  OK: $fname"
-          fi
-          $_MYSQL "$DB_NAME" -e \
-            "INSERT IGNORE INTO migration_history (filename, hash) VALUES ('$fname', SHA2('$fname', 256))" 2>/dev/null || true
-        else
-          echo "  Already applied: $fname"
-        fi
-      fi
-    done
-  fi
+  # Canonical migration execution path. The Node runner holds the MySQL advisory
+  # lock and delegates file execution to scripts/migrate.sh (mysql CLI).
+  echo "Applying pending migrations via canonical runner..."
+  node /app/scripts/migrate.js
   echo "Migrations complete."
 
   # Auto-sync role permissions from canonical templates on every startup.
   # Idempotent — grants missing and removes stale assignments so every
   # production role always matches its official permission template.
+  # The deployment environment declares its target explicitly; the sync script
+  # fails closed without all three confirmation flags.
   echo "Syncing role permissions from templates..."
   DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" DB_NAME="$DB_NAME" \
-    node /app/scripts/sync-role-permissions.mjs || echo "  WARN: Permission sync skipped (non-fatal)"
+    node /app/scripts/sync-role-permissions.mjs \
+      --confirm-host="$DB_HOST" --confirm-port="$DB_PORT" --confirm-db="$DB_NAME" \
+    || {
+      _sync_exit=$?
+      case "$_sync_exit" in
+        2)
+          echo "  ERROR: Permission sync refused the target confirmation (exit 2) — startup continues; permissions may be stale" >&2
+          ;;
+        *)
+          echo "  ERROR: Permission sync failed (exit $_sync_exit) — startup continues; permissions may be stale" >&2
+          ;;
+      esac
+    }
 fi
 
 echo "Starting backend as appuser..."

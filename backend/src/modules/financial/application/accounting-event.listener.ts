@@ -892,11 +892,11 @@ async function postAccountingEvent(
   outerConn?: import('mysql2/promise').PoolConnection,
   conceptOrganisations?: Record<string, number | null>,
   timezone?: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const alreadyPosted = await ledgerRepository.hasPosting(sourceType, sourceId, eventType);
   if (alreadyPosted) {
     log.info({ eventType, sourceType, sourceId }, 'Accounting posting already exists — idempotent skip');
-    return;
+    return false;
   }
 
   const mapping = await accountingEngineService.resolveMapping(eventType, organisationId);
@@ -957,7 +957,7 @@ async function postAccountingEvent(
     }));
     await glProjectionService.projectEntries(projectable, periodId, outerConn);
     log.info({ eventType, sourceType, sourceId, organisationId, lines: lines.length, periodId }, 'Accounting posting created (outer tx)');
-    return;
+    return true;
   }
 
   const pool = getPool();
@@ -993,11 +993,12 @@ async function postAccountingEvent(
       sourceId,
       organisationId,
     });
+    return true;
   } catch (err: any) {
     await conn.rollback();
     if (err?.code === 'ER_DUP_ENTRY') {
       log.info({ err: err.message }, 'Duplicate — idempotent rollback from DB constraint');
-      return;
+      return false;
     }
     throw err;
   } finally {
@@ -1771,33 +1772,40 @@ async function postBookingRefundAccountingInner(bookingId: number, refundAmount:
     );
   }
   if (refund.coachSettled > 0) {
-    await postAccountingEvent(
+    const coachPosted = await postAccountingEvent(
       'booking_coach_recovery', 'booking', bookingId, refund.organisationId,
       { coach_recovery_receivable: refund.coachSettled, coach_expense: refund.coachSettled },
       currency,
       `Booking #${bookingId} coach post-settlement recovery`,
     );
-    // Cumulative recovery tracking (bounded at DB level — never exceeds settled).
-    await pool.execute(
-      `UPDATE bookings SET coach_recovered_amount = coach_recovered_amount + ?
-       WHERE id = ? AND coach_recovered_amount + ? <= coach_settled_amount`,
-      [refund.coachSettled, bookingId, refund.coachSettled],
-    );
+    // Only advance the recovery counter when THIS call actually posted. A second
+    // event for the same refund (payment:refunded + booking:refunded) skips the
+    // posting via the durable hasPosting/uk_dedup guard — it must not consume
+    // recovery capacity without a ledger entry.
+    if (coachPosted) {
+      await pool.execute(
+        `UPDATE bookings SET coach_recovered_amount = coach_recovered_amount + ?
+         WHERE id = ? AND coach_recovered_amount + ? <= coach_settled_amount`,
+        [refund.coachSettled, bookingId, refund.coachSettled],
+      );
+    }
   }
 
   // Org: settled portion → recovery (org already received settlement funds).
   if (refund.orgSettled > 0) {
-    await postAccountingEvent(
+    const orgPosted = await postAccountingEvent(
       'booking_org_recovery', 'booking', bookingId, refund.organisationId,
       { org_recovery_receivable: refund.orgSettled, org_payable: refund.orgSettled },
       currency,
       `Booking #${bookingId} org post-settlement recovery`,
     );
-    await pool.execute(
-      `UPDATE bookings SET org_recovered_amount = org_recovered_amount + ?
-       WHERE id = ? AND org_recovered_amount + ? <= org_settled_amount`,
-      [refund.orgSettled, bookingId, refund.orgSettled],
-    );
+    if (orgPosted) {
+      await pool.execute(
+        `UPDATE bookings SET org_recovered_amount = org_recovered_amount + ?
+         WHERE id = ? AND org_recovered_amount + ? <= org_settled_amount`,
+        [refund.orgSettled, bookingId, refund.orgSettled],
+      );
+    }
   }
 }
 

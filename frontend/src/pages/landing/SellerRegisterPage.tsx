@@ -61,6 +61,9 @@ export default function SellerRegisterPage() {
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [result, setResult] = useState<ResultMode | null>(null);
   const [pollingPaid, setPollingPaid] = useState(false);
+  // Payment id kept in state (not a render-time ref read) so the fallback poller
+  // survives closing the card modal, which clears `paymentInfo`.
+  const [pollingPaymentId, setPollingPaymentId] = useState(0);
   const paymentIdRef = useRef<number>(0);
 
   const update = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
@@ -117,6 +120,7 @@ export default function SellerRegisterPage() {
 
   const finishApproved = async (msg: string) => {
     setPollingPaid(false);
+    setPollingPaymentId(0);
     setPaymentInfo(null);
     showToast(msg);
     // Card flow creates an authenticated session (like the Free flow), so the
@@ -170,6 +174,7 @@ export default function SellerRegisterPage() {
   const handlePaymentCancel = () => {
     resetConfirm();
     setPaymentInfo(null);
+    setPollingPaymentId(0);
     setResult('pending');
     setStep(5);
     showToast(t('landing.seller_reg.payment_cancelled'), 'warning');
@@ -177,6 +182,7 @@ export default function SellerRegisterPage() {
 
   const handlePaymentComplete = async () => {
     const pmId = paymentIdRef.current;
+    setPollingPaymentId(pmId);
     setPaymentInfo(null);
     showToast(t('landing.seller_reg.payment_submitted_info'), 'info');
     if (!pmId) return;
@@ -452,9 +458,9 @@ export default function SellerRegisterPage() {
       )}
 
       {/* Fallback polling (webhook will approve the seller) */}
-      {pollingPaid && paymentIdRef.current > 0 && (
+      {pollingPaid && pollingPaymentId > 0 ? (
         <PaymentStatusPoller
-          endpoint={`/payments/status/${paymentIdRef.current}`}
+          endpoint={`/payments/status/${pollingPaymentId}`}
           isComplete={(data: any) => data?.paymentStatus === 'paid'}
           interval={2000}
           timeout={90000}
@@ -466,7 +472,7 @@ export default function SellerRegisterPage() {
             showToast(t('landing.seller_reg.payment_confirmation_slow'), 'warning');
           }}
         />
-      )}
+      ) : null}
     </div>
   );
 }

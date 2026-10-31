@@ -64,7 +64,13 @@ const envSchema = z.object({
   PAYMOB_PUBLIC_KEY: z.string().optional(),
   PAYMOB_MERCHANT_ID: z.string().optional(),
   PAYMOB_HMAC_SECRET: z.string().optional(),
-  PAYMOB_SANDBOX: z.string().optional().default('true'),
+  // Must be set explicitly in production when PAYMENT_GATEWAY_PROVIDER=paymob:
+  // no schema default, so a missing value is detectable (see the guard below).
+  // `true` = test configuration, `false` = live configuration; this is
+  // configuration state only, never proof of credential scope.
+  PAYMOB_SANDBOX: z.string().optional(),
+  // Optional explicit base URL override. Gateway only allows https://accept.paymob.com.
+  PAYMOB_BASE_URL: z.string().url().optional(),
 
   WEBHOOK_BASE_URL: z.string().optional(),
 
@@ -104,6 +110,16 @@ if (isProd) {
   if (parsed.data.PAYMENT_GATEWAY_PROVIDER === 'mock') {
     log.error("PAYMENT_GATEWAY_PROVIDER must not be 'mock' in production");
     process.exit(1);
+  }
+  // Do not rely on PAYMOB_SANDBOX default to prove credential scope. In production,
+  // if using Paymob, require explicit PAYMOB_SANDBOX to be set to avoid accidental
+  // misconfiguration. This does not change hosts and does not validate keys.
+  if (parsed.data.PAYMENT_GATEWAY_PROVIDER === 'paymob') {
+    const sandboxValue = parsed.data.PAYMOB_SANDBOX;
+    if (sandboxValue === undefined || sandboxValue.trim() === '') {
+      log.error("PAYMOB_SANDBOX must be explicitly set when using PAYMOB in production");
+      process.exit(1);
+    }
   }
 }
 

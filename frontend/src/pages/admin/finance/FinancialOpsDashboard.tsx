@@ -5,12 +5,14 @@ import { useCan } from '../../../hooks/useCan';
 
 export default function FinancialOpsDashboard() {
   const { can } = useCan();
-  if (!can('sidebar.finance-transactions')) return null;
+  // Derived value, never an early return: hooks must run on every render.
+  const canView = can('financial.view');
   const { data: health, isLoading: hl } = useQuery({
     queryKey: ['payments-health'],
     queryFn: () => api.get('/payments/health').then((r) => r.data),
     refetchInterval: 30000,
     refetchIntervalInBackground: false,
+    enabled: canView,
   });
 
   const { data: readiness } = useQuery({
@@ -18,12 +20,17 @@ export default function FinancialOpsDashboard() {
     queryFn: () => api.get('/payments/production-readiness').then((r) => r.data),
     refetchInterval: 60000,
     refetchIntervalInBackground: false,
+    enabled: canView,
   });
 
   const { data: reconHistory } = useQuery({
     queryKey: ['recon-history'],
     queryFn: () => api.get('/payments/reconciliation/history').then((r) => r.data),
+    enabled: canView,
   });
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!canView) return null;
 
   if (hl) return <SkeletonRow count={6} />;
 

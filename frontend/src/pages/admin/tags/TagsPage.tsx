@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { getErrorMessage } from '../../../utils/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
@@ -20,18 +20,10 @@ export default function TagsPage() {
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
 
-  // DEBUG: instance tracking
-  const instanceId = useRef('TP-' + Math.random().toString(36).slice(2, 8));
-  const renderCount = useRef(0);
-  renderCount.current++;
   const perms = user?.permissions ?? [];
   const hasWildcard = perms.includes('*');
   const hasRequiredPermission = perms.includes('sidebar.tags');
   const enabled = hasWildcard || hasRequiredPermission;
-  console.warn('[ADMIN-QUERY-STATE]', { page: 'TagsPage', instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permissions: perms, permsLen: perms.length, hasWildcard, hasRequiredPermission, enabled });
-  useEffect(() => {
-    return () => { console.warn('[ADMIN-QUERY-UNMOUNT]', { page: 'TagsPage', instance: instanceId.current }); };
-  }, []);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Tag | null>(null);
   const [name, setName] = useState('');
@@ -40,7 +32,6 @@ export default function TagsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'tags'],
     queryFn: () => {
-      console.warn('[ADMIN-QUERY-FIRED]', { page: 'TagsPage', instance: instanceId.current });
       return api.get('/admin/tags').then((r: any) => r.data.data);
     },
     enabled,

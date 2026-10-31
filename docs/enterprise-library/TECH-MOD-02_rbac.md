@@ -150,7 +150,7 @@ Key permission groups:
 | Script | Purpose |
 |--------|---------|
 | `node backend/scripts/sync-ui-registry.js` | Sync UI permission registry from frontend code |
-| `node backend/scripts/sync-role-permissions.mjs` | Apply role permission templates |
+| `node backend/scripts/sync-role-permissions.mjs --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>` | Apply role permission templates (explicit target confirmation required) |
 | `backend/scripts/role-permission-templates.mjs` | Role template definitions |
 
 **Evidence:** AGENTS.md references these scripts.

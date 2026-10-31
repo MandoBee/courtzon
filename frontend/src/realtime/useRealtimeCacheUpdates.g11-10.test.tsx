@@ -16,6 +16,9 @@ const captured: Record<string, Handler> = {};
 
 vi.mock('./useSocket', () => ({
   useSocketEvent: (eventType: string, handler: Handler) => { captured[eventType] = handler; },
+  useSocketEvents: (eventTypes: readonly string[], handler: (eventType: string, payload: any) => void) => {
+    for (const eventType of eventTypes) captured[eventType] = (payload: any) => handler(eventType, payload);
+  },
 }));
 
 vi.mock('./socket-client', () => ({

@@ -25,9 +25,27 @@ export class PaymobGateway implements PaymentGateway {
    *  target transaction in normal merchant volumes, never unbounded. */
   private static readonly MAX_TRANSACTIONS_PAGES = 5;
 
+  private static readonly LIVE_BASE_URL = 'https://accept.paymob.com';
+  private static readonly ALLOWED_BASE_URLS = new Set<string>(['https://accept.paymob.com']);
+
   constructor(config: GatewayConfig) {
     this.config = config;
-    this.baseUrl = 'https://accept.paymob.com';
+    // Host is intentionally fixed to the known official host unless an explicit override is provided.
+    // PAYMOB_SANDBOX is configuration state only and is NOT used to infer credential scope or to switch hosts here.
+    const override = typeof config.baseUrl === 'string' && config.baseUrl.trim().length > 0 ? config.baseUrl.trim() : undefined;
+    if (override) {
+      try {
+        const u = new URL(override);
+        if (u.protocol !== 'https:' || !PaymobGateway.ALLOWED_BASE_URLS.has(u.origin)) {
+          throw new Error(`PaymobGateway: disallowed baseUrl override`);
+        }
+        this.baseUrl = u.origin;
+      } catch {
+        throw new Error('PaymobGateway: invalid baseUrl override');
+      }
+    } else {
+      this.baseUrl = PaymobGateway.LIVE_BASE_URL;
+    }
   }
 
   private async getAuthToken(): Promise<string> {
@@ -379,7 +397,9 @@ export class PaymobGateway implements PaymentGateway {
         .createHmac('sha512', this.config.hmacSecret)
         .update(concatStr)
         .digest('hex');
-      const expected = signature;
+      // Fail closed on a non-string signature (null/undefined/number): never
+      // throw from the verifier — the webhook must be rejected, not 500.
+      const expected = typeof signature === 'string' ? signature : '';
       const match = computed === expected;
       if (!match) {
         console.error('Intention API HMAC mismatch', {
@@ -411,9 +431,10 @@ export class PaymobGateway implements PaymentGateway {
       .createHmac('sha512', this.config.hmacSecret)
       .update(concatStr)
       .digest('hex');
-    const match = computed === signature;
+    const expected = typeof signature === 'string' ? signature : '';
+    const match = computed === expected;
     if (!match) {
-      console.error('Accept API HMAC mismatch', { computed: computed.slice(0, 20), received: signature?.slice(0, 20) });
+      console.error('Accept API HMAC mismatch', { computed: computed.slice(0, 20), received: expected.slice(0, 20) });
     }
     return match;
   }

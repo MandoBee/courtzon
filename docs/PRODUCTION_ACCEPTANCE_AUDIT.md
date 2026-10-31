@@ -281,8 +281,11 @@ node backend/scripts/migrate.js --fresh --seed
 #### Permission Sync
 ```bash
 node backend/scripts/sync-ui-registry.js
-node backend/scripts/sync-role-permissions.mjs
+node backend/scripts/sync-role-permissions.mjs \
+  --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>
 ```
+Replace the placeholders with the resolved target; the script refuses `courtzon_v2` and exits
+nonzero if any confirmation value is missing or mismatched.
 
 ### 7.4 Rollback Procedure
 

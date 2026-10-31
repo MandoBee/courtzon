@@ -29,12 +29,14 @@ Templates assign the correct keys per role (`super_admin` = all permissions):
 
 ```bash
 node backend/scripts/sync-ui-registry.js
-node backend/scripts/sync-role-permissions.mjs
-# Optional: remove grants outside template (not applied to super_admin)
-node backend/scripts/sync-role-permissions.mjs --prune
+node backend/scripts/sync-role-permissions.mjs \
+  --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>
+# Optional: remove grants outside template (not applied to super_admin; reviewed use only)
+node backend/scripts/sync-role-permissions.mjs \
+  --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME> --prune
 ```
 
-`migrate.js --seed` runs `sync-role-permissions` automatically after the baseline snapshot. Migration `087_role_permissions_super_admin.sql` re-grants all keys to Super Admin on every migrate.
+`migrate.js --seed` runs `sync-role-permissions` automatically after the baseline snapshot. Migration `087_role_permissions_super_admin.sql` re-grants all keys to Super Admin on every migrate. The script refuses to connect unless the three `--confirm-*` values match the resolved target and never accepts `courtzon_v2`.
 
 ### Refresh baseline from current DB
 

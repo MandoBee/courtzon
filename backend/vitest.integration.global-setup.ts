@@ -12,9 +12,10 @@ import mysql from 'mysql2/promise';
  * integration times out.
  *
  * This fixture deterministically opens a PLATFORM accounting period
- * (organisation_id IS NULL) covering the current business date, then deletes
- * exactly the row it created on teardown (leaving any pre-existing periods and
- * organisation-scoped periods untouched).
+ * (organisation_id IS NULL) covering the current business date when one does
+ * not already exist. The row is left in place for the testing campaign; the
+ * overall database cleanup is deferred to the separate final-cleanup operation
+ * (no destructive table cleanup runs here or on teardown).
  *
  * Safety guarantees:
  *   - The connection target is HARD-CODED to the loopback local test DB. It never
@@ -35,7 +36,6 @@ const LOCAL_TEST_DB = {
 } as const;
 
 let conn: mysql.Connection | null = null;
-let createdPeriodId: number | null = null;
 
 /** Current business date (YYYY-MM-DD) in a timezone. `en-CA` renders ISO order. */
 function businessDateIn(timezone: string, now = new Date()): string {
@@ -84,38 +84,20 @@ export async function setup(): Promise<void> {
      VALUES (NULL, ?, ?, ?, ?, 'open')`,
     [year, month, start, end],
   );
-  createdPeriodId = Number((res as any).insertId);
+  const createdPeriodId = Number((res as any).insertId);
   console.log(
-    `[integration-global-setup] created platform open accounting period #${createdPeriodId} for ${businessDate} (${start} … ${end})`,
+    `[integration-global-setup] created platform open accounting period #${createdPeriodId} for ${businessDate} (${start} … ${end}); left in place for the campaign`,
   );
 }
 
 export async function teardown(): Promise<void> {
   if (!conn) return;
+  // No destructive cleanup: test data is cleared only by the deferred,
+  // explicitly authorized final-cleanup operation after the campaign.
   try {
-    if (createdPeriodId != null) {
-      // `general_ledger.period_id` is a RESTRICT FK to this period. Because the
-      // period is brand new, every row referencing it was created by THIS run —
-      // removing them is precise test cleanup that lets the period be deleted.
-      // (`ledger_entries.period_id` is ON DELETE SET NULL — no action needed.)
-      const [gl] = await conn.execute('DELETE FROM general_ledger WHERE period_id = ?', [createdPeriodId]);
-      const glDeleted = (gl as any).affectedRows ?? 0;
-      // Scoped to the exact platform row we created — never touches other periods.
-      await conn.execute('DELETE FROM accounting_periods WHERE id = ? AND organisation_id IS NULL', [
-        createdPeriodId,
-      ]);
-      console.log(
-        `[integration-global-setup] removed created platform accounting period #${createdPeriodId} (and ${glDeleted} dependent general_ledger test row(s))`,
-      );
-    }
-  } catch (err) {
-    console.warn(`[integration-global-setup] teardown cleanup skipped (${(err as Error).message})`);
-  } finally {
-    try {
-      await conn.end();
-    } catch {
-      /* ignore */
-    }
-    conn = null;
+    await conn.end();
+  } catch {
+    /* ignore */
   }
+  conn = null;
 }

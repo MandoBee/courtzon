@@ -11,9 +11,6 @@ export default function BookingConfirmationPage() {
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isOwner = !!(location.state as any)?.qrToken;
-  const _pageStart = useRef(Date.now());
-
-  console.log(`[TRACE][React][+0ms][${new Date(_pageStart.current).toISOString()}] [BookingConfirmationPage:${id}] MOUNTED`);
 
   const { data: booking, refetch } = useQuery({
     queryKey: ['booking', id],
@@ -23,16 +20,11 @@ export default function BookingConfirmationPage() {
 
   const isPending = booking?.booking_status === 'pending';
 
-  console.log(`[TRACE][React][+${Date.now() - _pageStart.current}ms][${new Date().toISOString()}] [BookingConfirmationPage:${id}] RENDER booking_status=${booking?.booking_status} isPending=${isPending}`);
-
   useEffect(() => {
     if (!isPending) {
-      console.log(`[TRACE][React][+${Date.now() - _pageStart.current}ms][${new Date().toISOString()}] [BookingConfirmationPage:${id}] POLL EFFECT — isPending=${isPending}, NOT polling`);
       return;
     }
-    console.log(`[TRACE][React][+${Date.now() - _pageStart.current}ms][${new Date().toISOString()}] [BookingConfirmationPage:${id}] POLL EFFECT — isPending=true, starting 3s interval`);
     const interval = setInterval(() => {
-      console.log(`[TRACE][React][+${Date.now() - _pageStart.current}ms][${new Date().toISOString()}] [BookingConfirmationPage:${id}] POLL refetch()`);
       refetch();
     }, 3000);
     return () => clearInterval(interval);

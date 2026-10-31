@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mysql from 'mysql2/promise';
+import {
+  createTestNumericId,
+  createTestRunMarker,
+  testEmail,
+  testPhoneFromId,
+} from '../../../tests/helpers/test-run.js';
 
 /**
  * Coach self-service profile save/update (PUT /coaches/profile).
@@ -22,9 +28,10 @@ import mysql from 'mysql2/promise';
 describe('Coach self-service profile save/update', () => {
   let pool: mysql.Pool;
 
-  const COACH = 999951; // has professional_profiles
-  const COACH_NO_PP = 999952; // NO professional_profiles row
-  const NON_COACH = 999953; // user with NO coach profile
+  const RUN = createTestRunMarker('coach-profile');
+  const COACH = createTestNumericId(); // has professional_profiles
+  const COACH_NO_PP = COACH + 1; // NO professional_profiles row
+  const NON_COACH = COACH + 2; // user with NO coach profile
 
   async function cleanup() {
     await pool.execute(`DELETE FROM professional_services WHERE professional_profile_id IN
@@ -50,15 +57,14 @@ describe('Coach self-service profile save/update', () => {
     process.env.ENABLE_API_DOCS = 'false';
 
     pool = mysql.createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3' });
-    await cleanup();
 
     const { createPool } = await import('../../../database/mysql.js');
     createPool({ host: '127.0.0.1', port: 3307, user: 'root', password: 'courtzon2026', database: 'courtzon_v3' });
 
     for (const u of [
-      { id: COACH, phone: '0129999951', email: 'profile-a@test.com', name: 'Profile A' },
-      { id: COACH_NO_PP, phone: '0129999952', email: 'profile-b@test.com', name: 'Profile B' },
-      { id: NON_COACH, phone: '0129999953', email: 'profile-c@test.com', name: 'Profile C' },
+      { id: COACH, phone: testPhoneFromId(COACH), email: testEmail('profile-a', RUN), name: 'Profile A' },
+      { id: COACH_NO_PP, phone: testPhoneFromId(COACH_NO_PP), email: testEmail('profile-b', RUN), name: 'Profile B' },
+      { id: NON_COACH, phone: testPhoneFromId(NON_COACH), email: testEmail('profile-c', RUN), name: 'Profile C' },
     ]) {
       await pool.execute(
         `INSERT INTO users (id, public_id, country_id, phone_number, full_phone, email, password_hash, full_name, gender, account_status)
@@ -75,6 +81,18 @@ describe('Coach self-service profile save/update', () => {
 
   afterAll(async () => {
     await cleanup();
+
+    const [left] = await pool.execute<any[]>(
+      `SELECT
+         (SELECT COUNT(*) FROM users WHERE id IN (?, ?, ?)) AS users,
+         (SELECT COUNT(*) FROM coach_profiles WHERE user_id IN (?, ?)) AS coaches,
+         (SELECT COUNT(*) FROM professional_profiles WHERE user_id IN (?, ?, ?)) AS pps`,
+      [COACH, COACH_NO_PP, NON_COACH, COACH, COACH_NO_PP, COACH, COACH_NO_PP, NON_COACH],
+    );
+    expect(Number(left[0].users)).toBe(0);
+    expect(Number(left[0].coaches)).toBe(0);
+    expect(Number(left[0].pps)).toBe(0);
+
     const { closePool } = await import('../../../database/mysql.js');
     await closePool();
     await pool.end();

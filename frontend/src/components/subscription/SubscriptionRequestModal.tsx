@@ -35,6 +35,9 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
   const [agreed, setAgreed] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [pollingPaid, setPollingPaid] = useState(false);
+  // Payment id kept in state (not a render-time ref read) so the fallback poller
+  // survives closing the card modal, which clears `paymentInfo`.
+  const [pollingPaymentId, setPollingPaymentId] = useState(0);
   const paymentIdRef = useRef(0);
 
   const isRenewal = requestType === 'RENEWAL';
@@ -69,6 +72,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
       setPaymentMethod('card');
       setPaymentInfo(null);
       setPollingPaid(false);
+      setPollingPaymentId(0);
     }
   }, [open]);
 
@@ -108,11 +112,13 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
     showToast('Payment confirmed! Your subscription is now active.');
     setPaymentInfo(null);
     setPollingPaid(false);
+    setPollingPaymentId(0);
     onClose();
   };
 
   const handlePaymentComplete = async () => {
     const pmId = paymentIdRef.current;
+    setPollingPaymentId(pmId);
     setPaymentInfo(null);
     if (!pmId) return;
     try {
@@ -130,6 +136,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
   const handlePaymentCancel = () => {
     setPaymentInfo(null);
     setPollingPaid(false);
+    setPollingPaymentId(0);
     showToast('Payment cancelled. Your request is still pending admin review.', 'warning');
     onClose();
   };
@@ -345,9 +352,9 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
       )}
 
       {/* Fallback polling (webhook will activate the subscription) */}
-      {pollingPaid && paymentIdRef.current > 0 && (
+      {pollingPaid && pollingPaymentId > 0 ? (
         <PaymentStatusPoller
-          endpoint={`/payments/status/${paymentIdRef.current}`}
+          endpoint={`/payments/status/${pollingPaymentId}`}
           isComplete={(data: any) => data?.paymentStatus === 'paid'}
           interval={2000}
           timeout={90000}
@@ -358,7 +365,7 @@ export default function SubscriptionRequestModal({ orgId, open, onClose, request
             onClose();
           }}
         />
-      )}
+      ) : null}
     </>
   );
 }

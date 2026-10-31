@@ -105,7 +105,7 @@ export function bookingPayload(resourceId: number, branchId: number) {
     bookingDate,
     startTime: '10:00',
     endTime: '11:00',
-    paymentMethod: 'wallet' as const,
+    paymentMethod: 'cash' as const,
   };
 }
 

@@ -21,10 +21,12 @@ export default function InstallPrompt() {
   const siteTagline = useAppSettingsStore((s) => s.siteTagline);
   const pwaIcon192Url = useAppSettingsStore((s) => s.pwaIcon192Url);
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   const onLandingPage = isLandingInstallPromptPath(location.pathname);
+  // Derived instead of synced through state+effect: hidden when standalone, after
+  // dismissal, off the landing page, or before the install prompt is available.
+  const visible = !isStandaloneApp() && !dismissed && onLandingPage && !!deferred;
 
   useEffect(() => {
     if (!onLandingPage) {
@@ -39,24 +41,14 @@ export default function InstallPrompt() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, [onLandingPage]);
 
-  useEffect(() => {
-    if (isStandaloneApp() || dismissed || !onLandingPage || !deferred) {
-      setVisible(false);
-      return;
-    }
-    setVisible(true);
-  }, [onLandingPage, dismissed, deferred]);
-
   const dismiss = () => {
     setDismissed(true);
-    setVisible(false);
   };
 
   const install = async () => {
     if (!deferred) return;
     await deferred.prompt();
     await deferred.userChoice;
-    setVisible(false);
     setDeferred(null);
   };
 

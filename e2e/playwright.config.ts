@@ -9,6 +9,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
+  // Playwright refuses to run when the HTML report folder is nested inside the
+  // test output folder (the HTML reporter clears its folder before generating).
+  // Keep both under `test-results/e2e/` but as siblings: raw artifacts go to
+  // `artifacts/`, the HTML report stays at `html/`.
+  outputDir: '../test-results/e2e/artifacts',
   reporter: [
     ['html', { outputFolder: '../test-results/e2e/html' }],
     ['junit', { outputFile: '../test-results/e2e/junit.xml' }],

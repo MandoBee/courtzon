@@ -24,6 +24,14 @@ import OrgSubscriptionPage from './OrgSubscriptionPage';
 
 const mockGet = vi.mocked(api.get);
 
+/** Local calendar date offset from today — keeps date-sensitive fixtures deterministic. */
+function localDateOffset(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function wrap(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -51,8 +59,8 @@ function makeSubscription(overrides: Record<string, any> = {}) {
     durationMonths: null,
     features: [],
     usage: {},
-    startDate: '2026-08-22',
-    endDate: '2026-09-22',
+    startDate: localDateOffset(-30),
+    endDate: localDateOffset(30),
     status: 'active',
     autoRenew: false,
     paymentMethod: 'card',

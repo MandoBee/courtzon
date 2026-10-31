@@ -195,19 +195,24 @@ export async function healthHandler(_request: FastifyRequest, reply: FastifyRepl
   const provider = process.env.PAYMENT_GATEWAY_PROVIDER || 'mock';
   let gatewayConnectivity: 'ok' | 'dns_failed' | 'unreachable' | 'unknown' = 'unknown';
   if (provider === 'paymob') {
-    const baseUrl = 'https://accept.paymob.com';
-    try {
-      const { default: https } = await import('node:https');
-      const reachable = await new Promise<boolean>((resolve) => {
-        const req = https.get(baseUrl, { timeout: 5000 }, (res) => {
-          res.resume();
-          resolve(res.statusCode != null);
+    const baseUrl = process.env.PAYMOB_BASE_URL || 'https://accept.paymob.com';
+    // In test environments, avoid network calls. Health endpoint should not make external requests during tests.
+    if (process.env.NODE_ENV === 'test') {
+      gatewayConnectivity = 'unknown';
+    } else {
+      try {
+        const { default: https } = await import('node:https');
+        const reachable = await new Promise<boolean>((resolve) => {
+          const req = https.get(baseUrl, { timeout: 5000 }, (res) => {
+            res.resume();
+            resolve(res.statusCode != null);
+          });
+          req.on('error', () => resolve(false));
         });
-        req.on('error', () => resolve(false));
-      });
-      gatewayConnectivity = reachable ? 'ok' : 'unreachable';
-    } catch {
-      gatewayConnectivity = 'dns_failed';
+        gatewayConnectivity = reachable ? 'ok' : 'unreachable';
+      } catch {
+        gatewayConnectivity = 'dns_failed';
+      }
     }
   }
   const gatewayConfigured = provider === 'mock'
@@ -323,14 +328,19 @@ export async function productionReadinessHandler(_request: FastifyRequest, reply
   // 7. Gateway connectivity
   let connectivity = 'unknown';
   if (provider === 'paymob') {
-    try {
-      const https = await import('node:https');
-      const reachable = await new Promise<boolean>((resolve) => {
-        const req = https.get('https://accept.paymob.com', { timeout: 5000 }, (res) => { res.resume(); resolve(res.statusCode != null); });
-        req.on('error', () => resolve(false));
-      });
-      connectivity = reachable ? 'reachable' : 'unreachable';
-    } catch { connectivity = 'dns_failed'; }
+    if (process.env.NODE_ENV === 'test') {
+      connectivity = 'unknown';
+    } else {
+      try {
+        const https = await import('node:https');
+        const baseUrl = process.env.PAYMOB_BASE_URL || 'https://accept.paymob.com';
+        const reachable = await new Promise<boolean>((resolve) => {
+          const req = https.get(baseUrl, { timeout: 5000 }, (res) => { res.resume(); resolve(res.statusCode != null); });
+          req.on('error', () => resolve(false));
+        });
+        connectivity = reachable ? 'reachable' : 'unreachable';
+      } catch { connectivity = 'dns_failed'; }
+    }
   }
   checks.gateway_connectivity = {
     status: connectivity === 'reachable' ? 'PASS' : connectivity === 'unknown' ? 'WARNING' : 'FAIL',

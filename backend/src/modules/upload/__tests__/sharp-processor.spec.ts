@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
 import { SharpProcessor } from '../infrastructure/sharp-processor.js';
+import { BRAND_IMAGE_SPECS } from '../../app-settings/domain/brand-image.js';
 
 /**
  * Regression coverage for product-image processing:
@@ -8,7 +9,12 @@ import { SharpProcessor } from '../infrastructure/sharp-processor.js';
  *   - already-optimized WebP within bounds passes through untouched;
  *   - animated GIFs pass through without flattening;
  *   - EXIF orientation is normalized into pixel data;
+ *   - transparency survives the lossless WebP path and PNG output is honoured;
+ *   - brand-image processing options produce the configured output;
  *   - invalid/corrupt inputs are rejected.
+ *
+ * The alpha/PNG assertions were added for the sharp 0.34 → 0.35 upgrade
+ * (libvips 8.18, WebP `exact`/alpha handling, PNG encoder changes).
  */
 const processor = new SharpProcessor();
 
@@ -91,6 +97,46 @@ describe('SharpProcessor (product image pipeline)', () => {
     const oriented = await makeJpeg(600, 200, { exifOrientation: 6 });
     const result = await processor.process(oriented, { maxWidth: 1600, maxHeight: 1600 });
     expect(result.height).toBeGreaterThan(result.width);
+  });
+
+  it('preserves alpha for transparent PNG input via the lossless WebP path', async () => {
+    const transparent = await sharp({
+      create: { width: 300, height: 200, channels: 4, background: { r: 10, g: 20, b: 30, alpha: 0 } },
+    }).png().toBuffer();
+
+    const result = await processor.process(transparent);
+    const outMeta = await sharp(result.buffer).metadata();
+
+    expect(result.mimeType).toBe('image/webp');
+    expect(outMeta.format).toBe('webp');
+    expect(outMeta.hasAlpha).toBe(true);
+    expect(result.hasAlpha).toBe(true);
+    expect(result.width).toBe(300);
+    expect(result.height).toBe(200);
+  });
+
+  it('emits PNG when requested for an opaque input', async () => {
+    const original = await makeJpeg(500, 400);
+    const result = await processor.process(original, { outputFormat: 'png', keepTransparency: false });
+    const outMeta = await sharp(result.buffer).metadata();
+
+    expect(result.mimeType).toBe('image/png');
+    expect(outMeta.format).toBe('png');
+    expect(result.width).toBe(500);
+    expect(result.height).toBe(400);
+    expect(result.hasAlpha).toBe(false);
+  });
+
+  it('applies the brand-image favicon spec through the same processor', async () => {
+    const source = await makeJpeg(300, 300);
+    const spec = BRAND_IMAGE_SPECS.favicon;
+    const result = await processor.process(source, spec.process);
+    const outMeta = await sharp(result.buffer).metadata();
+
+    expect(result.mimeType).toBe('image/png');
+    expect(outMeta.format).toBe('png');
+    expect(result.width).toBe(128);
+    expect(result.height).toBe(128);
   });
 
   it('rejects corrupt/invalid buffers', async () => {

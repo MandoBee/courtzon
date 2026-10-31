@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/auth';
+import { test, expect } from '../../fixtures/auth.fixture';
 import { DashboardPage } from '../../pages/DashboardPage';
 import { NotificationPage } from '../../pages/NotificationPage';
 import {
@@ -43,7 +43,7 @@ test.describe('Notification Deeplink', () => {
       bookingDate: futureDate(3),
       startTime: '10:00',
       endTime: '11:00',
-      paymentMethod: 'wallet',
+      paymentMethod: 'cash',
     });
     const bookingId = bookingRes.data?.id || bookingRes.data?.data?.id;
     expect(bookingId).toBeDefined();

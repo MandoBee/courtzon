@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 
 import { env } from '../config/env.js';
+import { resolveDbTlsPolicy } from '../../scripts/db-tls.js';
 
 let pool: mysql.Pool;
 
@@ -10,6 +11,10 @@ export function createPool(overrides?: {
   host?: string; port?: number; user?: string; password?: string; database?: string;
   connectionLimit?: number;
 }): mysql.Pool {
+  // Same database TLS policy as the migration runner (scripts/migrate.sh,
+  // backend/scripts/migrate.js): DB_TLS_MODE = disable | require | verify-ca.
+  // Throws DbTlsPolicyError — never silently connects in an implicit mode.
+  const dbTls = resolveDbTlsPolicy();
   pool = mysql.createPool({
     host: overrides?.host || env.DB_HOST,
     port: overrides?.port || Number(env.DB_PORT),
@@ -19,6 +24,7 @@ export function createPool(overrides?: {
     connectionLimit: overrides?.connectionLimit ?? 10,
     charset: 'utf8mb4',
     timezone: '+00:00',
+    ...dbTls.mysql2,
   });
   return pool;
 }

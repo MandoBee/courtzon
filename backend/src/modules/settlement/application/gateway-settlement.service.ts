@@ -252,6 +252,18 @@ export const gatewaySettlementService = {
         });
       }
 
+      // B42 — a settlement batch is single-currency. Every amount in this batch
+      // (header gross/fee/net, the clearing→bank journal and its later reversal)
+      // is denominated in ONE currency, so summing across currencies would
+      // produce a numerically balanced but economically meaningless ledger.
+      // Reject BEFORE any totals, insert or accounting posting; never convert.
+      const currencies = [...new Set(lines.map((l) => l.currency))];
+      if (currencies.length > 1) {
+        throw new ConflictError(
+          `All payment transactions in a gateway settlement must share the same currency (selected: ${currencies.join(', ')})`,
+        );
+      }
+
       const grossTotal = round2(lines.reduce((s, l) => s + l.gross, 0));
       const feeTotal = round2(lines.reduce((s, l) => s + l.fee, 0));
       const netTotal = round2(grossTotal - feeTotal);

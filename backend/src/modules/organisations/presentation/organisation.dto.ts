@@ -75,15 +75,110 @@ export const BranchFinancialDetailsSchema = z.object({
   bankId: z.number().int().positive().nullish(),
   bankBranchId: z.number().int().positive().nullish(),
   bankName: z.string().nullish(),
-  bankAccountName: z.string().nullish(),
-  bankAccountNumber: z.string().nullish(),
-  iban: z.string().nullish(),
-  swift: z.string().nullish(),
+  bankAccountName: z.string().max(200).nullish(),
+  bankAccountNumber: z.string().max(100).nullish(),
+  iban: z.string().max(50).nullish(),
+  swift: z.string().max(20).nullish(),
   billingAddress: z.string().nullish(),
-  billingEmail: z.string().email().nullish(),
+  billingEmail: z.string().email().max(255).nullish(),
   payoutSchedule: z.enum(['daily', 'weekly', 'biweekly', 'monthly']).nullish(),
   currencyId: z.number().int().positive().nullish(),
 });
+
+const MAINTENANCE_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'] as const;
+
+const MaintenanceDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format')
+  .refine((value) => {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    );
+  }, 'Use a real calendar date');
+
+const MaintenanceTimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm format');
+
+// The admin UI initialises optional inputs to '' and submits them unchanged.
+// Normalise ''/null to undefined before validation so the documented defaults
+// apply, while non-empty values remain strictly validated.
+const OptionalMaintenanceDateSchema = z.preprocess(
+  (value) => (value === '' || value === null ? undefined : value),
+  MaintenanceDateSchema.optional(),
+);
+
+const OptionalMaintenanceTimeSchema = z.preprocess(
+  (value) => (value === '' || value === null ? undefined : value),
+  MaintenanceTimeSchema.optional(),
+);
+
+export const ResourceMaintenanceSchema = z
+  .object({
+    title: z.string().optional().default(''),
+    description: z.string().optional().default(''),
+    reason: z.string().optional().default(''),
+    startDate: MaintenanceDateSchema,
+    endDate: OptionalMaintenanceDateSchema,
+    startTime: OptionalMaintenanceTimeSchema,
+    endTime: OptionalMaintenanceTimeSchema,
+    status: z.enum(MAINTENANCE_STATUSES).optional().default('scheduled'),
+  })
+  .superRefine((data, ctx) => {
+    // The database has a single free-text `reason` column (varchar(255)).
+    const mergedReason = [data.title, data.description, data.reason]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(' — ');
+
+    if (!mergedReason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'A maintenance reason is required',
+      });
+    } else if ([...mergedReason].length > 255) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'The combined maintenance reason must be 255 characters or fewer',
+      });
+    }
+
+    const endDate = data.endDate ?? data.startDate;
+    const dateFrom = `${data.startDate} ${data.startTime ?? '00:00'}:00`;
+    const dateTo = `${endDate} ${data.endTime ?? '23:59'}:00`;
+    if (dateTo < dateFrom) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endDate'],
+        message: 'Maintenance end must not be before its start',
+      });
+    }
+  })
+  .transform((data) => {
+    const endDate = data.endDate ?? data.startDate;
+    const startTime = data.startTime ?? '00:00';
+    const endTime = data.endTime ?? '23:59';
+    const reason = [data.title, data.description, data.reason]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(' — ');
+
+    return {
+      reason,
+      dateFrom: `${data.startDate} ${startTime}:00`,
+      dateTo: `${endDate} ${endTime}:00`,
+      isActive: data.status === 'scheduled' || data.status === 'in_progress' ? 1 : 0,
+      status: data.status,
+    };
+  });
+
+export type ResourceMaintenanceInput = z.infer<typeof ResourceMaintenanceSchema>;
 
 export const UpdateOrganisationSchema = CreateOrganisationSchema.partial().extend({
   isVerified: z.boolean().nullish(),

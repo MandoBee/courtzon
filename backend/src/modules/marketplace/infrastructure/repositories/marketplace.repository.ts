@@ -462,11 +462,14 @@ export const marketplaceRepository = {
     }
   },
 
-  async restoreStock(productId: number, variantId: number | undefined, quantity: number) {
-    const pool = getPool();
-    await pool.execute('UPDATE products SET quantity = quantity + ? WHERE id = ?', [quantity, productId]);
+  async restoreStock(productId: number, variantId: number | undefined, quantity: number, conn?: mysql.PoolConnection) {
+    // Pass a transaction connection when the restore must commit atomically with
+    // the order-claim UPDATE (B31): rollback then re-claims on the next attempt
+    // instead of leaving a cancelled order with un-restored inventory.
+    const db = conn ?? getPool();
+    await db.execute('UPDATE products SET quantity = quantity + ? WHERE id = ?', [quantity, productId]);
     if (variantId) {
-      await pool.execute('UPDATE product_variants SET quantity = quantity + ? WHERE id = ?', [quantity, variantId]);
+      await db.execute('UPDATE product_variants SET quantity = quantity + ? WHERE id = ?', [quantity, variantId]);
     }
   },
 
@@ -922,15 +925,37 @@ export const marketplaceRepository = {
     return rows.length > 0;
   },
 
-  async updateOrderStatus(id: number, status: string, reason?: string) {
-    const pool = getPool();
+  /**
+   * Apply an order status transition.
+   *
+   * Terminal transitions (`cancelled` / `refunded`) are **conditional and atomic**:
+   * `… WHERE id = ? AND status NOT IN ('cancelled','refunded')`. The returned
+   * boolean is the claim used by the stock-restoration paths (B31): exactly one
+   * caller can move an order into a terminal state, so exactly one caller
+   * restores its inventory. Non-terminal transitions are unaffected and always
+   * return true when the row exists.
+   */
+  async updateOrderStatus(
+    id: number,
+    status: string,
+    reason?: string,
+    conn?: mysql.PoolConnection,
+  ): Promise<boolean> {
+    const db = conn ?? getPool();
     const updates: string[] = ['status = ?'];
     const params: any[] = [status];
     if (status === 'cancelled') { updates.push('cancelled_at = NOW(), cancellation_reason = ?'); params.push(reason || null); }
     if (status === 'confirmed' || status === 'paid') { updates.push('paid_at = NOW(), payment_status = ?'); params.push('paid'); }
     if (status === 'delivered') { updates.push("payment_status = 'paid', delivered_at = NOW()"); }
     params.push(id);
-    await pool.execute(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`, params);
+    const terminalGuard = (status === 'cancelled' || status === 'refunded')
+      ? " AND status NOT IN ('cancelled', 'refunded')"
+      : '';
+    const [result] = await db.execute<mysql.ResultSetHeader>(
+      `UPDATE orders SET ${updates.join(', ')} WHERE id = ?${terminalGuard}`,
+      params,
+    );
+    return result.affectedRows > 0;
   },
 
   async updateOrderTracking(id: number, carrier: string, trackingNumber: string) {
@@ -938,9 +963,12 @@ export const marketplaceRepository = {
     await pool.execute('UPDATE orders SET shipping_carrier = ?, tracking_number = ? WHERE id = ?', [carrier, trackingNumber, id]);
   },
 
-  async createOrderStatusHistory(data: { orderId: number; fromStatus?: string; toStatus: string; changedBy?: number; changedByRole: string; note?: string }) {
-    const pool = getPool();
-    await pool.execute(
+  async createOrderStatusHistory(
+    data: { orderId: number; fromStatus?: string; toStatus: string; changedBy?: number; changedByRole: string; note?: string },
+    conn?: mysql.PoolConnection,
+  ) {
+    const db = conn ?? getPool();
+    await db.execute(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, changed_by_role, note)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [data.orderId, data.fromStatus || null, data.toStatus, data.changedBy || null, data.changedByRole, data.note || null]

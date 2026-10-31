@@ -499,8 +499,10 @@ git pull origin master
 # 2. Run pending migrations (via Coolify backend terminal)
 docker compose exec backend node scripts/migrate.js
 
-# 3. If first migration, also run seed
-docker compose exec backend node scripts/migrate.js --fresh --seed
+# 3. If first deploy, also run the seed step from the repo root against the target DB
+#    (the runner rejects --fresh --seed; --fresh is destructive and requires
+#    --confirm-destructive-fresh; the backend image does not ship scripts/seed.sh)
+./scripts/seed.sh
 
 # 4. Redeploy backend
 # In Coolify: click "Redeploy" on courtzon-backend
@@ -516,7 +518,9 @@ curl https://api.courtzon.cloud/health
 ```bash
 # After deploying code that adds new UI permissions:
 docker compose exec backend node scripts/sync-ui-registry.js
-docker compose exec backend node scripts/sync-role-permissions.mjs
+# Replace the placeholders with the confirmed container DB target:
+docker compose exec backend node scripts/sync-role-permissions.mjs \
+  --confirm-host=<DB_HOST> --confirm-port=<DB_PORT> --confirm-db=<DB_NAME>
 ```
 
 ---

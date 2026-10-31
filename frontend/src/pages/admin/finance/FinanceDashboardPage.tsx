@@ -7,31 +7,59 @@ import { apiDateRange } from '../../../utils/dateRange';
 import { formatPrice } from '../../../utils/currency';
 import { useCan } from '../../../hooks/useCan';
 
+type KPIProps = {
+  label: string;
+  value: string;
+  sub?: string;
+  onClick?: () => void;
+  color?: string;
+};
+
+// Module-scope component: declaring it inside the page recreated the component on
+// every render (react-hooks/static-components) and remounted its subtree.
+function KPI({ label, value, sub, onClick, color }: KPIProps) {
+  return (
+    <div onClick={onClick} className={`bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 space-y-1 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}>
+      <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
+      <p className={`text-2xl font-bold ${color || 'text-[var(--color-text)]'}`}>{value}</p>
+      {sub && <p className="text-xs text-[var(--color-text-muted)]">{sub}</p>}
+    </div>
+  );
+}
+
 export default function FinanceDashboardPage() {
   const navigate = useNavigate();
   const { can } = useCan();
-  if (!can('sidebar.finance-dashboard')) return null;
+  // Derived value, never an early return: hooks must run on every render.
+  const canView = can('financial.view');
   const { from, to } = apiDateRange(30);
 
   const { data: revenue, isLoading } = useQuery({
     queryKey: ['finance', 'revenue', from, to],
     queryFn: () => api.get('/admin/financial/revenue', { params: { from, to } }).then(r => r.data.data),
+    enabled: canView,
   });
 
   const { data: ledger } = useQuery({
     queryKey: ['finance', 'ledger', from, to],
     queryFn: () => api.get('/admin/financial/ledger', { params: { from, to } }).then(r => r.data.data),
+    enabled: canView,
   });
 
   const { data: walletSummary } = useQuery({
     queryKey: ['finance', 'wallet-summary'],
     queryFn: () => api.get('/admin/financial/wallet-summary').then(r => r.data.data),
+    enabled: canView,
   });
 
   const { data: settlements } = useQuery({
     queryKey: ['finance', 'settlements'],
     queryFn: () => api.get('/settlements').then(r => r.data?.data || r.data),
+    enabled: canView,
   });
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!canView) return null;
 
   if (isLoading) return <div className="space-y-6"><Skeleton width={300} height={28} /><SkeletonRow count={8} /></div>;
 
@@ -45,14 +73,6 @@ export default function FinanceDashboardPage() {
   const settlementList = Array.isArray(settlements) ? settlements : settlements?.data || [];
   const pendingSettlements = settlementList.filter((s: any) => s.settlement_status === 'pending_approval' || s.settlement_status === 'approved');
   const completedSettlements = settlementList.filter((s: any) => s.settlement_status === 'completed');
-
-  const KPI = ({ label, value, sub, onClick, color }: { label: string; value: string; sub?: string; onClick?: () => void; color?: string }) => (
-    <div onClick={onClick} className={`bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5 space-y-1 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}>
-      <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
-      <p className={`text-2xl font-bold ${color || 'text-[var(--color-text)]'}`}>{value}</p>
-      {sub && <p className="text-xs text-[var(--color-text-muted)]">{sub}</p>}
-    </div>
-  );
 
   return (
     <div className="space-y-6">

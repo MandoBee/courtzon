@@ -13,7 +13,8 @@ const RANGE_DAYS: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y'
 export default function ReportCenterPage() {
   const navigate = useNavigate();
   const { can } = useCan();
-  if (!can('sidebar.finance-reports')) return null;
+  // Derived value, never an early return: hooks must run on every render.
+  const canView = can('reports.view');
   const [tab, setTab] = useState<ReportTab>('revenue');
   const [range, setRange] = useState('30d');
 
@@ -22,26 +23,29 @@ export default function ReportCenterPage() {
   const { data: revenue } = useQuery({
     queryKey: ['finance', 'revenue', from, to],
     queryFn: () => api.get('/admin/financial/revenue', { params: { from, to } }).then(r => r.data.data),
-    enabled: tab === 'revenue',
+    enabled: canView && tab === 'revenue',
   });
 
   const { data: ledger } = useQuery({
     queryKey: ['finance', 'ledger', from, to],
     queryFn: () => api.get('/admin/financial/ledger', { params: { from, to } }).then(r => r.data.data),
-    enabled: tab === 'revenue' || tab === 'wallet',
+    enabled: canView && (tab === 'revenue' || tab === 'wallet'),
   });
 
   const { data: walletSummary } = useQuery({
     queryKey: ['finance', 'wallet-summary'],
     queryFn: () => api.get('/admin/financial/wallet-summary').then(r => r.data.data),
-    enabled: tab === 'wallet',
+    enabled: canView && tab === 'wallet',
   });
 
   const { data: settlements } = useQuery({
     queryKey: ['finance', 'settlements'],
     queryFn: () => api.get('/settlements').then(r => r.data?.data || r.data),
-    enabled: tab === 'settlements',
+    enabled: canView && tab === 'settlements',
   });
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!canView) return null;
 
   const settlementList = Array.isArray(settlements) ? settlements : [];
   const entries = Array.isArray(ledger) ? ledger : [];

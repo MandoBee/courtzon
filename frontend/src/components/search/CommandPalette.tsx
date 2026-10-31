@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchStore } from './SearchProvider';
 import api from '../../services/api';
@@ -19,7 +19,6 @@ export default function CommandPalette() {
   const { t } = useTranslation();
   const flags = useFeatureFlagsStore((s) => s.flags);
 
-  const [adminCommands, setAdminCommands] = useState<any[]>([]);
   const [searchModule, setSearchModule] = useState<any>(null);
 
   useEffect(() => {
@@ -27,10 +26,11 @@ export default function CommandPalette() {
     import('./adminSearch').then(setSearchModule).catch(() => {});
   }, [isOpen, searchModule]);
 
-  useEffect(() => {
-    if (!searchModule) return;
-    setAdminCommands(searchModule.buildAdminCommands(t, can, (key: string) => !!flags[key]));
-  }, [searchModule, t, can, flags]);
+  // Derived during render instead of copied into state from an effect.
+  const adminCommands = useMemo(
+    () => (searchModule ? searchModule.buildAdminCommands(t, can, (key: string) => !!flags[key]) : []),
+    [searchModule, t, can, flags],
+  );
 
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 50);

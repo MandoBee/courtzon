@@ -24,17 +24,21 @@ const DIRECTION_LABEL: Record<string, string> = {
 export default function UnifiedSettlementListPage() {
   const navigate = useNavigate();
   const { can } = useCan();
+  // Derived value, never an early return: hooks must run on every render.
+  const canView = can('settlements.view');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-
-  if (!can('settlements.view')) return null;
 
   const { data, isLoading } = useQuery({
     queryKey: ['unified-settlements', page, statusFilter],
     queryFn: () =>
       api.get('/unified-settlements', { params: { page, limit: 20, status: statusFilter || undefined } })
         .then((r) => r.data),
+    enabled: canView,
   });
+
+  // Permission gate AFTER every hook (see P3-03 hook-order remediation).
+  if (!canView) return null;
 
   return (
     <div className="p-6 space-y-4">

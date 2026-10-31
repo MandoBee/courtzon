@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { Button, Modal, Spinner, EntityImage } from '../../../components/ui';
@@ -43,18 +43,10 @@ export default function ProductCategoriesPage() {
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
 
-  // DEBUG: instance tracking
-  const instanceId = useRef('PC-' + Math.random().toString(36).slice(2, 8));
-  const renderCount = useRef(0);
-  renderCount.current++;
   const perms = user?.permissions ?? [];
   const hasWildcard = perms.includes('*');
   const hasRequiredPermission = perms.includes('sidebar.product-categories');
   const enabled = hasWildcard || hasRequiredPermission;
-  console.warn('[ADMIN-QUERY-STATE]', { page: 'ProductCategoriesPage', instance: instanceId.current, renderN: renderCount.current, userPresent: !!user, permissions: perms, permsLen: perms.length, hasWildcard, hasRequiredPermission, enabled });
-  useEffect(() => {
-    return () => { console.warn('[ADMIN-QUERY-UNMOUNT]', { page: 'ProductCategoriesPage', instance: instanceId.current }); };
-  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ProductCategory | null>(null);
@@ -76,7 +68,6 @@ export default function ProductCategoriesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'product-categories'],
     queryFn: () => {
-      console.warn('[ADMIN-QUERY-FIRED]', { page: 'ProductCategoriesPage', instance: instanceId.current });
       return api.get('/admin/product-categories').then((r: any) => r.data.data);
     },
     enabled,

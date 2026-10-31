@@ -99,19 +99,15 @@ mysql -u root -p test_db < database/migrations/043_my_migration.sql
 If the migration file was modified after being applied, the hash won't match. Check status:
 
 ```bash
-./scripts/migrate.sh --status
+node backend/scripts/migrate.js --status
 ```
 
-To re-apply a failed migration:
+Failed or rolled-back migrations require explicit operator review; the runner does not
+retry them automatically.
 
 ```bash
-# 1. Roll it back first
-./scripts/migrate.sh --rollback 042_broken_migration.sql
-
-# 2. Fix the migration file
-
-# 3. Re-apply
-./scripts/migrate.sh
+# Roll back a migration (records a down event; does not delete up history)
+node backend/scripts/migrate.js --rollback 042_broken_migration.sql
 ```
 
 **3. Permission denied**

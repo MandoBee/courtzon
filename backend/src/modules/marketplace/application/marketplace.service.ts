@@ -637,14 +637,24 @@ export const marketplaceService = {
     // ── Decrement stock atomically (prevents overselling) ──
     // Phase 2 Step 5: insertLedgerEntry (marketplace_ledger_entries) removed —
     // stock deduction is tracked by products.quantity + order_items snapshot.
+    const decrementedItems: Array<{ productId: number; variantId?: number; quantity: number }> = [];
     try {
       for (const item of cartItems) {
         await repo.decrementStock(item.product_id, item.variant_id || undefined, item.quantity);
+        decrementedItems.push({
+          productId: item.product_id,
+          variantId: item.variant_id || undefined,
+          quantity: item.quantity,
+        });
       }
     } catch (stockErr: any) {
-      // Atomic decrement failed — restore stock for ALL orders in this checkout group, cancel all
+      // The conditional decrement failed part-way (concurrent sale). Restore ONLY the
+      // items whose stock was actually decremented, in reverse order — restoring the
+      // whole order would inflate inventory for items that never left stock.
+      for (const d of [...decrementedItems].reverse()) {
+        await repo.restoreStock(d.productId, d.variantId, d.quantity);
+      }
       for (const oid of createdOrderIds) {
-        await this._restoreOrderStock(oid, stockErr.message || 'Insufficient stock');
         await repo.updateOrderStatus(oid, 'cancelled', 'Insufficient stock');
         await repo.createOrderStatusHistory({
           orderId: oid, toStatus: 'cancelled', changedBy: userId, changedByRole: 'system',
@@ -707,10 +717,13 @@ export const marketplaceService = {
     } else {
       // ── Card / Online payment via gateway ──
       // Clear cart immediately after order creation — order is now the source of truth.
-      // If gateway fails, restore cart AND stock.
+      // A failure BEFORE a payment session exists restores cart + stock ONCE and cancels
+      // the orders. A failure AFTER the session exists must NOT restore stock (the order
+      // stays payable and the abandoned-order worker owns the terminal transition).
       const cartSnapshot = await repo.getCartItems(userId);
       await repo.clearCart(userId);
 
+      let paymentSessionCreated = false;
       try {
         const result = await paymentService.charge(userId, {
           referenceType: 'order',
@@ -723,8 +736,6 @@ export const marketplaceService = {
         });
 
         if (!result.success) {
-          await repo.restoreCart(userId, cartSnapshot);
-          await this._restoreOrdersStock(orderIds, 'Gateway charge failed — stock restored');
           const errMsg = (result as any).errorMessage || 'Payment gateway rejected the transaction';
           const rawResp = (result as any).rawResponse ? JSON.stringify((result as any).rawResponse).substring(0, 300) : '';
           log.error({ primaryOrderId, errorMessage: errMsg, rawResponse: rawResp }, 'Gateway charge failed');
@@ -734,17 +745,24 @@ export const marketplaceService = {
         const paymentUrl = 'paymentUrl' in result ? result.paymentUrl : undefined;
         const clientSecret = 'clientSecret' in result ? result.clientSecret : undefined;
         if (!paymentUrl && !clientSecret) {
-          await repo.restoreCart(userId, cartSnapshot);
-          await this._restoreOrdersStock(orderIds, 'Gateway returned no payment URL — stock restored');
           throw new ConflictError('Payment gateway did not return a checkout URL or client secret');
         }
+        paymentSessionCreated = true;
 
         const paymentId = 'paymentId' in result ? result.paymentId : undefined;
         const order = await this.getOrder(primaryOrderId);
         return { ...order, paymentUrl, clientSecret, paymentId, checkoutGroupId, orderIds };
       } catch (err) {
-        await repo.restoreCart(userId, cartSnapshot);
-        await this._restoreOrdersStock(orderIds, 'Gateway charge exception — stock restored');
+        if (!paymentSessionCreated) {
+          // Restore the cart and stock exactly once, then cancel the orders so the
+          // abandoned-order worker can never restore the same inventory again.
+          await repo.restoreCart(userId, cartSnapshot);
+          await this._cancelOrdersAfterFailedCheckout(orderIds, 'Payment failed — order cancelled');
+        } else {
+          // The payment session is live: preserving stock/order is the safe choice;
+          // the abandoned-order worker will cancel + restore if payment never lands.
+          log.error({ err, orderIds }, 'Checkout: error after payment session created — order left pending');
+        }
         throw err;
       }
     }
@@ -999,9 +1017,12 @@ export const marketplaceService = {
       if (orgIds.length) { rows = await repo.findOrderById(orderId, undefined, orgIds); viewedAsSeller = true; sellerOrgIds = orgIds; }
     }
 
-    // 3. Unfiltered fallback (race condition: order was just created and buyer_id join not yet visible)
+    // 3. Buyer-only fallback: an order created moments ago can be missed by the
+    //    buyer-join read. It must NEVER be returned to an unrelated user
+    //    (P4-02: an unfiltered fallback here exposed any order to any caller).
     if (!rows.length) {
-      rows = await repo.findOrderById(orderId);
+      const candidate = await repo.findOrderById(orderId);
+      if (candidate.length && Number(candidate[0].buyer_id) === Number(userId)) rows = candidate;
     }
     if (!rows.length) throw new NotFoundError('Order');
 
@@ -1120,7 +1141,14 @@ export const marketplaceService = {
       await this._processOrderRefund(order, orderId, refundReason);
     }
 
-    await repo.updateOrderStatus(orderId, data.status, data.note);
+    // Terminal transitions are claimed atomically: a concurrent duplicate
+    // cancel/refund loses the claim and must not repeat refund, reversal,
+    // stock restoration, sibling cascading or status history.
+    const claimed = await repo.updateOrderStatus(orderId, data.status, data.note);
+    if (isRefundOrCancel && claimed === false) {
+      log.info({ orderId, status: data.status }, 'updateOrderStatus: order already terminal — duplicate transition ignored');
+      return this.getOrder(orderId);
+    }
     if (data.trackingNumber || data.shippingCarrier) {
       await repo.updateOrderTracking(orderId, data.shippingCarrier || '', data.trackingNumber || '');
     }
@@ -1157,7 +1185,9 @@ export const marketplaceService = {
           try {
             await this._validateStatusTransition(siblingOrder.status, data.status, userRole);
             await this._processOrderRefund(siblingOrder, siblingId, data.note || `Checkout group ${data.status}`);
-            await repo.updateOrderStatus(siblingId, data.status, data.note || `Checkout group ${data.status}`);
+            const siblingClaimed = await repo.updateOrderStatus(siblingId, data.status, data.note || `Checkout group ${data.status}`);
+            // Another concurrent transition already cancelled this sibling — do not restore twice.
+            if (siblingClaimed === false) continue;
             // Restore stock for sibling
             for (const row of siblingRows as any[]) {
               if (!row.product_id) continue;
@@ -1244,29 +1274,67 @@ export const marketplaceService = {
     }
   },
 
-  // Restore stock for order items (used by immediate gateway failure and payment:failed-event listener)
-  async _restoreOrderStock(orderId: number, reason: string) {
-    // Safety: never restore stock if payment was already made
-    // (prevents race with webhook arriving between query and per-order processing)
-    const hasPaid = await repo.orderHasPaidPayment(orderId);
-    if (hasPaid) {
-      log.warn({ orderId, reason }, '_restoreOrderStock: skipped — order has paid payment');
-      return;
-    }
+  // ── Atomic cancel + stock restoration (B31) ──────────────────────────────
+  // The order's terminal status UPDATE is the claim: it is conditional
+  // (`… WHERE status NOT IN ('cancelled','refunded')`) and runs inside ONE
+  // transaction with the inventory restore. Two concurrent failure events (or
+  // overlapping cleanup workers) therefore restore exactly once: the loser's
+  // claim affects 0 rows and it skips the restore. A crash rolls both back, so
+  // the order stays non-terminal and a later retry can still restore.
+  //
+  // Lock order is deliberate to avoid deadlocks: every claimed order row is
+  // locked first, in ascending id order, and only then are product rows updated
+  // (ascending order id, item order). Two overlapping checkout groups acquire
+  // the same order locks in the same sequence, so no cycle is possible.
+  async _cancelOrdersWithStockRestore(orderIds: number[], reason: string): Promise<number[]> {
+    const ids = [...new Set(orderIds.filter((id) => Number.isFinite(id) && id > 0))]
+      .sort((a, b) => a - b);
+    if (!ids.length) return [];
 
-    const orderRows = await repo.findOrderById(orderId);
-    if (!orderRows?.length) return;
-    for (const row of orderRows as any[]) {
-      if (!row.product_id) continue;
-      await repo.restoreStock(row.product_id, row.variant_id, row.quantity);
-    }
+    return withTransaction(async (conn) => {
+      // Phase 0 — safety: an order with a paid payment is never cancelled here.
+      const eligible: number[] = [];
+      for (const id of ids) {
+        if (await repo.orderHasPaidPayment(id)) {
+          log.warn({ orderId: id, reason }, '_cancelOrdersWithStockRestore: skipped — order has paid payment');
+          continue;
+        }
+        eligible.push(id);
+      }
+
+      // Phase 1 — claim every order before touching inventory (conditional UPDATE).
+      const claimed: number[] = [];
+      for (const id of eligible) {
+        if (await repo.updateOrderStatus(id, 'cancelled', reason, conn)) claimed.push(id);
+      }
+
+      // Phase 2 — restore stock only for the orders this call claimed.
+      for (const id of claimed) {
+        const rows = await repo.findOrderById(id);
+        for (const row of rows ?? []) {
+          if (!row.product_id) continue;
+          await repo.restoreStock(row.product_id, row.variant_id, row.quantity, conn);
+        }
+      }
+
+      // Phase 3 — status history for the orders actually transitioned.
+      for (const id of claimed) {
+        await repo.createOrderStatusHistory({
+          orderId: id, toStatus: 'cancelled', changedBy: 0,
+          changedByRole: 'system', note: reason,
+        }, conn);
+      }
+
+      return claimed;
+    });
   },
 
-  // Restore stock for multiple orders at once (checkout group rollback)
-  async _restoreOrdersStock(orderIds: number[], reason: string) {
-    for (const oid of orderIds) {
-      await this._restoreOrderStock(oid, reason);
-    }
+  /**
+   * A checkout failed before a payment session existed: claim + cancel every
+   * grouped order and restore its inventory exactly once (single transaction).
+   */
+  async _cancelOrdersAfterFailedCheckout(orderIds: number[], reason: string) {
+    await this._cancelOrdersWithStockRestore(orderIds, reason);
   },
 
   async handlePaymentFailed(data: { paymentId: number; referenceType: string; referenceId: number; amount: number; reason?: string; metadata?: Record<string, any> }) {
@@ -1276,25 +1344,33 @@ export const marketplaceService = {
 
     // Restore stock for all orders in the checkout group
     const orderRows = await repo.findOrderById(data.referenceId);
+    const currentStatus = orderRows?.[0]?.status;
+    if (currentStatus === 'cancelled' || currentStatus === 'refunded') {
+      // Idempotency: a retried/duplicate failure event must not restore stock again.
+      log.info({ orderId: data.referenceId, status: currentStatus }, 'handlePaymentFailed: order already terminal — ignored');
+      return;
+    }
     const userId = data.metadata?.userId || (orderRows?.length ? orderRows[0].buyer_id : 0) || 0;
     const checkoutGroupId = orderRows?.length ? (orderRows[0] as any).checkout_group_id : null;
 
-    if (checkoutGroupId) {
-      const allOrderIds = await repo.findOrderIdsByCheckoutGroup(checkoutGroupId);
-      await this._restoreOrdersStock(allOrderIds, data.reason || 'Payment failed');
-      for (const oid of allOrderIds) {
-        await repo.updateOrderStatus(oid, 'cancelled', data.reason || 'Payment failed');
-      }
-    } else {
-      await this._restoreOrderStock(data.referenceId, data.reason || 'Payment failed');
-      await repo.updateOrderStatus(data.referenceId, 'cancelled', data.reason || 'Payment failed');
+    const reason = data.reason || 'Payment failed';
+    const orderIds = checkoutGroupId
+      ? await repo.findOrderIdsByCheckoutGroup(checkoutGroupId)
+      : [data.referenceId];
+
+    // Atomic claim + restore inside one transaction: a duplicate/concurrent
+    // delivery claims nothing and restores nothing (B31).
+    const claimed = await this._cancelOrdersWithStockRestore(orderIds, reason);
+    if (!claimed.length) {
+      log.info({ orderId: data.referenceId }, 'handlePaymentFailed: no order claimed — duplicate delivery ignored');
+      return;
     }
 
     // Notify
     eventBusV2.emit('marketplace:order-cancelled', {
       orderId: data.referenceId,
       userId,
-      reason: data.reason || 'Payment failed',
+      reason,
     });
   },
 
@@ -2235,12 +2311,13 @@ export const marketplaceService = {
           continue;
         }
 
-        await this._restoreOrderStock(order.id, 'Abandoned order — stock restored');
-        await repo.updateOrderStatus(order.id, 'cancelled', 'Payment not completed within timeout');
-        await repo.createOrderStatusHistory({
-          orderId: order.id, toStatus: 'cancelled', changedBy: 0, changedByRole: 'system',
-          note: `Payment not completed within ${timeoutMinutes} minutes`,
-        });
+        const reason = `Payment not completed within ${timeoutMinutes} minutes`;
+        // Atomic claim + restore (B31): overlapping cleanup runs restore once.
+        const claimedIds = await this._cancelOrdersWithStockRestore([order.id], reason);
+        if (!claimedIds.length) {
+          log.info({ orderId: order.id }, 'cancelAbandonedOrders — already cancelled by another run');
+          continue;
+        }
         eventBusV2.emit('marketplace:order-cancelled', {
           orderId: order.id,
           userId: order.buyer_id || 0,

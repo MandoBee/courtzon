@@ -155,23 +155,25 @@ async function clickContinueAndAwait(stepNo: number) {
   await screen.findByText(`Step ${stepNo} of 8`);
 }
 
-/** Fill a full valid walk to the given step index (0-based). */
+/** Fill a full valid walk to the given step index (0-based), without overshooting it. */
 async function walkTo(stepIndex: number) {
   fireEvent.change(fieldInput('tournaments.create.name'), { target: { value: 'UAT Wizard Cup' } });
-  await clickContinueAndAwait(2); // Format
-  await clickSingleElimination();
-  await clickContinueAndAwait(3); // Participants
-  fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
-  await clickContinueAndAwait(4); // Schedule
-  fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
-  await clickContinueAndAwait(5); // Rules
-  await clickContinueAndAwait(6); // Payments
-  await clickContinueAndAwait(7); // Prizes
-  await clickContinueAndAwait(8); // Review
-  for (let i = 7; i > stepIndex; i--) {
-    fireEvent.click(backBtn());
-    await screen.findByText(`Step ${i} of 8`);
+  if (stepIndex >= 1) {
+    await clickContinueAndAwait(2); // Format
+    await clickSingleElimination();
   }
+  if (stepIndex >= 2) {
+    await clickContinueAndAwait(3); // Participants
+    fireEvent.change(fieldInput('tournaments.create.max_players'), { target: { value: '8' } });
+  }
+  if (stepIndex >= 3) {
+    await clickContinueAndAwait(4); // Schedule
+    fireEvent.change(fieldInput('tournaments.create.start_date'), { target: { value: '2026-10-01' } });
+  }
+  if (stepIndex >= 4) await clickContinueAndAwait(5); // Rules
+  if (stepIndex >= 5) await clickContinueAndAwait(6); // Payments
+  if (stepIndex >= 6) await clickContinueAndAwait(7); // Prizes
+  if (stepIndex >= 7) await clickContinueAndAwait(8); // Review
 }
 
 beforeEach(() => {
