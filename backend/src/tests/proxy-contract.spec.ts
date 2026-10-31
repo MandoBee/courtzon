@@ -54,8 +54,11 @@ function extractActivePrefixes(): string[] {
     }
     for (const e of entries) {
       const p = resolve(dir, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (/\.(ts|tsx)$/.test(e.name)) {
+      if (e.isDirectory()) {
+        // Tests and mocks make mock HTTP calls (e.g. `/protected`) that are not
+        // real API prefixes, so they must never demand proxy coverage.
+        if (e.name !== '__tests__' && e.name !== '__mocks__') walk(p);
+      } else if (/\.(ts|tsx)$/.test(e.name) && !/\.(test|spec)\.tsx?$/.test(e.name)) {
         const src = readFileSync(p, 'utf8');
         const callRe = /api\.(get|post|put|patch|delete)\(\s*['"`](\/[A-Za-z0-9_-]+)/g;
         const authApiRe = /authApi\.\w+\(\s*['"`](\/[A-Za-z0-9_-]+)/g;

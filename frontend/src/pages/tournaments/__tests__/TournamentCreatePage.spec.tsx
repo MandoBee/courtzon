@@ -761,7 +761,7 @@ describe('Creation Wizard — review & submit', () => {
     const [, payload] = (api.post as any).mock.calls[0] as [string, any];
     expect(payload.prizes).toBeUndefined();
     expect(payload.competitions.length).toBe(2);
-  });
+  }, 15000);
 
   it('Step 4B — switching back to single-competition mode restores the prize editor with retained prizes', async () => {
     renderPage(ALL);

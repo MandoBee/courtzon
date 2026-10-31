@@ -210,11 +210,14 @@ describe('migration guard — enforced in BOTH execution paths', () => {
   it('scripts/migrate.sh sources the guard and gates the loop with it', () => {
     const ms = readFileSync(join(projectRoot, 'scripts', 'migrate.sh'), 'utf8');
     expect(ms).toContain('migration-guard.sh');
-    expect(ms).toContain('courtzon_migration_should_run');
-    const gateIdx = ms.indexOf('courtzon_migration_should_run');
-    // lastIndexOf targets the apply_migrations INSERT (apply_baseline has an
-    // earlier identical literal).
-    const insertIdx = ms.lastIndexOf('INSERT IGNORE INTO $TRACKING_TABLE');
+    // History is written through the single record_history() helper (no inline
+    // INSERT in the loop); the guard decision must come first so a skipped file
+    // is never recorded.
+    const applyIdx = ms.indexOf('apply_migrations()');
+    expect(applyIdx).toBeGreaterThan(-1);
+    const applySection = ms.slice(applyIdx);
+    const gateIdx = applySection.indexOf('courtzon_migration_should_run');
+    const insertIdx = applySection.indexOf("record_history \"$filename\" 'up'");
     expect(gateIdx).toBeGreaterThan(-1);
     expect(insertIdx).toBeGreaterThan(gateIdx);
   });

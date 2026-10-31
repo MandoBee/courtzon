@@ -84,10 +84,12 @@ describe('G11.22 P2 — eligibility facts (decision #2: overdue never deactivate
   });
 
   it('derives the GRACE window without changing status; eligible stays true', () => {
+    // Dates are derived from today so the fixture never decays into the past.
+    const today = new Date().toISOString().slice(0, 10);
     const facts = deriveEligibility({
       ...base,
-      endDate: '2026-10-01', // in the past
-      graceUntil: '2026-10-10', // still open
+      endDate: addDaysISO(today, -5), // ended 5 days ago
+      graceUntil: addDaysISO(today, 5), // grace window still open
     });
     expect(facts.inGrace).toBe(true);
     expect(facts.eligible).toBe(true);

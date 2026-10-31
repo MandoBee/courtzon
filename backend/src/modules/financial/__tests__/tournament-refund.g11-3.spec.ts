@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { EVENT_CONCEPTS, getEventConcepts, validateCompleteMapping } from '../application/accounting-concepts.js';
 import { CONCEPT_ACCOUNT_CODE_DEFAULTS, ORG_BOOK_EVENTS } from '../application/accounting-engine.service.js';
+import { permissionMatchesTemplate } from '../../rbac/application/role-permission-templates.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
@@ -199,11 +200,15 @@ describe('G11.3 — request table migration + RBAC', () => {
     const registry = repo('frontend/src/permissions/registry.ts');
     expect(registry).toContain("permissionKey: 'tournaments.registration.refund-request'");
     expect(registry).toContain("permissionKey: 'financial.reconcile'");
+    // G11.8 consolidated the player tournament verbs into one pattern; assert
+    // the shipped behaviour instead of the literal shape of that pattern.
+    expect(permissionMatchesTemplate('player', 'tournaments.registration.refund-request')).toBe(true);
     const templates = repo('backend/scripts/role-permission-templates.mjs');
-    expect(templates).toContain('/^tournaments\\.registration\\.refund-request$/');
+    expect(templates).toContain('refund-request');
     const routes = be('src/modules/tournaments/presentation/org-tournament.routes.ts');
     expect(routes).toContain("requirePermission(['financial.reconcile'])");
     // Players must never hold financial.reconcile (approval authority).
+    expect(permissionMatchesTemplate('player', 'financial.reconcile')).toBe(false);
     const playerBlock = templates.slice(templates.indexOf('const PLAYER_PATTERNS'), templates.indexOf('const PLAYER_EXPLICIT_KEYS'));
     expect(playerBlock).not.toContain('financial.reconcile');
   });

@@ -29,19 +29,25 @@ function padelRow(overrides: Row): Row {
   };
 }
 
-/** The two live records from the incident report. */
+/** The Padel Edge history records, relative to today so they never decay. */
+function isoOffset(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 const OLD_PERIOD: Row = padelRow({
   id: 20,
   subscription_status: 'expired',
-  start_date: '2026-07-17',
-  end_date: '2026-08-17',
+  start_date: isoOffset(-62),
+  end_date: isoOffset(-32),
 });
 
 const RENEWED_PERIOD: Row = padelRow({
   id: 21,
   subscription_status: 'active',
-  start_date: '2026-08-18',
-  end_date: '2026-09-18',
+  start_date: isoOffset(-31),
+  end_date: isoOffset(31),
 });
 
 /** Mirrors frontend/utils/subscription-status.ts label mapping. */
@@ -97,7 +103,7 @@ describe('View Assignments uses the canonical status derivation', () => {
   });
 
   it('a stored-active row whose end_date passed is Expired in BOTH listing and resolver (no drift)', async () => {
-    const staleActive = padelRow({ id: 30, subscription_status: 'active', start_date: '2026-07-01', end_date: '2026-08-01' });
+    const staleActive = padelRow({ id: 30, subscription_status: 'active', start_date: isoOffset(-60), end_date: isoOffset(-30) });
     scriptedRows.push(staleActive);
     const rows = await getAllOrganisationSubscriptions();
     expect(rows[0].effective_status).toBe('expired');

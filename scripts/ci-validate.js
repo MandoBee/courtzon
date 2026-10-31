@@ -79,8 +79,10 @@ for (const key of criticalKeys) {
 // ─── 5. Verify eventBus import in booking.service ───
 console.log('\n5. Booking Service Event Bus');
 const bookingSvc = readFileSync(join(root, 'backend', 'src', 'modules', 'booking', 'application', 'booking.service.ts'), 'utf-8');
-if (bookingSvc.includes("import { eventBus }")) pass('eventBus imported');
-else fail('eventBus not imported in booking.service.ts');
+// The canonical bus is eventBusV2 (the legacy eventBus import is banned by
+// rule 11), so accept that as the emitted-events signal.
+if (bookingSvc.includes('eventBusV2')) pass('eventBusV2 imported');
+else fail('eventBusV2 not imported in booking.service.ts');
 
 // ─── 6. Verify DB migrations exist ───
 console.log('\n6. Database Migrations');

@@ -19,6 +19,13 @@ import { getCurrentSubscription, clearSubscriptionCache } from '../application/c
 
 type Row = Record<string, any>;
 
+/** ISO date offset from today (UTC) — fixtures must never decay with time. */
+function isoOffset(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function makeSubRow(overrides: Row = {}): Row {
   return {
     id: 2,
@@ -26,8 +33,8 @@ function makeSubRow(overrides: Row = {}): Row {
     plan_id: 7,
     billing_cycle: 'monthly',
     subscription_status: 'active',
-    start_date: '2026-08-18',
-    end_date: '2026-09-18',
+    start_date: isoOffset(-15),
+    end_date: isoOffset(15),
     auto_renew: 0,
     plan_snapshot: JSON.stringify({ planName: 'Promo Club' }),
     ...overrides,
@@ -53,7 +60,7 @@ describe('CurrentSubscriptionService — canonical resolution (Issue 1)', () => 
     // Expired history first (newest created_at would pick it if un-gated).
     scripted.push((sql) => {
       if (sql.includes("IN ('active', 'pending', 'suspended')") && sql.includes('organisation_id = ?')) {
-        return [makeSubRow({ id: 2, subscription_status: 'active', start_date: '2026-08-18', end_date: '2026-09-18' })];
+        return [makeSubRow({ id: 2, subscription_status: 'active', start_date: isoOffset(-15), end_date: isoOffset(15) })];
       }
       return null;
     });
@@ -77,12 +84,12 @@ describe('CurrentSubscriptionService — canonical resolution (Issue 1)', () => 
     const futureRenewal = makeSubRow({
       id: 9,
       subscription_status: 'pending',
-      start_date: '2026-09-19',
-      end_date: '2026-10-19',
+      start_date: isoOffset(20),
+      end_date: isoOffset(50),
       plan_snapshot: JSON.stringify({ planName: 'Promo Club' }),
     });
     scriptIncludeInactive(
-      makeSubRow({ id: 8, subscription_status: 'active', start_date: '2026-08-18', end_date: '2026-09-18' }),
+      makeSubRow({ id: 8, subscription_status: 'active', start_date: isoOffset(-15), end_date: isoOffset(15) }),
       futureRenewal,
     );
     const sub = await getCurrentSubscription(6, undefined, { includeInactive: true });
@@ -100,7 +107,7 @@ describe('CurrentSubscriptionService — canonical resolution (Issue 1)', () => 
   });
 
   it('includeInactive surfaces an already-expired latest period as expired — never as active', async () => {
-    const expired = makeSubRow({ id: 5, subscription_status: 'expired', start_date: '2026-07-17', end_date: '2026-08-17' });
+    const expired = makeSubRow({ id: 5, subscription_status: 'expired', start_date: isoOffset(-60), end_date: isoOffset(-30) });
     scriptIncludeInactive(null, expired);
     const sub = await getCurrentSubscription(6, undefined, { includeInactive: true });
     expect(sub.effectiveStatus).toBe('expired');

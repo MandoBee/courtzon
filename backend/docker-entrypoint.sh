@@ -94,7 +94,7 @@ if [ -z "$_TABLE_COUNT" ] || [ "$_TABLE_COUNT" = "0" ]; then
       fname=$(basename "$f")
       if courtzon_migration_should_run "$f"; then
         $_MYSQL "$DB_NAME" -e \
-          "INSERT INTO migration_history (filename, direction, hash, hash_kind) VALUES ('$fname', 'up', SHA2('$fname', 256), 'legacy_filename_sha256')"
+          "INSERT IGNORE INTO migration_history (filename, direction, hash, hash_kind) VALUES ('$fname', 'up', SHA2('$fname', 256), 'legacy_filename_sha256')"
       fi
     fi
   done
@@ -108,9 +108,9 @@ else
   node /app/scripts/migrate.js
   echo "Migrations complete."
 
-  # Auto-sync role permissions from canonical templates on every startup.
-  # Idempotent — grants missing and removes stale assignments so every
-  # production role always matches its official permission template.
+  # Sync role permissions from the canonical templates on every startup.
+  # Add-only (no --prune): grants missing assignments and never revokes an
+  # existing one, so a restart cannot strip permissions from a live role.
   # The deployment environment declares its target explicitly; the sync script
   # fails closed without all three confirmation flags.
   echo "Syncing role permissions from templates..."
