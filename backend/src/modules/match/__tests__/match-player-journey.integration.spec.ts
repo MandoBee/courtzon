@@ -147,7 +147,7 @@ describe('Match player journey (K1/K2/K4): invitation → join → start → res
     expect(applied.status).toBe('submitted');
 
     // ── step 4: host approves → joiner becomes participant AND invitation expires atomically ──
-    await joinRequestService.approve(applied.requestId!, host);
+    await joinRequestService.approve(applied.requestId!, host, matchId);
     const [invRows] = await pool.execute<any[]>(
       'SELECT status FROM invitations WHERE match_id = ? AND user_id = ?', [matchId, joiner],
     );

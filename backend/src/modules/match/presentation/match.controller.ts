@@ -439,7 +439,7 @@ export async function approveApplicantHandler(request: FastifyRequest, reply: Fa
   const matchId = await resolveMatchId(id);
   await verifyCreator(matchId, userId);
 
-  await joinRequestService.approve(requestId, userId);
+  await joinRequestService.approve(requestId, userId, matchId);
   reply.send({ success: true });
 }
 
@@ -450,7 +450,7 @@ export async function rejectApplicantHandler(request: FastifyRequest, reply: Fas
   const matchId = await resolveMatchId(id);
   await verifyCreator(matchId, userId);
 
-  await joinRequestService.reject(requestId, userId, body.reason);
+  await joinRequestService.reject(requestId, userId, matchId, body.reason);
   reply.send({ success: true });
 }
 

@@ -71,7 +71,7 @@ describe('JoinRequestService capacity guard', () => {
       () => [{ cnt: 2 }],
     ];
 
-    await expect(joinRequestService.approve(7, 55)).rejects.toMatchObject({
+    await expect(joinRequestService.approve(7, 55, 1)).rejects.toMatchObject({
       statusCode: 409,
       errorCode: 'MATCH_FULL',
     });
@@ -94,7 +94,7 @@ describe('JoinRequestService capacity guard', () => {
       () => [],
     ];
 
-    await joinRequestService.approve(7, 55);
+    await joinRequestService.approve(7, 55, 1);
 
     const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
     expect(sql.some((s: string) => s.includes('INSERT INTO match_participants'))).toBe(true);
@@ -114,7 +114,7 @@ describe('JoinRequestService capacity guard', () => {
       () => [{ cnt: 2 }],
     ];
 
-    await joinRequestService.approve(7, 55);
+    await joinRequestService.approve(7, 55, 1);
 
     const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
     expect(sql.some((s: string) => s.includes("status = 'full'"))).toBe(false);
@@ -134,7 +134,7 @@ describe('JoinRequestService capacity guard', () => {
       () => [{ cnt: 2 }],
     ];
 
-    await joinRequestService.approve(7, 55);
+    await joinRequestService.approve(7, 55, 1);
 
     const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
     const updateInvitations = sql.find((s: string) => String(s).includes('UPDATE invitations'));
@@ -155,7 +155,7 @@ describe('JoinRequestService capacity guard', () => {
     respondQueue = [() => []];
     // Empty join_requests rowset after the guard's first query would be a data
     // fault; ensure we still throw REQUEST_NOT_FOUND cleanly for unknown rows.
-    await expect(joinRequestService.approve(999, 55)).rejects.toBeInstanceOf(AppError);
+    await expect(joinRequestService.approve(999, 55, 1)).rejects.toBeInstanceOf(AppError);
   });
 
   it('assigns an authoritative side for a joiner when the Match has a format', async () => {
@@ -174,7 +174,7 @@ describe('JoinRequestService capacity guard', () => {
       () => [{ cnt: 2 }],
     ];
 
-    await joinRequestService.approve(7, 55);
+    await joinRequestService.approve(7, 55, 1);
 
     const calls = (pool.execute as any).mock.calls.map((c: any[]) => ({ sql: String(c[0]), params: c[1] }));
     const insert = calls.find((c: any) => c.sql.includes('INSERT INTO match_participants'));
@@ -203,7 +203,7 @@ describe('Group 3 — requested side at approval', () => {
       () => [{ cnt: 2 }],
     ];
 
-    await joinRequestService.approve(7, 55);
+    await joinRequestService.approve(7, 55, 1);
 
     const calls = (pool.execute as any).mock.calls.map((c: any[]) => ({ sql: String(c[0]), params: c[1] }));
     const insert = calls.find((c: any) => c.sql.includes('INSERT INTO match_participants'));
@@ -228,7 +228,7 @@ describe('Group 3 — requested side at approval', () => {
       () => [{ cnt: 3 }],
     ];
 
-    await joinRequestService.approve(7, 55);
+    await joinRequestService.approve(7, 55, 1);
 
     const calls = (pool.execute as any).mock.calls.map((c: any[]) => ({ sql: String(c[0]), params: c[1] }));
     const insert = calls.find((c: any) => c.sql.includes('INSERT INTO match_participants'));
@@ -291,5 +291,48 @@ describe('Group 3 — changeSide (self side-change)', () => {
     repo.findById.mockResolvedValue(match);
     respondQueue = [];
     await expect(joinRequestService.changeSide(1, 1, 'away')).rejects.toMatchObject({ errorCode: 'MATCH_NOT_EDITABLE' });
+  });
+
+  // ── P1-01b — cross-match request IDOR guard ──────────────────────────────
+  it('refuses to approve a request that belongs to a DIFFERENT match', async () => {
+    respondQueue = [
+      () => [{ match_id: 2, user_id: 100, status: 'submitted' }],
+    ];
+
+    await expect(joinRequestService.approve(7, 55, 1)).rejects.toMatchObject({
+      statusCode: 404,
+      errorCode: 'REQUEST_NOT_FOUND',
+    });
+
+    const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
+    expect(sql.some((s: string) => s.includes('INSERT INTO match_participants'))).toBe(false);
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
+  it('refuses to reject a request that belongs to a DIFFERENT match', async () => {
+    respondQueue = [
+      () => [{ match_id: 2, user_id: 100, status: 'submitted' }],
+    ];
+
+    await expect(joinRequestService.reject(7, 55, 1, 'nope')).rejects.toMatchObject({
+      statusCode: 404,
+      errorCode: 'REQUEST_NOT_FOUND',
+    });
+
+    const sql = (pool.execute as any).mock.calls.map((c: any[]) => String(c[0]));
+    expect(sql.some((s: string) => s.includes("status = 'rejected'"))).toBe(false);
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
+  it('still rejects a same-match request normally (no regression)', async () => {
+    respondQueue = [
+      () => [{ match_id: 1, user_id: 100, status: 'submitted' }],
+      () => [],
+    ];
+
+    await joinRequestService.reject(7, 55, 1, 'capacity');
+
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect((publisher.publish as any).mock.calls[0][0]).toMatchObject({ type: 'join_request:rejected' });
   });
 });

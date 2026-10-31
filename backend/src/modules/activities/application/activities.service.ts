@@ -140,7 +140,13 @@ export const activitiesService = {
   },
 
   // ── Coaches ──
-  async listCoaches(filters: any) { return repo.findCoaches(filters); },
+  async listCoaches(filters: any) {
+    // Public coach directory: never expose the coach's account email. Admin and
+    // organisation listings use their own repository queries (findCoachesAdmin /
+    // org-portal) and keep the field.
+    const rows = await repo.findCoaches(filters);
+    return (rows as any[]).map(({ email: _email, ...rest }) => rest);
+  },
   async getCoachProfile(userId: number) {
     const p = await repo.findCoachByUserId(userId);
     if (!p) return null;
@@ -154,7 +160,17 @@ export const activitiesService = {
     const status = await repo.getCoachStatus(p.user_id);
     if (status !== 'approved') throw new NotFoundError('Coach');
     const agreements = await repo.findOrgAgreements(p.id);
-    return { ...p, agreements };
+    // P1-01 corrections (C3 + email privacy) — the public coach detail must not
+    // expose the coach's account email nor any commercial terms: hourly rate and
+    // every agreement term/detail are removed. The public UI only needs the
+    // partner organisation identity.
+    const { hourly_rate: _hourlyRate, email: _email, ...publicProfile } = p as any;
+    const publicAgreements = (agreements as any[]).map((a) => ({
+      id: a.id,
+      organisation_id: a.organisation_id,
+      organisation_name: a.organisation_name,
+    }));
+    return { ...publicProfile, agreements: publicAgreements };
   },
   async getCoachProfilePublic(id: number) {
     return repo.findCoachById(id);
@@ -164,7 +180,16 @@ export const activitiesService = {
     if (!p) return [];
     return repo.listOrgAgreements(p.id);
   },
-  async getCoachAgreements(coachId: number) {
+  async getCoachAgreements(coachId: number, requesterId: number) {
+    // P1-01d — coach↔organisation agreements are private. Only the coach who
+    // owns the profile, or a platform administrator, may read them. Access is
+    // never inferred from the caller-supplied coach id alone.
+    const coach = await repo.findCoachById(coachId);
+    if (!coach) throw new NotFoundError('Coach');
+    const isOwner = Number((coach as any).user_id) === Number(requesterId);
+    if (!isOwner && !(await repo.isPlatformAdmin(requesterId))) {
+      throw new ForbiddenError('You are not allowed to view these agreements');
+    }
     return repo.listOrgAgreements(coachId);
   },
 

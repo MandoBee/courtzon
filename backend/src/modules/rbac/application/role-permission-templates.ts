@@ -223,35 +223,41 @@ function isSellerDeniedTournamentKey(permissionKey: string): boolean {
 const PLAYER_PATTERNS = [
   /^home\./,
   /^profile\./,
-  /^bookings\.(view|create|cancel|apply|manage-applicants|matchmaking)/,
+  /^bookings\.(view|create|cancel|apply|manage-applicants|matchmaking)$/,
   /^bookings\.create\./,
   /^marketplace\.(view|cart|order|wishlist|addresses|complaints\.(submit|view))$/,
-  /^marketplace\.sell$/,
-  /^marketplace\.player\.status$/,
-  /^coaches\./,
-  /^academies\.(view|enroll)/,
-  /^academy\.(view|enroll)/,
-  /^tournament\.view$/,
-  /^player\.(dashboard|search|profile|favorites|statistics|achievements|qr|devices)\./,
-  /^player\.tournaments\.register/,
-  /^player\.tournaments\.team\.(create|join|invite)/,
-  /^tournaments\.view/,
+  // P1-01: free-selling is a PLAYER capability keyed by the player-specific
+  // permissions. `marketplace.sell` belongs to shop/org seller roles and is
+  // never granted to players.
+  /^marketplace\.player\.(status|activate)$/,
+  /^marketplace\.player-products\.manage$/,
+  // Player-facing coach capabilities only. Coach administration (verify /
+  // approve / delete / assign / toggle) and coach-side session operations are
+  // denied. Profile + organisation-agreement management stay self-scoped (the
+  // caller's own coach profile only). A player applying to become a coach still
+  // needs manage_profile + the profile.edit.* field keys to build their profile.
+  /^coaches\.(view|apply|book|profile|manage_profile|manage_agreements|profile\.edit\.|availability\.manage|invites\.respond|reviews\.create)/,
+  /^academies\.(view|enroll)$/,
+  /^academy\.(view|enroll|payment\.(view|charge))$/,
+  /^tournament\.(view|register)$/,
+  /^player\./,
+  /^player\.tournaments\.team\.(create|join|invite)$/,
   // G11.8 — player self-service cancellation of their OWN registration.
-  /^tournaments\.registration\.cancel$/,
-  /^community\./,
-  /^branches\.(request-access|view)/,
+  /^tournaments\.(view|registration\.(cancel|refund-request))$/,
+  // Player community capabilities only; event deletion is an admin action.
+  /^community\.(events\.view|create_events|chat\.(view|send))$/,
+  /^branches\.(request-access|view)$/,
   /^organisations\.storefront\./,
-  /^wallet\./,
-  /^financial\.wallet\./,
-  /^financial\.payment\./,
-  /^financial\.withdraw$/,
-  /^matches\./,
+  // Wallet payout stays a player capability (financial.withdraw intentionally
+  // preserved); no platform/finance administration keys.
+  /^financial\.(wallet\.(view|deposit|deposit\.payment-method|withdraw)|withdraw|payment\.(charge|confirm|view))$/,
+  // matches.manage is retained for match CREATORS; every route verifies
+  // ownership server-side.
+  /^matches\.(view|apply|cancel|manage|result\.(submit|accept|dispute|rules))$/,
   /^notifications\.view$/,
   /^sports\.view$/,
-  /^player\./,
-  /^academy\.self_enroll/,
-  /^league\.self_register/,
-  /^player\.tournaments\.register/,
+  /^academy\.self_enroll$/,
+  /^league\.self_register$/,
 ];
 
 // Player-facing keys whose `academy.`/`tournament.`/`league.` prefixes are
@@ -260,9 +266,18 @@ const PLAYER_EXPLICIT_KEYS = new Set([
   'academy.view',
   'academy.enroll',
   'academy.self_enroll',
+  // P1-01 correction (C1) — player self-service academy payment. These keys
+  // already exist in the .mjs sync template; the runtime template must match so
+  // the in-app role-template sync produces the same grants.
+  'academy.payment.view',
+  'academy.payment.charge',
   'tournament.view',
   'tournament.register',
   'league.self_register',
+  // P1-01 — free-selling for players is keyed by the player-specific
+  // permissions, never by the seller/org `marketplace.sell`.
+  'marketplace.player.activate',
+  'marketplace.player-products.manage',
 ]);
 
 // Coach-side session lifecycle actions that must NOT leak to players via the
@@ -276,6 +291,17 @@ const PLAYER_DENY_KEYS = new Set([
   // Service-location selection is a coach-side decision (explicit branch
   // opt-in). Players must never hold the manage permission.
   'coaches.service_locations.manage',
+  // P1-01 — defence in depth: coach administration + coach-side operations are
+  // never player capabilities, even if a future pattern accidentally matches.
+  'coaches.verify',
+  'coaches.approve',
+  'coaches.delete',
+  'coaches.assign',
+  'coaches.toggle',
+  'coaches.create_sessions',
+  'coaches.sessions.view',
+  // Community administration (deleting events) is an admin action.
+  'community.delete_events',
 ]);
 
 const ORG_ADMIN_PATTERNS = [

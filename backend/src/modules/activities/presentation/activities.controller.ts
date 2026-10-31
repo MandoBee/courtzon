@@ -149,7 +149,8 @@ export async function listOrgAgreementsHandler(request: FastifyRequest, reply: F
 
 export async function listCoachAgreementsHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
-  const agreements = await svc.getCoachAgreements(Number(id));
+  const userId = (request as any).userId;
+  const agreements = await svc.getCoachAgreements(Number(id), userId);
   return reply.send({ data: agreements });
 }
 

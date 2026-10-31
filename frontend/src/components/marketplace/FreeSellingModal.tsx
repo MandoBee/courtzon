@@ -76,7 +76,7 @@ export default function FreeSellingModal({ open, onClose }: Props) {
           >
             Cancel
           </button>
-          <Can permission="marketplace.sell">
+          <Can permission="marketplace.player.activate">
             <button
               type="button"
               onClick={() => activate.mutate()}

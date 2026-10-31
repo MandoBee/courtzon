@@ -495,6 +495,31 @@ export const activitiesRepository = {
     return rows;
   },
 
+  /**
+   * P1-01d — platform-administrator check for read endpoints that expose
+   * private coach data (coach↔organisation agreements). Mirrors the route-level
+   * `adminGuard`: the `super_admin`/`super-admin` role OR the `platform.admin`
+   * permission. Ownership is always checked separately by the caller.
+   */
+  async isPlatformAdmin(userId: number): Promise<boolean> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowData>(
+      `SELECT 1
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         LEFT JOIN role_permissions rp ON rp.role_id = r.id
+         LEFT JOIN permissions p ON p.id = rp.permission_id
+        WHERE ur.user_id = ?
+          AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.deleted_at IS NULL
+          AND (r.slug IN ('super_admin', 'super-admin', 'admin') OR p.permission_key = 'platform.admin')
+        LIMIT 1`,
+      [userId]
+    );
+    return (rows as any).length > 0;
+  },
+
   async findCoachSessions(filters: { coachId?: number; playerId?: number; status?: string; page: number; limit: number }) {
     const pool = getPool();
     let sql = `SELECT cs.*, cp.id as coach_profile_id,

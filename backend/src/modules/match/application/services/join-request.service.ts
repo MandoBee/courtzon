@@ -77,7 +77,7 @@ export class JoinRequestService {
         }, { executor: conn });
 
         if (autoAccept && capacityOk) {
-          await this.approve(requestId, userId, conn);
+          await this.approve(requestId, userId, matchId, conn);
           return { status: 'approved', requestId };
         }
 
@@ -103,7 +103,7 @@ export class JoinRequestService {
     }
   }
 
-  async approve(requestId: number, responderId: number, conn?: mysql.PoolConnection): Promise<void> {
+  async approve(requestId: number, responderId: number, expectedMatchId: number, conn?: mysql.PoolConnection): Promise<void> {
     const pool = conn ?? getPool();
 
     const [rows] = await pool.execute<RowData>(
@@ -111,6 +111,12 @@ export class JoinRequestService {
     );
     if (!rows.length) throw new AppError('Join request not found', 404, 'REQUEST_NOT_FOUND');
     const req = rows[0] as any;
+    // P1-01b — bind the request to the route's match. The route guard verifies
+    // the caller owns `:id`; this guard prevents that ownership from being used
+    // to approve a request that belongs to a DIFFERENT match (cross-match IDOR).
+    if (Number(req.match_id) !== Number(expectedMatchId)) {
+      throw new AppError('Join request not found', 404, 'REQUEST_NOT_FOUND');
+    }
     if (req.status !== 'submitted') throw new AppError('Request is not pending', 400, 'REQUEST_NOT_PENDING');
 
     // Authoritative side assignment (Group 2 + 3): load the Match (with its frozen
@@ -252,7 +258,7 @@ export class JoinRequestService {
     }
   }
 
-  async reject(requestId: number, responderId: number, reason?: string): Promise<void> {
+  async reject(requestId: number, responderId: number, expectedMatchId: number, reason?: string): Promise<void> {
     const pool = getPool();
 
     const [rows] = await pool.execute<RowData>(
@@ -260,6 +266,11 @@ export class JoinRequestService {
     );
     if (!rows.length) throw new AppError('Join request not found', 404, 'REQUEST_NOT_FOUND');
     const req = rows[0] as any;
+    // P1-01b — same cross-match guard as approve(): a caller who owns match A
+    // must not be able to reject a request that belongs to match B.
+    if (Number(req.match_id) !== Number(expectedMatchId)) {
+      throw new AppError('Join request not found', 404, 'REQUEST_NOT_FOUND');
+    }
     if (req.status !== 'submitted') throw new AppError('Request is not pending', 400, 'REQUEST_NOT_PENDING');
 
     await pool.execute(

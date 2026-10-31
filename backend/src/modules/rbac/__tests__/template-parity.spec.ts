@@ -659,3 +659,89 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (.ts
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-01 — player least privilege (Live report H1)
+// Locks the player surface to explicit allowlists: no coach administration, no
+// community administration, no seller role, no platform/org/finance admin keys.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('P1-01 — player least privilege (.ts/.mjs parity)', () => {
+  const removedFromPlayer = [
+    'coaches.verify',
+    'coaches.approve',
+    'coaches.delete',
+    'coaches.assign',
+    'coaches.toggle',
+    'coaches.create_sessions',
+    'coaches.sessions.view',
+    'community.delete_events',
+    'marketplace.sell',
+  ];
+
+  const addedToPlayer = [
+    'marketplace.player.activate',
+    'marketplace.player-products.manage',
+  ];
+
+  const keptForPlayer = [
+    'bookings.view', 'bookings.create', 'bookings.cancel', 'bookings.matchmaking',
+    'coaches.view', 'coaches.book', 'coaches.apply', 'coaches.manage_profile',
+    'coaches.manage_agreements', 'coaches.profile.edit.bio',
+    'coaches.availability.manage', 'coaches.reviews.create',
+    'academy.payment.view', 'academy.payment.charge',
+    'marketplace.view', 'marketplace.player.status',
+    'financial.wallet.view', 'financial.wallet.deposit', 'financial.withdraw',
+    'matches.view', 'matches.manage', 'matches.result.submit',
+    'tournament.view', 'tournament.register', 'tournaments.registration.cancel',
+    'community.events.view', 'community.create_events', 'community.chat.send',
+    'player.dashboard.view', 'profile.edit', 'files.upload',
+  ];
+
+  const adminFamilies = [
+    'users.view', 'roles.view', 'permissions.view', 'platform.admin',
+    'feature-flags.manage', 'app-settings.view', 'audit.view', 'accounting.view',
+    'settlements.approve', 'reports.view', 'marketplace.admin.products',
+    'org.tournaments.manage', 'org.tournaments.create',
+    'tournament.manage', 'tournament.create', 'tournament.update',
+    'tournament.delete', 'tournament.publish', 'tournament.result.manage',
+    'bookings.check-in', 'bookings.recurring.collect-cash', 'financial.reconcile',
+    'sidebar.admin', 'admin-users.view',
+  ];
+
+  it('denies the removed admin/coach/seller keys in BOTH implementations', () => {
+    for (const key of removedFromPlayer) {
+      expect(permissionMatchesTemplate('player', key), key).toBe(false);
+      expect(mjsMatch('player', key), key).toBe(false);
+    }
+  });
+
+  it('grants the two player-selling keys in BOTH implementations', () => {
+    for (const key of addedToPlayer) {
+      expect(permissionMatchesTemplate('player', key), key).toBe(true);
+      expect(mjsMatch('player', key), key).toBe(true);
+    }
+  });
+
+  it('preserves the legitimate player surface in BOTH implementations', () => {
+    for (const key of keptForPlayer) {
+      expect(permissionMatchesTemplate('player', key), key).toBe(true);
+      expect(mjsMatch('player', key), key).toBe(true);
+    }
+  });
+
+  it('never leaks platform/organisation/tournament/finance administration to players', () => {
+    for (const key of adminFamilies) {
+      expect(permissionMatchesTemplate('player', key), key).toBe(false);
+      expect(mjsMatch('player', key), key).toBe(false);
+    }
+  });
+
+  it('.ts and .mjs agree for all 26 templates on the removed + added + admin sets', () => {
+    for (const slug of TEMPLATE_SLUGS) {
+      for (const key of [...removedFromPlayer, ...addedToPlayer, ...adminFamilies]) {
+        expect(permissionMatchesTemplate(slug, key), `${slug} / ${key}`)
+          .toBe(mjsMatch(slug, key));
+      }
+    }
+  });
+});
