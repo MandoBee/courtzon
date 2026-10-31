@@ -22,6 +22,9 @@ async function completeBooking(bookingId: number): Promise<void> {
   if (result.status === 'error') throw new Error(`CompleteBooking failed: ${result.message}`);
 }
 
+/** Maximum number of failing booking ids included in the batch summary log. */
+const MAX_REPORTED_FAILED_IDS = 10;
+
 export async function handleAutoCompleteBookings(): Promise<void> {
   const pool = getPool();
 
@@ -29,23 +32,48 @@ export async function handleAutoCompleteBookings(): Promise<void> {
   // they must never be auto-completed into the financial booking lifecycle
   // (which would emit booking:completed / notifications). Match progress is
   // owned by the tournament engine.
-  const [completed] = await pool.execute<any[]>(
+  const [candidates] = await pool.execute<any[]>(
     `SELECT id, user_id, organisation_id FROM bookings
      WHERE booking_status = 'confirmed'
        AND booking_type != 'tournament'
        AND CONCAT(booking_date, ' ', start_time) < NOW()`
   );
 
-  for (const booking of completed) {
+  // Successful and failed completions are tracked independently: the candidate
+  // count is never reported as a success count.
+  let succeeded = 0;
+  let failed = 0;
+  const failedBookingIds: number[] = [];
+
+  for (const booking of candidates) {
     try {
       await completeBooking(booking.id);
+      succeeded++;
     } catch (err) {
+      failed++;
+      if (failedBookingIds.length < MAX_REPORTED_FAILED_IDS) {
+        failedBookingIds.push(booking.id);
+      }
       log.error({ err, bookingId: booking.id }, 'Failed to auto-complete booking');
     }
   }
 
-  const affected = completed.length || 0;
-  if (affected > 0) {
-    log.info({ completed: affected }, `Auto-completed ${affected} past bookings`);
+  if (succeeded > 0) {
+    log.info(
+      { completed: succeeded, failed, candidates: candidates.length },
+      `Auto-completed ${succeeded} past bookings`,
+    );
+  }
+
+  if (failed > 0) {
+    log.warn(
+      {
+        failed,
+        candidates: candidates.length,
+        failedBookingIds,
+        truncated: failed > failedBookingIds.length,
+      },
+      `Failed to auto-complete ${failed} of ${candidates.length} past bookings`,
+    );
   }
 }

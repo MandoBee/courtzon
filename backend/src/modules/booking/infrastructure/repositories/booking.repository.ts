@@ -121,8 +121,8 @@ export class BookingRepository {
     const [rows] = await db.execute<RowData>(
       `SELECT b.*, r.name as resource_name, br.name as branch_name
        FROM bookings b
-       JOIN resources r ON r.id = b.resource_id
-       JOIN branches br ON br.id = b.branch_id
+       LEFT JOIN resources r ON r.id = b.resource_id
+       LEFT JOIN branches br ON br.id = b.branch_id
        WHERE b.id = ?`,
       [id]
     );
