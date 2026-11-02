@@ -11,7 +11,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<Variant, string> = {
-  primary: 'bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50',
+  // `primary-dark` keeps white text at >=4.5:1 (A11Y-002); `primary` is #059669
+  // and only reaches 3.77:1 against white.
+  primary: 'bg-[var(--color-primary-dark)] text-white hover:opacity-90 disabled:opacity-50',
   secondary: 'cz-btn-secondary border text-[var(--color-text)] hover:border-[var(--color-primary)] disabled:opacity-50',
   danger: 'bg-[var(--color-error)] text-white hover:opacity-90 disabled:opacity-50',
   ghost: 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-50',

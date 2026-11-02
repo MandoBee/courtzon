@@ -81,7 +81,7 @@ export default function FreeSellingModal({ open, onClose }: Props) {
               type="button"
               onClick={() => activate.mutate()}
               disabled={activate.isPending}
-              className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all"
+              className="flex-1 px-4 py-2.5 text-sm font-semibold cz-gradient-primary rounded-xl disabled:opacity-40 hover:opacity-90 transition-all"
             >
               {activate.isPending ? 'Activating...' : 'Activate Free Selling'}
             </button>

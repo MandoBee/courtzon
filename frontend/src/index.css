@@ -471,6 +471,14 @@ html[dir="rtl"] {
     background: var(--gradient-primary);
   }
 
+  /* Neutral gradient surface for one-off buttons/badges. Needed because a
+     Tailwind `bg-[var(--gradient-*)]` utility emits `background-color`, which
+     cannot hold a gradient and is silently dropped (transparent background). */
+  .cz-gradient-primary {
+    color: var(--color-accent-text, #fff);
+    background: var(--gradient-primary);
+  }
+
   /* Wizard / form action buttons (registration flows etc.). The gradient must
      go through the `background` shorthand — a Tailwind bg-[var(--gradient-*)]
      utility emits background-color, which cannot hold a gradient and is
@@ -478,6 +486,17 @@ html[dir="rtl"] {
   .cz-btn-primary {
     color: var(--color-accent-text, #fff);
     background: var(--gradient-primary);
+  }
+
+  /* Contrast guard: a 25% black overlay darkens the whole ramp so white text
+     reaches >=4.5:1 at rest and in the hover (opacity .9) state, while the
+     palette still comes from --gradient-primary. */
+  .cz-on-gradient-btn,
+  .cz-gradient-primary,
+  .cz-btn-primary {
+    background:
+      linear-gradient(rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.25)),
+      var(--gradient-primary);
   }
   .cz-btn-primary:hover:not(:disabled) {
     opacity: 0.9;

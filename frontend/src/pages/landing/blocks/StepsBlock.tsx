@@ -27,7 +27,7 @@ export default function StepsBlock({ data, title, subtitle }: StepsBlockProps) {
                 </div>
               )}
               <div className="flex flex-col items-center text-center p-4">
-                <div className="w-20 h-20 rounded-full bg-[var(--gradient-primary)] flex items-center justify-center text-white text-2xl font-bold shadow-[var(--shadow-md)] mb-4 group-hover:scale-110 transition-transform">
+                <div className="w-20 h-20 rounded-full cz-gradient-primary flex items-center justify-center text-2xl font-bold shadow-[var(--shadow-md)] mb-4 group-hover:scale-110 transition-transform">
                   {step.icon || i + 1}
                 </div>
                 <h3 className="text-lg font-semibold text-[var(--color-text)] mb-2">{step.title}</h3>

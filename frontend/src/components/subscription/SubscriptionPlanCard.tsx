@@ -76,7 +76,7 @@ export default function SubscriptionPlanCard({
       }`}
     >
       {badge && (
-        <span className="inline-block w-fit max-w-full px-2 py-0.5 text-[10px] font-bold text-white bg-[var(--gradient-primary)] rounded-full mb-2 truncate">
+        <span className="inline-block w-fit max-w-full px-2 py-0.5 text-[10px] font-bold cz-gradient-primary rounded-full mb-2 truncate">
           {badge}
         </span>
       )}

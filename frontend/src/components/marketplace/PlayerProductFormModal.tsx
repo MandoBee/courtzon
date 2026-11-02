@@ -324,7 +324,7 @@ export default function PlayerProductFormModal({ product, onClose, onSaved }: Pr
             <button
               type="submit"
               disabled={mutation.isPending || !name.trim() || !price}
-              className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all"
+              className="flex-1 px-4 py-2.5 text-sm font-semibold cz-gradient-primary rounded-xl disabled:opacity-40 hover:opacity-90 transition-all"
             >
               {mutation.isPending ? 'Saving...' : isEdit ? 'Update' : 'List Product'}
             </button>

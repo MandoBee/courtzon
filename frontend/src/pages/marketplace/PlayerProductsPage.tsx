@@ -63,7 +63,7 @@ export default function PlayerProductsPage() {
         <button
           onClick={() => setAdding(true)}
           disabled={totalCount >= 5}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[var(--gradient-primary)] rounded-xl disabled:opacity-40 hover:opacity-90 transition-all"
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium cz-gradient-primary rounded-xl disabled:opacity-40 hover:opacity-90 transition-all"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
           Add Product ({totalCount}/5)
