@@ -663,6 +663,10 @@ function AppContent() {
           <Route path="/my/qr" element={<PlayerQRProfilePage />} />
           <Route path="/my/devices" element={<PlayerDeviceManagementPage />} />
           <Route path="/my/wallet" element={<PlayerWalletPage />} />
+          {/* Legacy/back-compat URL: without this the single-segment `/wallet`
+              is captured by the public `:slug` landing route, which silently
+              bounces authenticated users to /app (D-03). */}
+          <Route path="/wallet" element={<Navigate to="/my/wallet" replace />} />
           <Route path="/wallet/withdraw" element={<WithdrawalPage />} />
           <Route path="/my/payments" element={<PlayerPaymentsPage />} />
           <Route path="/my/rank-history" element={<PlayerRankHistoryPage />} />
