@@ -523,14 +523,14 @@ export default function ProfilePage() {
         <div className="flex gap-1 mb-6 border-b border-[var(--color-border)]">
           <button
             onClick={() => setActiveTab('player')}
-            className={`px-5 py-2.5 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'player' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
+            className={`px-5 py-2.5 min-h-11 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'player' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
           >
             {t('profile.tabs.player')}
           </button>
           {user.coachStatus === 'approved' && (
             <button
               onClick={() => setActiveTab('coach')}
-              className={`px-5 py-2.5 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'coach' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
+              className={`px-5 py-2.5 min-h-11 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'coach' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
             >
               {t('profile.tabs.coach')}
             </button>
@@ -538,7 +538,7 @@ export default function ProfilePage() {
           <Can permission="profile.settings.view">
             <button
               onClick={() => setActiveTab('settings')}
-              className={`px-5 py-2.5 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'settings' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
+              className={`px-5 py-2.5 min-h-11 text-sm font-medium -mb-px border-b-2 transition-colors ${activeTab === 'settings' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
             >
               {t('profile.tabs.settings')}
             </button>
@@ -595,12 +595,12 @@ export default function ProfilePage() {
                 ) : user.coachStatus === 'rejected' ? (
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-[var(--color-error)]">{t('common.rejected')}</span>
-                    <Button onClick={openCoachModal} variant="secondary" size="sm">
+                    <Button onClick={openCoachModal} variant="secondary" size="sm" className="min-h-11">
                       {t('profile.coach.reapply')}
                     </Button>
                   </div>
                 ) : (
-                  <Button onClick={openCoachModal} size="sm">
+                  <Button onClick={openCoachModal} size="sm" className="min-h-11">
                     {t('profile.coach.apply')}
                   </Button>
                 )}
@@ -618,7 +618,7 @@ export default function ProfilePage() {
                 ) : user.isSeller ? (
                   <span className="text-sm font-medium text-[var(--color-warning)]">{t('common.pending')}</span>
                 ) : (
-                  <Button onClick={() => activatePlayerSell.mutate()} size="sm" loading={activatePlayerSell.isPending}>
+                  <Button onClick={() => activatePlayerSell.mutate()} size="sm" className="min-h-11" loading={activatePlayerSell.isPending}>
                     {t('profile.activate_free_selling')}
                   </Button>
                 )}
@@ -680,7 +680,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="mt-4">
-              <Button onClick={() => setEditing(true)}>{t('org.edit_profile')}</Button>
+              <Button onClick={() => setEditing(true)} className="min-h-11">{t('org.edit_profile')}</Button>
             </div>
           </>
         ) : (

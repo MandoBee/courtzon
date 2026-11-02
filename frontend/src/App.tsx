@@ -465,7 +465,7 @@ function Navbar() {
             <RoleSwitcher />
             <NotificationBell />
             <Link to="/profile" className="text-sm text-[var(--color-text-muted)]">{user?.fullName || t('nav.profile')}</Link>
-            <button onClick={handleLogout} className="text-sm text-[var(--color-text-muted)] hover:text-red-500">{t('nav.logout')}</button>
+            <button onClick={handleLogout} className="inline-flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-red-500">{t('nav.logout')}</button>
           </div>
           <div className="flex md:hidden items-center gap-1">
             <RoleSwitcher />
@@ -475,7 +475,7 @@ function Navbar() {
               onClick={handleLogout}
               aria-label={t('nav.logout')}
               title={t('nav.logout')}
-              className="p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors cz-no-select"
+              className="inline-flex items-center justify-center min-h-11 min-w-11 p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors cz-no-select"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

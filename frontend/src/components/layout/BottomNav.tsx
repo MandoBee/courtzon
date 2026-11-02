@@ -55,7 +55,7 @@ export default function BottomNav() {
               key={tab.path}
               to={tab.path}
               onClick={() => tap()}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-w-0 transition-colors cz-no-select ${
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-h-11 min-w-0 transition-colors cz-no-select ${
                 isPath(tab.path) ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'
               }`}
             >
@@ -70,7 +70,7 @@ export default function BottomNav() {
             type="button"
             onClick={() => { tap(); setMoreOpen(true); }}
             aria-label={t('nav.more')}
-            className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-w-0 transition-colors cz-no-select ${
+            className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-h-11 min-w-0 transition-colors cz-no-select ${
               moreActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'
             }`}
           >
@@ -83,7 +83,7 @@ export default function BottomNav() {
           <Link
             to="/profile"
             onClick={() => tap()}
-            className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-w-0 transition-colors cz-no-select ${
+            className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-h-11 min-w-0 transition-colors cz-no-select ${
               isPath('/profile') ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'
             }`}
           >

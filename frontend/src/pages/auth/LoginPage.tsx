@@ -122,13 +122,13 @@ export default function LoginPage() {
             </Button>
           </form>
           <div className="mt-3 text-center">
-            <Link to="/forgot-password" className="text-sm text-[var(--color-primary)] hover:underline">
+            <Link to="/forgot-password" className="inline-flex min-h-11 items-center text-sm text-[var(--color-primary)] hover:underline">
               Forgot password?
             </Link>
           </div>
           <p className="mt-4 text-center text-sm text-[var(--color-text-muted)]">
             {t('auth.login.no_account')}{' '}
-            <Link to="/register" className="text-[var(--color-primary)] hover:underline">
+            <Link to="/register" className="inline-flex min-h-11 items-center text-[var(--color-primary)] hover:underline">
               {t('auth.register.title')}
             </Link>
           </p>

@@ -114,7 +114,7 @@ export default function PlayerDashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-[var(--color-text)]">{t('player.dashboard.upcoming_bookings')}</h2>
-          <Link to="/bookings" className="text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
+          <Link to="/bookings" className="inline-flex min-h-11 items-center -my-2.5 text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
         </div>
         {loadingBookings ? <SkeletonRow count={2} /> : (
           <div className="space-y-2">
@@ -134,7 +134,7 @@ export default function PlayerDashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-[var(--color-text)]">{t('player.dashboard.upcoming_matches')}</h2>
-          <Link to="/matches" className="text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
+          <Link to="/matches" className="inline-flex min-h-11 items-center -my-2.5 text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
         </div>
         {loadingMatches ? <SkeletonRow count={2} /> : (
           <div className="space-y-2">
@@ -155,7 +155,7 @@ export default function PlayerDashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-[var(--color-text)]">{t('player.dashboard.active_enrollments')}</h2>
-            <Link to="/my/academy" className="text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
+            <Link to="/my/academy" className="inline-flex min-h-11 items-center -my-2.5 text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
           </div>
           {loadingEnrollments ? <SkeletonRow count={1} /> : (
             <div className="space-y-2">
@@ -177,7 +177,7 @@ export default function PlayerDashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-[var(--color-text)]">{t('player.dashboard.active_tournaments')}</h2>
-            <Link to="/tournaments" className="text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
+            <Link to="/tournaments" className="inline-flex min-h-11 items-center -my-2.5 text-xs text-[var(--color-primary)] hover:underline">{t('common.view_all')}</Link>
           </div>
           {loadingTournaments ? <SkeletonRow count={1} /> : (
             <div className="space-y-2">

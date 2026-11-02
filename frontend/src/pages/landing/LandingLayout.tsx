@@ -111,7 +111,7 @@ export default function LandingLayout() {
               <button
                 type="button"
                 onClick={() => setMode(theme === 'dark' ? 'light' : 'dark')}
-                className="p-2 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-primary-bg)] transition-colors"
+                className="inline-flex items-center justify-center min-h-11 min-w-11 p-2 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-primary-bg)] transition-colors"
                 title={theme === 'dark' ? t('landing.light_mode') : t('landing.dark_mode')}
               >
                 {theme === 'dark' ? (
@@ -135,7 +135,7 @@ export default function LandingLayout() {
             <button
               type="button"
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="md:hidden p-2 text-[var(--color-text)]"
+              className="md:hidden inline-flex items-center justify-center min-h-11 min-w-11 p-2 text-[var(--color-text)]"
               aria-expanded={mobileOpen}
               aria-label={mobileOpen ? t('landing.mobile.close_menu') : t('landing.mobile.open_menu')}
             >
@@ -214,7 +214,7 @@ export default function LandingLayout() {
               <h4 className="text-xs font-semibold text-[var(--color-text)] uppercase tracking-wider mb-4">{t('landing.platform')}</h4>
               <div className="space-y-2.5">
                 {visibleFooterPlatform.map((l) => (
-                  <Link key={l.to} to={l.to} className="block text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
+                  <Link key={l.to} to={l.to} className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
                     {t(l.labelKey)}
                   </Link>
                 ))}
@@ -224,7 +224,7 @@ export default function LandingLayout() {
               <h4 className="text-xs font-semibold text-[var(--color-text)] uppercase tracking-wider mb-4">{t('landing.legal')}</h4>
               <div className="space-y-2.5">
                 {visibleFooterLegal.map((l) => (
-                  <Link key={l.to} to={l.to} className="block text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
+                  <Link key={l.to} to={l.to} className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
                     {t(l.labelKey)}
                   </Link>
                 ))}
@@ -233,7 +233,7 @@ export default function LandingLayout() {
             <div>
               <h4 className="text-xs font-semibold text-[var(--color-text)] uppercase tracking-wider mb-4">{t('landing.connect')}</h4>
               <div className="space-y-2.5">
-                <a href="mailto:support@courtzon.com" className="block text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">{t('landing.contact_email')}</a>
+                <a href="mailto:support@courtzon.com" className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">{t('landing.contact_email')}</a>
               </div>
             </div>
           </div>

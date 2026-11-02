@@ -38,7 +38,7 @@ export default function LanguageSwitcher({ className = '', onSelect }: LanguageS
       value={locale}
       onChange={(e) => void onChange(e.target.value)}
       aria-label="Language"
-      className={`h-9 min-w-[5.5rem] max-w-[8rem] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 ${className}`}
+      className={`h-11 min-w-[5.5rem] max-w-[8rem] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 ${className}`}
     >
       {languages.map((lang) => (
         <option key={lang.code} value={lang.code}>
