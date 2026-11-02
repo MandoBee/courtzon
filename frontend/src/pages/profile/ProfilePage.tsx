@@ -176,7 +176,7 @@ function CoachProfileSection({ profile, sportsList, availability, agreements }: 
       <div>
         <Link
           to="/coaches/profile"
-          className="inline-block px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm hover:opacity-90"
+          className="inline-flex min-h-11 items-center px-4 py-2 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-sm hover:opacity-90"
         >
           {t('org.edit_coach_profile')}
         </Link>
@@ -906,7 +906,7 @@ export default function ProfilePage() {
                     if (lang?.code) void setLocale(lang.code, lang.isRtl);
                     updateMutation.mutate({ languageId });
                   }}
-                  className="w-full max-w-xs px-3 py-2 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+                  className="w-full max-w-xs h-11 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]"
                 >
                   <option value="">{t('common.default')}</option>
                   {languages.map((lang) => (
@@ -926,7 +926,7 @@ export default function ProfilePage() {
                     syncUserThemePreference(mode);
                     updateMutation.mutate({ darkMode: mode });
                   }}
-                  className="w-full max-w-xs px-3 py-2 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+                  className="w-full max-w-xs h-11 px-3 py-2 text-sm rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]"
                 >
                   <option value="light">{t('settings.light')}</option>
                   <option value="dark">{t('settings.dark')}</option>
@@ -947,14 +947,14 @@ export default function ProfilePage() {
                           : (t('profile.visibility_hidden_desc') || 'Your profile is currently hidden from others')}
                       </p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
+                    <label className="relative inline-flex items-center justify-center min-h-11 min-w-11 cursor-pointer">
                       <input
                         type="checkbox"
                         className="sr-only peer"
                         checked={!!(user as any).isPublic}
                         onChange={() => updateMutation.mutate({ isPublic: !(user as any).isPublic })}
                       />
-                      <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                      <div className="relative w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
                     </label>
                   </div>
                 )}
@@ -972,7 +972,7 @@ export default function ProfilePage() {
                       return (
                         <div key={key} className={`flex items-center justify-between ${enabled ? '' : 'opacity-40'}`}>
                           <span className="text-sm text-[var(--color-text)]">{label}</span>
-                          <label className={`relative inline-flex items-center ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                          <label className={`relative inline-flex items-center justify-center min-h-11 min-w-11 ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                             <input
                               type="checkbox"
                               className="sr-only peer"
@@ -980,7 +980,7 @@ export default function ProfilePage() {
                               disabled={!enabled}
                               onChange={() => updateMutation.mutate({ [key]: !checked })}
                             />
-                            <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                            <div className="relative w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
                           </label>
                         </div>
                       );
@@ -1000,7 +1000,7 @@ export default function ProfilePage() {
                     <span className="block text-sm text-[var(--color-text)]">{t('settings.notifications.sound')}</span>
                     <span className="block text-xs text-[var(--color-text-muted)]">{t('settings.notifications.sound_desc')}</span>
                   </span>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                  <label className="relative inline-flex items-center justify-center min-h-11 min-w-11 cursor-pointer">
                     <input
                       type="checkbox"
                       className="sr-only peer"
@@ -1008,7 +1008,7 @@ export default function ProfilePage() {
                       onChange={() => setNotificationSoundEnabled(!notificationSoundEnabled)}
                       aria-label={t('settings.notifications.sound')}
                     />
-                    <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                    <div className="relative w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
                   </label>
                 </label>
                 {!notifPrefs ? (
@@ -1028,7 +1028,7 @@ export default function ProfilePage() {
                           {notificationCategoryLabels[pref.slug] ?? pref.slug.replace(/_/g, ' ')}
                         </span>
                         <div className="flex items-center gap-3">
-                          <label className="relative inline-flex items-center cursor-pointer">
+                          <label className="relative inline-flex items-center justify-center min-h-11 min-w-11 cursor-pointer">
                             <input
                               type="checkbox"
                               className="sr-only peer"
@@ -1040,7 +1040,7 @@ export default function ProfilePage() {
                                 notifPrefsMutation.mutate(updated);
                               }}
                             />
-                            <div className="w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                            <div className="relative w-9 h-5 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-[var(--color-border)] after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
                           </label>
                         </div>
                       </label>
