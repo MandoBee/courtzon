@@ -189,6 +189,7 @@ export default defineConfig(({ command }) => ({
       '/cancellation-policies': backend,
       '/matches': backend,
       '/academies': backend,
+      '/academy': backend,
       '/tournaments': backend,
       '/sessions': backend,
       '/org': backend,

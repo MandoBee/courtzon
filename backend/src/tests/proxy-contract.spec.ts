@@ -60,7 +60,11 @@ function extractActivePrefixes(): string[] {
         if (e.name !== '__tests__' && e.name !== '__mocks__') walk(p);
       } else if (/\.(ts|tsx)$/.test(e.name) && !/\.(test|spec)\.tsx?$/.test(e.name)) {
         const src = readFileSync(p, 'utf8');
-        const callRe = /api\.(get|post|put|patch|delete)\(\s*['"`](\/[A-Za-z0-9_-]+)/g;
+        // NOTE: calls may carry a generic type argument (e.g.
+        // `api.get<PublicAcademyProgram[]>('/academy/programs')`); the optional
+        // `<...>` group keeps those prefixes inside the drift guard. Without it
+        // the `/academy` prefix silently fell through to the SPA index.html.
+        const callRe = /api\.(get|post|put|patch|delete)(?:<[^>]*>)?\(\s*['"`](\/[A-Za-z0-9_-]+)/g;
         const authApiRe = /authApi\.\w+\(\s*['"`](\/[A-Za-z0-9_-]+)/g;
         let m;
         while ((m = callRe.exec(src)) !== null) prefixes.add(m[2]);

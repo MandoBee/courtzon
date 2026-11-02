@@ -19,7 +19,10 @@ export default function AcademyBrowsePage() {
   });
 
   if (isLoading) return <div className="space-y-3"><SkeletonRow count={4} /></div>;
-  if (isError || !data) {
+  // Guard the shape, not just the presence: a mis-routed API call (e.g. the SPA
+  // index.html served for `/academy/programs` because the prefix was not proxied)
+  // resolves to a string with a truthy `.length` and would crash on `.map()`.
+  if (isError || !Array.isArray(data)) {
     return <div className="text-sm text-[var(--color-text-muted)] py-8 text-center">{t('player.academy.empty')}</div>;
   }
 
