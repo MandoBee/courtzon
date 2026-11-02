@@ -19,13 +19,47 @@ function AccessDenied() {
   );
 }
 
+/**
+ * Shown when the session check failed for a transient reason (429 / 5xx /
+ * network) on a cold start. The session is *unknown*, not invalid: we must not
+ * render protected content, but redirecting to /login would falsely "log out" a
+ * user who is still authenticated (live 429 incident).
+ */
+function AuthCheckFailed({ onRetry, busy }: { onRetry: () => Promise<void>; busy: boolean }) {
+  return (
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center">
+      <span className="text-3xl">⏳</span>
+      <p className="text-lg font-semibold text-[var(--color-text)]">We couldn&apos;t verify your session</p>
+      <p className="text-sm text-[var(--color-muted)]">
+        The server is temporarily busy. You were not signed out — please try again.
+      </p>
+      <button
+        type="button"
+        onClick={() => void onRetry()}
+        disabled={busy}
+        aria-busy={busy}
+        className="mt-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60"
+      >
+        {busy ? 'Checking…' : 'Try again'}
+      </button>
+    </div>
+  );
+}
+
 /** Authenticated shell: routes platform staff to /admin and every role to its workspace home. */
 export function ProtectedRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const authTransientError = useAuthStore((s) => s.authTransientError);
+  const isRecheckingAuth = useAuthStore((s) => s.isRecheckingAuth);
+  const checkAuth = useAuthStore((s) => s.checkAuth);
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
   const { can } = useCan();
   const location = useLocation();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    // Transient failure => indeterminate session (never grant access, never log out).
+    if (authTransientError) return <AuthCheckFailed onRetry={checkAuth} busy={isRecheckingAuth} />;
+    return <Navigate to="/login" replace />;
+  }
 
   const isPlatformStaff = hasPlatformAdminAccess(can);
   if (isPlatformStaff && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/org') && !location.pathname.startsWith('/notifications')) {
@@ -53,8 +87,14 @@ export function ProtectedRoute() {
  */
 export function AdminRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const authTransientError = useAuthStore((s) => s.authTransientError);
+  const isRecheckingAuth = useAuthStore((s) => s.isRecheckingAuth);
+  const checkAuth = useAuthStore((s) => s.checkAuth);
   const { can } = useCan();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    if (authTransientError) return <AuthCheckFailed onRetry={checkAuth} busy={isRecheckingAuth} />;
+    return <Navigate to="/login" replace />;
+  }
   if (!hasPlatformAdminAccess(can)) return <AccessDenied />;
   return <Outlet />;
 }

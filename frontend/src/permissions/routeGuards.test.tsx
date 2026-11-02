@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AdminRoute, ProtectedRoute } from '../app/routes/RouteGuards';
 import { useAuthStore } from '../store/auth.store';
@@ -64,9 +64,79 @@ function renderProtectedRoute(path: string) {
 
 beforeEach(() => {
   act(() => {
-    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false, authTransientError: false, isRecheckingAuth: false });
     localStorage.removeItem('cz_active_workspace');
     useWorkspaceStore.setState({ activeWorkspace: 'player' });
+  });
+});
+
+/**
+ * Regression coverage for the live 429 incident: a cold page load whose session
+ * check failed transiently must be "indeterminate", not "unauthorized" — the
+ * guards may never redirect such a user to /login (that would look like a
+ * spontaneous logout) and must never render the protected outlet either.
+ */
+describe('route guards — transient session-check failure (429)', () => {
+  function setIndeterminate() {
+    act(() => {
+      useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false, authTransientError: true });
+    });
+  }
+
+  it('ProtectedRoute shows a retry surface instead of redirecting to /login', () => {
+    setIndeterminate();
+    renderProtectedRoute('/bookings');
+    expect(screen.queryByText('login-page')).not.toBeInTheDocument();
+    expect(screen.queryByText('bookings-page')).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn't verify your session/i)).toBeInTheDocument();
+  });
+
+  it('AdminRoute shows the same retry surface', () => {
+    setIndeterminate();
+    renderAdminRoute();
+    expect(screen.queryByText('login-page')).not.toBeInTheDocument();
+    expect(screen.queryByText('admin-home')).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn't verify your session/i)).toBeInTheDocument();
+  });
+
+  it('the retry button re-runs the session check exactly once', () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    act(() => {
+      useAuthStore.setState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        authTransientError: true,
+        isRecheckingAuth: false,
+        checkAuth: retry,
+      });
+    });
+    renderProtectedRoute('/bookings');
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the button and keeps the surface while the recheck is running', () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    act(() => {
+      useAuthStore.setState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        authTransientError: true,
+        isRecheckingAuth: true,
+        checkAuth: retry,
+      });
+    });
+    renderProtectedRoute('/bookings');
+
+    const button = screen.getByRole('button', { name: /checking/i });
+    expect(button).toBeDisabled();
+    expect(screen.queryByText('login-page')).not.toBeInTheDocument();
+    expect(screen.queryByText('bookings-page')).not.toBeInTheDocument();
+
+    fireEvent.click(button);
+    expect(retry).not.toHaveBeenCalled();
   });
 });
 

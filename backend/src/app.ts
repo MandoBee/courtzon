@@ -9,6 +9,7 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { resolveRateLimitKey, resolveRateLimitMax } from "./config/rate-limit-policy.js";
 import { bookingRoutes } from "./modules/booking/presentation/booking.routes.js";
 import { marketplaceRoutes } from "./modules/marketplace/presentation/marketplace.routes.js";
 import { activitiesRoutes } from "./modules/activities/presentation/activities.routes.js";
@@ -194,9 +195,11 @@ if (!isDev && !isDockerLocal) {
 const relaxRateLimit = isDev || process.env.RELAX_RATE_LIMIT === 'true';
 
 await app.register(rateLimit, {
-  max: relaxRateLimit ? 2000 : 100,
+  // Public reference reads get their own bucket so normal navigation cannot
+  // exhaust the authenticated budget (see config/rate-limit-policy.ts).
+  max: relaxRateLimit ? 2000 : (request) => resolveRateLimitMax(request.url),
   timeWindow: '1 minute',
-  keyGenerator: (request) => request.ip,
+  keyGenerator: (request) => resolveRateLimitKey(request.ip, request.url),
 });
 
 await app.register(cookie, {

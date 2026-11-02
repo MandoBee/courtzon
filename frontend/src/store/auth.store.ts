@@ -48,6 +48,18 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /**
+   * True when the last session check failed for a transient reason
+   * (429 / 5xx / network). The session is *unknown*, not invalid: guards must
+   * offer a retry instead of redirecting to /login.
+   */
+  authTransientError: boolean;
+  /**
+   * True while a user-initiated retry of the session check is in flight.
+   * Kept separate from `isLoading` so a retry never swaps the whole app to the
+   * startup splash (which can only dismiss itself once).
+   */
+  isRecheckingAuth: boolean;
   setUser: (user: User | null) => void;
   login: (data: unknown) => Promise<void>;
   register: (data: unknown) => Promise<void>;
@@ -58,6 +70,35 @@ interface AuthState {
 }
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * 429 / 5xx / network failures are transient. They must never be interpreted
+ * as "the session ended": the live incident (rapid navigation → 429 on
+ * /auth/me) bounced users to /login because any non-success answer cleared the
+ * session when no user was cached yet (fresh page load).
+ */
+function isTransientAuthFailure(err: unknown): boolean {
+  const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
+  if (typeof status !== 'number') return true; // network error / timeout
+  return status === 429 || status >= 500;
+}
+
+const TRANSIENT_AUTH_RETRY_DELAY_MS = 750;
+
+/**
+ * One bounded retry for transient failures so a momentary 429 is absorbed
+ * instead of surfacing as a logout. Definitive auth failures (401/403) are
+ * rethrown immediately.
+ */
+async function fetchCurrentUserResilient(): Promise<Awaited<ReturnType<typeof authApi.me>>> {
+  try {
+    return await authApi.me();
+  } catch (err) {
+    if (!isTransientAuthFailure(err)) throw err;
+    await new Promise((resolve) => setTimeout(resolve, TRANSIENT_AUTH_RETRY_DELAY_MS));
+    return authApi.me();
+  }
+}
 
 function startProactiveRefresh() {
   stopProactiveRefresh();
@@ -146,13 +187,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  authTransientError: false,
+  isRecheckingAuth: false,
 
   setUser: (user) => {
     const finalUser = user
       ? { ...user, roles: user.roles || [], permissions: user.permissions || [] }
       : null;
     cacheUser(finalUser);
-    set({ user: finalUser, isAuthenticated: !!finalUser });
+    set({ user: finalUser, isAuthenticated: !!finalUser, authTransientError: false, isRecheckingAuth: false });
   },
 
   login: async (data) => {
@@ -165,7 +208,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       organisations: scopes,
     };
     cacheUser(finalUser);
-    set({ user: finalUser, isAuthenticated: true });
+    set({ user: finalUser, isAuthenticated: true, authTransientError: false, isRecheckingAuth: false });
     startProactiveRefresh();
     sessionStorage.setItem(LOGIN_SPLASH_KEY, '1');
     applyUserPreferences(finalUser);
@@ -185,14 +228,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     cacheUser(null);
     sessionStorage.removeItem(LOGIN_SPLASH_KEY);
-    set({ user: null, isAuthenticated: false });
+    set({ user: null, isAuthenticated: false, authTransientError: false, isRecheckingAuth: false });
   },
 
   forceLogout: (reason?: string) => {
     stopProactiveRefresh();
     cacheUser(null);
     sessionStorage.removeItem(LOGIN_SPLASH_KEY);
-    set({ user: null, isAuthenticated: false });
+    set({ user: null, isAuthenticated: false, authTransientError: false, isRecheckingAuth: false });
     sessionStorage.setItem('force_logout_reason', reason || 'Session terminated by administrator');
     window.location.href = '/login';
   },
@@ -208,13 +251,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkAuth: async () => {
     const hadUser = !!get().user;
-    if (!hadUser) set({ isLoading: true });
+    // A retry after a transient failure must stay on the retry surface: setting
+    // `isLoading` here would swap the app to the one-shot startup splash, which
+    // cannot dismiss itself if the check outlives it (stuck screen).
+    const isRetry = get().authTransientError === true;
+    if (!hadUser && !isRetry) set({ isLoading: true });
+    if (isRetry) set({ isRecheckingAuth: true });
     try {
       try { await authApi.refresh(); } catch {}
-      const result = await authApi.me();
+      const result = await fetchCurrentUserResilient();
       if (!result?.user) {
         cacheUser(null);
-        set({ user: null, isAuthenticated: false });
+        set({ user: null, isAuthenticated: false, authTransientError: false, isRecheckingAuth: false });
         return;
       }
       const scopes = await loadScopes();
@@ -225,19 +273,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         organisations: scopes,
       };
       cacheUser(finalUser);
-      set({ user: finalUser, isAuthenticated: true });
+      set({ user: finalUser, isAuthenticated: true, authTransientError: false, isRecheckingAuth: false });
       startProactiveRefresh();
       syncUserThemePreference(finalUser.darkMode);
       applyUserPreferences(finalUser);
       void import('./appearance.store').then(({ useAppearanceStore }) => useAppearanceStore.getState().fetch());
-    } catch {
-      const cached = get().user;
-      if (!cached) {
-        cacheUser(null);
-        set({ user: null, isAuthenticated: false });
+    } catch (err) {
+      // Transient failures (429 / 5xx / network) must not invalidate a session.
+      // On a cold start (no cached user) they must not fall through to the
+      // unauthenticated state either: ProtectedRoute would then redirect to
+      // /login — the exact live-incident symptom. Mark the session as
+      // indeterminate and let the guard offer a bounded, user-initiated retry.
+      if (isTransientAuthFailure(err)) {
+        set({ authTransientError: true });
+      } else {
+        set({ authTransientError: false });
+        const cached = get().user;
+        if (!cached) {
+          cacheUser(null);
+          set({ user: null, isAuthenticated: false });
+        }
       }
     } finally {
-      set({ isLoading: false });
+      set({ isLoading: false, isRecheckingAuth: false });
     }
   },
 }));
