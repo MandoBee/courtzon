@@ -70,7 +70,7 @@ export default function BottomNav() {
             type="button"
             onClick={() => { tap(); setMoreOpen(true); }}
             aria-label={t('nav.more')}
-            className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-h-11 min-w-0 transition-colors cz-no-select ${
+            className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 min-h-11 min-w-11 transition-colors cz-no-select ${
               moreActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'
             }`}
           >
