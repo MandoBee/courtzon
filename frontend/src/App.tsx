@@ -855,6 +855,11 @@ function AppContent() {
         </Route>
 
         {/* ── ORGANISATION MANAGEMENT ── */}
+        {/* Legacy/back-compat URL: `/org` has no page of its own (only `/org/:orgId`).
+            Without this route the nginx SPA fallback would render a 404 page. */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/org" element={<Navigate to="/app" replace />} />
+        </Route>
         <Route path="/org/:orgId" element={<OrgRoute />}>
           <Route path="pending-approval" element={<OrgPendingApprovalPage />} />
           <Route element={<OrgApprovedGuard />}>
