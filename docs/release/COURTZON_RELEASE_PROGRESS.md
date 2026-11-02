@@ -4,7 +4,7 @@
 |---|---|
 | Document | `docs/release/COURTZON_RELEASE_PROGRESS.md` |
 | Plan | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
-| Last updated | 2026-10-31 |
+| Last updated | 2026-11-02 (read-only DB identity audit §22; canonical wording §22.7) |
 | Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 deferred)** + **Phase 6 IN_PROGRESS (3/10)** |
 | Overall completion | **54 %** (54 / 100 DONE items) |
 
@@ -22,7 +22,7 @@
 | 3 — Frontend Defect Remediation | 10 / 10 | **100 %** | **DONE** (acceptance met) |
 | 4 — Backend & Business Rules Audit | 10 / 10 | **100 %** | **DONE** (audit acceptance met; **B36/B37** open follow-ups) |
 | 5 — Payments, Accounting & Settlements | 9 / 10 | **90 %** | IN_PROGRESS (P5-05 IN_PROGRESS/DEFERRED; P5-01–P5-04, P5-06–P5-10 DONE; acceptance NOT MET) |
-| 6 — Real UI & E2E Testing | 3 / 10 | **30 %** | IN_PROGRESS (P6-01, P6-02, P6-03 DONE; P6-04…P6-10 not started) |
+| 6 — Real UI & E2E Testing | 3 / 10 | **30 %** | IN_PROGRESS (P6-01…P6-03 DONE; P6-04 IN_PROGRESS; P6-05 IN_PROGRESS; P6-06 TODO; P6-07 TODO; P6-08 IN_PROGRESS; P6-09 TODO; P6-10 TODO) |
 | 7 — Tests, Architecture & CI Security Gates | 1 / 10 | **10 %** | IN_PROGRESS |
 | 8 — Performance, Quality & UX | 1 / 10 | **10 %** | IN_PROGRESS |
 | 9 — Docker Rebuild & Operational Verification | 0 / 10 | **0 %** | TODO (gated) |
@@ -39,7 +39,7 @@
 | Working tree | clean before this documentation operation |
 | Node / npm | v22.14.0 / 11.7.0 |
 | Docker | backend `cbd5bb603f65`, frontend `10f00d300047`, redis `df68692fadf1`, mysql `6622d8c632c9`, grafana `dbb44c7528f2`, prometheus `5249ae03b7d9` — all up, four healthy |
-| DB | `courtzon_v3` @ `127.0.0.1:3307` (container `courtzon-mysql`) — **approved test database (Amendment A1)**; data is user-declared disposable and cleared once after the campaign |
+| DB | `courtzon_v3` @ `127.0.0.1:3307` (container `courtzon-mysql`) — **local development database** on a persistent Docker volume, **not** an isolated or disposable test environment; used by the test suites under Amendment A1. Same database **name** as Live (`courtzon_v3`), different instance. See §22 |
 | Redis | `127.0.0.1:6379` |
 | Local backend mode | `NODE_ENV=production`, `RELAX_RATE_LIMIT=false`, `PAYMENT_GATEWAY_PROVIDER=paymob`, `PAYMOB_SANDBOX=true` |
 | Browser tooling | Playwright 1.60.0, Chromium 1223 installed |
@@ -52,7 +52,7 @@
 | P1-01 | Record Git baseline | **DONE** | Plan §9; this file §2. HEAD/origin/branch/status captured. |
 | P1-02 | Record Docker baseline | **DONE** | Six container IDs/status recorded (§2), unchanged during audits. |
 | P1-03 | Record runtime/tooling baseline | **DONE** | Node 22.14.0, npm 11.7.0, Playwright 1.60/Chromium 1223, Vitest 4. |
-| P1-04 | Define rollback strategy | **DONE** | Plan §9.1: no history rewrite; code revert-commit model; disposable-data decision recorded; no truncation during tests. |
+| P1-04 | Define rollback strategy | **DONE** | Plan §9.1: no history rewrite; code revert-commit model; "disposable-data decision" is historical shorthand for the Amendment A1 cleanup decision — it does **not** mean `courtzon_v3` is a separate test database or that its data is freely deletable (see §22.7); no truncation during tests. |
 | P1-05 | Inspect test setup/cleanup scripts | **DONE** | Audited `e2e/helpers/database.ts`, `vitest.integration.setup.ts`, `global-setup.ts`, seed scripts, integration inventory (131 persistent / 32 container-based specs; 14 use the shared helper, 18 direct `GenericContainer`), E2E fixtures/scenarios, no E2E teardown. |
 | P1-06 | Design existing-DB safety model | **DONE** | Plan §10 + Amendment A1: `courtzon_v3` only, exact target pinning, deferred explicit cleanup, marker guidance. |
 | P1-07 | Verify explicit target on all test paths | **DONE** | `e2e/helpers/database.ts::connect()` asserts approved target before opening a pool; `vitest.integration.setup.ts` asserts at startup; 14/14 guard tests pass. |
@@ -1720,13 +1720,13 @@ provider reproduction.
 |---|---|---|---|
 | P6-01 | Inventory Playwright + safe suites | **DONE** | Playwright 1.60; configs at root and `e2e/`; 12 spec files / 26 tests; read-only candidates: `smoke/health.spec.ts`, `tournament/p0-public-readonly.spec.ts`. |
 | P6-02 | Persist traceable scenario matrix | **DONE** | **`docs/release/E2E_SCENARIO_MATRIX.md`** (2026-10-28). Persisted a 33-row traceable matrix (role, setup, action, expected, cleanup, spec file:line, evidence class, status) mapped to P6-04…P6-09, derived from static inspection of the 12 existing specs (26 tests, count verified) and the plan. Classes: **R** read-only, **W** DB-writing, **X** gateway-dependent, **D** contains destructive SQL, **S** stale fixture. Findings: (1) `cancel-booking`, `public-match`, `notification-deeplink` use `bookingPayload` with `paymentMethod:'wallet'` (`e2e/data/courts.ts:108`) while wallet charging is disabled (`payment.service.ts:102–105`) → **blocked/stale**; (2) `payment-flow` uses fake card `4242…` and only works with MockGateway → Paymob path blocked by P5-05; (3) `tournament-venue-flow` runs `SET FOREIGN_KEY_CHECKS=0` + `DELETE` (`:38–40`) → **blocked** pending P7-02; (4) two Playwright configs (root `testDir: './e2e'` + webServer vs `e2e/` `testDir: './scenarios'` + projects) → run commands must name the config; (5) gaps: RBAC/session/org-isolation, marketplace/subscriptions/accounting/refund UI, reports/settlements, axe a11y, realtime/simultaneous booking. Execution gating: T1 read-only runnable; T2 DB-writing needs approval; T3 mock-only or deferred Sandbox; T4 blocked. **No test was executed and no result is claimed.** Wallet fixture fixed 2026-10-28 (see audit row) — B2 still blocked by a missing `PATCH /bookings/:id/confirm` endpoint. |
-| P6-03 | Confirm approved test-DB target + safety gates | **DONE** | `connect()` target assertion + explicit destructive-cleanup authorization; 14/14 guard tests. |
-| P6-04 | Auth/session/role/permission scenarios | TODO | — |
-| P6-05 | Clubs/courts/bookings/cancellations | TODO | — |
+| P6-03 | Confirm local development DB target + safety gates | **DONE** | `connect()` target assertion + explicit destructive-cleanup authorization; 14/14 guard tests. Target is the **local development database** `courtzon_v3` @ `127.0.0.1:3307` (persistent Docker volume), **not** an isolated test environment (§22). |
+| P6-04 | Auth/session/role/permission scenarios | IN_PROGRESS | **Live read-only subset (2026-11-02):** A2 PASS (single failed attempt, no session), A4 PASS-with-observation (`/referee/assignments` = raw 401 JSON, same D-04 class), A5 PASS (`/health` 200 `ok`; `/` 200 with `#root`), **A6 deny half PASS** — player (D-09) `GET /admin/users` **403**, `PATCH /bookings/999999999/status` **403**, `POST /payments/999999999/refund` **403** (no data, rejected in `preHandler`, no write) + UI `Access denied` on `/admin` and `/admin/users`. **NOT RUN:** A1, A3, **A6 allowed path (admin → 200) — no admin session existed (verified 2026-11-02: no CDP endpoint, no Playwright browser, only an expired player state file)**, A7, A8 — need admin session and/or approved DB-write window. **Residual-scope review (matrix §3.1c):** none of A1/A3/A6-allow/A7/A8 is executable under read-only / no-new-session constraints; no test was run in that review step. **Account audit (§3.1b-3):** no admin account exists — only two `player` accounts (D-09, D-11); A6-admin stays NOT RUN. **Official-path audit (§3.1b-4):** no `POST /admin/users`, no admin invite endpoint, no create/invite UI; role assignment requires an existing super admin ⇒ admin test account not creatable without a super-admin session or a forbidden DB/RBAC change. Matrix §3.1/§3.1b/§3.1b-1/§3.1b-2/§3.1b-3/§3.1b-4/§3.1c. |
+| P6-05 | Clubs/courts/bookings/cancellations | IN_PROGRESS | **Live read-only subset (2026-11-02):** B4 **PASS** (list 2 anchors; **both** public tournaments 14 + 10 verified for identity/brackets; invalid id → terminal message; 0 page errors), B7 **PASS** (390×844, both tournaments, no unintended overflow; drawer not exercised — 0 `.cz-match-card` in both). **NOT RUN/BLOCKED:** B1, B2, B3 (W — booking writes / approved DB window), B5 (scenario missing), B6 (destructive spec, P7-02). Matrix §3.2/§3.2b. |
 | P6-06 | Marketplace/payments/subscriptions/accounting | TODO | — |
 | P6-07 | Notifications/reports/settlements/admin | TODO | — |
-| P6-08 | Responsive + accessibility checks | TODO | No axe tooling yet. |
-| P6-09 | Realtime + simultaneous booking | TODO | — |
+| P6-08 | Responsive + accessibility checks | IN_PROGRESS | **Live read-only (2026-11-02):** E1 **PASS** (attributed to the B4 run, 1440×900, ids 14+10), E2 **PASS per stated criteria** (attributed to B7, 390×844; **drawer/close-control NOT EXERCISED** — 0 `.cz-match-card`), E4 **PASS** (ids 14+10 at 768×1024 and 1024×768: no h-overflow, 0 off-screen actions, 0 container-clipped elements, 0 page errors). **E3 → PASS after fixes (2026-11-02, local, light + dark).** First run (dark only) was FAIL with 1 critical (`select-name`) + serious `color-contrast`/`link-in-text-block`; A11Y-001…006 were then fixed in the working tree (`Button.tsx`, `index.css` `--color-primary-text`, `LoginPage`, `ForgotPasswordPage`, `LandingLayout`, `PreRegisterPage`, both public tournament pages) and E3 was re-run: **48/48 scans PASS** (6 pages × 4 viewports × **light + dark**), **0 critical, 0 serious, 1 moderate per scan** (`meta-viewport` = A11Y-007, excluded by decision), **0 BLOCKED**. Tool `@axe-core/playwright` 4.14.0; command `E3_THEME=light|dark npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2`; target `127.0.0.1:5174` = fresh `npm run build` via `vite preview` + temporary loopback router — **not** Docker (image not rebuilt, `:5173` still pre-fix) and **not** Live. Safety: every non-GET aborted (`unexpectedWrites=[]`, `writesSentToServer=0` in all 48 records); no DB access, no data created. Supporting checks: `npm run build` PASS, focused Vitest 9/9 PASS; ESLint (11 errors) and `ci-validate` (214 errors) remain **pre-existing and unfixed**. **No commit/push/Docker/deploy.** Evidence `test-results/e2e/a11y/*__{light|dark}.json` (48, gitignored). Commit `9230b155` (unchanged). Matrix §3.5/§3.5a/**§3.5b**. **P6-08 stays IN_PROGRESS** (E2 drawer gap open; consumer/admin pages not scanned). |
+| P6-09 | Realtime + simultaneous booking | TODO | Specs for F1/F2/F3 **approved 2026-11-02** (matrix §3.6a), decisions fixed: D3 = same player / two sessions; D6 = no-success + no second booking (message text deferred); D9 = event via API `public_match`, observed on `/matches`. Not executed. Remaining execution-time verification: exact `public_match` payload from `CreateBookingSchema`. Writes only on `courtzon_v3`; **never on Live**. |
 | P6-10 | Fixes + regression reruns recorded | TODO | — |
 
 **Phase 6 acceptance:** **NOT MET.** The traceable matrix is persisted (`docs/release/E2E_SCENARIO_MATRIX.md`,
@@ -1999,7 +1999,7 @@ scenario has been executed yet.
 
 | ID | Item | Classification | Phase |
 |---|---|---|---|
-| AR-1 | All E2E/integration tests write directly to `courtzon_v3` (user-approved). Data is disposable; full cleanup is deferred to the end of the campaign and requires explicit authorization. No separate DB/directory is permitted. | **ACCEPTED_RISK** (user decision) | 1, 6, 7 |
+| AR-1 | All E2E/integration tests write directly to the **local development database** `courtzon_v3` @ `127.0.0.1:3307` (user-approved). The environment is persistent, not a disposable sandbox; rows are not deleted per test and any cleanup is a separate, explicitly authorized operation (plan §10.5) naming the target and affected tables. No separate DB/directory is permitted. **No writes to Live.** | **ACCEPTED_RISK** (user decision) | 1, 6, 7 |
 | AR-2 | Alpine/musl runtime proof for the upgraded native modules (`sharp`, `bcrypt`, `mysql2`) and Docker image verification are **deferred to Phase 9** — no container rebuild was authorized in Phase 2. No native-module evidence exists on Alpine yet. | **ACCEPTED_RISK (deferred)** | 2, 9 |
 | B2 | **Reconciled in P2-10.** Per-scope `npm audit`: backend prod **6** (5 high, 1 moderate) / full **20** (13 high, 6 moderate, 1 low); frontend prod **0** / full **10** (4 high, 4 moderate, 2 low); root 0/0. De-duplicated across the two npm trees: production **6** unique packages / **23** advisories (no overlap); full **25** unique packages (5 shared: `@vitest/mocker`, `brace-expansion`, `fast-uri`, `undici`, `vitest`) / **79** package+GHSA pairs (**78** unique GHSA). The former "32 = 20 + 12" figure double-counted the shared packages and is superseded. | High | 2 |
 | B3 | **RESOLVED (P3-02…P3-06).** All page-level conditional-hook gates removed, the 25 loop-bound `useSocketEvent` calls replaced by `useSocketEvents`, repo-wide `rules-of-hooks` **0**, and the remaining ref/purity/static-component defects remediated (`refs` **37→0**, `static-components` **8→0**, `purity` **10→3**). The remaining `set-state-in-effect` **54** + `purity` **3** are classified as intentional patterns (B17), not correctness violations. | Resolved | 3 |
@@ -4007,11 +4007,14 @@ Phase 9 acceptance remains **NOT MET**. No checklist item changed status, so the
 
 ### 21.5 State to preserve (do not reset/stash/clean)
 
+> **Historical snapshot (2026-10-31).** The values below describe the P8.7.14 line at that date and are preserved as
+> history. For the current branch/HEAD/Live state, see **§21.7a** (verified 2026-11-02).
+
 - **Historical snapshot (2026-10-31, before the release commits):** `HEAD = 184aa6e0b96c93b278f909d63eb7f4a88d28b424`;
   working tree **222** entries = **216 pre-existing** (including the five then-uncommitted P8.7.14.5 files and
   pre-existing modifications to `backend/docker-entrypoint.sh` / `scripts/migrate.sh`) plus the **6** release documents
   added by P8.7.14.13. Nothing was deleted or reset.
-- **Current state (after P8.7.14.20):** `HEAD = 7b9ca362696269edc43a9ddfc64072cc54645904`; two **local, unpushed**
+- **State after P8.7.14.20 (2026-10-31):** `HEAD = 7b9ca362696269edc43a9ddfc64072cc54645904`; two **local, unpushed**
   commits -- `75f3c16d` (booking fix, P8.7.14.5) and `7b9ca362` (baseline release documentation, P8.7.14.19/20).
   Working tree **213 entries** (the seven B2 release documents are still untracked); index empty. See section 21.7.
 - Local backend container: `aeb9e434fb61af9daa3432bf3f5fbc99e7b52defdd42c63861ff7e2f4646cfdf` on the image above.
@@ -4023,7 +4026,11 @@ During that span: no migrations, seeds, or manual SQL writes; no Git writes; no 
 recreation outside the authorized backend recreate; no integration/E2E suite execution; no automatic rollback.
 (Later, separately authorized commits are recorded in section 21.7.)
 
-### 21.7 Current Git state (2026-10-31, after P8.7.14.20)
+### 21.7 Historical Git state snapshot (2026-10-31, after P8.7.14.20) — HISTORICAL, NOT CURRENT
+
+> **Historical snapshot — do not read as the current state.** This subsection records what was observed on
+> **2026-10-31** for the P8.7.14 line and is preserved verbatim. It is **not** evidence about whether Live existed at
+> that date, and it is superseded for "current" by **§21.7a** (verified 2026-11-02).
 
 | Field | Value |
 |---|---|
@@ -4036,10 +4043,218 @@ recreation outside the authorized backend recreate; no integration/E2E suite exe
 | Deployed image | `sha256:5ae6bc9157131bdabe495ee3845a067f4c36fe37ae1fcb1abd8201a1377494aa` -- built from a **dirty build context** (numerous unrelated uncommitted changes at build time), therefore **not reproducible from the two commits alone** |
 | Deployment target | **Local Docker only**; no production/Hostinger deployment exists |
 
+### 21.7a Current state verified 2026-11-02 (read-only connection audit) — supersedes §21.7 for "current"
+
+§21.7 is the **2026-10-31 historical snapshot** and stays as written. The current state below was verified read-only
+during the database-identity audit (§22) on 2026-11-02:
+
+| Field | Current value (2026-11-02) | Evidence |
+|---|---|---|
+| Branch | `fix/courtzon-live-phase1` | `git branch -vv` |
+| HEAD / tracking | `9230b155da5584f3e3847b358d3913bb829d56c4`, local == `origin/fix/courtzon-live-phase1` | `git log -1`, `git branch -vv` |
+| Live `gitCommit` | `9230b155…`, `gitCommitSource: image`, `gitCommitConsistent: true` | `GET https://api.courtzon.cloud/health/version` |
+| Live schema expectation | `expectedMigration: 205_tournaments_max_events_check`; `connected`, **330** tables | `/health/version` + `/health/database` |
+| Local Docker DB | `courtzon_v3` @ `127.0.0.1:3307`, **330** tables, **213** applied migrations, highest `205_tournaments_max_events_check.sql` | read-only queries (§22.1) |
+| Working tree | documentation-only changes (this file, `E2E_SCENARIO_MATRIX.md`, untracked `P6_HANDOVER_2026-11-02.md`); nothing staged, nothing committed/pushed | `git status --short` |
+
+**Interpretation:** the §21.7 line "no production/Hostinger deployment exists" is the **P8.7.14 scope as recorded on
+2026-10-31**. It neither proves nor disproves whether Live existed then; it is simply not a statement about the
+current state. Live is verified on 2026-11-02 as running `9230b155` with the schema expected at migration 205.
+
 ### 21.8 Historical integration evidence scope (do not misread)
 
 The `40/40` Stage A integration result recorded in section 13 (2026-10-26) remains valid **only** for that selected,
 test-owned set. It is a historical record, **not** blanket authorization to run integration tests: Amendment A1 and the
 unresolved OI-09 decision still govern any future integration/E2E execution.
 
+## 22. Database identity audit — read-only (2026-11-02)
 
+Owner-directed read-only correction of the "test database" assumption. **No writes, no test execution, no code
+change, no commit/push, no Docker build/deploy.** Evidence classes: **[VERIFIED]** = observed on this machine or a
+public endpoint during this audit; **[DOCUMENTED]** = repository documentation/configuration; **[INFERRED]** = a
+conclusion drawn from the evidence.
+
+### 22.1 Local environment (this machine)
+
+| # | Item | Evidence | Class |
+|---|---|---|---|
+| L1 | XAMPP MySQL listens on `127.0.0.1:3306`; Windows service `mysql`; binary `C:\xampp\mysql\bin\mysqld.exe --defaults-file=c:\xampp\mysql\bin\my.ini`; server 8.0.46 | `Get-NetTCPConnection -LocalPort 3306`, `Win32_Service`, container `SELECT @@port, @@version` | VERIFIED |
+| L2 | XAMPP schemas: `courtzon`, `courtzon_test`, `courtzon_v2`, `courtzon_v3_cert`, `courtzon_v3_validate`, `familyclub`, `grand_sports_hub`, `padel_edge`, `phpmyadmin`, `test` | directory listing of `C:\xampp\mysql\data` (MySQL 8 stores one directory per schema) | VERIFIED |
+| L3 | **No `courtzon_v3` schema exists on XAMPP 3306** (only `courtzon_v3_cert` / `courtzon_v3_validate`) | L2; root login on 3306 rejected the repo `.env` password (`ERROR 1045`), so `SHOW DATABASES` could not be used — directory evidence is the basis | VERIFIED (with the noted limitation) |
+| L4 | Docker MySQL `courtzon-mysql` publishes `127.0.0.1:3307 -> 3306`; server 8.0.46 | `docker ps`, in-container `SELECT @@port` | VERIFIED |
+| L5 | Docker schemas: `courtzon_v3` plus verification artifacts `courtzon_v3_baseline`, `courtzon_v3_restore_verify`, `courtzon_p41_docker_verify{1,2,3}`, `courtzon_p41_live_verify`, `courtzon_p42_current_verify`, `courtzon_p43_chain_verify`, `courtzon_p44_chain_only` | in-container `SHOW DATABASES` | VERIFIED |
+| L6 | Docker `courtzon_v3`: **330** base tables, **213** applied migrations, highest `205_tournaments_max_events_check.sql` | read-only `information_schema` / `migration_history` queries | VERIFIED |
+| L7 | Local Docker backend is healthy and reports `database: connected`, `tables: 330` | `GET http://localhost:3000/health/database` | VERIFIED |
+| L8 | The Docker backend reaches `courtzon_v3` **inside** the MySQL container: `docker-compose.yml` forces `DB_HOST=mysql`, `DB_PORT=3306` over the `.env` file, and `DB_NAME` comes from `.env` (`courtzon_v3`) | `docker-compose.yml:73-81`, `.env` keys | DOCUMENTED |
+| L9 | The non-Docker dev server (`npm run dev` -> `tsx watch --env-file=.env`) would target `localhost:3306` / `courtzon_v3` | `backend/package.json` dev script + `backend/.env` | DOCUMENTED |
+| L10 | L9 is **misaligned**: that target schema does not exist on XAMPP 3306 (L3), so a host-run backend would fail to connect; the working local stack is the Docker one (L7) | L3 + L9 | INFERRED |
+
+### 22.2 Live environment (Hostinger / Coolify)
+
+| # | Item | Evidence | Class |
+|---|---|---|---|
+| V1 | `https://api.courtzon.cloud/health/version` -> `gitCommit 9230b155…`, `gitCommitSource: image`, `expectedMigration: 205_tournaments_max_events_check` | public read-only GET | VERIFIED |
+| V2 | `https://api.courtzon.cloud/health/database` -> `connected`, **330** tables, latency ~99 ms | public read-only GET | VERIFIED |
+| V3 | Live DB is the Coolify-managed MySQL service `courtzon-db`, `DB_NAME=courtzon_v3`, `DB_USER=courtzon_app`, `COURTZON_MIGRATION_ENV=production`, `DB_TLS_MODE` >= `require` | `deployment/coolify/.env.production`, `docs/deployment/coolify-deployment-runbook.md` §4.4, `DEPLOYMENT_GOVERNANCE.md` §8.5 | DOCUMENTED |
+| V4 | Live is a **separate database instance** from the local Docker one (different host/service, different credentials), not a copy of it | V1–V3 | DOCUMENTED + INFERRED |
+
+### 22.3 Conclusion — what `courtzon_v3` is
+
+- `courtzon_v3` is the **application database name used in both environments** (local Docker and Live), not the name
+  of an isolated test database.
+- The local `courtzon_v3` on `127.0.0.1:3307` is the **local development database** of the Docker stack. It is
+  persistent (`mysql_data` volume) and holds the data the campaign has been using.
+- **No separate, disposable test database is proven to exist.** The integration/E2E suites deliberately target the
+  same local `courtzon_v3` (`vitest.integration.setup.ts`, `e2e/helpers/database.ts`), which is why
+  `DEPLOYMENT_GOVERNANCE.md` §6 records that execution there is an accepted risk, not isolation.
+- The extra `courtzon_*` schemas on the Docker server are verification artifacts of migration/restore scripts, not
+  application or test databases in use by the app.
+
+### 22.4 How schema and data reach Live (documented mechanism)
+
+| Change type | Mechanism | Automatic? |
+|---|---|---|
+| Schema | Commit a numbered SQL migration to `database/migrations/` -> deploy the backend image (Coolify build from the repo) -> `backend/docker-entrypoint.sh` runs `node /app/scripts/migrate.js` on every start when the DB is non-empty, under the advisory lock and the `migration-guard.sh` policy (`COURTZON_MIGRATION_ENV=production`; `LOCAL_DOCKER_ONLY` skipped and never recorded) | Yes, at container start |
+| Permissions | Same entrypoint runs `sync-role-permissions.mjs` add-only (never revokes) | Yes, at container start |
+| Fresh/empty DB | Entrypoint imports `database/baseline/001_courtzon_v3.sql` + `database/seeds/001_baseline.sql` and stamps `migration_history` | Only when table count is 0 |
+| Reference/seed data | Separate, explicitly approved `node backend/scripts/seed.js --seed-file <file>` against the named target; seeds 002–006 are **not** part of the automatic first-run path | No |
+| Business data | Never copied from local to Live; any Live data change requires an explicit, separately approved operation with a safe plan | No |
+| Backups | Coolify scheduled backup of `courtzon-db` (retention 30) + `scripts/backup.js` encrypted with `BACKUP_ENCRYPTION_KEY`; restore via `scripts/restore.js` | Scheduled/approved |
+
+**Prohibited by policy:** copying the local database over Live, `--fresh`/drop/recreate without written approval
+naming the affected tables, and `docker compose down mysql` (destroys local data).
+
+### 22.5 Corrections to prior Phase 6 wording
+
+1. "Approved test database" is misleading. Correct wording: **local development database** `courtzon_v3` on
+   `127.0.0.1:3307`, reused by the test suites under Amendment A1 / accepted risk.
+2. Phase 6 writes are therefore **development-data writes on the local Docker volume**, not writes to a disposable
+   sandbox. Approval for a "write window" must name that target explicitly and accept that its data persists.
+3. No local data or schema is to be transferred to Live by copy; schema moves only through reviewed migrations in
+   the deployed image, and Live data changes are separate approved operations.
+4. Documentation defect found: §21.7 of this file states "no production/Hostinger deployment exists", which
+   contradicts V1/V2. **Resolved 2026-11-02 without rewriting history:** §21.7 is now explicitly tagged as a
+   2026-10-31 historical snapshot, and a separate **§21.7a** records the current verified state (Live runs
+   `9230b155` at migration 205).
+
+### 22.6 Explicit non-actions
+
+No database write, no migration, no seed, no test suite, no code/config edit, no commit/push, no Docker build/deploy,
+no Live write. Only read-only queries (local Docker MySQL, local health endpoint, public Live health endpoints) and
+this documentation update.
+
+### 22.7 Canonical wording adopted across release documents (2026-11-02)
+
+This wording is now used in `COURTZON_RELEASE_PROGRESS.md` and `E2E_SCENARIO_MATRIX.md`; older sentences that call
+`courtzon_v3` a "test database" are superseded by this section.
+
+1. **`courtzon_v3` is the application database name** in both environments — local Docker and Hostinger Live. It is
+   not the name of a test database.
+2. **Local instance:** `courtzon_v3` @ `127.0.0.1:3307` (container `courtzon-mysql`) is the **local development
+   database** on a persistent Docker volume. It is **not** an isolated test environment and **not** a disposable or
+   freely deletable database.
+3. **Tests reuse the local development database** under Amendment A1. That is an accepted risk, not isolation.
+4. **Any write-producing test requires explicit approval that names the local target** (`courtzon_v3` @
+   `127.0.0.1:3307`) **and the expected tables/impact**. Approval is per run; it is never blanket and never covers
+   Live.
+5. **No writes on Live.** Live remains read-only for the campaign.
+6. **Schema changes reach Live only as reviewed numbered migrations inside the deployed backend image**, applied by
+   `backend/docker-entrypoint.sh` → `node /app/scripts/migrate.js` under `migration-guard.sh` with
+   `COURTZON_MIGRATION_ENV=production`. Copying the local database over Live is prohibited.
+7. **Local business data is never transferred to Live automatically.** Any Live data change is a separate,
+   explicitly approved operation with its own safe plan; seeds are never part of a deployment step.
+8. **Historical shorthand:** phrases such as "disposable-data decision" (P1-04) and "approved DB-write window" are
+   historical shorthand for the Amendment A1 decision and for explicit write approval on the local development
+   database. They do **not** assert the existence of a separate test database or of disposable data.
+
+### 22.8 This correction step — non-actions
+
+Documentation-only. No database read/write, no migration, no seed, no test execution, no code/config/Docker change,
+no commit/push, no Live action.
+
+Files touched by the DB-identity/write-policy unification (2026-11-02): `COURTZON_RELEASE_PROGRESS.md`,
+`E2E_SCENARIO_MATRIX.md`, `COURTZON_RELEASE_READINESS_PLAN.md`, `AGENTS.md`, `DEPLOYMENT_GOVERNANCE.md`.
+
+## 23. E3 accessibility scan (axe) — local (2026-11-02)
+
+**Verdict: PASS (after fixes)** — the E3 criterion "no critical/serious violations" is **met for the six public
+pages in both colour schemes**: **48/48 scans PASS**, **0 critical**, **0 serious**, and **1 `moderate` per scan**
+(`meta-viewport` → A11Y-007, excluded by decision). The first run (same day, dark scheme only) was **FAIL** with
+1 critical + serious findings; that baseline is kept in §23.2 and the fixes are listed in §23.3.
+
+### 23.1 Run configuration (actual values)
+
+| Item | Value |
+|---|---|
+| Tool | `@axe-core/playwright` **4.14.0** (root `devDependency`, installed `--save-dev --save-exact`) |
+| axe engine | `axe-core` **4.14.0** (read from `results.testEngine.version`) |
+| Tags | `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` |
+| Spec | `e2e/scenarios/a11y/axe-public.spec.ts` (imports `test` from `@playwright/test`; no fixtures/DB helpers) |
+| Project | `a11y` in `e2e/playwright.config.ts` (`testMatch: '**/a11y/*.spec.ts'`, excluded from `all`) |
+| Command | `$env:E3_THEME='dark'` then `'light'` + `npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2` |
+| Base URL | `http://127.0.0.1:5174` — local `npm run build` output served by `vite preview` behind a temporary loopback router that mirrors Nginx `Accept`-header routing. Docker `:5173` was **not rebuilt** and still serves the pre-fix bundle |
+| API URL | `http://127.0.0.1:3000` (loopback guard) |
+| Viewports | **1440×900** (E1), **390×844** (E2), **768×1024** (E4), **1024×768** (E4) |
+| Themes | **light** and **dark** (`localStorage.theme_mode` + `emulateMedia`; the spec asserts the applied `html.dark`/`html.light` class before scanning) |
+| Environment | Local only: fresh `npm run build` + `vite preview`. **Not** Docker, **not** Live |
+| Commit | `9230b155da5584f3e3847b358d3913bb829d56c4` — **no commit/push**; fixes live only in the working tree |
+| Outcome | **48 tests PASS** (6 pages × 4 viewports × 2 schemes) · 0 critical · 0 serious · 1 moderate per scan · **0 BLOCKED** · 0 harness/safety failures |
+
+### 23.2 Per-page results
+
+**Run 1 — pre-fix baseline (dark only, FAIL):**
+
+| Page | Path | Critical | Serious | Moderate | Minor |
+|---|---|---|---|---|---|
+| Landing | `/` | 0 | 1 | 1 | 0 |
+| Login | `/login` | **1** | 1 | 1 | 0 |
+| Forgot password | `/forgot-password` | 0 | 2 | 1 | 0 |
+| Register chooser | `/register` | 0 | 1 | 1 | 0 |
+| Public tournaments list | `/tournaments/public` | 0 | 2 | 1 | 0 |
+| Public tournament detail | `/tournaments/public/3632` | 0 | 1 | 1 | 0 |
+
+**Run 2 — post-fix (light + dark, PASS):**
+
+| Page | Path | Light (c/s/m/mi) | Dark (c/s/m/mi) | Verdict ×2 |
+|---|---|---|---|---|
+| Landing | `/` | 0/0/1/0 | 0/0/1/0 | **PASS** |
+| Login | `/login` | 0/0/1/0 | 0/0/1/0 | **PASS** |
+| Forgot password | `/forgot-password` | 0/0/1/0 | 0/0/1/0 | **PASS** |
+| Register chooser | `/register` | 0/0/1/0 | 0/0/1/0 | **PASS** |
+| Public tournaments list | `/tournaments/public` | 0/0/1/0 | 0/0/1/0 | **PASS** |
+| Public tournament detail | `/tournaments/public/3632` | 0/0/1/0 | 0/0/1/0 | **PASS** |
+
+24/24 PASS per scheme (48/48 total). The `moderate` in every scan is `meta-viewport` (A11Y-007, out of scope).
+Detail id `3632` was discovered read-only via `GET /public/tournaments`.
+
+### 23.3 Defects (001–006 FIXED locally, 007 OPEN)
+
+| ID | Impact | Rule | Status | Fix applied (file:line) |
+|---|---|---|---|---|
+| A11Y-001 | critical | `select-name` (4.1.2) | **FIXED** | `LoginPage.tsx:77,81` — `htmlFor` + `id` |
+| A11Y-002 | serious | `color-contrast` (1.4.3) | **FIXED** | `Button.tsx:14` — primary background → `--color-primary-dark` (5.02:1) |
+| A11Y-003 | serious | `color-contrast` (1.4.3) | **FIXED** | `index.css:12/156` new `--color-primary-text` (`#15803D` / `#86EFAC`) on nav + chips |
+| A11Y-004 | serious | `color-contrast` (1.4.3) | **FIXED** | links/CTAs → `--color-primary-text` (4.79 light / 10.93 dark) |
+| A11Y-005 | serious | `color-contrast` (1.4.3) | **FIXED** | `index.css:656` `.cz-landing-btn-surface` → `--color-primary-text` |
+| A11Y-006 | serious | `link-in-text-block` (1.4.1) | **FIXED** | permanent `underline` on the inline links |
+| A11Y-007 | moderate | `meta-viewport` (1.4.4) | **OPEN** | not changed — excluded by decision |
+
+**Supporting checks in the same step:** `npm run build` (frontend, tsc + vite) **PASS** · focused Vitest on the two
+public tournament page specs **9/9 PASS** · `npx eslint` on the changed files **11 errors + 1 warning, all
+pre-existing** (`no-explicit-any` on untouched lines, `set-state-in-effect` at `LandingLayout.tsx:80`) ·
+`node scripts/ci-validate.js` **214 errors, all pre-existing backend architecture rules**. **Neither was fixed nor
+claimed fixed.**
+
+### 23.4 Safety evidence
+
+- Every non-`GET`/`HEAD`/`OPTIONS` request was aborted: `unexpectedWrites = []`, `writesSentToServer = 0` in all **48** records.
+- The SPA's own `POST /auth/refresh` was blocked on every page (`blockedWrites` length 1) — it never reached the server, so no token rotation or DB write occurred.
+- No database connection, query, or write; no accounts/tournaments/bookings created; no session established.
+- Evidence: `test-results/e2e/a11y/<page>__<viewport>__{light|dark}.json` (48 files; `test-results/` is gitignored) + per-test attachments under `test-results/e2e/artifacts/`.
+
+### 23.5 Non-actions
+
+The application code changed **locally** (8 files) but **Docker was not rebuilt**, so `:5173` still runs the
+pre-fix bundle. **No commit, no push, no deployment, no Docker build/restart, no Live test, no DB access or write, no
+migration/seed, and no theme change/publish** occurred in this step. Documentation plus the fixes listed in §23.3
+exist only in the working tree.

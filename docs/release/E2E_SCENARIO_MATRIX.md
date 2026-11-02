@@ -5,7 +5,7 @@
 | Document | `docs/release/E2E_SCENARIO_MATRIX.md` |
 | Plan item | **P6-02 — Persist the traceable scenario matrix (role, setup, action, expected, cleanup)** |
 | Phase | 6 — Real UI and End-to-End Testing |
-| Date | 2026-10-28 |
+| Date | 2026-10-28 (updated 2026-11-02: DB identity and write policy §2.1) |
 | Status | **Persisted inventory — execution NOT RUN** |
 | Sources of truth | current working tree: `e2e/` specs/pages/fixtures/helpers, `playwright.config.ts`, `e2e/playwright.config.ts`, plan §10/§11, `INTEGRATION_SAFETY_ASSESSMENT.md` |
 | Related evidence | P6-01 inventory (progress §8), P6-03 target/safety gates (progress §8), Phase 5 evidence ledger (progress §5W) |
@@ -21,7 +21,7 @@
 | Field | Meaning |
 |---|---|
 | **Class R** | Read-only: browser navigation + GET requests only; no DB writes by the test |
-| **Class W** | Writes to the approved test DB (`courtzon_v3` @ `127.0.0.1:3307`) through fixtures/API |
+| **Class W** | Writes to the **local development database** `courtzon_v3` @ `127.0.0.1:3307` (persistent Docker volume) through fixtures/API. It is **not** an isolated or disposable test environment; a Class W run needs explicit approval naming the local target and the expected tables/impact (Amendment A1). **Never Live.** |
 | **Class X** | Depends on a payment gateway; with `PAYMENT_GATEWAY_PROVIDER=paymob` it needs the external Sandbox (P5-05, **DEFERRED**); with `mock` it is UI-only evidence |
 | **Class D** | Contains its own destructive SQL (`DELETE`/`TRUNCATE`) → blocked until reviewed/fixed (P7-02) |
 | **S** | Stale fixture/incompatibility with current code → cannot pass until updated |
@@ -37,7 +37,7 @@ Row IDs are stable: `A*` = P6-04 auth/RBAC, `B*` = P6-05 bookings/clubs, `C*` = 
 | Frontend + backend running | NOT VERIFIED in this task (no server started) |
 | `PLAYWRIGHT_BASE_URL` / `FRONTEND_URL` (default `http://localhost:5173`) | documented (`playwright.config.ts`, `e2e/playwright.config.ts:3–4`) |
 | `BACKEND_URL` (default `http://localhost:3000`) | documented (`e2e/helpers/api.ts:1`) |
-| Test DB pin | `courtzon_v3` @ `127.0.0.1:3307`, asserted before connecting (`e2e/helpers/database.ts:23–26`) |
+| Local DB pin | `courtzon_v3` @ `127.0.0.1:3307` — the **local development database** (persistent Docker volume), **not** a test environment. Asserted before connecting (`e2e/helpers/database.ts:23-26`). Same database **name** as Live, different instance |
 | Destructive cleanup | defer-only, fail-closed, requires explicit authorization (`database.ts:82–89`); tests never call it |
 | Payment provider | Value **UNKNOWN** locally (`.env` not inspected). Class X rows require `mock` for UI-only runs, or the deferred Paymob Sandbox for payment evidence |
 | Test data | Fixtures create their own users/orgs/branches/resources; public-tournament rows must already exist for `p0-public-readonly` |
@@ -62,6 +62,29 @@ discovery/web-server behaviour.
    `e2e/playwright.config.ts` reports **52 tests in 12 files** and with the root `playwright.config.ts`
    **26 tests in 12 files**, both with **no configuration error** (no tests executed).
 
+### 2.1 Database identity and write policy (canonical)
+
+This section fixes the wording used throughout this matrix. Evidence is recorded in
+`COURTZON_RELEASE_PROGRESS.md` §22 (read-only audit, 2026-11-02).
+
+| Item | Canonical statement |
+|---|---|
+| What `courtzon_v3` is | The **application database name**, used in both environments: local Docker and Hostinger Live. It is **not** the name of a test database. |
+| Local instance | `courtzon_v3` @ `127.0.0.1:3307` inside the `courtzon-mysql` container — the **local development database** on a persistent Docker volume. It is **not** an isolated or disposable test environment. |
+| Live instance | The Coolify-managed MySQL service `courtzon-db` (`DB_NAME=courtzon_v3`, `DB_USER=courtzon_app`, `COURTZON_MIGRATION_ENV=production`) — a **separate instance** with separate credentials, never a copy of the local database. |
+| Why tests use the local instance | The integration/E2E suites are pinned to the local `courtzon_v3` on loopback:3307 and assert that target before connecting (`vitest.integration.setup.ts`, `e2e/helpers/database.ts:23–26`). This is Amendment A1: an accepted risk, not test isolation. |
+| Phase 6 test target (current) | Phase 6 uses the **persistent local development database in Docker**, `courtzon_v3` @ `127.0.0.1:3307`. It is **not** an isolated test database and **not** a disposable one. |
+| Write approval (Class W / T2) | A write-producing run requires **explicit approval that names the local target** (`courtzon_v3` @ `127.0.0.1:3307`) **and the expected tables/impact**. Approval for one run is not blanket approval for later runs. |
+| Live writes | **None.** Live is read-only for this campaign. No fixture, API call or SQL statement from this matrix may write to Live. |
+| Cleanup | There is no per-test cleanup. Any data cleanup is a separate, explicitly authorized operation under plan §10.5 that names the target and affected tables. |
+| Historical shorthand | "Approved DB-write window" (used in older rows and in earlier audit documents) is shorthand for **explicit approval to write to the local development database** `courtzon_v3` @ `127.0.0.1:3307`, naming the expected tables/impact. It does **not** imply a separate test database, disposable data, or any Live write, and it does **not** change any previously approved test decision. |
+
+**Schema vs data transfer to Live (documented policy):** approved schema changes reach Live **only** as reviewed
+numbered migrations inside the deployed backend image, applied by `backend/docker-entrypoint.sh` →
+`node /app/scripts/migrate.js` under `migration-guard.sh` and `COURTZON_MIGRATION_ENV=production`. The local database
+is **never** copied over Live. Local business data is **never** transferred to Live automatically; any Live data
+change is a separate, explicitly approved operation with its own safe plan.
+
 ## 3. The matrix
 
 ### 3.1 P6-04 — Auth / session / role / permission
@@ -69,13 +92,61 @@ discovery/web-server behaviour.
 | ID | Role | Setup | Action | Expected | Cleanup | Spec (source) | Class | Status |
 |---|---|---|---|---|---|---|---|---|
 | A1 | Player | Insert test user (`insertUser`), login via UI | Submit valid phone/password | Redirect to `/app`, session cookie set | None per test; user row left for campaign cleanup | `e2e/scenarios/smoke/login.spec.ts:8–25` | W | NOT RUN |
-| A2 | Anonymous | None | Submit invalid password | Visible error/alert; no session | None | `e2e/scenarios/smoke/login.spec.ts:27–36` | R | NOT RUN |
+| A2 | Anonymous | None | Submit invalid password | Visible error/alert; no session | None | `e2e/scenarios/smoke/login.spec.ts:27–36` | R | **PASS (2026-11-02, Live)** — one synthetic attempt: alert `Invalid credentials. 4 attempt(s) remaining.`, stayed on `/login`, `GET /auth/me` → `user:null` |
 | A3 | Platform admin | Admin fixture logs in via API + UI | Open `/admin`, admin link, admin dashboard | `admin` nav visible; dashboard loads | None | `e2e/scenarios/admin/admin-dashboard.spec.ts:6–48` | W | NOT RUN |
-| A4 | Anonymous | None | Navigate `/tournaments`, `/admin/tournament/list`, `/org/35/tournaments`, `/referee/assignments` | Redirect to `/login` or 4xx; no crash | None | `e2e/scenarios/tournament/p0-public-readonly.spec.ts:205–234` | R | NOT RUN |
-| A5 | Anonymous | Stack up | `GET /health`; open `/` | 200; `#root` visible | None | `e2e/scenarios/smoke/health.spec.ts:4–12` | R | NOT RUN |
-| A6 | Role matrix (player, admin; org/coach/referee actors absent) | Player + admin sessions seeded in the spec | API: player → `GET /admin/users` (403), `PATCH /bookings/1/status` (403), `POST /payments/1/refund` (403); admin → `GET /admin/users` (200). UI: player → `/admin/users` shows **Access denied**; admin → page renders | 401/403 before the handler; UI blocks the page | Logout both; no business rows created | `e2e/scenarios/auth/authz-session-isolation.spec.ts` (A6) | W | **AUTHORED — NOT EXECUTED (2026-10-28); pending approved DB-write window** |
+| A4 | Anonymous | None | Navigate `/tournaments`, `/admin/tournament/list`, `/org/35/tournaments`, `/referee/assignments` | Redirect to `/login` or 4xx; no crash | None | `e2e/scenarios/tournament/p0-public-readonly.spec.ts:205–234` | R | **PASS with observation (2026-11-02, Live)** — `/admin`, `/admin/tournament/list`, `/org/35/tournaments`, `/tournaments` → SPA redirect to `/login`; `/referee/assignments` → **401 JSON** `AUTHENTICATION_ERROR` (4xx, no crash); 0 page errors. Raw JSON on direct browser navigation mirrors the D-04 class for API-prefixed paths |
+| A5 | Anonymous | Stack up | `GET /health`; open `/` | 200; `#root` visible | None | `e2e/scenarios/smoke/health.spec.ts:4–12` | R | **PASS (2026-11-02, Live)** — `GET /health` = **200** `status:"ok"`; `/` = **200**, `#root` present (2 children), 2683 chars rendered |
+| A6 | Role matrix (player, admin; org/coach/referee actors absent) | Player + admin sessions seeded in the spec | API: player → `GET /admin/users` (403), `PATCH /bookings/1/status` (403), `POST /payments/1/refund` (403); admin → `GET /admin/users` (200). UI: player → `/admin/users` shows **Access denied**; admin → page renders | 401/403 before the handler; UI blocks the page | Logout both; no business rows created | `e2e/scenarios/auth/authz-session-isolation.spec.ts` (A6) | W | **PARTIAL (2026-11-02, Live): deny half PASS** — player (D-09): `GET /admin/users` → **403 `FORBIDDEN`**, `PATCH /bookings/999999999/status` → **403**, `POST /payments/999999999/refund` → **403** (all bodies `error,message`, 58 B, no data); UI `/admin` + `/admin/users` → `🔒 Access denied`, no users table, no admin nav, 0 page errors. All three reject in `preHandler` before any handler ⇒ **no write** (ids were non-existent too). **Allowed half (admin → 200): NOT RUN (2026-11-02)** — no admin session existed (no CDP endpoint, no Playwright browser, no admin storage state); creating one would require credentials, which is out of scope |
 | A7 | Player | One user, two seeded sessions | `POST /auth/logout {allDevices:true}` → other session `GET /auth/me` = `{user:null}` and a protected call = 401; refresh before/after revocation (rotation) | Immediate revocation (DB-backed session), 401 for revoked refresh | Sessions/audit rows remain | `e2e/scenarios/auth/authz-session-isolation.spec.ts` (A7) | W | **AUTHORED — NOT EXECUTED (4 tests); access-expiry timing stays integration-only** |
-| A8 | Org A owner + unrelated user B | Two orgs/users (fixtures + `insertOrganisation`) | B → `GET /organisations/:orgA/bookings` (403, no data); B → `/org/:orgA/accounting/dashboard` (403); A → 200 | 403 without tenant data | Rows remain (campaign marker); no destructive cleanup | `e2e/scenarios/auth/authz-session-isolation.spec.ts` (A8) | W | **AUTHORED — NOT EXECUTED (2026-10-28); pending approved DB-write window** |
+| A8 | Org A owner + unrelated user B | Two orgs/users (fixtures + `insertOrganisation`) | B → `GET /organisations/:orgA/bookings` (403, no data); B → `/org/:orgA/accounting/dashboard` (403); A → 200 | 403 without tenant data | Rows remain (campaign marker); no destructive cleanup | `e2e/scenarios/auth/authz-session-isolation.spec.ts` (A8) | W | **AUTHORED — NOT EXECUTED (2026-10-28); pending approved DB-write window (§2.1)** |
+
+### 3.1b Live read-only run — 2026-11-02
+
+**Scope:** A2, A4, A5, A6-UI only. No writes, no admin actions, no account changes. A2 used **one** failed login with a synthetic phone (brute-force preserved: 4 attempts remaining); A6-UI used the existing player test account (D-09) and logged out at the end.
+**Tool:** Playwright 1.60 (Chromium, 1280×900) against `https://courtzon.cloud`; health read from `https://api.courtzon.cloud/health`.
+**Results:** A2 **PASS** · A4 **PASS with observation** · A5 **PASS** · A6-UI **PASS**.
+**Observation:** direct browser navigation to `/referee/assignments` returns raw **401 JSON** (`AUTHENTICATION_ERROR`) instead of an SPA redirect — same class as the fixed D-04 (`/org`) case. It is a 4xx with no crash, so A4's expectation is met, but the UX deviation is recorded.
+**Not executed:** A1, A3, A6-API (admin-allowed path), A7, A8 — they require an admin session and/or an approved DB-write window (§2.1).
+
+**3.1b-1 A6-API deny-path run (2026-11-02, no writes):** first attempt was BLOCKED — no player session existed and a fresh login was out of scope; an unauthenticated browser-context control returned **401**. **Second attempt (explicit user approval for one login):** logged in once as player D-09 via the UI, then, from the browser context:
+
+| Request | Status | Notes |
+|---|---|---|
+| `GET /admin/users` | **403** `FORBIDDEN` | body keys `error,message` (58 B), no user data |
+| `PATCH /bookings/999999999/status` | **403** `FORBIDDEN` | non-existent id; rejected in `preHandler` |
+| `POST /payments/999999999/refund` | **403** `FORBIDDEN` | non-existent id; rejected in `preHandler` |
+
+All three rejections happen in `preHandler` before any handler executes — `rbac.routes.ts:26` (`adminGuard`), `booking.routes.ts:16` (`requirePermission(['admin.bookings.update-status','org.bookings.manage'])`), `payment.routes.ts:13` (`requirePermission(['financial.reconcile'])`), with `requirePermission` returning 401/403 without invoking the handler (`shared/middleware/auth.middleware.ts:37–50`). No write occurred. Session state: authenticated before logout, `authenticated: false` after logout. Admin-allowed path (200) remains NOT RUN.
+
+**3.1b-2 A6 admin-allowed path — session availability check (2026-11-02):** **NOT RUN.** Availability verified before any action: no local debugging endpoint on `9222/9223/9333`, no browser process carrying `--remote-debugging-port` or a Playwright/`ms-playwright` profile, and the only stored browser state in the workspace is a **2-day-old player** session (`cz-qa/state.json`, 2026-10-31) that is neither an admin session nor within the refresh-token lifetime. Establishing an admin session would require credentials, which this run explicitly disallows. No admin request was executed; no status code exists to report.
+
+**3.1c P6-04 residual scope under read-only / no-new-session constraints (2026-11-02, review only):** every remaining P6-04 row requires a write and/or an admin session, so **none was executed** in this step:
+
+| Row | What blocks execution | Class |
+|---|---|---|
+| A1 | inserts a test user and creates a fresh login session | W |
+| A3 | requires a platform-admin session (`/admin`, dashboard) | W |
+| A6 (allowed half) | requires an admin session → `GET /admin/users` = 200 | W |
+| A7 | requires two sessions and `POST /auth/logout {allDevices:true}` | W |
+| A8 | fixtures creating two organisations/users + cross-tenant calls | W |
+
+**No test was run in this review step and no PASS is claimed.** P6-04 remains **IN_PROGRESS** until an approved DB-write window (§2.1) and/or an admin session is provided.
+
+**3.1b-3 A6 admin account audit (2026-11-02):** **no admin account was ever created in this campaign.** Only two accounts exist, both `player`: **D-09** (`roles:["player"]`) and **D-11** (`roles:["player"]`, later coach-approved). Account records were checked locally for the `roles` field only — no credentials, cookies or tokens were read or printed. The super-admin credentials supplied earlier in the session were rejected by the API (`401 INVALID_CREDENTIALS`, 4 attempts remaining) and were never persisted. Re-checked availability at this step: no CDP endpoint (`9222/9223/9333` closed), no browser with `--remote-debugging-port`, no Playwright browser running, and the only stored browser state is the expired 2026-10-31 **player** session. ⇒ A6-admin remains **NOT RUN**; neither test was executed and no status code exists.
+
+**3.1b-4 Official path for an admin test account — code/doc audit (2026-11-02, no execution):** **no official self-service path exists**, so A6-admin stays **NOT RUN**.
+
+| Check | Finding |
+|---|---|
+| `POST /admin/users` (admin-side user creation) | **Does not exist** — the RBAC router only exposes `GET/PUT/DELETE /admin/users/:id` (`backend/src/modules/rbac/presentation/rbac.routes.ts:26–39`) |
+| Admin "invite user" endpoint | **Does not exist**; invite endpoints in this codebase are coach agreements, community chat and tournament teams only |
+| Admin UI (`frontend/src/pages/admin/users/`) | Contains only `UserListPage`, `UserEditModal`, `CoachTab` — **no create/invite action** |
+| Role assignment | `POST /user-roles` requires `superAdminGuard` (`rbac.routes.ts:48`) ⇒ needs an **existing** super admin |
+| Staff creation | `POST /hr/employees` requires `hr.employees.manage` (`hr.routes.ts:25`) — no test account holds it, and it is org-staff scoped, not platform super admin |
+| Public registration | Only `player` / `seller` / `organization` roles (`/auth/register-*`), never admin |
+| Documentation | `docs/enterprise-library/QUAL-TEST-03_Integration_Test_Reference.md:278` describes an "invite user by email + assign role" flow, but **no matching route exists in this codebase** |
+
+**Consequence:** creating an admin test account would require either an existing super-admin session (none available) or a direct DB/RBAC change (explicitly forbidden). No account was created and no request was sent.
 
 ### 3.1a A6 / A7 / A8 readiness review (read-only, 2026-10-28)
 
@@ -127,9 +198,9 @@ discovery/web-server behaviour.
 
 | Scenario | Status | Tests authored | Blockers |
 |---|---|---|---|
-| A6 | **AUTHORED — NOT EXECUTED** | 2 (player allowed/denied + UI; admin allowed + UI) | Approved DB-write window + running stack; only player/admin actors available (org/coach/referee fixtures still absent) |
-| A7 | **AUTHORED — NOT EXECUTED** | 4 (logout-all, single-logout isolation, refresh rotation, refresh after revocation) | Approved DB-write window + running stack; access-expiry timing intentionally left to `session-expiry.integration.spec.ts` |
-| A8 | **AUTHORED — NOT EXECUTED** | 1 (cross-org bookings + accounting) | Approved DB-write window + running stack |
+| A6 | **AUTHORED — NOT EXECUTED** | 2 (player allowed/denied + UI; admin allowed + UI) | Approved DB-write window (§2.1) + running stack; only player/admin actors available (org/coach/referee fixtures still absent) |
+| A7 | **AUTHORED — NOT EXECUTED** | 4 (logout-all, single-logout isolation, refresh rotation, refresh after revocation) | Approved DB-write window (§2.1) + running stack; access-expiry timing intentionally left to `session-expiry.integration.spec.ts` |
+| A8 | **AUTHORED — NOT EXECUTED** | 1 (cross-org bookings + accounting) | Approved DB-write window (§2.1) + running stack |
 
 **Spec:** `e2e/scenarios/auth/authz-session-isolation.spec.ts` (discovered by the `all` project only — run it with
 `--project=all`, or pass the file path with an explicit `--config`). Discovery (`playwright test --list`, no
@@ -176,13 +247,12 @@ No test was executed for this task and no scenario is claimed as `PASS`.
 | B1 | Player | Insert org/branch/resource; open booking page | Select court/date/slot, Book Now | Confirmation; booking card appears in `/bookings` | Rows left; campaign cleanup only | `e2e/scenarios/booking/create-booking.spec.ts:18–45` | W | NOT RUN |
 | B2 | Player | Fixture booking via API | Create (cash → confirmed) then cancel via UI | Status `cancelled`; slot released | Rows left | `e2e/scenarios/booking/cancel-booking.spec.ts:18–62` | W | **NOT RUN (unverified) — obsolete confirm call removed 2026-10-28 (spec-only); cash bookings are created confirmed (`booking.service.ts:478–480`) and cancelled through `POST /bookings/:id/cancel`. Execution still requires DB-write approval + a running stack** |
 | B3 | Player | Fixture booking | Create public match, open list | Match visible | Rows left | `e2e/scenarios/match/public-match.spec.ts:21–45` | W | NOT RUN — fixture (`cash`) and import fixed 2026-10-28; requires DB-write approval |
-| B4 | Anonymous | ≥1 public tournament in DB | Open public list/detail; invalid id | List renders; detail identity; invalid id shows terminal error | None | `e2e/scenarios/tournament/p0-public-readonly.spec.ts:60–202` | R | NOT RUN (data-dependent; skip if no public tournament) |
+| B4 | Anonymous | ≥1 public tournament in DB | Open public list/detail; invalid id | List renders; detail identity; invalid id shows terminal error | None | `e2e/scenarios/tournament/p0-public-readonly.spec.ts:60–202` | R | **PASS (2026-11-02, Live)** — discovery `GET /public/tournaments` → **2** records (ids 14 and 10); `/tournaments/public` rendered **2 anchors**; **both** details contain their name (440 / 504 chars), **0 match cards and 0 bracket headings for either** (empty brackets = data-dependent, recorded as note per spec), no horizontal overflow at 1440; invalid id `999999999` → terminal message `This tournament is unavailable or not public. ← Back to public tournaments`; **0 page errors** in all four navigations |
 | B5 | Player | Two contexts | Book the same slot simultaneously | Exactly one succeeds; other gets conflict UI | Cancel/refund per policy | — | — | **MISSING** |
 | B6 | Org admin | Org-owned courts + external venue | Assign venue, override per competition, forged cross-org resource | Correct venue shown; forged resource rejected | Spec deletes fixed-slug rows itself | `e2e/scenarios/tournament/tournament-venue-flow.spec.ts:34–40` | W + **D** | **BLOCKED (spec runs `SET FOREIGN_KEY_CHECKS=0` + `DELETE` — violates the no-routine-destructive-cleanup rule; fix in P7-02)** |
-| B7 | Anonymous | Public tournament | Mobile 390×844 detail + drawer | No page overflow; close control works | None | `p0-public-readonly.spec.ts:237–277` | R | NOT RUN |
+| B7 | Anonymous | Public tournament | Mobile 390×844 detail + drawer | No page overflow; close control works | None | `p0-public-readonly.spec.ts:237–277` | R | **PASS (2026-11-02, Live)** — 390×844 on **both** public tournaments (14, 10): `scrollWidth = clientWidth = 390` (no unintended overflow), 440 / 504 chars rendered; **drawer NOT EXERCISED** — **both** public tournaments expose **0 `.cz-match-card`** elements, so the spec's conditional drawer block does not apply (data-dependent); 0 page errors |
 
 ### 3.2a B2 root-cause trace (read-only, 2026-10-28)
-
 - **Spec request:** `e2e/scenarios/booking/cancel-booking.spec.ts:40–41` calls
   `PATCH /bookings/:id/confirm` and asserts `200`.
 - **Registered booking routes:** `backend/src/modules/booking/presentation/booking.routes.ts:9–20` — `POST /bookings`,
@@ -207,10 +277,28 @@ No test was executed for this task and no scenario is claimed as `PASS`.
 - **Conclusion:** the E2E scenario tested an **obsolete/non-existent contract**, not an application defect.
   **Corrected 2026-10-28 (spec-only):** the `confirm` call/assertion at `cancel-booking.spec.ts:40–41` was removed;
   no confirm route was added and the creation → UI-cancel flow is unchanged. B2 remains **unverified** until it is
-  executed on the approved test DB.
+  executed against the local development database `courtzon_v3` (Amendment A1).
 - **Environment note:** cancellation can legitimately return `409` if an active `cancellation_policies` window exceeds
   the ~3-day fixture lead time (`_canUserCancel`, `booking.service.ts:1179–1208`); this is data-dependent, not a code
   defect.
+
+### 3.2b Live read-only run (2026-11-02)
+
+**Scope:** B4 and B7 only. Anonymous browser navigation + `GET /public/tournaments` for data discovery. No writes, no sessions created/used, no bookings or tournaments created/modified.
+**Tool:** Playwright 1.60 (Chromium); desktop 1440×900 for B4, mobile 390×844 for B7; target `https://courtzon.cloud`.
+**Data discovered:** `GET /public/tournaments` → **2** records: id **14** and id **10** (both QA/E2E campaign data — consistent with the still-open D-05 QA-data item). **Both** were exercised, not just the first.
+
+| Check | Result |
+|---|---|
+| B4 list `/tournaments/public` | **2** tournament anchors rendered, 0 page errors |
+| B4 detail id 14 | name present, 440 chars, **0 match cards / 0 bracket headings**, no horizontal overflow, 0 page errors |
+| B4 detail id 10 | name present, 504 chars, **0 match cards / 0 bracket headings**, no horizontal overflow, 0 page errors |
+| B4 invalid `/tournaments/public/999999999` | terminal message `This tournament is unavailable or not public. ← Back to public tournaments`, `#root` rendered, 0 page errors |
+| B7 390×844 (id 14) | `scrollWidth = clientWidth = 390`, 440 chars, 0 page errors |
+| B7 390×844 (id 10) | `scrollWidth = clientWidth = 390`, 504 chars, 0 page errors |
+| B7 drawer | **NOT EXERCISED** — **both** public tournaments expose 0 `.cz-match-card`, so the spec's conditional drawer block does not apply |
+
+**Not run:** B1, B2, B3 (class W — require booking writes / approved DB-write window (§2.1)), B5 (scenario missing), B6 (blocked by its own destructive SQL, P7-02).
 
 ### 3.3 P6-06 — Marketplace / payments / subscriptions / accounting
 
@@ -237,21 +325,155 @@ No test was executed for this task and no scenario is claimed as `PASS`.
 
 | ID | Role | Setup | Action | Expected | Cleanup | Spec (source) | Class | Status |
 |---|---|---|---|---|---|---|---|---|
-| E1 | Anonymous | Public tournament | Desktop 1440×900 detail | No horizontal overflow; content renders | None | `p0-public-readonly.spec.ts:92–127` | R | NOT RUN |
-| E2 | Anonymous | Public tournament | Mobile 390×844 | No page overflow; body non-empty | None | `p0-public-readonly.spec.ts:237–277` | R | NOT RUN |
-| E3 | Any | Key pages | Automated axe/a11y scan | No critical/serious violations | None | — | — | **MISSING (no axe tooling installed — plan §13)** |
-| E4 | Any | Key pages | Tablet 768/1024 widths | Layout intact, no clipped actions | None | — | — | **MISSING** |
+| E1 | Anonymous | Public tournament | Desktop 1440×900 detail | No horizontal overflow; content renders | None | `p0-public-readonly.spec.ts:92–127` | R | **PASS (attributed, 2026-11-02)** — covered by the **B4** run (§3.2b) on ids 14 and 10: name present, text 440/504 chars, `scrollWidth = clientWidth`, 0 page errors. Criteria unchanged; **no re-run performed** |
+| E2 | Anonymous | Public tournament | Mobile 390×844 | No page overflow; body non-empty | None | `p0-public-readonly.spec.ts:237–277` | R | **PASS (attributed, 2026-11-02)** — covered by the **B7** run (§3.2b) against this row's stated expectation on ids 14 and 10: `scrollWidth = clientWidth = 390`, text 440/504 chars, 0 page errors. **Drawer / close-control NOT EXERCISED** — both public tournaments expose 0 `.cz-match-card`, so that conditional block in `G6` was never run; this is a recorded **gap**, not a pass |
+| E3 | Any | Key pages | Automated axe/a11y scan | No critical/serious violations | None | `e2e/scenarios/a11y/axe-public.spec.ts` | R | **PASS (2026-11-02, local — after fixes)** — **48/48 scans** (6 public pages × 4 viewports × light + dark), axe-core **4.14.0**: **0 critical, 0 serious, 1 moderate per scan** (`meta-viewport` = A11Y-007, excluded by decision). 0 BLOCKED. Run against a local build via Vite preview — **not** Docker `:5173` (image not rebuilt) and **not** Live. A11Y-001…006 fixed locally (uncommitted); details + pre-fix baseline in §3.5b |
+| E4 | Any | Key pages | Tablet 768/1024 widths | Layout intact, no clipped actions | None | — | — | **PASS (2026-11-02, Live)** — ids 14 and 10 at **768×1024** and **1024×768**: `scrollWidth = clientWidth`, **0 off-screen interactive elements**, **0 elements clipped by a container**, 0 page errors |
+
+### 3.5a E1/E2 evidence attribution + E4 Live run (2026-11-02)
+
+**E1 attribution (no new run):** the 2026-11-02 B4 execution (§3.2b) visited the public detail at **1440×900** — the same viewport constant the spec uses (`DESKTOP`) — for **both** public tournaments (ids 14, 10) and observed: tournament name present, non-empty body (440 / 504 chars), the spec's "empty bracket" note branch, `scrollWidth = clientWidth`, and 0 page errors. That matches **E1's stated expectation** exactly ("No horizontal overflow; content renders"). E1's criteria were **not modified**.
+
+**E2 attribution (no new run):** the 2026-11-02 B7 execution (§3.2b) visited the same details at **390×844** (dsf 1) and observed `scrollWidth = clientWidth = 390`, non-empty body (440 / 504 chars), and 0 page errors — i.e. **E2's stated expectation** ("No page overflow; body non-empty"). **Gap recorded, not passed:** the `G6` drawer/close-control block was never executed because **both** tournaments expose 0 `.cz-match-card`; E2 therefore says nothing about the drawer.
+
+**E4 run (executed live, read-only):** ids **14** and **10** at **768×1024** and **1024×768**, anonymous, no session, no writes:
+
+| Tournament | Viewport | `scrollW / clientW` | Off-screen interactive | Clipped by container | Page errors |
+|---|---|---|---|---|---|
+| 14 | 768×1024 | 768 / 768 | **0** | **0** | 0 |
+| 10 | 768×1024 | 768 / 768 | **0** | **0** | 0 |
+| 14 | 1024×768 | 1024 / 1024 | **0** | **0** | 0 |
+| 10 | 1024×768 | 1024 / 1024 | **0** | **0** | 0 |
+
+Checked surfaces: `a`, `button`, `[role=button]`, `input`, `select`, `textarea` (visible only) — none outside the viewport, none clipped by an `overflow` ancestor (the page-level `<main>` scroller excluded).
+
+### 3.5b E3 — axe accessibility scan, executed locally (2026-11-02)
+
+**Status: PASS (after fixes).** E3's criterion — zero `critical` / `serious` violations — is met in **both colour schemes**: **48/48 scans PASS** (6 public pages × 4 viewports × light + dark), **0 critical, 0 serious**, and **1 `moderate` per scan** (`meta-viewport` → A11Y-007, deliberately excluded from this fix).
+
+**Scope:** anonymous **public** pages only. No session, no admin login, no data created.
+
+| Item | Value |
+|---|---|
+| Tool | `@axe-core/playwright` **4.14.0** (root `devDependency`, `--save-exact`) → `axe-core` **4.14.0** (`results.testEngine.version`) |
+| Tags | `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` |
+| Frontend (target) | `http://127.0.0.1:5174` — local production build (`npm run build`) served by `vite preview`, behind a temporary loopback router that mirrors Nginx `Accept`-header routing. Guard fail-closed on loopback + allowlisted port (`5173` Docker / `5174` local) |
+| API | `http://127.0.0.1:3000` — loopback:3000 guard |
+| Command | `$env:E3_THEME='light'\|'dark'; npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2` (twice: once per scheme) |
+| Viewports | **1440×900** (E1), **390×844** (E2), **768×1024** and **1024×768** (E4) — the exact constants used by E1/E2/E4 |
+| Themes | **light** and **dark** (`localStorage.theme_mode` + `emulateMedia`; the spec asserts `html.dark`/`html.light` actually applied before scanning) |
+| Commit | `9230b155da5584f3e3847b358d3913bb829d56c4` — **no commit was made**; the fixes below exist only in the local working tree |
+| Result | **PASS** — 48/48 scans, **0 BLOCKED**, 0 critical, 0 serious, 1 moderate per scan |
+| Evidence | `test-results/e2e/a11y/<page>__<viewport>__{light\|dark}.json` (48 files, gitignored) + per-test attachments in `test-results/e2e/artifacts/` |
+
+**Run 1 per-page results (pre-fix, dark scheme only, identical across all four viewports; counts = axe violations, not nodes):**
+
+| Page | Path | Critical | Serious | Moderate | Minor | Verdict |
+|---|---|---|---|---|---|---|
+| Landing | `/` | 0 | 1 (`color-contrast`, 2–3 nodes) | 1 (`meta-viewport`) | 0 | **FAIL** |
+| Login | `/login` | **1** (`select-name`) | 1 (`color-contrast`, 3–4 nodes) | 1 (`meta-viewport`) | 0 | **FAIL** |
+| Forgot password | `/forgot-password` | 0 | 2 (`color-contrast`, `link-in-text-block`) | 1 (`meta-viewport`) | 0 | **FAIL** |
+| Register chooser | `/register` | 0 | 1 (`color-contrast`, 3 nodes) | 1 (`meta-viewport`) | 0 | **FAIL** |
+| Public tournaments list | `/tournaments/public` | 0 | 2 (`color-contrast`, `link-in-text-block`) | 1 (`meta-viewport`) | 0 | **FAIL** |
+| Public tournament detail | `/tournaments/public/3632` | 0 | 1 (`link-in-text-block`) | 1 (`meta-viewport`) | 0 | **FAIL** |
+
+All six pages rendered (HTTP 200, `#root` non-empty) — **no page was BLOCKED**. Detail page id was discovered read-only via `GET /public/tournaments` (id `3632`, `G11M2 1790909703203`); nothing was created.
+
+**Run 2 — post-fix results (both schemes, PASS):**
+
+| Page | Path | Light (c / s / m / mi) | Dark (c / s / m / mi) | Verdict ×2 |
+|---|---|---|---|---|
+| Landing | `/` | 0 / 0 / 1 / 0 | 0 / 0 / 1 / 0 | **PASS** |
+| Login | `/login` | 0 / 0 / 1 / 0 | 0 / 0 / 1 / 0 | **PASS** |
+| Forgot password | `/forgot-password` | 0 / 0 / 1 / 0 | 0 / 0 / 1 / 0 | **PASS** |
+| Register chooser | `/register` | 0 / 0 / 1 / 0 | 0 / 0 / 1 / 0 | **PASS** |
+| Public tournaments list | `/tournaments/public` | 0 / 0 / 1 / 0 | 0 / 0 / 1 / 0 | **PASS** |
+| Public tournament detail | `/tournaments/public/3632` | 0 / 0 / 1 / 0 | 0 / 0 / 1 / 0 | **PASS** |
+
+24/24 PASS in each scheme (48/48 total). The single `moderate` on every scan is `meta-viewport` (A11Y-007), which is **out of scope by decision** and is **not** counted as a pass for that item.
+
+**Contrast achieved with the published palette (no theme value was changed, nothing published):**
+
+| Defect | Pair | Light | Dark | Required |
+|---|---|---|---|---|
+| A11Y-002 | `#FFFFFF` on `--color-primary-dark` `#15803D` | **5.02** | **5.02** | 4.5 |
+| A11Y-003 | `--color-primary-text` on `--color-primary-bg` | **4.57** (`#15803D`/`#DCFCE7`) | **6.49** (`#86EFAC`/`#14532D`) | 4.5 |
+| A11Y-004 | `--color-primary-text` on surface | **4.79** (`#F8FAFC`) | **10.93** (`#14263A`) | 4.5 |
+| A11Y-005 | `.cz-landing-btn-surface` (`--color-primary-text`) | **4.79** | **10.93** | 4.5 |
+| A11Y-006 | link distinction | permanent underline | permanent underline | 1.4.1 |
+
+**Environment honesty:** the scan ran against a **fresh local build** (`npm run build` → `vite preview` on `127.0.0.1:5175` + a temporary loopback router on `127.0.0.1:5174` that mirrors Nginx `Accept`-header routing, because `vite preview` does not run the dev-only SPA-fallback middleware and `vite dev` cannot serve `virtual:pwa-register`). It did **not** run against **Docker `:5173`** (the image was **not** rebuilt — it still serves the pre-fix bundle) and **not** against Live. The router script was deleted after the run. To avoid sampling mid-animation opacity, animations are reduced to zero duration and finished before `analyze()`; this revealed that the light-mode "4.05/3.66" contrast reports were translucent-transition artifacts (the real resting value `#64748B` on `#F8FAFC` is **4.55**).
+
+**Supporting checks (same step):**
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, tsc + vite) | **PASS** (0 TypeScript errors) |
+| `npx vitest run` on the two public tournament page specs | **PASS** (2 files, 9/9 tests) |
+| `npx eslint` on the seven changed source files | **11 errors + 1 warning — all pre-existing** (`no-explicit-any` on untouched lines; `set-state-in-effect` at `LandingLayout.tsx:80`). **Not fixed, not claimed fixed** |
+| `node scripts/ci-validate.js` | **214 errors — all pre-existing backend architecture rules** (`SQL outside repository`, `Presentation layer DB access`). **Not fixed, not claimed fixed** |
+
+**Safety evidence (enforced in the spec, verified in every artifact):**
+
+| Barrier | Evidence |
+|---|---|
+| Loopback only | Frontend and API URLs parsed and asserted (`http` + loopback host + allowlisted port `5173`/`5174` and `3000`) before any activity; a post-navigation check throws if the SPA leaves the local frontend |
+| No writes sent | Every non-`GET`/`HEAD`/`OPTIONS` request is `route.abort()`-ed. `unexpectedWrites = []` and `writesSentToServer = 0` in all 48 records |
+| App bootstrap only | The SPA itself attempts `POST /auth/refresh` once per page load; it was **blocked** (never reached the server), recorded as `blockedWrites: ["POST http://localhost:5174/auth/refresh"]` |
+| No DB / fixtures | Spec imports only `@playwright/test`, `@axe-core/playwright`, `node:fs`, `node:path` — no `fixtures/*`, no `helpers/database`, no SQL |
+| No data created | No accounts, tournaments, or bookings; discovery is `GET` only |
+
+**Defect register (001–006 FIXED locally, uncommitted; 007 OPEN — excluded):**
+
+| ID | Impact | Rule (WCAG) | Root cause (as found) | Fix applied | Status |
+|---|---|---|---|---|---|
+| A11Y-001 | **critical** | `select-name` (4.1.2) | `LoginPage.tsx:77` label had no `htmlFor`/`id` link to the `<select>` | `htmlFor="login-country"` + `id="login-country"` (`LoginPage.tsx:77,81`) | **FIXED** |
+| A11Y-002 | serious | `color-contrast` (1.4.3) | white `#059669` = 3.77:1 on primary buttons | `Button.tsx:14` → `bg-[var(--color-primary-dark)]` = 5.02:1 | **FIXED** |
+| A11Y-003 | serious | `color-contrast` (1.4.3) | `#059669` on `--color-primary-bg` (2.42 / 3.58) | new per-mode token `--color-primary-text` (`index.css:12` light `#15803D`, `:156` dark `#86EFAC`) used by nav/chips | **FIXED** |
+| A11Y-004 | serious | `color-contrast` (1.4.3) | `#059669` on surface (4.07 / 3.77) | links/CTAs → `--color-primary-text` in `LoginPage`, `ForgotPasswordPage`, `LandingLayout`, `PreRegisterPage`, `PublicTournamentsPage`, `PublicTournamentDetailPage` | **FIXED** |
+| A11Y-005 | serious | `color-contrast` (1.4.3) | `.cz-landing-btn-surface` `#15803D` on `#14263A` = 3.06 | `index.css:656` → `color: var(--color-primary-text)` | **FIXED** |
+| A11Y-006 | serious | `link-in-text-block` (1.4.1) | inline links underlined only on hover | permanent `underline` on the inline links | **FIXED** |
+| A11Y-007 | moderate | `meta-viewport` (1.4.4) | `frontend/index.html:4` disables pinch-zoom | **not changed** — excluded by decision | **OPEN (observation)** |
+
+**Interpretation:** E3's criterion ("no critical/serious violations") is **MET for the six public pages in both schemes**, so E3 is recorded as **PASS**. This does **not** close P6-08 (E2's drawer gap is still open, and consumer/admin pages were never scanned) and does not fix A11Y-007. No commit, push, Docker rebuild, deployment or database write occurred; the Docker frontend on `:5173` still runs the pre-fix bundle.
+
 
 ### 3.6 P6-09 — Realtime and simultaneous booking
 
 | ID | Role | Setup | Action | Expected | Cleanup | Spec (source) | Class | Status |
 |---|---|---|---|---|---|---|---|---|
-| F1 | Player | Two sessions | Create/cancel booking in one session | Other session updates without refresh | None | — | — | **MISSING** |
-| F2 | Player | Two contexts | Simultaneous identical booking | One success, one conflict; slot never double-booked | Cancel/refund | — | — | **MISSING** (backend concurrency covered by P4-03/P5-06; UI not covered) |
-| F3 | Player | Socket connected | Drop/reconnect network | Cache reconciles; no duplicate events | None | — | — | **MISSING** |
+| F1 | Player | Two sessions | Create/cancel booking in one session | Other session updates without refresh | None | — | — | **SPEC APPROVED (2026-11-02) — NOT RUN** — acceptance surface fixed to the **slot picker**; booking date chosen **beyond the cancellation-policy window** to avoid a policy `409`; policy must not be modified. **D3 fixed:** two sessions of the **same player** |
+| F2 | Player | Two contexts | Simultaneous identical booking | One success, one conflict; slot never double-booked | Cancel/refund | — | — | **SPEC APPROVED (2026-11-02) — NOT RUN** — **two different users**; **only `409` counts as the conflict** (400/422/any other non-2xx is a test failure). **D6 fixed:** acceptance = **no success + no second booking**; message-text assertion **deferred** (no stable selector/string) |
+| F3 | Player | Socket connected | Drop/reconnect network | Cache reconciles; no duplicate events | None | — | — | **SPEC APPROVED (2026-11-02) — NOT RUN** — events limited to **match/tournament/academy** (in `invalidateRealtimeReconcile`); **notifications reconnect-queue excluded**. **D9 fixed:** event generated via **API** (`public_match` booking), observed on `/matches`. Dedupe criterion = socket frames by type + `matchId` (§3.6a) |
 
-## 4. Existing spec inventory (13 files, 33 tests — verified by static count)
+### 3.6a F1 / F2 / F3 — approved specifications (2026-11-02, not executed)
 
+All three remain **NOT RUN**. Every write-producing run is permitted **only** on the **local development database** `courtzon_v3` @ `127.0.0.1:3307` (persistent Docker volume) under Amendment A1, and only after explicit approval naming the local target and the expected tables/impact. It is **not** an isolated or disposable test environment. **No write of any kind may be sent to Hostinger Live** — Live is read-only for this campaign.
+
+**F1 — cross-session update (slot picker)**
+- **Approved:** the acceptance surface is the **slot picker** (`['resource-slots', resourceId, bookingDate]`, `frontend/src/realtime/useRealtimeCacheUpdates.ts:737–741`), and the booking date must be chosen **beyond the cancellation-policy window** so the cancel step cannot legitimately return `409` (`§3.2a` L259–261). The cancellation policy itself must **not** be modified.
+- **Fixed (D3):** the two sessions belong to the **same player** — this is the literal reading of "other session" and matches event routing to `user:<userId>` (`socket-event-mapper.ts:205`). Two different players would not receive the event through that room and would produce a false failure.
+- Steps: A (same player) opens the slot picker for the resource/date → B (second session of the same player) creates the booking → A must show the slot as taken **without a page reload** → B cancels → A must show the slot as free again.
+- Pass: both transitions observed live in A, zero manual reloads, no `409` on cancel. Fail: any manual refresh required, or the slot state does not change.
+- Evidence: before/after screenshots of the picker, timestamps, network/navigation count for A (must be 0 reloads), booking id.
+
+**F2 — simultaneous identical booking**
+- **Approved:** **two different users**; **only HTTP `409` counts as the acceptable conflict**. `400`, `422`, or any other non-2xx response is a **test failure**, never a pass.
+- **Fixed (D6):** the primary acceptance criterion is **no success state and no new booking created** (no navigation to a confirmation surface, no new row in the list, and the losing request is not 2xx). **Verifying the conflict message text is deferred** until a stable UI selector (role/aria) or a documented string exists — recorded here as an explicit limitation, not silently dropped. (Current evidence: the toast renders the server-provided `err.response.data.message` — `BookingFormPage.tsx:111–112` — and the toast component exposes no `role`/`aria-live`, only class-based markup.)
+- Steps: prepare the same payload (resource/date/slot/type) for both users → fire `POST /bookings` concurrently → record both status codes → re-read the slot state and the list.
+- Pass: exactly one success + exactly one `409`, **no second booking**, and the slot is held by a single booking. Fail: two successes, zero `409`, any non-2xx other than `409` on the losing side, or a second booking row.
+- Evidence: both response codes, resulting booking ids count, post-run slot state, losing-side screenshot (URL + list state; text assertion deferred).
+
+**F3 — reconnect and duplicate-event control**
+- **Approved:** use **match / tournament / academy** events only — they are the roots listed in `invalidateRealtimeReconcile` (`useRealtimeCacheUpdates.ts:442–500`). **Notifications `reconnect-queue` is explicitly excluded** as a criterion.
+- **Approved dedupe definition:** observe **socket frames by event type + entity id**, accepting a duplicate **transport** frame provided it produces **no duplicate state/UI**.
+- **Concrete criterion fixed for this spec:** event `match.available` with payload key `matchId` (`invalidateMatchKeys`, `:395–420`); surface `/matches` (`MatchListPage`, query key `['public-matches', …]`). After an offline window and reconnect: the match must appear **exactly once** in the list, and frames carrying that `matchId` must not produce a second row. More than one frame for the same `matchId` is tolerated **only if** the rendered list still contains exactly one entry for it.
+- **Fixed (D9):** the event during the offline window is generated by a **direct API call** — `POST /bookings` with `bookingType: 'public_match'` — which produces `booking:created` and, through the notification engine, `match:available` (`notification-engine.ts:57–61`). Observation stays in the UI (`/matches`). Using a second UI context for the write was rejected as timing-sensitive.
+- **Documented request fields before execution (do not guess):** `CreateBookingSchema` (`booking.dto.ts:16–26`) requires `branchId`, `resourceId`, `bookingDate` (YYYY-MM-DD), `startTime`/`endTime` (HH:mm); `bookingType` defaults to `private_match` (set `public_match`); `paymentMethod` defaults to `card` (use **cash** for an automatically confirmed booking — wallet is not an active booking payment method, `:23–25`). Any remaining optional fields must be read from the same schema at execution time, not assumed.
+- Steps: connect `/matches` → go offline → create the `public_match` booking via API → go online → verify the match appears **exactly once**.
+- **Open execution-time item (not a decision):** confirm the full `public_match` payload from `CreateBookingSchema` / controller at run time; no schema field may be invented or altered.
+
+## 4. Existing spec inventory (13 files, 33 tests - verified by static count)
 | Spec | Tests | Primary matrix rows | Class | Executable now? |
 |---|---:|---|---|---|
 | `smoke/health.spec.ts` | 2 | A5 | R | Yes, if stack is up |
@@ -266,27 +488,27 @@ No test was executed for this task and no scenario is claimed as `PASS`.
 | `payments/payment-flow.spec.ts` | 1 | C1 | W + X | Only with MockGateway (import fixed); Paymob blocked (P5-05) |
 | `notifications/notification-deeplink.spec.ts` | 1 | D1 | W | Requires DB-write approval (import/fixture fixed); delivery unverified |
 | `wallet/wallet-topup.spec.ts` | 1 | C2 | W + X | Only with MockGateway (import fixed) |
-| `auth/authz-session-isolation.spec.ts` | 7 | A6, A7, A8 | W | **AUTHORED 2026-10-28 — not executed**; requires approved DB-write window + running stack (discovered by the `all` project) |
+| `auth/authz-session-isolation.spec.ts` | 7 | A6, A7, A8 | W | **AUTHORED 2026-10-28 — not executed**; requires approved DB-write window (§2.1) + running stack (discovered by the `all` project) |
 
 ## 5. Coverage gaps against Phase 6 acceptance
 
 | P6 task | Existing coverage | Gap / action |
 |---|---|---|
-| P6-04 auth/RBAC | 4 relevant rows (A1–A5) + **A6/A7/A8 authored** | Specs written 2026-10-28 (`e2e/scenarios/auth/authz-session-isolation.spec.ts`, 7 tests) but **not executed**; pending approved DB-write window + running stack. Org/coach/referee actors still absent |
+| P6-04 auth/RBAC | 4 relevant rows (A1–A5) + **A6/A7/A8 authored** | Specs written 2026-10-28 (`e2e/scenarios/auth/authz-session-isolation.spec.ts`, 7 tests) but **not executed**; pending approved DB-write window (§2.1) + running stack. Org/coach/referee actors still absent |
 | P6-05 bookings/clubs | 4 rows (B1–B4, B7), 1 blocked-destructive (B6) | `cancel-booking` contract fixed 2026-10-28; fix venue spec; add conflict test (B5) |
 | P6-06 marketplace/payments | 2 rows, both gateway-dependent (C1/C2) | Marketplace, subscriptions, accounting, refund UI **not covered** |
 | P6-07 notifications/reports/settlements | D1 (blocked), D2, D5 | Reports, settlements, notifications beyond one deep link **not covered** |
-| P6-08 responsive/a11y | E1/E2 (public surface only) | No axe; no tablet; no consumer/admin page coverage |
+| P6-08 responsive/a11y | E1/E2 (public surface only), E4, **E3 axe scan (local, 2026-11-02, light + dark)** | E3 **PASS** after fixes (A11Y-001…006 fixed locally, uncommitted; A11Y-007 excluded); consumer/admin pages still not scanned; E2 drawer gap open |
 | P6-09 realtime | none | All three rows missing |
 
-**Phase 6 acceptance (plan §11) remains NOT MET**: the matrix exists, but there are **no executed results, no
-failure evidence, no fixes and no regression reruns** yet.
+**Phase 6 acceptance (plan §11) remains NOT MET.** Executed evidence now exists — the 2026-11-02 Live runs (A2, A4 with observation, A5, A6 deny half, B4, B7, E1/E2 attributed, E4) plus the **2026-11-02 local E3 axe runs (§3.5b)**: the first run was FAIL, A11Y-001…006 were fixed in the working tree, and the re-run is **PASS in both schemes (48/48, 0 critical, 0 serious)**, with A11Y-007 (`meta-viewport`) still open by decision. Those fixes are **uncommitted and not in the Docker image**. BLOCKED rows (B6, C1, C2), NOT RUN rows (A1, A3, A6 allow half, A7, A8, B1–B3, D1, D2, D5) and MISSING/not-run rows (B5, C3–C6, D3, D4, F1–F3) remain open, and E2's drawer gap is unresolved, so the phase cannot close.
 
 ## 6. Data safety and cleanup model
 
-1. **No per-test cleanup.** Class W specs leave their rows behind (Amendment A1: existing `courtzon_v3` data is
-   disposable and is cleared once, after the campaign, by the authorized procedure in plan §10.5). Tests never
-   call `cleanup()` (`database.ts:82–89`).
+1. **No per-test cleanup.** Class W specs leave their rows behind in the **local development database** `courtzon_v3`
+   (persistent Docker volume). The data is not treated as disposable by default; any cleanup is a separate,
+   explicitly authorized operation under plan §10.5 that must name the target and affected tables. Tests never call
+   `cleanup()` (`database.ts:82–89`).
 2. **Target pinning.** `connect()` asserts `courtzon_v3` on loopback:3307 before opening a pool (`database.ts:23–26`).
 3. **Destructive SQL is forbidden** in routine tests. `tournament-venue-flow.spec.ts:38–40` violates this
    (`SET FOREIGN_KEY_CHECKS=0`, `DELETE FROM resources/branches`) → **blocked**; the deletion must be removed or
@@ -300,8 +522,8 @@ failure evidence, no fixes and no regression reruns** yet.
 
 | Tier | Rows | Preconditions |
 |---|---|---|
-| **T1 — read-only** | A2, A4, A5, B4, B7, E1, E2 | Stack running; for B4/B7/E1/E2 at least one public tournament must exist (test self-skips otherwise); no DB writes |
-| **T2 — DB-writing** | A1, A3, A6, A7, A8, B1, B2, B3, D1, D5 | Explicit approval to write to `courtzon_v3`; no cleanup; evidence recorded per row |
+| **T1 — read-only** | A2, A4, A5, B4, B7, E1, E2, **E3** | Stack running; for B4/B7/E1/E2 at least one public tournament must exist (test self-skips otherwise); E3 runs only against a **local frontend** (loopback `5173` Docker or `5174` local `vite preview`, allowlisted) and aborts every non-GET request; both colour schemes must be scanned; no DB writes |
+| **T2 — DB-writing** | A1, A3, A6, A7, A8, B1, B2, B3, D1, D5 | Explicit approval naming the **local development database** `courtzon_v3` @ `127.0.0.1:3307` and the expected tables/impact; no per-test cleanup; evidence recorded per row; **never Live** |
 | **T3 — gateway-dependent** | C1, C2 | Mock provider (UI-only evidence) or the deferred Paymob Sandbox (blocked) |
 | **T4 — blocked** | B6 (destructive SQL) | Spec fix first (P6-10 / P7-02) |
 
@@ -315,3 +537,9 @@ marketplace/subscription/accounting rows → reports/settlements → responsive/
   `PASS/FAIL/BLOCKED/NOT RUN`, evidence path (trace/screenshot), and any fix + regression rerun (P6-10).
 - Changing a spec's class (e.g. removing the destructive SQL) requires updating this matrix and the progress
   document in the same change.
+- **E3 run record (2026-11-02, local):** config `e2e/playwright.config.ts` (`--project=a11y`), command
+  `E3_THEME=light|dark npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2`,
+  environment `127.0.0.1:5174` (local `vite preview` of a fresh build, behind a loopback router) + `127.0.0.1:3000`,
+  commit `9230b155da5584f3e3847b358d3913bb829d56c4` (no commit made), axe-core `4.14.0`. Run 1 (dark only) **FAIL**;
+  run 2 after fixing A11Y-001…006 (light + dark) **PASS — 48/48, 0 critical, 0 serious, 1 moderate/scan**.
+  Evidence `test-results/e2e/a11y/*__{light|dark}.json` (48 files, gitignored) and `§3.5b`.

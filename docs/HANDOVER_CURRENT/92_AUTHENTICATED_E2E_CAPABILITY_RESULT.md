@@ -5,6 +5,15 @@
 **Overall verdict:** BLOCKED — AUTH CREDENTIALS BLOCKED (no TEST_* credentials available; the
 TEST_* roster is not present in the running database). No source changes were made.
 
+> **Terminology note (added 2026-11-02 — findings and decisions in this report are unchanged).**
+> The 2026-10-06 wording calls `courtzon_v3` the "running test DB". `courtzon_v3` is the
+> **application database name** in both environments: locally it is the **persistent development
+> database** in Docker (`127.0.0.1:3307`) — not an isolated or disposable test environment — and
+> Live is the Coolify-managed MySQL service. A dedicated disposable test database is a
+> **recommendation for test isolation only**, not a description of the current environment. Current
+> policy: `docs/release/E2E_SCENARIO_MATRIX.md` §2.1 and `docs/release/COURTZON_RELEASE_PROGRESS.md`
+> §22.7.
+
 ---
 
 ## 1. Current HEAD
@@ -17,7 +26,8 @@ TEST_* roster is not present in the running database). No source changes were ma
 - No `ADMIN_PASSWORD`, `TEST_*`, `PLAYWRIGHT_*`, or `E2E_*` credential variables exist in `.env`,
   `.env.example`, or the process environment (key **names only** were checked; no values inspected
   or disclosed).
-- The running test DB (`courtzon_v3`, Docker) contains 74 users and **does not include the TEST_*
+- The running database (`courtzon_v3`, the persistent local development database in Docker —
+  historical wording: "test DB") contains 74 users and **does not include the TEST_*
   roster (ids 126–136)**.
 - The archived `courtzon_v2` SQL dump references TEST_ identities, but it is an archived snapshot,
   it is not the reachable runtime DB, and its user tables contain hashed passwords — not usable
@@ -97,9 +107,12 @@ If credentials and matching users become available (approved future stage), the 
 1. Valid TEST_* credentials (phone + password) supplied **as environment variables** for the roles
    under test (examples only, no actual values shown): e.g., a `TEST_*_PHONE` / `TEST_*_PASSWORD`
    convention or an `ADMIN_PASSWORD`-style var.
-2. Those users present in the database the Playwright suite targets (`courtzon_v3`, reachable via
-   `TEST_DB_*` defaults) — or a dedicated disposable test database provisioned with the roster in an
-   approved, controlled step (never the live `courtzon_v3` stack's production-data set).
+2. Those users present in the database the Playwright suite targets — the **persistent local
+   development database** `courtzon_v3` @ `127.0.0.1:3307` (Docker; reachable via `TEST_DB_*`
+   defaults). A dedicated disposable test database provisioned with the roster in an approved,
+   controlled step is an **isolation recommendation only, not a description of the current
+   environment**. Any write-producing run requires explicit approval naming the database, the
+   affected tables and the expected impact. No write may be sent to Live.
 3. Approval to run authenticated read-only checks (no mutations permitted in this program).
 
 ## Explicit confirmation

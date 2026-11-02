@@ -112,11 +112,20 @@ screenshots). For authenticated surfaces, supply the `ADMIN_PASSWORD` env (and, 
 
 **Critical caveat:** the current `e2e` suite is **destructive by design** — its helpers
 `insertUser` and `cleanup()` (TRUNCATE of users, bookings, wallets, organisations, etc.) mutate the
-database. The running `courtzon_v3` stack is the live test DB; running the full suite there would
-truncate its data (including the 3 tournaments). Therefore:
-- Read-only P0 checks → custom GET-only specs that never call `insertUser`/`cleanup`, **or** target a
-  disposable DB.
-- The full suite → run only against a dedicated disposable database with explicit approval.
+database. The `courtzon_v3` instance reached by this audit (Docker, `127.0.0.1:3307`) is the
+**persistent local development database** — not a disposable test database — and running the full
+suite there would truncate its data (including the 3 tournaments). Therefore:
+- Read-only P0 checks → custom GET-only specs that never call `insertUser`/`cleanup`.
+- The full suite → only after **explicit approval that names the database (`courtzon_v3` @
+  `127.0.0.1:3307`), the affected tables and the expected impact**. Never against Live.
+
+> **Terminology note (added 2026-11-02 — does not change this audit's findings or decisions).** The
+> 2026-10-06 wording above originally called `courtzon_v3` a "live test DB" and suggested targeting a
+> "disposable DB". That framing is superseded: `courtzon_v3` is the **application database name**,
+> used locally (persistent Docker volume) and on Live (Coolify-managed MySQL service). A separate
+> disposable/dedicated test database is a **recommendation for test isolation only**, not a
+> description of the current environment. Current policy: `docs/release/E2E_SCENARIO_MATRIX.md` §2.1
+> and `docs/release/COURTZON_RELEASE_PROGRESS.md` §22.7.
 
 ## 13. What is NOT available
 
@@ -131,14 +140,18 @@ truncate its data (including the 3 tournaments). Therefore:
 ## 14. What must be provided/configured before real browser E2E can run
 
 1. **A decision (or explicit approval) on data mutation** — either read-only GET-only specs, or a
-   dedicated disposable test database (e.g., a second schema) for the destructive suite. The current
-   `courtzon_v3` stack must not be truncated without approval.
+   dedicated disposable test database (e.g., a second schema) **as an isolation recommendation, not a
+   description of the current environment**, for the destructive suite. The current `courtzon_v3`
+   stack must not be truncated without approval, and any write-producing run requires explicit
+   approval naming the database (`courtzon_v3` @ `127.0.0.1:3307`), the affected tables and the
+   expected impact. Live is never a test target.
 2. **Credentials** for authenticated flows that require an existing user: provide `ADMIN_PASSWORD`
    (env) and/or TEST_* roster fixtures via env vars (the `TEST_DB_*` and `ADMIN_PASSWORD` mechanisms
    already exist). Admin login currently targets a specific fixture identity.
 3. **Optionally** a headless/headed runner host is already present (bundled Chromium). No installs
    or Docker changes needed.
-4. For CI, add a Playwright job (browser install + separate test DB) — out of scope for this stage.
+4. For CI, add a Playwright job (browser install + a separate database) — an **isolation
+   recommendation**, out of scope for this stage.
 
 ---
 

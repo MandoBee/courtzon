@@ -118,8 +118,13 @@ constraint, not a unilateral change:
    `PASS` on isolation grounds).
 3. Unit suites (`backend/vitest.config.ts`, `frontend/vitest.config.ts`) are safe: they exclude
    `*.integration.spec.ts`, use mocks, and never open a database or Docker connection.
-4. `[RECOMMENDATION]` Amend the plan to prefer a disposable database per integration run, or make Testcontainers the
-   default for all integration specs.
+4. `[RECOMMENDATION — isolation only, not a description of the current environment]` Amend the plan to prefer a
+   disposable database per integration run, or make Testcontainers the default for all integration specs.
+
+**Current environment (do not confuse with the recommendation above):** no separate disposable test database exists
+today. Phase 6 tests use the **persistent local development database** `courtzon_v3` @ `127.0.0.1:3307` (Docker
+volume), under explicit approval that names the target and the expected tables/impact. Live (`courtzon_v3` on the
+Coolify-managed MySQL service) is never a test target and must not be written to.
 
 ---
 

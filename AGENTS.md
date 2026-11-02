@@ -103,9 +103,9 @@ Do not implement features in isolation. Every implementation must be production-
 
 - **NEVER** run `migrate.sh --fresh` or force-drop/recreate databases unless the user explicitly requests it.
 - **BEFORE** any seeding or data reset, you MUST list the specific tables that will be affected and get the user's explicit agreement.
-- The production database lives on the local MySQL (XAMPP, port 3306) — destroying it is NOT acceptable (`courtzon_v2`).
+- The **production (Live) database** is the MySQL service managed by Coolify (`courtzon-db`), database name `courtzon_v3`; destroying it or writing to it without explicit approval is NOT acceptable.
 - `docker compose down mysql` also destroys data — do NOT run it without approval.
-- The V3 database name is `courtzon_v3` (Docker default). The production XAMPP database is still `courtzon_v2`.
+- The **local development database** is also named `courtzon_v3` (Docker MySQL container, host port 3307) — a separate instance from Live, same name only. Do not treat any local MySQL/XAMPP schema (including `courtzon_v2`) as the production database.
 
 ## Toast System
 

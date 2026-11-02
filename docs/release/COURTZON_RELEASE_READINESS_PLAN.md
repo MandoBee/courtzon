@@ -21,9 +21,10 @@ that replaces the previously proposed dedicated `courtzon_v3_e2e` isolation stra
 
 - All E2E/integration testing targets `courtzon_v3` on the local Docker MySQL
   (`127.0.0.1:3307`) only.
-- Existing data in `courtzon_v3` is declared disposable test data. It is **not** cleared per test or
-  per suite; the full cleanup happens once, after the complete testing campaign, as a separately
-  documented and explicitly authorized operation.
+- The local `courtzon_v3` is the **persistent local development database** of the Docker stack, **not** an
+  isolated or disposable test environment. Its existing data is **not** cleared per test or per suite; any cleanup
+  happens once, after the complete testing campaign, as a separately documented and explicitly authorized operation
+  that names the target and the affected tables.
 - No additional database, directory, container, or duplicate test environment may be created.
 - Safety is achieved by: exact target validation (database name + loopback host + port) before any
   test connection; explicit destructive-cleanup authorization; deferred/centralized cleanup; and a
@@ -172,7 +173,7 @@ If nothing was modified, say so explicitly.
 | Working tree | clean at plan adoption |
 | Runtime | Node `v22.14.0`, npm `11.7.0` |
 | Docker | `courtzon-backend`, `courtzon-frontend`, `courtzon-redis`, `courtzon-mysql`, `courtzon-grafana`, `courtzon-prometheus` — all up, four healthy |
-| Local DB | `courtzon_v3` on container `courtzon-mysql` (host `127.0.0.1:3307`) — the approved test database; its data is user-declared disposable and cleared only at campaign end (Amendment A1) |
+| Local DB | `courtzon_v3` on container `courtzon-mysql` (host `127.0.0.1:3307`) — the **persistent local development database**, **not** an isolated or disposable test environment; same database **name** as Live, different instance. Tests reuse it under Amendment A1 with explicit approval; any cleanup is a separate authorized operation naming the target and affected tables |
 | Redis | `127.0.0.1:6379` |
 | Local backend | `NODE_ENV=production`, `RELAX_RATE_LIMIT=false`, `PAYMENT_GATEWAY_PROVIDER=paymob`, `PAYMOB_SANDBOX=true` |
 | Tooling | Playwright 1.60 + Chromium installed; Vitest 4; three independent npm projects |
@@ -182,8 +183,9 @@ If nothing was modified, say so explicitly.
 - The release line is protected by commit `184aa6e0` (local) with the last known pushed state at
   `8061774`. No history rewrite, rebase, or force-push is permitted.
 - Code rollback: revert the offending commit (new commit) rather than resetting shared history.
-- Database under Amendment A1: existing data is disposable test data; restore-before-campaign is
-  optional. The controlled, explicitly authorized final cleanup replaces pre-campaign restoration.
+- Database under Amendment A1: the local `courtzon_v3` is the **persistent development database**, not a disposable
+  test database; restore-before-campaign is optional. Any final cleanup is a controlled, explicitly authorized
+  operation that names the target and affected tables — it is not a property of the environment.
 - Docker rollback: previous image tag / rebuild from the reverted commit (Phase 9 authorization).
 
 ## 10. Existing-database test-safety specification (binding for Phases 1, 6, 7)
@@ -321,7 +323,7 @@ baseline recorded.
 |---|---|
 | P6-01 | Inventory Playwright setup and safe read-only suites. |
 | P6-02 | Persist the traceable scenario matrix (role, setup, action, expected, cleanup). |
-| P6-03 | Confirm the approved test-DB target and safety gates are in place (Amendment A1). |
+| P6-03 | Confirm the local development DB target (`courtzon_v3` @ `127.0.0.1:3307`, persistent Docker volume — not a separate test database) and safety gates are in place (Amendment A1). |
 | P6-04 | Execute auth/session/role/permission scenarios. |
 | P6-05 | Execute clubs/courts/academies/bookings/cancellations/conflicts. |
 | P6-06 | Execute marketplace/inventory/payments/subscriptions/accounting. |
