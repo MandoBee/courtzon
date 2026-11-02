@@ -83,7 +83,7 @@ export default function LandingLayout() {
 
   const navLinkClass = (active: boolean) =>
     active
-      ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]'
+      ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary-text)]'
       : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-primary-bg)]/50';
 
   return (
@@ -124,8 +124,8 @@ export default function LandingLayout() {
                 to="/login"
                 className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                   location.pathname === '/login'
-                    ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary)]'
-                    : 'text-[var(--color-text)] hover:text-[var(--color-primary)]'
+                    ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary-text)]'
+                    : 'text-[var(--color-text)] hover:text-[var(--color-primary-text)]'
                 }`}
               >
                 {t('landing.header.sign_in')}
@@ -178,7 +178,7 @@ export default function LandingLayout() {
                 to="/login"
                 onClick={closeMobileMenu}
                 className={`flex-1 text-center px-4 py-2.5 text-sm font-medium border border-[var(--color-border)] rounded-xl ${
-                  location.pathname === '/login' ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary)] border-[var(--color-primary)]' : ''
+                  location.pathname === '/login' ? 'bg-[var(--color-primary-bg)] text-[var(--color-primary-text)] border-[var(--color-primary)]' : ''
                 }`}
               >
                 {t('landing.header.sign_in')}
@@ -214,7 +214,7 @@ export default function LandingLayout() {
               <h4 className="text-xs font-semibold text-[var(--color-text)] uppercase tracking-wider mb-4">{t('landing.platform')}</h4>
               <div className="space-y-2.5">
                 {visibleFooterPlatform.map((l) => (
-                  <Link key={l.to} to={l.to} className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
+                  <Link key={l.to} to={l.to} className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary-text)] transition-colors">
                     {t(l.labelKey)}
                   </Link>
                 ))}
@@ -224,7 +224,7 @@ export default function LandingLayout() {
               <h4 className="text-xs font-semibold text-[var(--color-text)] uppercase tracking-wider mb-4">{t('landing.legal')}</h4>
               <div className="space-y-2.5">
                 {visibleFooterLegal.map((l) => (
-                  <Link key={l.to} to={l.to} className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
+                  <Link key={l.to} to={l.to} className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary-text)] transition-colors">
                     {t(l.labelKey)}
                   </Link>
                 ))}
@@ -233,7 +233,7 @@ export default function LandingLayout() {
             <div>
               <h4 className="text-xs font-semibold text-[var(--color-text)] uppercase tracking-wider mb-4">{t('landing.connect')}</h4>
               <div className="space-y-2.5">
-                <a href="mailto:support@courtzon.com" className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">{t('landing.contact_email')}</a>
+                <a href="mailto:support@courtzon.com" className="flex min-h-11 items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary-text)] transition-colors">{t('landing.contact_email')}</a>
               </div>
             </div>
           </div>

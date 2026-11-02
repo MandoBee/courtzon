@@ -74,10 +74,11 @@ export default function LoginPage() {
           <h2 className="text-xl font-semibold text-[var(--color-text)] mb-6">{t('auth.login.title')}</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
+              <label htmlFor="login-country" className="block text-sm font-medium text-[var(--color-text)] mb-1">
                 {t('auth.register.country')}
               </label>
               <select
+                id="login-country"
                 value={selectedCountryId || ''}
                 onChange={(e) => setValue('countryId', Number(e.target.value), { shouldValidate: true })}
                 className="w-full px-4 py-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
@@ -122,13 +123,13 @@ export default function LoginPage() {
             </Button>
           </form>
           <div className="mt-3 text-center">
-            <Link to="/forgot-password" className="inline-flex min-h-11 items-center text-sm text-[var(--color-primary)] hover:underline">
+            <Link to="/forgot-password" className="inline-flex min-h-11 items-center text-sm text-[var(--color-primary-text)] underline">
               Forgot password?
             </Link>
           </div>
           <p className="mt-4 text-center text-sm text-[var(--color-text-muted)]">
             {t('auth.login.no_account')}{' '}
-            <Link to="/register" className="inline-flex min-h-11 items-center text-[var(--color-primary)] hover:underline">
+            <Link to="/register" className="inline-flex min-h-11 items-center text-[var(--color-primary-text)] underline">
               {t('auth.register.title')}
             </Link>
           </p>

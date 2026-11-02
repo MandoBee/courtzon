@@ -113,7 +113,7 @@ export default function TemporaryResetPasswordPage() {
           </form>
           <p className="mt-4 text-center text-sm text-[var(--color-text-muted)]">
             Remember your password?{' '}
-            <Link to="/login" className="text-[var(--color-primary)] hover:underline">
+            <Link to="/login" className="text-[var(--color-primary-text)] underline">
               Sign In
             </Link>
           </p>

@@ -206,8 +206,8 @@ export default function PlayerRegisterPage() {
               <p className="text-sm text-[var(--color-text-muted)] mb-6">{t('landing.player_reg.step1_desc')}</p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.country')} *</label>
-                  <select value={form.countryId} onChange={e => update('countryId', Number(e.target.value))} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.countryId ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
+                  <label htmlFor="player-reg-country" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.country')} *</label>
+                  <select id="player-reg-country" value={form.countryId} onChange={e => update('countryId', Number(e.target.value))} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.countryId ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
                     <option value={0}>{t('common.select_country')}</option>
                     {countries.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone_code})</option>)}
                   </select>
@@ -221,26 +221,26 @@ export default function PlayerRegisterPage() {
                   error={fieldErrors.phoneNumber}
                 />
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('landing.player_reg.full_name')} *</label>
-                  <input type="text" value={form.fullName} onChange={e => update('fullName', e.target.value)} placeholder={t('landing.player_reg.full_name_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.fullName ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
+                  <label htmlFor="player-reg-full-name" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('landing.player_reg.full_name')} *</label>
+                  <input id="player-reg-full-name" type="text" value={form.fullName} onChange={e => update('fullName', e.target.value)} placeholder={t('landing.player_reg.full_name_placeholder')} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.fullName ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                   {fieldErrors.fullName && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.fullName}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('common.email')} *</label>
-                  <input type="email" value={form.email} onChange={e => update('email', e.target.value)} placeholder="you@example.com" className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.email ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
+                  <label htmlFor="player-reg-email" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('common.email')} *</label>
+                  <input id="player-reg-email" type="email" value={form.email} onChange={e => update('email', e.target.value)} placeholder="you@example.com" className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.email ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                   {fieldErrors.email && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.email}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.password')} *</label>
-                  <PasswordInput autoComplete="new-password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} error={fieldErrors.password} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.password ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
+                  <label htmlFor="player-reg-password" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.password')} *</label>
+                  <PasswordInput id="player-reg-password" autoComplete="new-password" value={form.password} onChange={e => update('password', e.target.value)} placeholder={t('landing.player_reg.password_placeholder')} error={fieldErrors.password} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.password ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.confirm_password')} *</label>
-                  <PasswordInput autoComplete="new-password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} error={fieldErrors.confirmPassword} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.confirmPassword ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
+                  <label htmlFor="player-reg-confirm-password" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.confirm_password')} *</label>
+                  <PasswordInput id="player-reg-confirm-password" autoComplete="new-password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder={t('landing.player_reg.confirm_password_placeholder')} error={fieldErrors.confirmPassword} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.confirmPassword ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.gender')} *</label>
-                  <select value={form.gender} onChange={e => update('gender', e.target.value)} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.gender ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
+                  <label htmlFor="player-reg-gender" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.gender')} *</label>
+                  <select id="player-reg-gender" value={form.gender} onChange={e => update('gender', e.target.value)} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.gender ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
                     <option value="">{t('landing.player_reg.select_option')}</option>
                     <option value="male">{t('common.male')}</option>
                     <option value="female">{t('common.female')}</option>
@@ -248,8 +248,8 @@ export default function PlayerRegisterPage() {
                   {fieldErrors.gender && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.gender}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.birth_date')} *</label>
-                  <input type="date" value={form.birthDate} onChange={e => update('birthDate', e.target.value)} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.birthDate ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
+                  <label htmlFor="player-reg-birth-date" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('auth.register.birth_date')} *</label>
+                  <input id="player-reg-birth-date" type="date" value={form.birthDate} onChange={e => update('birthDate', e.target.value)} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.birthDate ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`} />
                   {fieldErrors.birthDate && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.birthDate}</p>}
                 </div>
               </div>
@@ -263,8 +263,8 @@ export default function PlayerRegisterPage() {
               <p className="text-sm text-[var(--color-text-muted)] mb-6">{t('landing.player_reg.step2_desc')}</p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('player.main_sport')} *</label>
-                  <select value={form.mainSportId} onChange={e => {
+                  <label htmlFor="player-reg-main-sport" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('player.main_sport')} *</label>
+                  <select id="player-reg-main-sport" value={form.mainSportId} onChange={e => {
                     const next = Number(e.target.value) || 0;
                     setForm(f => ({ ...f, mainSportId: next, interestedSportIds: applyMainSportChange(f.mainSportId || null, next || null, f.interestedSportIds) }));
                     clearFieldError('mainSportId');
@@ -275,8 +275,8 @@ export default function PlayerRegisterPage() {
                   {fieldErrors.mainSportId && <p className="text-xs text-[var(--color-error)] mt-1">{fieldErrors.mainSportId}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('player.level')} *</label>
-                  <select value={form.mainLevelId} onChange={e => update('mainLevelId', Number(e.target.value))} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.mainLevelId ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
+                  <label htmlFor="player-reg-main-level" className="block text-sm font-medium text-[var(--color-text)] mb-1.5">{t('player.level')} *</label>
+                  <select id="player-reg-main-level" value={form.mainLevelId} onChange={e => update('mainLevelId', Number(e.target.value))} className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)] focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] outline-none ${fieldErrors.mainLevelId ? 'border-[var(--color-error)]' : 'border-[var(--color-border)]'}`}>
                     <option value={0}>{t('landing.player_reg.select_skill_level')}</option>
                     {LEVELS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
                   </select>
@@ -350,7 +350,7 @@ export default function PlayerRegisterPage() {
         </div>
 
         <p className="text-center mt-4 text-sm text-[var(--color-text-muted)]">
-          {t('landing.register.already_account')} <Link to="/login" className="text-[var(--color-primary)] font-medium hover:underline">{t('landing.register.sign_in')}</Link>
+          {t('landing.register.already_account')} <Link to="/login" className="text-[var(--color-primary-text)] font-medium underline">{t('landing.register.sign_in')}</Link>
         </p>
       </div>
 

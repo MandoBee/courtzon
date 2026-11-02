@@ -70,7 +70,7 @@ export default function PublicTournamentDetailPage() {
           <p className="text-sm text-[var(--color-text-muted)]">
             This tournament is unavailable or not public.
           </p>
-          <Link to="/tournaments/public" className="inline-block mt-3 text-sm text-[var(--color-primary)] hover:underline">
+          <Link to="/tournaments/public" className="inline-block mt-3 text-sm text-[var(--color-primary-text)] hover:underline">
             ← Back to public tournaments
           </Link>
         </Card>
@@ -165,13 +165,13 @@ export default function PublicTournamentDetailPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
       <div>
-        <Link to="/tournaments/public" className="text-sm text-[var(--color-primary)] hover:underline">
+        <Link to="/tournaments/public" className="text-sm text-[var(--color-primary-text)] hover:underline">
           ← Back to public tournaments
         </Link>
         <h1 className="text-2xl font-bold text-[var(--color-text)] mt-2">{t.name}</h1>
         <div className="flex flex-wrap gap-2 mt-2">
           {t.format && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-primary-bg)] text-[var(--color-primary)]">{t.format}</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-primary-bg)] text-[var(--color-primary-text)]">{t.format}</span>
           )}
           {t.status && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-bg)] text-[var(--color-text-muted)]">{t.status}</span>
@@ -351,7 +351,7 @@ export default function PublicTournamentDetailPage() {
 
       <p className="text-xs text-[var(--color-text-muted)]">
         Want to join?{' '}
-        <Link to="/login" className="text-[var(--color-primary)] hover:underline">Sign in</Link>
+        <Link to="/login" className="text-[var(--color-primary-text)] underline">Sign in</Link>
         {' '}to register for this tournament.
       </p>
 

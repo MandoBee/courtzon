@@ -51,7 +51,7 @@ export default function PublicTournamentsPage() {
                     <h3 className="font-semibold text-[var(--color-text)]">{t.name}</h3>
                     <div className="flex flex-wrap gap-2 mt-2">
                       {t.format && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-primary-bg)] text-[var(--color-primary)]">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-primary-bg)] text-[var(--color-primary-text)]">
                           {t.format}
                         </span>
                       )}
@@ -78,7 +78,7 @@ export default function PublicTournamentsPage() {
       )}
 
       <p className="text-xs text-[var(--color-text-muted)]">
-        <Link to="/login" className="text-[var(--color-primary)] hover:underline">Sign in</Link>
+        <Link to="/login" className="text-[var(--color-primary-text)] underline">Sign in</Link>
         {' '}to see your tournaments, register, or self-cancel.
       </p>
     </div>

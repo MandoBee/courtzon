@@ -63,7 +63,7 @@ export default function PreRegisterPage() {
     <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center py-12 px-4">
       <div className="w-full max-w-4xl">
         <div className="text-center mb-10">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] mb-6">
+          <Link to="/" className="inline-flex items-center gap-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary-text)] mb-6">
             {t('landing.back_home')}
           </Link>
           <SiteBrand className="mb-4" subtitle={t('landing.register.choose_title')} />
@@ -81,7 +81,7 @@ export default function PreRegisterPage() {
               </div>
               <h3 className="text-xl font-bold text-[var(--color-text)] mb-2">{t(opt.titleKey)}</h3>
               <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{t(opt.descKey)}</p>
-              <div className="mt-6 flex items-center gap-1 text-sm font-semibold text-[var(--color-primary)] group-hover:gap-2 transition-all">
+              <div className="mt-6 flex items-center gap-1 text-sm font-semibold text-[var(--color-primary-text)] group-hover:gap-2 transition-all">
                 {t('landing.register.get_started')}
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
               </div>
@@ -90,7 +90,7 @@ export default function PreRegisterPage() {
         </div>
 
         <p className="text-center mt-8 text-sm text-[var(--color-text-muted)]">
-          {t('landing.register.already_account')} <Link to="/login" className="text-[var(--color-primary)] font-medium hover:underline">{t('landing.register.sign_in')}</Link>
+          {t('landing.register.already_account')} <Link to="/login" className="text-[var(--color-primary-text)] font-medium underline">{t('landing.register.sign_in')}</Link>
         </p>
       </div>
     </div>

@@ -7,6 +7,9 @@
   --color-primary-dark: #047857;
   --color-primary-light: #10B981;
   --color-primary-bg: #ECFDF5;
+  /* Primary-brand text/links on surfaces and tints (WCAG AA >=4.5:1).
+     Light default #15803D: 4.79 on #F8FAFC, 4.57 on #DCFCE7. */
+  --color-primary-text: #15803D;
   --color-secondary: #EA580C;
   --color-accent: #6366F1;
   --color-bg: #F9FAFB;
@@ -149,6 +152,8 @@
   --color-primary-dark: #059669;
   --color-primary-light: #34D399;
   --color-primary-bg: #064E3B;
+  /* Dark default #86EFAC: 10.93 on #14263A, 6.49 on #14532D. */
+  --color-primary-text: #86EFAC;
   --color-secondary: #F97316;
   --color-accent: #818CF8;
   --color-bg: #0F172A;
@@ -646,7 +651,9 @@ html[dir="rtl"] {
     padding: 0.875rem 2rem;
     font-size: 1rem;
     font-weight: 600;
-    color: var(--color-primary-dark);
+    /* A11Y-005: `primary-dark` is shared and only 3.06:1 on the dark surface;
+       `primary-text` is per-mode (4.79 light / 10.93 dark). */
+    color: var(--color-primary-text);
     background: var(--color-surface);
     border-radius: var(--radius-lg);
     transition: background 0.2s, box-shadow 0.2s;

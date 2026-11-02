@@ -92,7 +92,7 @@ export default function ResetPasswordPage() {
           </form>
           <p className="mt-4 text-center text-sm text-[var(--color-text-muted)]">
             {t('auth.forgot.remember')}{' '}
-            <Link to="/login" className="text-[var(--color-primary)] hover:underline">
+            <Link to="/login" className="text-[var(--color-primary-text)] underline">
               {t('auth.login.title')}
             </Link>
           </p>
