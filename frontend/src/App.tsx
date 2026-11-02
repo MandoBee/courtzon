@@ -617,6 +617,10 @@ function AppContent() {
           <Route path="/branches/:branchId/resources" element={<BookingResourceListPage />} />
           <Route path="/book/:resourceId" element={<BookingFormPage />} />
           <Route path="/bookings" element={<MyBookingsPage />} />
+          {/* Legacy/back-compat URL: nginx (api-proxy.conf) already serves the SPA
+              for /my/bookings, but the router had no match and fell through to the
+              NotFound catch-all. Keep old bookmarks/links working. */}
+          <Route path="/my/bookings" element={<Navigate to="/bookings" replace />} />
           <Route path="/bookings/:id/confirmation" element={<BookingConfirmationPage />} />
           <Route path="/bookings/:id" element={<BookingDetailPage />} />
           <Route path="/matches" element={<MatchListPage />} />
