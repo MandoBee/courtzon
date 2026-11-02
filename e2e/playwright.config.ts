@@ -61,8 +61,18 @@ export default defineConfig({
       dependencies: ['smoke'],
     },
     {
+      // E3 — read-only axe accessibility scan (public pages only).
+      // Standalone: no `smoke` dependency, no DB-writing fixtures.
+      name: 'a11y',
+      testMatch: '**/a11y/*.spec.ts',
+      use: { ...devices['Desktop Chrome'] },
+      timeout: 180_000,
+    },
+    {
       name: 'all',
       testMatch: '**/*.spec.ts',
+      // E3 a11y scans run in their own project only.
+      testIgnore: '**/a11y/*.spec.ts',
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['smoke'],
     },

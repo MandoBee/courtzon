@@ -13,6 +13,7 @@
     "ci": "node scripts/ci-validate.js && node scripts/architecture/validate-all.js && node scripts/architecture/metrics.js"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "^1.52.0"
   }
 }
