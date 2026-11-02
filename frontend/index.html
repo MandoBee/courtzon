@@ -112,6 +112,11 @@
         <span>Loading latest version...</span>
       </div>
     </div>
+    <!-- CSP: this inline bootstrap is allow-listed by its exact SHA-256
+         ('sha256-DABL9dSTNeAx3ZbBWvCVPtsWa/HrCqwsTAUarRhL74Y=' in
+         frontend/security-headers.conf). CSP hashes are byte-exact: changing
+         any byte here (including whitespace or line endings) requires
+         recomputing that hash. -->
     <script>
       (function () {
         try {

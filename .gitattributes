@@ -3,3 +3,8 @@
 
 # Ensure shell scripts always use LF line endings — CRLF shebangs break container execution
 *.sh text eol=lf
+
+# The inline bootstrap in index.html is allow-listed by an exact SHA-256 in the
+# CSP (frontend/security-headers.conf). CSP hashes are byte-exact, so this file
+# must be LF in every checkout (Windows CRLF produced a different hash).
+frontend/index.html text eol=lf
