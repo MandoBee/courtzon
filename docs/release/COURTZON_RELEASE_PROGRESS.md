@@ -4275,7 +4275,8 @@ now committed (`2d08621c`, `4568771f`) and pushed — see §24; this paragraph d
 GitHub (`MandoBee/courtzon`, branch `fix/courtzon-live-phase1`).
 
 **Not executed:** no Docker rebuild, no deployment to Hostinger Live, no database change, and no test run
-during the commit/push steps. The Docker image behind `:5173` still predates these commits, and the branch
+during the commit/push steps. The **local frontend image was rebuilt afterwards** from HEAD on 2026-11-03
+(image `b4c0f4d01a0f`, container `d3097b0aee45`, healthy; backend/mysql/redis untouched), and the branch
 is not covered by the CI workflows (they trigger on `master`/`main`/`develop` only).
 
 **Remaining test work** is tracked in `E2E_SCENARIO_MATRIX.md` §7 (T2/T3/T4 + MISSING rows), §3.6a
