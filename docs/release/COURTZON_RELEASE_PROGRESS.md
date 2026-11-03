@@ -4,7 +4,7 @@
 |---|---|
 | Document | `docs/release/COURTZON_RELEASE_PROGRESS.md` |
 | Plan | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
-| Last updated | 2026-11-02 (read-only DB identity audit §22; canonical wording §22.7) |
+| Last updated | 2026-11-03 (G1–G4 committed and pushed; HEAD `4568771f`; §24) |
 | Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 deferred)** + **Phase 6 IN_PROGRESS (3/10)** |
 | Overall completion | **54 %** (54 / 100 DONE items) |
 
@@ -1725,7 +1725,7 @@ provider reproduction.
 | P6-05 | Clubs/courts/bookings/cancellations | IN_PROGRESS | **Live read-only subset (2026-11-02):** B4 **PASS** (list 2 anchors; **both** public tournaments 14 + 10 verified for identity/brackets; invalid id → terminal message; 0 page errors), B7 **PASS** (390×844, both tournaments, no unintended overflow; drawer not exercised — 0 `.cz-match-card` in both). **NOT RUN/BLOCKED:** B1, B2, B3 (W — booking writes / approved DB window), B5 (scenario missing), B6 (destructive spec, P7-02). Matrix §3.2/§3.2b. |
 | P6-06 | Marketplace/payments/subscriptions/accounting | TODO | — |
 | P6-07 | Notifications/reports/settlements/admin | TODO | — |
-| P6-08 | Responsive + accessibility checks | IN_PROGRESS | **Live read-only (2026-11-02):** E1 **PASS** (attributed to the B4 run, 1440×900, ids 14+10), E2 **PASS per stated criteria** (attributed to B7, 390×844; **drawer/close-control NOT EXERCISED** — 0 `.cz-match-card`), E4 **PASS** (ids 14+10 at 768×1024 and 1024×768: no h-overflow, 0 off-screen actions, 0 container-clipped elements, 0 page errors). **E3 → PASS after fixes (2026-11-02, local, light + dark).** First run (dark only) was FAIL with 1 critical (`select-name`) + serious `color-contrast`/`link-in-text-block`; A11Y-001…006 were then fixed in the working tree (`Button.tsx`, `index.css` `--color-primary-text`, `LoginPage`, `ForgotPasswordPage`, `LandingLayout`, `PreRegisterPage`, both public tournament pages) and E3 was re-run: **48/48 scans PASS** (6 pages × 4 viewports × **light + dark**), **0 critical, 0 serious, 1 moderate per scan** (`meta-viewport` = A11Y-007, excluded by decision), **0 BLOCKED**. Tool `@axe-core/playwright` 4.14.0; command `E3_THEME=light|dark npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2`; target `127.0.0.1:5174` = fresh `npm run build` via `vite preview` + temporary loopback router — **not** Docker (image not rebuilt, `:5173` still pre-fix) and **not** Live. Safety: every non-GET aborted (`unexpectedWrites=[]`, `writesSentToServer=0` in all 48 records); no DB access, no data created. Supporting checks: `npm run build` PASS, focused Vitest 9/9 PASS; ESLint (11 errors) and `ci-validate` (214 errors) remain **pre-existing and unfixed**. **No commit/push/Docker/deploy.** Evidence `test-results/e2e/a11y/*__{light|dark}.json` (48, gitignored). Commit `9230b155` (unchanged). Matrix §3.5/§3.5a/**§3.5b**. **P6-08 stays IN_PROGRESS** (E2 drawer gap open; consumer/admin pages not scanned). |
+| P6-08 | Responsive + accessibility checks | IN_PROGRESS | **Live read-only (2026-11-02):** E1 **PASS** (attributed to the B4 run, 1440×900, ids 14+10), E2 **PASS per stated criteria** (attributed to B7, 390×844; **drawer/close-control NOT EXERCISED** — 0 `.cz-match-card`), E4 **PASS** (ids 14+10 at 768×1024 and 1024×768: no h-overflow, 0 off-screen actions, 0 container-clipped elements, 0 page errors). **E3 → PASS after fixes (2026-11-02, local, light + dark).** First run (dark only) was FAIL with 1 critical (`select-name`) + serious `color-contrast`/`link-in-text-block`; A11Y-001…006 were then fixed (`Button.tsx`, `index.css` `--color-primary-text`, `LoginPage`, `ForgotPasswordPage`, `LandingLayout`, `PreRegisterPage`, both public tournament pages) and E3 was re-run: **48/48 scans PASS** (6 pages × 4 viewports × **light + dark**), **0 critical, 0 serious, 1 moderate per scan** (`meta-viewport` = A11Y-007, excluded by decision), **0 BLOCKED**. Tool `@axe-core/playwright` 4.14.0; command `E3_THEME=light|dark npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2`; target `127.0.0.1:5174` = fresh `npm run build` via `vite preview` + temporary loopback router — **not** Docker (image not rebuilt, `:5173` still pre-fix) and **not** Live. Safety: every non-GET aborted (`unexpectedWrites=[]`, `writesSentToServer=0` in all 48 records); no DB access, no data created. Supporting checks: `npm run build` PASS, focused Vitest 9/9 PASS; ESLint (11 errors) and `ci-validate` (214 errors) remain **pre-existing and unfixed**. **Committed & pushed** (`fc4871bf`…`4568771f`); **no Docker rebuild/deploy.** Evidence `test-results/e2e/a11y/*__{light|dark}.json` (48, gitignored). HEAD `4568771f` (G2). Matrix §3.5/§3.5a/**§3.5b**. **P6-08 stays IN_PROGRESS** (E2 drawer gap open; consumer/admin pages not scanned). |
 | P6-09 | Realtime + simultaneous booking | TODO | Specs for F1/F2/F3 **approved 2026-11-02** (matrix §3.6a), decisions fixed: D3 = same player / two sessions; D6 = no-success + no second booking (message text deferred); D9 = event via API `public_match`, observed on `/matches`. Not executed. Remaining execution-time verification: exact `public_match` payload from `CreateBookingSchema`. Writes only on `courtzon_v3`; **never on Live**. |
 | P6-10 | Fixes + regression reruns recorded | TODO | — |
 
@@ -4257,4 +4257,27 @@ claimed fixed.**
 The application code changed **locally** (8 files) but **Docker was not rebuilt**, so `:5173` still runs the
 pre-fix bundle. **No commit, no push, no deployment, no Docker build/restart, no Live test, no DB access or write, no
 migration/seed, and no theme change/publish** occurred in this step. Documentation plus the fixes listed in §23.3
-exist only in the working tree.
+now committed (`2d08621c`, `4568771f`) and pushed — see §24; this paragraph describes the E3 step itself.
+
+## 24. Git state — G1–G4 committed and pushed (2026-11-03)
+
+**Branch:** `fix/courtzon-live-phase1` · **HEAD:** `4568771f` · **remote:** `origin/fix/courtzon-live-phase1` ·
+**ahead/behind:** `0/0` · **working tree:** clean · **staged:** none.
+
+| Commit | Scope |
+|---|---|
+| `fc4871bf` | `docs(release): record E3 results, DB identity policy and P6 handover` |
+| `b28127a9` | `test(e2e): add axe accessibility scan tooling and project` |
+| `2d08621c` | `fix(a11y): associate labels and use accessible brand-text token on public pages` |
+| `4568771f` | `fix(a11y): raise gradient and primary button contrast` |
+
+**Done:** the public-page accessibility fixes, the axe tooling/spec, and the release documentation are in
+GitHub (`MandoBee/courtzon`, branch `fix/courtzon-live-phase1`).
+
+**Not executed:** no Docker rebuild, no deployment to Hostinger Live, no database change, and no test run
+during the commit/push steps. The Docker image behind `:5173` still predates these commits, and the branch
+is not covered by the CI workflows (they trigger on `master`/`main`/`develop` only).
+
+**Remaining test work** is tracked in `E2E_SCENARIO_MATRIX.md` §7 (T2/T3/T4 + MISSING rows), §3.6a
+(F1–F3), and `COURTZON_RELEASE_READINESS_PLAN.md` (P6-06…P6-10, P8-06/P8-07). No scenario status changed in
+this step.

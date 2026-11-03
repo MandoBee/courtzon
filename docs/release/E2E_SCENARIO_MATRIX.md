@@ -327,7 +327,7 @@ No test was executed for this task and no scenario is claimed as `PASS`.
 |---|---|---|---|---|---|---|---|---|
 | E1 | Anonymous | Public tournament | Desktop 1440×900 detail | No horizontal overflow; content renders | None | `p0-public-readonly.spec.ts:92–127` | R | **PASS (attributed, 2026-11-02)** — covered by the **B4** run (§3.2b) on ids 14 and 10: name present, text 440/504 chars, `scrollWidth = clientWidth`, 0 page errors. Criteria unchanged; **no re-run performed** |
 | E2 | Anonymous | Public tournament | Mobile 390×844 | No page overflow; body non-empty | None | `p0-public-readonly.spec.ts:237–277` | R | **PASS (attributed, 2026-11-02)** — covered by the **B7** run (§3.2b) against this row's stated expectation on ids 14 and 10: `scrollWidth = clientWidth = 390`, text 440/504 chars, 0 page errors. **Drawer / close-control NOT EXERCISED** — both public tournaments expose 0 `.cz-match-card`, so that conditional block in `G6` was never run; this is a recorded **gap**, not a pass |
-| E3 | Any | Key pages | Automated axe/a11y scan | No critical/serious violations | None | `e2e/scenarios/a11y/axe-public.spec.ts` | R | **PASS (2026-11-02, local — after fixes)** — **48/48 scans** (6 public pages × 4 viewports × light + dark), axe-core **4.14.0**: **0 critical, 0 serious, 1 moderate per scan** (`meta-viewport` = A11Y-007, excluded by decision). 0 BLOCKED. Run against a local build via Vite preview — **not** Docker `:5173` (image not rebuilt) and **not** Live. A11Y-001…006 fixed locally (uncommitted); details + pre-fix baseline in §3.5b |
+| E3 | Any | Key pages | Automated axe/a11y scan | No critical/serious violations | None | `e2e/scenarios/a11y/axe-public.spec.ts` | R | **PASS (2026-11-02, local — after fixes)** — **48/48 scans** (6 public pages × 4 viewports × light + dark), axe-core **4.14.0**: **0 critical, 0 serious, 1 moderate per scan** (`meta-viewport` = A11Y-007, excluded by decision). 0 BLOCKED. Run against a local build via Vite preview — **not** Docker `:5173` (image not rebuilt) and **not** Live. A11Y-001…006 fixed and pushed (`2d08621c`, `4568771f`); details + pre-fix baseline in §3.5b |
 | E4 | Any | Key pages | Tablet 768/1024 widths | Layout intact, no clipped actions | None | — | — | **PASS (2026-11-02, Live)** — ids 14 and 10 at **768×1024** and **1024×768**: `scrollWidth = clientWidth`, **0 off-screen interactive elements**, **0 elements clipped by a container**, 0 page errors |
 
 ### 3.5a E1/E2 evidence attribution + E4 Live run (2026-11-02)
@@ -423,7 +423,7 @@ All six pages rendered (HTTP 200, `#root` non-empty) — **no page was BLOCKED**
 | No DB / fixtures | Spec imports only `@playwright/test`, `@axe-core/playwright`, `node:fs`, `node:path` — no `fixtures/*`, no `helpers/database`, no SQL |
 | No data created | No accounts, tournaments, or bookings; discovery is `GET` only |
 
-**Defect register (001–006 FIXED locally, uncommitted; 007 OPEN — excluded):**
+**Defect register (001–006 FIXED — committed `2d08621c`/`4568771f` and pushed; 007 OPEN — excluded):**
 
 | ID | Impact | Rule (WCAG) | Root cause (as found) | Fix applied | Status |
 |---|---|---|---|---|---|
@@ -498,10 +498,10 @@ All three remain **NOT RUN**. Every write-producing run is permitted **only** on
 | P6-05 bookings/clubs | 4 rows (B1–B4, B7), 1 blocked-destructive (B6) | `cancel-booking` contract fixed 2026-10-28; fix venue spec; add conflict test (B5) |
 | P6-06 marketplace/payments | 2 rows, both gateway-dependent (C1/C2) | Marketplace, subscriptions, accounting, refund UI **not covered** |
 | P6-07 notifications/reports/settlements | D1 (blocked), D2, D5 | Reports, settlements, notifications beyond one deep link **not covered** |
-| P6-08 responsive/a11y | E1/E2 (public surface only), E4, **E3 axe scan (local, 2026-11-02, light + dark)** | E3 **PASS** after fixes (A11Y-001…006 fixed locally, uncommitted; A11Y-007 excluded); consumer/admin pages still not scanned; E2 drawer gap open |
+| P6-08 responsive/a11y | E1/E2 (public surface only), E4, **E3 axe scan (local, 2026-11-02, light + dark)** | E3 **PASS** after fixes (A11Y-001…006 fixed and pushed; A11Y-007 excluded); consumer/admin pages still not scanned; E2 drawer gap open |
 | P6-09 realtime | none | All three rows missing |
 
-**Phase 6 acceptance (plan §11) remains NOT MET.** Executed evidence now exists — the 2026-11-02 Live runs (A2, A4 with observation, A5, A6 deny half, B4, B7, E1/E2 attributed, E4) plus the **2026-11-02 local E3 axe runs (§3.5b)**: the first run was FAIL, A11Y-001…006 were fixed in the working tree, and the re-run is **PASS in both schemes (48/48, 0 critical, 0 serious)**, with A11Y-007 (`meta-viewport`) still open by decision. Those fixes are **uncommitted and not in the Docker image**. BLOCKED rows (B6, C1, C2), NOT RUN rows (A1, A3, A6 allow half, A7, A8, B1–B3, D1, D2, D5) and MISSING/not-run rows (B5, C3–C6, D3, D4, F1–F3) remain open, and E2's drawer gap is unresolved, so the phase cannot close.
+**Phase 6 acceptance (plan §11) remains NOT MET.** Executed evidence now exists — the 2026-11-02 Live runs (A2, A4 with observation, A5, A6 deny half, B4, B7, E1/E2 attributed, E4) plus the **2026-11-02 local E3 axe runs (§3.5b)**: the first run was FAIL, A11Y-001…006 were fixed in the working tree, and the re-run is **PASS in both schemes (48/48, 0 critical, 0 serious)**, with A11Y-007 (`meta-viewport`) still open by decision. Those fixes are **committed and pushed** (`2d08621c`, `4568771f`) but **not in the Docker image**. BLOCKED rows (B6, C1, C2), NOT RUN rows (A1, A3, A6 allow half, A7, A8, B1–B3, D1, D2, D5) and MISSING/not-run rows (B5, C3–C6, D3, D4, F1–F3) remain open, and E2's drawer gap is unresolved, so the phase cannot close.
 
 ## 6. Data safety and cleanup model
 
@@ -540,6 +540,7 @@ marketplace/subscription/accounting rows → reports/settlements → responsive/
 - **E3 run record (2026-11-02, local):** config `e2e/playwright.config.ts` (`--project=a11y`), command
   `E3_THEME=light|dark npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2`,
   environment `127.0.0.1:5174` (local `vite preview` of a fresh build, behind a loopback router) + `127.0.0.1:3000`,
-  commit `9230b155da5584f3e3847b358d3913bb829d56c4` (no commit made), axe-core `4.14.0`. Run 1 (dark only) **FAIL**;
+  commit `9230b155da5584f3e3847b358d3913bb829d56c4` (base at run time; the fixes were later committed in
+  `2d08621c`/`4568771f` and pushed on 2026-11-03), axe-core `4.14.0`. Run 1 (dark only) **FAIL**;
   run 2 after fixing A11Y-001…006 (light + dark) **PASS — 48/48, 0 critical, 0 serious, 1 moderate/scan**.
   Evidence `test-results/e2e/a11y/*__{light|dark}.json` (48 files, gitignored) and `§3.5b`.
