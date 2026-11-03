@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Purpose | Proposed workstreams derived from P8.7.14.5 -- P8.7.14.13 evidence |
-| Authority | **Subordinate** to [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md). No phase reordering is proposed here. |
-| Baseline | `HEAD = 7b9ca362696269edc43a9ddfc64072cc54645904` (two local, unpushed commits: `75f3c16d` booking fix, `7b9ca362` baseline docs); local backend `sha256:5ae6bc915713...94aa` deployed from a dirty build context; 213 working-tree entries |
+| Authority | **Subordinate** to the plan authority ([`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md)); status and blockers are owned by [`COURTZON_RELEASE_PROGRESS.md`](./COURTZON_RELEASE_PROGRESS.md) (plan §1.1). No phase reordering is proposed here. |
+| Baseline | `HEAD = e0089b50` on `fix/courtzon-live-phase1` (`0/0` with `origin/fix/courtzon-live-phase1`), working tree clean (2026-11-03). Earlier adoption baselines are historical and are not restated here. |
 | Owners / dates | **Not assigned.** This roadmap intentionally carries no delivery dates or owners. |
 | Status vocabulary | `Open` / `Planned` / `Blocked` / `Completed` (only `Completed` with executed evidence) |
 | Related | [Release record](./P8.7.14_RELEASE_RECORD.md) - [Issues](./OUTSTANDING_ISSUES.md) - [Debt](./TECHNICAL_DEBT.md) - [Governance](./DEPLOYMENT_GOVERNANCE.md) |

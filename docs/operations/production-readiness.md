@@ -2,7 +2,12 @@
 
 ## Overview
 
-This document is the single source of truth for CourtZon's operational readiness. It covers health checking, observability, metrics, monitoring, error handling, security, performance, background jobs, backups, disaster recovery, deployment, and operational procedures.
+This document is the operational reference for CourtZon's runtime readiness. It covers health checking, observability, metrics, monitoring, error handling, security, performance, background jobs, backups, disaster recovery, deployment, and operational procedures.
+
+> **Authority (owner decision, 2026-11-03).** This is a **subsidiary operational reference**, not a source of
+> release status. Phase order, scope and acceptance criteria belong to `docs/release/COURTZON_RELEASE_READINESS_PLAN.md`;
+> current status, percentages and blockers belong to `docs/release/COURTZON_RELEASE_PROGRESS.md`; test scenarios belong
+> to `docs/release/E2E_SCENARIO_MATRIX.md` (plan §1.1). Where this document disagrees with any of them, they win.
 
 **Last audit:** 2026-07-26
 **Status:** Pre-production — findings are being addressed before public launch.

@@ -4,12 +4,20 @@
 |---|---|
 | Document | `docs/release/COURTZON_RELEASE_PROGRESS.md` |
 | Plan | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
-| Last updated | 2026-11-03 (G1–G4 committed and pushed; HEAD `4568771f`; §24) |
-| Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 deferred)** + **Phase 6 IN_PROGRESS (3/10)** |
+| Document role | **Status authority** — the single source of status, percentages, blockers, evidence and audit trail (plan §1.1) |
+| Last updated | 2026-11-03 (S0 documentation authority sync; HEAD `e0089b50`; see §15 and §25) |
+| Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 OPEN/DEFERRED)** + **Phase 6 IN_PROGRESS (3/10)** under recorded deviation **D-01** (§25) |
 | Overall completion | **54 %** (54 / 100 DONE items) |
 
 > Statuses: `TODO` · `IN_PROGRESS` · `BLOCKED` · `DONE` · `ACCEPTED_RISK`.
 > Percentages count only `DONE`. A phase is not complete until its acceptance criteria pass.
+
+> **Authority (owner decision, 2026-11-03).** This file is the **only** source of status, completion
+> percentages, blockers and evidence. The plan (`COURTZON_RELEASE_READINESS_PLAN.md`) is the **only** source of
+> phase order, task scope and acceptance criteria; the matrix (`E2E_SCENARIO_MATRIX.md`) is the **only** source
+> of test scenarios. Handovers, release records and snapshots are dated facts and never override this file.
+> Phase 5 remains **acceptance NOT MET** (P5-05 OPEN/DEFERRED); Phase 6 continuation is the recorded, limited
+> deviation **D-01** (§25, plan §12.1). Documentation work changes no percentage.
 
 ---
 
@@ -1735,6 +1743,10 @@ results, failure evidence, fixes or regression reruns. T1 read-only rows are exe
 approval; T3 rows are mock-only or blocked by **P5-05**; T4 rows are blocked by a stale wallet fixture
 (`e2e/data/courts.ts:108`) or destructive SQL (`tournament-venue-flow.spec.ts:38–40`).
 
+**Continuation basis (2026-11-03):** Phase 6 work continues under the recorded, limited deviation **D-01** (§25,
+plan §12.1) while **P5-05 stays OPEN/DEFERRED**. Phase 5 remains **not accepted**; no Phase 6 result may be used as
+Phase 5 evidence, and P5-05 is never `DONE` until its closure conditions in plan §12.1 are met.
+
 ## 9. Checklist — Phase 7 (1/10)
 
 | ID | Task | Status | Evidence / notes |
@@ -2042,6 +2054,18 @@ scenario has been executed yet.
 | B29 | **RESOLVED (P4-03).** The Redis booking lock had **no tests** and used non-unique ownership tokens (`user:<id>`, `tournament:<user>:<match>`, `scheduling:<user>:<now>`), so a stale release after TTL expiry could delete a newer same-principal acquisition. Fixed with `createLockOwner()` (UUID per acquisition) at all four sites + `redis-lock.spec.ts` (13) and `lock-owner-wiring.spec.ts` (3, red on the pre-fix form). | Resolved | 4 |
 | B30 | **Booking concurrency design limitations (P4-03, Low, DB-authoritative).** (1) `prepareGatewayBooking` runs its availability pre-check outside a transaction (the `FOR UPDATE` is a no-op in autocommit); the 10-min window relies on the Redis prepare lock and is re-validated inside the confirm transaction. (2) The 15 s create lock has **no renewal**; if it expires during the post-commit gateway charge another request may acquire it, but the committed `pending_payment` booking still blocks the slot. (3) Recurring-series creation takes no Redis lock and locks multiple `resources` rows in plan order → a concurrent series can deadlock; InnoDB rolls one back (fails safe/retryable). No data-integrity impact observed; the `resources FOR UPDATE` + overlap count remains authoritative. | Low (design limitation) | 4 |
 
+**B36 update (2026-11-03, read-only — documentation only, nothing changed).** The **baseline half** of the **B36**
+entry above is **stale**. `database/baseline/001_courtzon_v3.sql` (last changed in commit `700bfe91`, 2026-10-31) now
+contains **329** distinct `CREATE TABLE` statements, includes `payment_allocations`, `booking_series`,
+`academy_schedules`, `membership_installments`, `gateway_settlements` and `capacity_override_reason`, and every
+`ADD COLUMN` name from migrations 149, 158–161, 177 and 193 was found in it (**0 missing**). The only live table
+absent from the baseline is `migration_history`, which the application creates itself.
+
+**What stays open:** `backend/docker-entrypoint.sh` still imports the baseline and then **stamps every migration
+filename** into `migration_history` without executing the migrations, so **fresh-DB convergence is unproven**.
+B36 therefore remains **OPEN (Critical, release/deploy)**; only its baseline description is corrected here. No
+file, database, migration or Docker change was made to establish this.
+
 **Additional test-target hygiene (low risk):** 12 unit specs still hardcode `DB_PORT=3306` in their
 local env setup, but they mock MySQL and do not open a pool; `unified-settlement.service.spec.ts`
 (the only one that constructs a pool) was moved to 3307. Normalize the rest during Phase 7 (P7-02/P7-09).
@@ -2116,17 +2140,20 @@ local env setup, but they mock MySQL and do not open a pool; `unified-settlement
 | 2026-10-28 | E2E auth-fixture fix (phone-only login contract) | **1)** `e2e/helpers/database.ts::insertUser` now reads `countries.phone_code`, normalizes it to a leading `+` (same normalization as `authService.login`, `auth.service.ts:520–523`) and stores `full_phone = +<code><local 11-digit>` instead of the bare local number; `phone_number` stays local. Registration parity: `auth.service.ts:58,103,151` stores `countryPhoneCode + local`. **2)** `e2e/data/users.ts::testUsers.admin()` now returns a valid 11-digit `phoneNumber` + password + full name/email (no email-based login). **3)** `e2e/fixtures/auth.fixture.ts::authenticatedAdmin` creates a dedicated user via `insertUser`, grants `super_admin` via the existing inline `user_roles` convention, logs in with phone/password and accepts the `/admin` landing (with `/app` fallback) — the `api.login(email)` call was removed. **4)** `authz-session-isolation.spec.ts` admin test now provisions its own admin actor instead of querying a seeded email. **Verified statically:** discovery (`playwright test --list --config e2e/playwright.config.ts`, no execution) → **59 tests in 13 files**, all 7 A6–A8 tests plus admin/cancel specs listed, no config/module errors. **No tests executed**; no DB/schema/seed/production changes; score unchanged **54/100** |
 | 2026-10-28 | E2E `api.login` + test-phone format fixes (test helpers only) | **1) `e2e/helpers/api.ts::api.login`** now posts `{phoneNumber: <local digits>, password, countryCode}` — the production contract (`LoginSchema`, `auth.dto.ts:28–31`; `authService.login`, `auth.service.ts:520–529`; web client `LoginPage.tsx:58–63`). Default `countryCode = '+20'`, traced to country 1 = Egypt (`database/seeds/001_baseline.sql:154`), the same row `insertUser` reads, so seeded `full_phone` and the login prefix agree; callers may override it as a 3rd argument. A `+…` input now throws a clear error instead of being double-prefixed or wrongly re-split. **2) `e2e/data/users.ts`** — `player`/`coach`/`seller`/`secondPlayer` generated **16-digit** numbers (`'01000000' + 8 digits`), rejected by `localPhoneNumberSchema` (11 digits, `shared/validation/local-phone.ts:5,10`) and the form rule `localPhoneZod` (`frontend/src/utils/phone.ts:10`); all four now use a 3-digit Egyptian prefix + 8 digits (11 total), matching the already-correct `testUsers.admin()`. **Callers audited (9):** `e2e/fixtures/booking.fixture.ts:47,88`, `organisation.fixture.ts:44`, `payment.fixture.ts:57`, `scenarios/booking/cancel-booking.spec.ts:21`, `scenarios/match/public-match.spec.ts:25,57,88`, `scenarios/notifications/notification-deeplink.spec.ts:25`, `scenarios/payments/payment-flow.spec.ts:23` — all pass 11-digit local numbers sourced from `testUsers`/`insertUser` (countryId 1), none pass `+…`, so no caller change was required. **Verified statically:** grep → 0 international inputs at `api.login` call sites; arithmetic check of prefix + 8 padded digits = 11 for `010/011/012/015`; `npx playwright test --list --config e2e/playwright.config.ts` (discovery only, **no execution**) → **59 tests in 13 files**, no config/module errors. **Not executed** (needs DB-write window + running stack); no production code/DB/schema/seed change; score unchanged **54/100** |
 | 2026-10-28 | Super Admin bootstrap corrected against the v3 schema (script-only, not executed) | **Mismatches found** in `backend/scripts/bootstrap-admin.js` vs `database/baseline/001_courtzon_v3.sql:6685–6720`: **(1)** `users.name` → real column `full_name`; **(2)** `users.role` → no such column (roles live in `user_roles`); **(3)** `users.is_active` → real column `account_status` ENUM; **(4)** `users.email_verified_at` → real column `is_email_verified` TINYINT; **(5)** five NOT NULL/no-default columns never supplied: `public_id`, `country_id`, `phone_number`, `full_phone`, `gender`; **(6)** the `salt:sha256(password)` hash is rejected by `verifyPassword`, which only accepts `$pbkdf2-sha512$…` (`backend/src/shared/utils/password.ts:16–27,29–34`); **(7)** email was treated as the login identity although login is phone-only (`full_phone` lookup — `auth.service.ts:520–529`, `user.repository.ts:68–84`); **(8)** `user_roles.created_at` does not exist (real: `assigned_at` default) so the grant insert would fail; **(9)** the role lookup also tried the non-seeded `super-admin` slug and ignored `organisation_id IS NULL`. **Correction (script only):** requires `SUPER_ADMIN_PHONE` (local 11 digits, mirroring `localPhoneNumberSchema`), `SUPER_ADMIN_COUNTRY_ISO`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_EMAIL` (profile only) plus optional `SUPER_ADMIN_NAME`/`SUPER_ADMIN_GENDER`; resolves `countries.id`/`phone_code` by ISO and `roles.id` by `slug='super_admin' AND organisation_id IS NULL` (no hardcoded IDs); builds `full_phone = +<code><phone>`, locates by `full_phone`, inserts exactly the 8 required `users` columns (`public_id` via `randomUUID()`), hashes with the same PBKDF2-SHA512 v2 layout, and grants with `INSERT IGNORE INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, NULL)`. Never logs phone/email/password values. **Verified statically:** `node --check` → exit 0; column-set diff vs baseline → no unknown columns and no uncovered NOT NULL columns; hash constants/layout line-identical to `password.ts`. **Not executed — no DB connection/write and no Super Admin created.** Env samples still list only `SUPER_ADMIN_EMAIL/PASSWORD` (`deployment/env/.env.example:80–83`, `deployment/coolify/.env.production:60–61`, `docs/deployment/environment_matrix.md:41–42`) and must be updated before the script can run. Score unchanged **54/100** |
+| 2026-11-03 | S0: documentation authority sync (owner-approved) | Plan/progress/matrix hierarchy fixed (plan §1.1); stale HEAD citations corrected; §18 "P6 not started" contradiction corrected against §8; B36 baseline description corrected (329 tables, `payment_allocations` present) while the entrypoint-stamping half stays OPEN; competing "single source of truth" claims demoted. P5-05/Phase 6 deviation **D-01** recorded with closure conditions (§25, plan §12.1). **Documentation only** — no code, DB, migration, seed, Docker, test, commit/push or Live access. Percentages unchanged (**54/100**) |
 
 ## 16. Next task
 
 **P6-02 is complete (`docs/release/E2E_SCENARIO_MATRIX.md`). The next plan item is P6-04 — auth/session/role/
-permission scenarios — but it is an execution task and is currently blocked; do not start it without the
-prerequisites below.**
+permission scenarios — it is an execution task that may proceed only under the recorded limited exception **D-01**
+(item 1); the blanket phase-gate block no longer applies to Phase 6 execution, but the
+prerequisites below are still required and none is waived.**
 
-1. **Ordering blocker (plan §4.1/§4.5):** Phase 5 acceptance is still **NOT MET** because **P5-05's external
-   Sandbox lifecycle is DEFERRED**. P6-02 was a non-execution documentation artifact; the next tasks execute real
-   UI/DB flows and should not start until P5-05 is either executed or its limitation is explicitly accepted in
-   writing.
+1. **Ordering (recorded deviation D-01, §25 / plan §12.1):** Phase 5 acceptance is still **NOT MET** because
+   **P5-05's external Sandbox lifecycle is DEFERRED**. The owner has recorded a limited exception allowing Phase 6
+   execution to continue. It does **not** accept Phase 5, does not mark P5-05 `DONE`, and does not let any Phase 6
+   result stand as Phase 5 evidence. Phase 7+ acceptance, a Docker rebuild and any deployment remain blocked by the
+   Phase 5 gate.
 2. **Execution prerequisites for P6-04:** running frontend + backend (the task implies the local stack; this
    requires an explicit Docker/stack go-ahead), explicit approval for **DB-writing** fixtures on `courtzon_v3`, and
    the A6–A8 specs — now **authored but not executed** (matrix §3.1a; 7 tests in
@@ -3561,13 +3588,19 @@ subscription fixtures (**B8** class) in `membership-p2` (1), `current-subscripti
 
 ## 18. Session handoff (resume here)
 
+> **Partially superseded (2026-11-03).** This is the 2026-10-28 pause record, kept for history. Its statement that
+> "P6-04…P6-10 not started" is **wrong for the current tree**: §8 (authoritative) records **P6-04, P6-05 and P6-08 as
+> `IN_PROGRESS`** and P6-06/P6-07/P6-09/P6-10 as `TODO`; the A6–A8 specs are authored but not executed. Status,
+> percentages and blockers are always read from the checklists above and from §25, never from this paragraph.
+
 **State at pause (2026-10-28):** **Phase 3 DONE (10/10)**; **Phase 4 DONE (10/10, audit acceptance met —
 B36/B37 open)**; **Phase 5 9/10 (90 %), acceptance NOT MET** — P5-04 `DONE` on limited, user-confirmed evidence
-(§5Q); P5-05 **IN_PROGRESS**, external Sandbox lifecycle **DEFERRED**; P5-06…P5-10 `DONE` (§5R–§5W; **B31** and
-**B42** fixed); **Phase 6 3/10 (30 %)** — P6-01, **P6-02** (matrix: `docs/release/E2E_SCENARIO_MATRIX.md`), P6-03
-`DONE`, P6-04…P6-10 not started; overall **54/100 (54 %)**. Next plan item is **P6-04**, blocked by the open Phase 5
-acceptance (P5-05 deferred) and by execution prerequisites (running stack, DB-write approval, missing RBAC/session
-specs A6–A8).
+(§5Q); P5-05 **IN_PROGRESS**, external Sandbox lifecycle **DEFERRED** (still OPEN as of 2026-11-03, §25);
+P5-06…P5-10 `DONE` (§5R–§5W; **B31** and **B42** fixed); **Phase 6 3/10 (30 %)** — P6-01, **P6-02** (matrix:
+`docs/release/E2E_SCENARIO_MATRIX.md`), P6-03 `DONE`; P6-04/P6-05/P6-08 `IN_PROGRESS` and P6-06/P6-07/P6-09/P6-10
+`TODO` per §8 (the earlier "not started" wording was corrected 2026-11-03); overall **54/100 (54 %)**. Next plan item
+is **P6-04**, gated by the unresolved Phase 5 acceptance (P5-05 OPEN/DEFERRED — continuation only under deviation
+**D-01**, §25) and by execution prerequisites (running stack, DB-write approval, A6–A8 execution).
 Phase 2 remains closed with its deferrals (**AR-2** Alpine/Docker → Phase 9, **B13** backend production
 transitives, **B14** frontend dev-only advisories). Frontend suite is fully green (**1414/1414**, 144/144
 files), `tsc -b --force` clean, `react-hooks/rules-of-hooks` **0**, lint gate **PASS** (711 files / 3,377
@@ -3626,8 +3659,10 @@ findings, baseline untouched).
 **P4-10 result to carry forward (evidence package — read before Phase 5):**
 1. The authoritative Phase 4 evidence is **§5M** (10-row summary + 36-row matrix). Do not re-derive counts from
    memory; the per-task records are §5D–§5L and §17D–§17K.
-2. **B36 (Critical) is a release blocker for fresh deploys/DR:** baseline regeneration + entrypoint/CI
-   convergence fix are required before any rebuild/deploy verification (authorized task + Phase 9).
+2. **B36 (Critical) is a release blocker for fresh deploys/DR:** an entrypoint/CI convergence fix is still required
+   before any rebuild/deploy verification (authorized task + Phase 9). Baseline regeneration appears to have landed
+   in `700bfe91` (329 tables, `payment_allocations` present) — see the dated **B36 update** in §14; only the
+   `entrypoint` stamping behaviour and fresh-DB convergence remain unproven.
 3. **B37 (High) is a release blocker for three endpoints:** org payment settings, mobile push, resource
    maintenance; code-only fixes with schema-backed tests, plus removal/alignment of the dead HR/`activities`
    code. Do not “fix” by adding migration columns — the correct columns already exist.
@@ -4282,3 +4317,50 @@ is not covered by the CI workflows (they trigger on `master`/`main`/`develop` on
 **Remaining test work** is tracked in `E2E_SCENARIO_MATRIX.md` §7 (T2/T3/T4 + MISSING rows), §3.6a
 (F1–F3), and `COURTZON_RELEASE_READINESS_PLAN.md` (P6-06…P6-10, P8-06/P8-07). No scenario status changed in
 this step.
+
+**Correction (2026-11-03):** HEAD is now `e0089b50` (adds `c4b49b07` and `e0089b50` on top of the G1–G4 commits
+above), still `0/0` against `origin/fix/courtzon-live-phase1` with a clean working tree. The `4568771f`
+values in this section describe the G1–G4 operation only and are **not** the current HEAD.
+
+---
+
+## 25. Phase 5 / Phase 6 decision record — S0 (2026-11-03)
+
+Owner decisions recorded during the documentation authority sync. **Documentation only:** no test was run, no
+database or migration was touched, no Docker command was executed, and no commit/push/deploy or Live access occurred.
+
+| # | Decision |
+|---|---|
+| 1 | `COURTZON_RELEASE_READINESS_PLAN.md` is the **only** plan authority (phase order, scope, acceptance, rules) |
+| 2 | This file is the **only** status authority (status, percentages, blockers, evidence, audit trail) |
+| 3 | `E2E_SCENARIO_MATRIX.md` is the **only** scenario authority |
+| 4 | Handovers, release records and snapshots are historical facts; they are never governing references |
+| 5 | **P5-05 stays OPEN / DEFERRED**; Phase 5 acceptance remains **NOT MET**; Phase 6 may continue only as the recorded, limited deviation **D-01** (plan §12.1) |
+
+### 25.1 P5-05 status and closure conditions
+
+P5-05 remains `IN_PROGRESS` in §7 and counts as **not `DONE`**. It closes only when **all** of the following hold:
+
+1. Explicit owner authorization for external Paymob Sandbox calls.
+2. Confirmed Test-mode account with Test-labelled keys, and the exact credential scope recorded (P5-04 limit).
+3. The P5-01 lifecycle scenarios (§5N) executed against Sandbox, with provider evidence retained.
+4. Separate confirmation that live-mode gateway access is not possible (also a Phase 9 gate).
+5. Results recorded here, separating Sandbox from mocked evidence (P5-10).
+
+### 25.2 Limits of the Phase 6 continuation
+
+- No Phase 5 acceptance, no P5-05 `DONE`, no payment-lifecycle claim.
+- No Phase 6 pass may be presented as Phase 5 evidence.
+- Phase 7+ acceptance, the Phase 9 Docker rebuild and any deployment remain gated by Phase 5.
+- T3 rows (gateway-dependent) and C1/C2 stay unavailable until P5-05 closes.
+
+### 25.3 Explicit non-claims
+
+Phase 5 is **not** accepted; P5-05 is **not** `DONE`; Phase 6 has **no** new pass result from this step; overall
+completion stays **54/100 (54 %)**; no test, build, DB, Docker or deployment evidence was produced.
+
+### 25.4 Documents aligned in this step (wording only)
+
+Plan §1.1 / §9.2 / §12.1 / §14; this file (header, §8, §14 B36 update, §15, §16, §18, §24, §25); `README.md`;
+`E2E_SCENARIO_MATRIX.md`; `P6_HANDOVER_2026-11-02.md`; `ROADMAP.md`; `DEPLOYMENT_GOVERNANCE.md`;
+`docs/operations/production-readiness.md`; `docs/implementation-roadmap.md`; `docs/operations/launch-gate.md`.

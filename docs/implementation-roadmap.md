@@ -5,7 +5,10 @@
 > **Date:** July 2026
 > **Prerequisite:** UX Blueprint v1.0 validated, Product Blueprint v3.0 frozen
 >
-> **This document is the single source of truth for implementation.** No code is written until this roadmap is approved.
+> **Historical document (July 2026).** This is a product/UX implementation roadmap, kept for history. It is
+> **subordinate** to the release authorities: `docs/release/COURTZON_RELEASE_READINESS_PLAN.md` (phase order, scope,
+> acceptance), `docs/release/COURTZON_RELEASE_PROGRESS.md` (status, percentages, blockers) and
+> `docs/release/E2E_SCENARIO_MATRIX.md` (test scenarios) — see plan §1.1. Where they disagree, they win.
 
 ---
 
@@ -619,4 +622,5 @@ This roadmap requires approval on:
 
 ---
 
-*This roadmap is the single source of truth for implementation. No code is written until all blocking issues are resolved and this document is approved.*
+*This roadmap is a historical product/UX plan. It is subordinate to the release authorities named at the top of this
+file; no implementation phase advances on the strength of this document alone.*

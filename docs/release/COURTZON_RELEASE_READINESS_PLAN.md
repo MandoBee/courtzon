@@ -8,8 +8,10 @@
 | Owner | CourtZon technical auditor / release controller |
 | Status | **ACTIVE — governing roadmap** |
 | Live status | [`COURTZON_RELEASE_PROGRESS.md`](./COURTZON_RELEASE_PROGRESS.md) |
-| Baseline commit | `184aa6e0b96c93b278f909d63eb7f4a88d28b424` (local, unpushed) |
+| Baseline commit | `184aa6e0b96c93b278f909d63eb7f4a88d28b424` (adoption-era snapshot, 2026-10-26 — kept for history, see §9) |
 | Previous origin | `806177477cb687d90b37fe04c4184cbaeaf1d0a1` |
+| Baseline refreshed | 2026-11-03: branch `fix/courtzon-live-phase1`, HEAD `e0089b50`, working tree clean — see §9.2 |
+| Document hierarchy | §1.1 (owner decision, 2026-11-03) |
 
 ---
 
@@ -48,9 +50,38 @@ acceptance criteria and evidence rules defined here.
   - `PRODUCTION_CHECKLIST.md` / `docs/operations/deployment-checklist.md` (deployment checklists)
   - `docs/HANDOVER_CURRENT/36_PRODUCTION_ROADMAP.md` and `37_HANDOVER_CHECKLIST.md` (handover-era)
   - `docs/implementation-roadmap.md`, `docs/ENTERPRISE_ROADMAP.md`, `docs/RELEASE_PACKAGE.md`
+  - `docs/operations/production-readiness.md`, `docs/operations/launch-gate.md` (operational references and
+    Go/No-Go checklist — see §1.1; their sample values are not current status)
   - `docs/release/release-manifest.md` (immutable V3.0.0 release record — do not modify)
 - No duplicate competing release-readiness roadmap may be created. Amendments are made to this file
   and recorded in the progress file's audit trail.
+
+### 1.1 Document hierarchy of record (owner decision, 2026-11-03)
+
+The owner has fixed the documentation hierarchy for this release line. It is not a matter of interpretation,
+and no other document may claim an equivalent role:
+
+| Role | Document | Scope of authority |
+|---|---|---|
+| **Plan authority** | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) (this file) | Phase order, task scope, acceptance criteria, rules, deviations |
+| **Status authority** | [`COURTZON_RELEASE_PROGRESS.md`](./COURTZON_RELEASE_PROGRESS.md) | Live status, percentages, blockers, evidence ledger, audit trail |
+| **Scenario authority** | [`E2E_SCENARIO_MATRIX.md`](./E2E_SCENARIO_MATRIX.md) | Test scenarios, safety classes, execution gating |
+| Subsidiary policy | `DEPLOYMENT_GOVERNANCE.md`, `ROADMAP.md`, `OUTSTANDING_ISSUES.md`, `TECHNICAL_DEBT.md`, `DEPENDENCY_COMPATIBILITY_MATRIX.md`, `INTEGRATION_SAFETY_ASSESSMENT.md` | Operate **under** the three authorities; may never redefine phase order, status or acceptance |
+| Historical / snapshot | `P6_HANDOVER_2026-11-02.md`, `P8.7.14_RELEASE_RECORD.md`, `final-pre-deployment-check.md`, `release-manifest.md` (immutable), `MASTER_CHECKLIST.md`, `PRODUCTION_CHECKLIST.md`, `docs/HANDOVER_CURRENT/36_PRODUCTION_ROADMAP.md` | Dated facts and delivery records only; never a source of current status |
+
+Precedence rules:
+
+1. If the plan and any other document disagree on phase, task, acceptance criteria or rules, **the plan wins**.
+2. If any document disagrees with the progress file on status, percentage, blocker or evidence, **the progress
+   file wins**.
+3. Test scenarios are defined only by the matrix; a scenario **result** is recorded in the progress file.
+4. A snapshot or release record is never rewritten to change history — only dated corrections are appended.
+5. A document that describes itself as a "single source of truth" for a subject covered here is a **subsidiary
+   reference** for that subject, not a competing authority. This currently applies to
+   `docs/operations/production-readiness.md` (operational reference) and `docs/implementation-roadmap.md`
+   (July 2026 product/UX roadmap).
+6. `docs/operations/launch-gate.md` remains the Go/No-Go checklist format, but its sample release-summary values
+   are illustrative; the current gate state is read from the progress file.
 
 ## 2. Primary objective
 
@@ -187,6 +218,21 @@ If nothing was modified, say so explicitly.
   test database; restore-before-campaign is optional. Any final cleanup is a controlled, explicitly authorized
   operation that names the target and affected tables — it is not a property of the environment.
 - Docker rollback: previous image tag / rebuild from the reverted commit (Phase 9 authorization).
+
+### 9.2 Baseline refresh (2026-11-03, documentation only)
+
+The §9 snapshot is the adoption-era record and is kept unchanged for history. The current state of record is the
+progress file; at the 2026-11-03 documentation sync it reported:
+
+| Item | Value |
+|---|---|
+| Branch | `fix/courtzon-live-phase1` |
+| HEAD | `e0089b50a64f14d28f88d7e35bc5e918a60d2ca4`; `origin/fix/courtzon-live-phase1` at the same commit (ahead/behind `0/0`) |
+| Working tree | clean |
+| Local DB | `courtzon_v3` on `127.0.0.1:3307` (container `courtzon-mysql`), 330 tables |
+| Known local drift | the backend image predates HEAD; `/health/version` reports `gitCommit: "unknown"` (`OI-06` in [`OUTSTANDING_ISSUES.md`](./OUTSTANDING_ISSUES.md)), and B36's fresh-DB convergence is unproven |
+
+This refresh records no test result and changes no phase status or percentage.
 
 ## 10. Existing-database test-safety specification (binding for Phases 1, 6, 7)
 
@@ -410,6 +456,28 @@ Hostinger/production requires separate explicit approval.
 - Emergency hotfixes are logged as phase items and back-filled with tests/evidence.
 - Scope changes update the checklist denominator explicitly and are announced in the next report.
 
+### 12.1 Recorded deviation D-01 — Phase 6 continues while Phase 5 acceptance is unmet (owner decision, 2026-11-03)
+
+| Field | Value |
+|---|---|
+| Deviation | Phase 6 execution work continues before Phase 5 acceptance is met |
+| Owner decision | Approved 2026-11-03 (S0 documentation sync) |
+| Reason | P5-05 requires external Paymob Sandbox lifecycle calls, which are **DEFERRED** and not authorized; blocking Phase 6 entirely would stop UI/E2E progress on an external dependency with no approved date |
+| Risk | Payment/booking UI rows that need a live Sandbox lifecycle (T3 rows, C1/C2) stay unexecutable, and a Phase 6 result can never compensate for the missing Phase 5 evidence |
+| Impact | Phase 5 stays **9/10, IN_PROGRESS, acceptance NOT MET**; Phase 6 stays `IN_PROGRESS`; overall completion is unchanged by this decision |
+| Limits | This is **not** an acceptance of Phase 5. It does not permit: marking P5-05 `DONE`; claiming payment-lifecycle verification; using Phase 6 passes as Phase 5 evidence; starting Phase 7 acceptance, a Docker rebuild, or any deployment |
+| P5-05 status | **OPEN / DEFERRED** — it remains `IN_PROGRESS` in the checklist and counts as not `DONE` |
+
+**Closure conditions for P5-05 (all required before Phase 5 acceptance):**
+
+1. Explicit owner authorization for external Paymob Sandbox calls.
+2. A confirmed Test-mode account with Test-labelled keys **and** the exact credential scope recorded (the P5-04 limit).
+3. The P5-01 lifecycle scenarios (progress §5N) executed against Sandbox, with provider evidence retained.
+4. A separate confirmation that no live-mode gateway is reachable (also a Phase 9 gate).
+5. Results recorded in the progress file, clearly separating Sandbox from mocked evidence (P5-10).
+
+Until every condition is met, Phase 5 acceptance stays **NOT MET** and no document may state otherwise.
+
 ## 13. Known open findings routed to phases (from prior audits)
 
 | Finding | Severity | Phase |
@@ -438,3 +506,6 @@ Hostinger/production requires separate explicit approval.
 - [x] Deployment requires separate approval.
 - [x] Existing roadmaps acknowledged without duplication or deletion.
 - [x] Baseline snapshot recorded without secrets.
+- [x] Document hierarchy fixed by owner decision (2026-11-03): plan / progress / matrix, with subsidiary and
+      snapshot documents demoted (§1.1).
+- [x] Phase 5 → Phase 6 deviation **D-01** recorded with limits and P5-05 closure conditions (§12.1).

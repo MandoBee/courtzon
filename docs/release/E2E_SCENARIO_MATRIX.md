@@ -7,7 +7,8 @@
 | Phase | 6 — Real UI and End-to-End Testing |
 | Date | 2026-10-28 (updated 2026-11-02: DB identity and write policy §2.1) |
 | Status | **Persisted inventory — execution NOT RUN** |
-| Sources of truth | current working tree: `e2e/` specs/pages/fixtures/helpers, `playwright.config.ts`, `e2e/playwright.config.ts`, plan §10/§11, `INTEGRATION_SAFETY_ASSESSMENT.md` |
+| Authority | **Scenario authority** for Phase 6 (owner decision 2026-11-03, plan §1.1). Scenarios, safety classes and gating are defined here; every **result** belongs to `COURTZON_RELEASE_PROGRESS.md` and no status is claimed here |
+| Inputs (static inspection) | current working tree: `e2e/` specs/pages/fixtures/helpers, `playwright.config.ts`, `e2e/playwright.config.ts`, plan §10/§11, `INTEGRATION_SAFETY_ASSESSMENT.md` |
 | Related evidence | P6-01 inventory (progress §8), P6-03 target/safety gates (progress §8), Phase 5 evidence ledger (progress §5W) |
 
 > **What this document is:** the persisted, traceable matrix Phase 6 executes against. It records *what

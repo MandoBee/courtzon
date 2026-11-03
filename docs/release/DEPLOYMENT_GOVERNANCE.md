@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Purpose | Operational rules for building, deploying, verifying, rolling back, and releasing CourtZon |
-| Status | **Adopted for the P8.7.14 line**; subordinate to [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
-| Baseline | Backend `sha256:5ae6bc915713...94aa` (built from a dirty working tree), container `aeb9e434fb61...`, `HEAD 7b9ca362` (two local, unpushed commits: `75f3c16d`, `7b9ca362`), 213 working-tree entries |
+| Status | **Adopted for the P8.7.14 line**; **subsidiary policy** to [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) (plan §1.1). This document never records status, percentages or blockers — those live in [`COURTZON_RELEASE_PROGRESS.md`](./COURTZON_RELEASE_PROGRESS.md) |
+| Baseline | Rules unchanged since adoption. Current state of record (2026-11-03): `HEAD e0089b50` on `fix/courtzon-live-phase1` (`0/0` with origin), working tree **clean**; the local backend image predates HEAD and `/health/version` reports `gitCommit: "unknown"` (`OI-06`) |
 | Scope | Local Docker today; the same rules apply to Hostinger/Coolify with the production-specific notes below |
 | Related | [Release record](./P8.7.14_RELEASE_RECORD.md) - [Issues](./OUTSTANDING_ISSUES.md) - [Debt](./TECHNICAL_DEBT.md) - [Roadmap](./ROADMAP.md) |
 

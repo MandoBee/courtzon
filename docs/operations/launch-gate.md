@@ -6,6 +6,13 @@ The Launch Gate is CourtZon's formal Go/No-Go decision framework. Every release 
 
 **A single `NO-GO` on any BLOCKER item automatically prevents launch.**
 
+> **Authority (owner decision, 2026-11-03).** This is the Go/No-Go **checklist and decision format**, not a status
+> source. The values in the Release Summary block below are **illustrative sample values** (for example `651/651`
+> tests and migration `016`) and are **not** the current release state. Phase order, scope and acceptance criteria
+> come from `docs/release/COURTZON_RELEASE_READINESS_PLAN.md`; current status, percentages and blockers come from
+> `docs/release/COURTZON_RELEASE_PROGRESS.md`; test scenarios come from `docs/release/E2E_SCENARIO_MATRIX.md`
+> (plan §1.1). Where this document disagrees with them, they win.
+
 ## Release Summary
 
 ```
