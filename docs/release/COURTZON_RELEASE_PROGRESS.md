@@ -4372,3 +4372,24 @@ completion stays **54/100 (54 %)**; no test, build, DB, Docker or deployment evi
 Plan §1.1 / §9.2 / §12.1 / §14; this file (header, §8, §14 B36 update, §15, §16, §18, §24, §25); `README.md`;
 `E2E_SCENARIO_MATRIX.md`; `P6_HANDOVER_2026-11-02.md`; `ROADMAP.md`; `DEPLOYMENT_GOVERNANCE.md`;
 `docs/operations/production-readiness.md`; `docs/implementation-roadmap.md`; `docs/operations/launch-gate.md`.
+
+## 26. Worktree consolidation, branch sync and deployment verification (2026-11-05)
+
+**Scope:** reduce the local environment to one working copy, preserve every unique change, then sync GitHub,
+local Docker and Live in that order. **No database change, no migration, no volume/image deletion.**
+
+| Item | Result |
+|---|---|
+| Backup | `C:\Users\mniaz\CourtZon-Backups\20261104-2340` - `git bundle --all` verified (`is okay`), per-worktree patches verified by reverse-apply (exit 0), 11,166-file SHA-256 manifest with **0 mismatches**, full structural copies of all three worktrees. |
+| Preserved work | The coalescer worktree was committed as **`3fd446dd`** on `wip/coalescer-f84f5c51` *before* consolidation, so no work existed only in a working tree. |
+| Merge | 6 files taken from the coalescer worktree after proving they are a superset of the main worktree (0 main-only added lines lost for `notification.store.ts`; 16 "missing" lines in `useRealtimeCacheUpdates.ts` were all intentional replacements: private helpers, `coalescerId`, string-id support, reconnect de-duplication). The handler worktree was proven **byte-identical to `f84f5c51`** (all 3 files match HEAD blobs) - no unique content. No newer version was replaced by an older one. |
+| Auth decision | `GET /auth/me` limited to **30/min** (was 60) per `docs/security/security_audit.md`; the policy test now asserts `max: 30` + `timeWindow: '1 minute'`; `PATCH /auth/profile` unchanged. |
+| Commits | `8c543daa` auth rate limit; `333df345` realtime coalescer; `62d0afd1` notifications; `ebbaad6f` socket date + E2E selectors; `1cbad6ec` release docs. |
+| GitHub | `origin/fix/courtzon-live-phase1` = **`1cbad6ec`** (pushed; 5 commits). |
+| Tests | frontend `npm run build` PASS; frontend `npm test` **152 files / 1481 tests PASS**; backend `npm run build` PASS; backend `npm test` **358 files / 4510 tests PASS** (an earlier full run had 4 timeout failures; all 3 load-related suites passed individually, and the deterministic auth failure was fixed by the decision above). |
+| Docker (local) | backend image **`f4ae9764afdb`** (`gitCommit=1cbad6ec`), frontend image **`458e09468f72`**; all six containers healthy; `/health` ok (DB 3 ms, Redis 2 ms), `/health/ready` ok, `http://localhost:5173` HTTP 200. The containers were started with a temporary external entrypoint override so the startup migration loop and role-permission sync did **not** run (0 migrations were pending). |
+| Live | auto-deployed **`1cbad6ec`** (`buildTime 2026-11-04T22:05:42Z`); `/health` ok (DB 1 ms, Redis 1 ms); `https://www.courtzon.cloud` HTTP 200. |
+| Deployment branch (observed) | Live followed the pushed branch `fix/courtzon-live-phase1`, **not** `master` as `docs/deployment/coolify-deployment-runbook.md` states. No `master` merge was performed and no Coolify setting was changed. |
+| Worktrees | `CourtZon-V2-coalescer-fix-f84f5c51`, `CourtZon-V2-handler-fix-29bd7fac` and the Kilo pool worktree `reliable-tent` were removed with `git worktree remove` (no `--force`); only `C:\Users\mniaz\Desktop\CourtZon-V2` remains. |
+| Database | Unchanged: `courtzon_v3` still has 330 tables, 0 pending migrations, no permission sync executed. The Docker volume `courtzon_mysql_data` and every `courtzon_*verify*` database were left untouched. |
+| Not claimed | No payment-gateway test, no integration suite, no migration, and no Phase 5/6 acceptance change. `ci-validate` still reports its pre-existing 214 architecture findings (none in a file changed here). |
