@@ -19,7 +19,7 @@ export async function authRoutes(app: FastifyInstance, opts: { requireFeatureFla
   app.post('/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } }, errorHandler }, loginHandler);
   app.post('/auth/refresh', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } }, errorHandler }, refreshHandler);
   app.post('/auth/logout', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } }, errorHandler }, logoutHandler);
-  app.get('/auth/me', { errorHandler }, meHandler);
+  app.get('/auth/me', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } }, errorHandler }, meHandler);
   app.patch('/auth/profile', { preHandler: [authMiddleware, requirePermission(['profile.edit'])], errorHandler }, updateProfileHandler);
   app.patch('/my/welcome-seen', { preHandler: [authMiddleware, requirePermission(['profile.welcome-seen'])], errorHandler }, welcomeSeenHandler);
   app.get('/my/player-profile', { preHandler: [authMiddleware, requirePermission(['player.profile.view'])], errorHandler }, getMyPlayerProfileHandler);

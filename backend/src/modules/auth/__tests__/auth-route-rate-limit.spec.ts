@@ -100,8 +100,10 @@ describe('P1-1 — Auth route rate limiting policy', () => {
     expect(reset.max).toBe(3);
   });
 
-  it('authenticated routes (profile/me) are NOT rate-limited (no per-route override)', () => {
-    expect(captured.get('GET:/auth/me')).toBeUndefined();
+  it('authenticated routes: /auth/me is limited to 30/min, /auth/profile has no override', () => {
+    const me = rl('GET', '/auth/me');
+    expect(me.max).toBe(30);
+    expect(me.timeWindow).toBe('1 minute');
     expect(captured.get('PATCH:/auth/profile')).toBeUndefined();
   });
 });
