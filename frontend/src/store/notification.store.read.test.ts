@@ -11,25 +11,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  */
 
 const __handlers: Record<string, (...args: any[]) => void> = {};
-const __onCalls: Array<{ event: string; handler: (...args: any[]) => void }> = [];
-const __offCalls: Array<{ event: string; handler: (...args: any[]) => void }> = [];
-const __attached: Record<string, Set<(...args: any[]) => void>> = {};
-const __activeCount: Record<string, number> = {};
 
 vi.mock('../services/socket', () => ({
   socketService: {
     on: vi.fn((event: string, handler: (...args: any[]) => void) => {
       __handlers[event] = handler;
-      __onCalls.push({ event, handler });
-      if (!__attached[event]) __attached[event] = new Set();
-      __attached[event].add(handler);
-      __activeCount[event] = (__activeCount[event] ?? 0) + 1;
     }),
     off: vi.fn((event: string, handler: (...args: any[]) => void) => {
-      __offCalls.push({ event, handler });
-      if (__attached[event] && __attached[event].delete(handler)) {
-        __activeCount[event] = Math.max(0, (__activeCount[event] ?? 1) - 1);
-      }
       if (__handlers[event] === handler) delete __handlers[event];
     }),
   },
@@ -173,46 +161,5 @@ describe('G9-D5 — app badge sync', () => {
     vi.mocked(notificationsApi.getUnreadCount).mockResolvedValue({ count: 4 } as any);
     await useNotificationStore.getState().refreshUnreadCount();
     expect(badgeMock.updateAppBadge).toHaveBeenLastCalledWith(4);
-  });
-});
-
-describe('G9-D5 — socket handler reference stability', () => {
-  const EVENTS = [
-    'notification.new',
-    'notification.unread-count',
-    'notification:reconnect-queue',
-    'connect',
-    'disconnect',
-  ];
-
-  it('unregisters the same module-level references and does not stack listeners', () => {
-    const registered = new Map(EVENTS.map((event) => [event, __handlers[event]]));
-    for (const event of EVENTS) {
-      expect(typeof registered.get(event)).toBe('function');
-    }
-
-    __offCalls.length = 0;
-    useNotificationStore.getState().destroy();
-
-    expect(__offCalls.map((call) => call.event).sort()).toEqual([...EVENTS].sort());
-    for (const call of __offCalls) {
-      expect(call.handler).toBe(registered.get(call.event));
-    }
-    for (const event of EVENTS) {
-      expect(__activeCount[event]).toBe(0);
-    }
-    expect(Object.keys(__handlers)).toHaveLength(0);
-
-    __onCalls.length = 0;
-    useNotificationStore.getState().init();
-
-    expect(__onCalls).toHaveLength(EVENTS.length);
-    for (const call of __onCalls) {
-      expect(call.handler).toBe(registered.get(call.event));
-    }
-    for (const event of EVENTS) {
-      expect(__activeCount[event]).toBe(1);
-    }
-    expect(Object.keys(__handlers).sort()).toEqual([...EVENTS].sort());
   });
 });

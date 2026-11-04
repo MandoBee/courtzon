@@ -1,4 +1,5 @@
 import { useAuthStore } from '../../store/auth.store';
+import { useNotificationStore } from '../../store/notification.store';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '../../i18n';
@@ -42,10 +43,11 @@ export default function PlayerDashboardPage() {
     queryFn: () => api.get('/wallets/me').then((r) => r.data),
   });
 
-  const { data: unreadCount } = useQuery({
-    queryKey: ['notifications', 'unread-count'],
-    queryFn: () => api.get('/notifications/unread-count').then((r) => r.data?.count ?? r.data ?? 0),
-  });
+  // The unread counter is owned by the notifications store (one server call per
+  // refresh, coalesced for socket bursts) — the dashboard reads it instead of
+  // issuing its own `/notifications/unread-count` query.
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const notificationsInitialized = useNotificationStore((s) => s.initialized);
 
   const { data: upcomingBookings, isLoading: loadingBookings } = useQuery({
     queryKey: ['bookings', 'upcoming'],
@@ -88,7 +90,7 @@ export default function PlayerDashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label={t('player.dashboard.wallet_balance')} value={wallet?.balance != null ? `${Number(wallet.balance).toFixed(2)} ${wallet.currency || ''}` : '—'} icon="💰" href="/my/wallet" />
-        <StatCard label={t('player.dashboard.unread_notifications')} value={unreadCount ?? '—'} icon="🔔" href="/notifications" />
+        <StatCard label={t('player.dashboard.unread_notifications')} value={notificationsInitialized ? unreadCount : '—'} icon="🔔" href="/notifications" />
         <StatCard label={t('player.dashboard.upcoming_bookings')} value={Array.isArray(upcomingBookings) ? upcomingBookings.length : '—'} icon="📅" href="/bookings" />
         <Can permission="membership.view">
           <StatCard label={t('player.dashboard.membership')} value={t('player.dashboard.view_plans')} icon="⭐" href="/membership" />

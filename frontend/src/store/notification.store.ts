@@ -3,7 +3,16 @@ import { socketService } from '../services/socket';
 import { notificationsApi } from '../services/notifications';
 import { maybePlayNotificationSound, initNotificationSound } from '../services/notificationSound';
 import { updateAppBadge } from '../services/appBadge';
+import { createUnreadCountCoalescer } from './unreadCountCoalescer';
 import type { AppNotification } from '../components/notifications/NotificationDetailModal';
+
+/**
+ * Monotonic request identity for unread-count refreshes. Only the newest
+ * request may apply its response, so a slow/out-of-order response cannot
+ * overwrite a fresher count. `destroy()` advances it as well, which invalidates
+ * every in-flight request at logout.
+ */
+let unreadRefreshRequestId = 0;
 
 interface NotificationState {
   items: AppNotification[];
@@ -65,6 +74,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   destroy: () => {
     const timer = get()._pollTimer;
     if (timer) clearInterval(timer);
+    unreadRefreshCoalescer.cancel();
+    // Invalidate any refresh already in flight; a late response must never
+    // repopulate the counter after logout.
+    unreadRefreshRequestId += 1;
     // Unregister the SAME handler references init() registered — without this a
     // destroy()/init() cycle (logout → login without a page reload) stacked a
     // new copy of every listener on `socketService`.
@@ -86,8 +99,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   refreshUnreadCount: async () => {
+    if (!get().initialized) return;
+    const requestId = ++unreadRefreshRequestId;
     try {
       const data = await notificationsApi.getUnreadCount();
+      // Ignore stale responses (a newer request started, or the store was
+      // destroyed while this one was in flight).
+      if (requestId !== unreadRefreshRequestId) return;
+      if (!get().initialized) return;
       set({ unreadCount: data.count ?? 0 });
     } catch { }
   },
@@ -146,6 +165,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 }));
 
 /**
+ * Single refresh path for socket-driven unread-count updates. `init()` and the
+ * 30 s poll keep calling `refreshUnreadCount()` directly (one call each).
+ */
+const unreadRefreshCoalescer = createUnreadCountCoalescer(() => {
+  void useNotificationStore.getState().refreshUnreadCount();
+});
+
+function scheduleUnreadRefresh(): void {
+  unreadRefreshCoalescer.schedule();
+}
+
+/**
  * Socket.IO handlers are module-level functions so `init()` and `destroy()`
  * register/remove the SAME references. Building fresh arrow functions inside
  * `init()` stacked a new copy of every listener on `socketService` after each
@@ -171,7 +202,9 @@ function handleNotificationNew(notification: AppNotification): void {
 }
 
 function handleUnreadCountEvent(): void {
-  void useNotificationStore.getState().refreshUnreadCount();
+  // Bursts of these events (one per dispatched notification) collapse into a
+  // single refresh instead of one GET per event.
+  scheduleUnreadRefresh();
 }
 
 function handleReconnectQueue(data: { ids: number[] }): void {
@@ -179,7 +212,7 @@ function handleReconnectQueue(data: { ids: number[] }): void {
   const state = useNotificationStore.getState();
   const newIds = data.ids.filter((id) => !state.items.some((n) => n.id === id));
   if (newIds.length) {
-    void useNotificationStore.getState().refreshUnreadCount();
+    scheduleUnreadRefresh();
   }
 }
 
