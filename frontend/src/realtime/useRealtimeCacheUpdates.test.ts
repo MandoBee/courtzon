@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, TOURNAMENT_FINANCE_REPORT_KEYS, invalidateTournamentFinanceReports, invalidateOrgTournamentList, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment, invalidateAcademySessionCancelled, REFEREE_LIFECYCLE_INVALIDATIONS, REFEREE_LIFECYCLE_EVENTS, invalidateRefereeAssignment } from './useRealtimeCacheUpdates';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
+import { ORG_LIFECYCLE_INVALIDATIONS, invalidateOrgLifecycle, USER_REGISTRATION_INVALIDATIONS, invalidateUserRegistration, FINANCE_INVALIDATIONS, invalidateFinanceEntries, MARKETPLACE_PRODUCT_INVALIDATIONS, invalidateMarketplaceProducts, ORG_ACCOUNTING_ROOTS, invalidateOrgAccounting, COACH_LIFECYCLE_INVALIDATIONS, TOURNAMENT_REALTIME_EVENTS, invalidateTournament, invalidateTournamentStandings, MATCH_LIFECYCLE_SOCKET_EVENTS, MATCH_RESULT_SOCKET_EVENTS, invalidateMatchKeys, invalidateRealtimeReconcile, invalidateRegistrationLifecycle, TOURNAMENT_FINANCE_REPORT_KEYS, invalidateTournamentFinanceReports, invalidateOrgTournamentList, academyEnrollmentEvents, invalidateAcademySessionStarted, invalidateAcademyHoldExpiry, invalidateAcademyGroupUpdated, invalidateAcademyScheduleUpdated, invalidateAcademyAttendance, invalidateAcademyAdminEnrollment, invalidateAcademySessionCancelled, REFEREE_LIFECYCLE_INVALIDATIONS, REFEREE_LIFECYCLE_EVENTS, invalidateRefereeAssignment, createMatchInvalidationCoalescer, MATCH_INVALIDATION_COALESCE_MS, MATCH_INVALIDATION_MAX_WAIT_MS } from './useRealtimeCacheUpdates';
 
 function hasPrefix(keys: readonly (readonly string[])[], prefix: string[]): boolean {
   return keys.some((k) => prefix.every((part, i) => k[i] === part));
@@ -634,5 +635,232 @@ describe('P1-04B — referee assignment realtime strategy', () => {
     const fakeQc = { invalidateQueries: ({ queryKey }: { queryKey: readonly string[] }) => invalidated.push([...queryKey]) };
     invalidateRefereeAssignment(fakeQc as any);
     expect(invalidated).toEqual([['referee-assignments'], ['referee-dashboard']]);
+  });
+});
+
+function createCoalescerHarness(delayMs: number = MATCH_INVALIDATION_COALESCE_MS) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const spy = vi.spyOn(qc, 'invalidateQueries');
+  const coalescer = createMatchInvalidationCoalescer(qc, delayMs);
+  const keys = (): string[] =>
+    spy.mock.calls.map((call: any) => JSON.stringify(call[0]?.queryKey));
+  const countKey = (queryKey: unknown): number =>
+    keys().filter((key) => key === JSON.stringify(queryKey)).length;
+  return { qc, spy, coalescer, keys, countKey };
+}
+
+describe('createMatchInvalidationCoalescer', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('coalesces a burst into a single flush of the unchanged roots', () => {
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    for (let matchId = 101; matchId <= 105; matchId += 1) {
+      coalescer.schedule({ matchId });
+      vi.advanceTimersByTime(10);
+    }
+
+    expect(countKey(['public-matches'])).toBe(0);
+
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS);
+    vi.runOnlyPendingTimers();
+
+    expect(countKey(['public-matches'])).toBe(1);
+    expect(countKey(['matches', 'upcoming'])).toBe(1);
+    expect(countKey(['my-matches'])).toBe(1);
+    for (let matchId = 101; matchId <= 105; matchId += 1) {
+      expect(keys()).toContain(JSON.stringify(['match', matchId]));
+      expect(keys()).toContain(JSON.stringify(['match-result', matchId]));
+    }
+  });
+
+  it('never loses the final event when the window re-arms', () => {
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    coalescer.schedule({ matchId: 201 });
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS - 50);
+    expect(countKey(['public-matches'])).toBe(0);
+
+    coalescer.schedule({ matchId: 202 });
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS - 50);
+    expect(countKey(['public-matches'])).toBe(0);
+
+    vi.advanceTimersByTime(50);
+    vi.runOnlyPendingTimers();
+
+    expect(countKey(['public-matches'])).toBe(1);
+    expect(keys()).toContain(JSON.stringify(['match', 201]));
+    expect(keys()).toContain(JSON.stringify(['match', 202]));
+  });
+
+  it('flushes queued work early via flush() without waiting for the window', () => {
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    coalescer.schedule({ matchId: 301, bookingId: 401 }, { applicants: true });
+    coalescer.flush();
+
+    expect(countKey(['public-matches'])).toBe(1);
+    expect(countKey(['match-applicants'])).toBe(1);
+    expect(keys()).toContain(JSON.stringify(['match-applicants', 401]));
+    expect(keys()).toContain(JSON.stringify(['match', 301]));
+
+    coalescer.flush();
+    expect(countKey(['public-matches'])).toBe(1);
+  });
+
+  it('routes reconnect reconciliation through the same coalescer once', () => {
+    const { coalescer, countKey } = createCoalescerHarness();
+
+    coalescer.scheduleReconcile();
+    coalescer.scheduleReconcile();
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS);
+    vi.runOnlyPendingTimers();
+
+    expect(countKey(['public-matches'])).toBe(1);
+    expect(countKey(['tournaments'])).toBe(1);
+    expect(countKey(['my', 'academy', 'enrollments'])).toBe(1);
+  });
+
+  it('drops queued work on cancel()', () => {
+    const { coalescer, countKey } = createCoalescerHarness();
+
+    coalescer.schedule({ matchId: 501 });
+    coalescer.cancel();
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS * 2);
+    vi.runOnlyPendingTimers();
+
+    expect(countKey(['public-matches'])).toBe(0);
+  });
+
+  it('flushes within the max wait even while events keep arriving', () => {
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    coalescer.schedule({ matchId: 601 });
+    for (let i = 1; i <= 11; i += 1) {
+      vi.advanceTimersByTime(200);
+      coalescer.schedule({ matchId: 600 + i });
+    }
+
+    expect(countKey(['public-matches'])).toBe(0);
+
+    vi.advanceTimersByTime(MATCH_INVALIDATION_MAX_WAIT_MS - 2_200);
+    expect(countKey(['public-matches'])).toBe(1);
+    expect(keys()).toContain(JSON.stringify(['match', 601]));
+    expect(keys()).toContain(JSON.stringify(['match', 611]));
+
+    coalescer.schedule({ matchId: 700 });
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS - 1);
+    expect(countKey(['public-matches'])).toBe(1);
+    vi.advanceTimersByTime(1);
+    expect(countKey(['public-matches'])).toBe(2);
+  });
+
+  it('covers all nine base roots exactly once per flush (dedupe by id)', () => {
+    const baseRoots: ReadonlyArray<readonly (string | number)[]> = [
+      ['public-matches'],
+      ['my-matches'],
+      ['home-upcoming-matches'],
+      ['matches', 'upcoming'],
+      ['match-result'],
+      ['admin-matches'],
+      ['org-matches'],
+      ['admin-match-results'],
+      ['org-match-results'],
+    ];
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    coalescer.schedule({ matchId: 801 });
+    coalescer.schedule({ matchId: 801 });
+    coalescer.schedule({ matchId: 802 });
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS);
+
+    for (const root of baseRoots) {
+      expect(countKey(root)).toBe(1);
+    }
+    expect(countKey(['match', 801])).toBe(1);
+    expect(countKey(['match', '801'])).toBe(1);
+    expect(countKey(['match', 802])).toBe(1);
+    expect(keys().filter((key) => key === JSON.stringify(['match', 801]))).toHaveLength(1);
+  });
+
+  it('applies the reconnect reconciliation and the burst ids in the same window', () => {
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    coalescer.scheduleReconcile();
+    coalescer.schedule({ matchId: 901 });
+    vi.advanceTimersByTime(MATCH_INVALIDATION_COALESCE_MS);
+
+    expect(countKey(['tournaments'])).toBe(1);
+    expect(countKey(['public-matches'])).toBe(1);
+    expect(keys()).toContain(JSON.stringify(['match', 901]));
+  });
+
+  it('keeps non-numeric match, booking and tournament ids (R4)', () => {
+    const { coalescer, keys } = createCoalescerHarness();
+
+    coalescer.schedule(
+      {
+        matchId: 'match-uuid',
+        bookingId: 'booking-uuid',
+        tournamentId: 'tournament-uuid',
+      },
+      { applicants: true },
+    );
+    coalescer.flush();
+
+    expect(keys()).toContain(JSON.stringify(['match', 'match-uuid']));
+    expect(keys()).toContain(JSON.stringify(['match-result', 'match-uuid']));
+    expect(keys()).toContain(JSON.stringify(['match-applicants', 'booking-uuid']));
+    expect(keys()).toContain(JSON.stringify(['tournament', 'tournament-uuid']));
+  });
+
+  it('does not duplicate tournament broad roots when reconcile covers them (R5)', () => {
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    coalescer.scheduleReconcile();
+    coalescer.schedule({ tournamentId: 77 });
+    coalescer.flush();
+
+    expect(countKey(['tournaments'])).toBe(1);
+    expect(keys()).toContain(JSON.stringify(['tournament', 77]));
+    expect(countKey(['tournament', 77])).toBe(1);
+  });
+
+  it('invalidates the applicant root once when reconcile covers it, keeping booking details (R5)', () => {
+    const { coalescer, countKey, keys } = createCoalescerHarness();
+
+    coalescer.scheduleReconcile();
+    coalescer.schedule({ bookingId: 401, tournamentId: 77 }, { applicants: true });
+    coalescer.flush();
+
+    expect(countKey(['match-applicants'])).toBe(1);
+    expect(keys()).toContain(JSON.stringify(['match-applicants', 401]));
+    expect(countKey(['tournaments'])).toBe(1);
+  });
+});
+
+describe('invalidateMatchKeys — non-numeric ids (R4)', () => {
+  it('keeps non-numeric match, booking and tournament ids', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+
+    invalidateMatchKeys(qc as any, {
+      matchId: 'match-uuid',
+      bookingId: 'booking-uuid',
+      tournamentId: 'tournament-uuid',
+    });
+
+    const keys = spy.mock.calls.map((call: any) => JSON.stringify(call[0]?.queryKey));
+    expect(keys).toContain(JSON.stringify(['match', 'match-uuid']));
+    expect(keys).toContain(JSON.stringify(['match-applicants', 'booking-uuid']));
+    expect(keys).toContain(JSON.stringify(['tournament', 'tournament-uuid']));
+    vi.restoreAllMocks();
   });
 });

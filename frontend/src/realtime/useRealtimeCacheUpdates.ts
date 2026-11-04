@@ -1,5 +1,5 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSocketEvent, useSocketEvents } from './useSocket';
 import { useAuthStore } from '../store/auth.store';
 import { disconnectSocket, createSocket, getSocketState, onSocketStateChange } from './socket-client';
@@ -201,14 +201,17 @@ export const TOURNAMENT_REALTIME_EVENTS = [
 
 export function invalidateTournament(
   qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
-  tournamentId: number | null | undefined,
+  tournamentId: number | string | null | undefined,
 ): void {
   if (tournamentId == null) return;
   const id = String(tournamentId);
+  const numeric = numericIdOrNull(tournamentId);
   // React Query treats numbers and strings as distinct key elements, so both the
-  // string (realtime) and numeric (screen) forms are invalidated.
-  qc.invalidateQueries({ queryKey: ['tournament', id] });
-  qc.invalidateQueries({ queryKey: ['tournament', tournamentId] });
+  // string (realtime) and numeric (screen) forms are invalidated. Non-numeric
+  // ids (e.g. UUIDs) keep their exact string form.
+  for (const root of numeric != null ? [numeric, id] : [id]) {
+    qc.invalidateQueries({ queryKey: ['tournament', root] });
+  }
   qc.invalidateQueries({ queryKey: ['tournaments'] });
   // Admin/org tournament workbench surfaces (T-B): the matches screen and the
   // admin tournament roots must refresh after draw/progression/result. Org
@@ -235,7 +238,7 @@ export function isTournamentHubQueryRoot(
 /** Predicate-based invalidation for a Hub query root scoped to one tournament. */
 export function tournamentHubPredicate(
   suffix: 'tournament-matches' | 'tournament-groups' | 'tournament-stages',
-  tournamentId: number,
+  tournamentId: number | string,
 ): (query: { queryKey: readonly unknown[] }) => boolean {
   const t = String(tournamentId);
   return (query) => {
@@ -253,16 +256,16 @@ export function tournamentHubPredicate(
  */
 export function invalidateTournamentHub(
   qc: { invalidateQueries: (opts: { predicate?: (query: { queryKey: readonly unknown[] }) => boolean; queryKey?: readonly (string | number)[] }) => void },
-  tournamentId: number | null | undefined,
+  tournamentId: number | string | null | undefined,
 ): void {
   if (tournamentId == null) return;
-  const id = Number(tournamentId);
-  const t = String(id);
-  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-matches', id) });
-  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-groups', id) });
-  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-stages', id) });
+  const t = String(tournamentId);
+  const numeric = numericIdOrNull(tournamentId);
+  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-matches', tournamentId) });
+  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-groups', tournamentId) });
+  qc.invalidateQueries({ predicate: tournamentHubPredicate('tournament-stages', tournamentId) });
   // Player/public canonical detail keys (TournamentDetailPage + bracket/standings).
-  for (const root of [id, t] as const) {
+  for (const root of numeric != null ? [numeric, t] : [t]) {
     qc.invalidateQueries({ queryKey: ['tournament', root] });
     qc.invalidateQueries({ queryKey: ['tournament', root, 'matches'] });
     qc.invalidateQueries({ queryKey: ['tournament', root, 'bracket'] });
@@ -278,7 +281,7 @@ export function invalidateTournamentHub(
  */
 export function invalidateTournamentForOrg(
   qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
-  tournamentId: number | null | undefined,
+  tournamentId: number | string | null | undefined,
   organisationId: number | null | undefined,
 ): void {
   invalidateTournament(qc, tournamentId);
@@ -295,14 +298,16 @@ export function invalidateTournamentForOrg(
  */
 export function invalidateTournamentStandings(
   qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
-  tournamentId: number | null | undefined,
+  tournamentId: number | string | null | undefined,
 ): void {
   if (tournamentId == null) return;
   const id = String(tournamentId);
+  const numeric = numericIdOrNull(tournamentId);
   // Both numeric (screen) and string (realtime) key forms — mirrors
   // invalidateTournament's dual-form convention.
-  qc.invalidateQueries({ queryKey: ['tournament', id, 'standings'] });
-  qc.invalidateQueries({ queryKey: ['tournament', tournamentId, 'standings'] });
+  for (const root of numeric != null ? [numeric, id] : [id]) {
+    qc.invalidateQueries({ queryKey: ['tournament', root, 'standings'] });
+  }
 }
 
 /**
@@ -392,45 +397,282 @@ export const MATCH_RESULT_SOCKET_EVENTS = [
   'match.result-withdrawn',
 ] as const;
 
-export function invalidateMatchKeys(qc: QueryClient, p: Record<string, any> | undefined): void {
-  for (const queryKey of [
-    ['public-matches'],
-    ['my-matches'],
-    ['home-upcoming-matches'],
-    ['matches', 'upcoming'],
-    ['match-result'],
-    ['admin-matches'],
-    ['org-matches'],
-    ['admin-match-results'],
-    ['org-match-results'],
-  ]) {
+/** Match list/detail signals handled by the shared coalescer. */
+const MATCH_LIST_SOCKET_EVENTS = [
+  'match.available',
+  'match.removed',
+  'match.updated',
+] as const;
+
+/** Base match/result lists every match lifecycle signal refreshes. */
+const MATCH_BASE_QUERY_KEYS: ReadonlyArray<readonly (string | number)[]> = [
+  ['public-matches'],
+  ['my-matches'],
+  ['home-upcoming-matches'],
+  ['matches', 'upcoming'],
+  ['match-result'],
+  ['admin-matches'],
+  ['org-matches'],
+  ['admin-match-results'],
+  ['org-match-results'],
+];
+
+function numericIdOrNull(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
+ * Preserve non-numeric ids instead of dropping them. Numeric-shaped values are
+ * normalised to numbers (matching the query keys built by screens); anything
+ * else remains a string (matching `invalidateMatchEntityKeys`'s support).
+ */
+function coalescerId(value: unknown): number | string | null {
+  if (value == null || value === '') return null;
+  const numeric = numericIdOrNull(value);
+  return numeric != null ? numeric : String(value);
+}
+
+/** Invalidate the list roots shared by every match event. */
+function invalidateMatchBaseKeys(qc: QueryClient): void {
+  for (const queryKey of MATCH_BASE_QUERY_KEYS) {
     qc.invalidateQueries({ queryKey });
   }
+}
 
-  if (p?.matchId != null) {
-    const matchId = Number(p.matchId);
-    for (const key of [
-      ['match', matchId],
-      ['match', String(matchId)],
-      ['match-result', matchId],
-      ['match-result', String(matchId)],
-    ]) {
-      qc.invalidateQueries({ queryKey: key });
-    }
+/** Invalidate the per-match detail/result keys for one match id. */
+function invalidateMatchEntityKeys(qc: QueryClient, matchId: number | string): void {
+  // Emitters are inconsistent: some send a numeric id, some a string. Refresh
+  // BOTH key shapes (the app itself has used `['match', id]` and
+  // `['match', String(id)]`) without emitting the same key twice.
+  const numericId = numericIdOrNull(matchId);
+  const ids = new Set<string | number>();
+  if (numericId != null) {
+    ids.add(numericId);
+    ids.add(String(numericId));
+  } else {
+    ids.add(String(matchId));
+  }
+  for (const id of ids) {
+    qc.invalidateQueries({ queryKey: ['match', id] });
+    qc.invalidateQueries({ queryKey: ['match-result', id] });
+  }
+}
+
+/** Invalidate the applicant roster for one booking's match. */
+function invalidateMatchApplicantKeys(qc: QueryClient, bookingId: number | string): void {
+  const numericId = numericIdOrNull(bookingId);
+  const ids = new Set<string | number>();
+  if (numericId != null) {
+    ids.add(numericId);
+    ids.add(String(numericId));
+  } else {
+    ids.add(String(bookingId));
+  }
+  for (const id of ids) {
+    qc.invalidateQueries({ queryKey: ['match-applicants', id] });
+  }
+}
+
+export function invalidateMatchKeys(qc: QueryClient, p: Record<string, any> | undefined): void {
+  invalidateMatchBaseKeys(qc);
+
+  const matchId = coalescerId(p?.matchId);
+  if (matchId != null) {
+    invalidateMatchEntityKeys(qc, matchId);
   }
 
-  if (p?.bookingId != null) {
-    const bookingId = Number(p.bookingId);
-    qc.invalidateQueries({ queryKey: ['match-applicants', bookingId] });
-    qc.invalidateQueries({ queryKey: ['match-applicants', String(bookingId)] });
+  const bookingId = coalescerId(p?.bookingId);
+  if (bookingId != null) {
+    invalidateMatchApplicantKeys(qc, bookingId);
   }
 
-  if (p?.tournamentId != null) {
-    invalidateTournament(qc, Number(p.tournamentId));
+  const tournamentId = coalescerId(p?.tournamentId);
+  if (tournamentId != null) {
+    invalidateTournament(qc, tournamentId);
     // Step 3H — also refresh the Tournament Hub's canonical queries for this
     // tournament (matches/status/result events must not leave the Hub stale).
-    invalidateTournamentHub(qc, Number(p.tournamentId));
+    invalidateTournamentHub(qc, tournamentId);
   }
+}
+
+/** Targeted per-tournament detail keys only (no broad list roots). */
+function invalidateTournamentDetailKeys(
+  qc: { invalidateQueries: (opts: { queryKey: readonly (string | number)[] }) => void },
+  tournamentId: number | string | null | undefined,
+): void {
+  if (tournamentId == null) return;
+  const id = String(tournamentId);
+  const numeric = numericIdOrNull(tournamentId);
+  for (const root of numeric != null ? [numeric, id] : [id]) {
+    qc.invalidateQueries({ queryKey: ['tournament', root] });
+    qc.invalidateQueries({ queryKey: ['tournament', root, 'matches'] });
+    qc.invalidateQueries({ queryKey: ['tournament', root, 'bracket'] });
+    qc.invalidateQueries({ queryKey: ['tournament', root, 'standings'] });
+  }
+}
+
+/**
+ * Trailing coalescing window for match-related invalidations.
+ *
+ * A single public-match lifecycle emits several socket events back-to-back
+ * (booking:created → booking:confirmed → match:created → invitation fan-out),
+ * and the backend broadcasts `match.available` to the shared player room. Each
+ * event used to invalidate nine query roots immediately, so a burst produced
+ * hundreds of refetches that could drain the per-IP API budget and turn into a
+ * 429 storm. Coalescing keeps the exact same roots but flushes them **once**
+ * after the burst goes quiet.
+ */
+export const MATCH_INVALIDATION_COALESCE_MS = 750;
+
+/**
+ * Hard ceiling on how long the first queued invalidation may wait.
+ *
+ * A pure trailing debounce can be starved by a continuous event stream (the
+ * matchmaking invitation fan-out or steady multi-venue traffic), which would
+ * defer live refreshes indefinitely. The window still trails by
+ * `MATCH_INVALIDATION_COALESCE_MS`, but once an invalidation has been pending
+ * for this long the flush runs regardless of newer events; ids keep
+ * accumulating until that exact flush.
+ */
+export const MATCH_INVALIDATION_MAX_WAIT_MS = 2_500;
+
+export interface MatchInvalidationCoalescer {
+  /** Queue one match-event invalidation (optionally the applicant roster). */
+  schedule(p?: Record<string, any>, options?: { applicants?: boolean }): void;
+  /** Queue the reconnect reconciliation (match + tournament + academy roots). */
+  scheduleReconcile(): void;
+  /** Flush any queued invalidation immediately. */
+  flush(): void;
+  /** Drop any queued invalidation without flushing. */
+  cancel(): void;
+}
+
+/**
+ * Creates a trailing-debounce coalescer for match invalidations.
+ *
+ * Every `schedule*` call (re)arms the timer, so a burst collapses into a single
+ * flush. Nothing is dropped while the window is armed: match/booking/tournament
+ * ids accumulate in sets and the base roots (or the full reconnect set) are
+ * flagged, so the **final** event — including its entity ids — is always part of
+ * the flush. `flush()` may be called directly (unmount/tests) to drain early.
+ *
+ * Non-numeric ids are kept as strings, matching the key support in
+ * `invalidateMatchEntityKeys` / `invalidateMatchApplicantKeys`.
+ */
+export function createMatchInvalidationCoalescer(
+  qc: QueryClient,
+  delayMs: number = MATCH_INVALIDATION_COALESCE_MS,
+  maxWaitMs: number = MATCH_INVALIDATION_MAX_WAIT_MS,
+): MatchInvalidationCoalescer {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pendingSince: number | null = null;
+  let pendingBase = false;
+  let pendingReconcile = false;
+  let pendingApplicants = false;
+  const matchIds = new Set<number | string>();
+  const bookingIds = new Set<number | string>();
+  const tournamentIds = new Set<number | string>();
+
+  const clearTimer = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const hasPending = (): boolean =>
+    pendingBase || pendingReconcile || pendingApplicants ||
+    matchIds.size > 0 || bookingIds.size > 0 || tournamentIds.size > 0;
+
+  const flush = (): void => {
+    clearTimer();
+    if (!hasPending()) {
+      pendingSince = null;
+      return;
+    }
+
+    const reconcile = pendingReconcile;
+    const base = pendingBase;
+    const applicants = pendingApplicants;
+    const matchIdSnapshot = [...matchIds];
+    const bookingIdSnapshot = [...bookingIds];
+    const tournamentIdSnapshot = [...tournamentIds];
+
+    pendingReconcile = false;
+    pendingBase = false;
+    pendingApplicants = false;
+    matchIds.clear();
+    bookingIds.clear();
+    tournamentIds.clear();
+    pendingSince = null;
+
+    if (reconcile) {
+      // The reconnect path already covers every broad list/hub root; only the
+      // per-tournament detail keys are added here so nothing is invalidated
+      // twice (R5).
+      invalidateRealtimeReconcile(qc);
+      for (const id of tournamentIdSnapshot) invalidateTournamentDetailKeys(qc, id);
+    } else if (base) {
+      invalidateMatchBaseKeys(qc);
+    }
+    for (const id of matchIdSnapshot) invalidateMatchEntityKeys(qc, id);
+    for (const id of bookingIdSnapshot) invalidateMatchApplicantKeys(qc, id);
+    if (!reconcile) {
+      for (const id of tournamentIdSnapshot) {
+        invalidateTournament(qc, id);
+        invalidateTournamentHub(qc, id);
+      }
+    }
+    // `invalidateRealtimeReconcile` already invalidates the applicant root;
+    // only the per-booking detail keys above need to be added for that window.
+    if (applicants && !reconcile) {
+      qc.invalidateQueries({ queryKey: ['match-applicants'] });
+    }
+  };
+
+  /**
+   * (Re)arm the trailing window. The wait is clamped so a continuous stream can
+   * never push the flush past `maxWaitMs` from the first pending invalidation;
+   * the clamp only shortens the wait, it never extends it.
+   */
+  const arm = (): void => {
+    clearTimer();
+    const now = Date.now();
+    if (pendingSince === null) pendingSince = now;
+    const remainingMaxWait = Math.max(0, maxWaitMs - (now - pendingSince));
+    timer = setTimeout(flush, Math.min(delayMs, remainingMaxWait));
+  };
+
+  return {
+    schedule(p, options = {}) {
+      pendingBase = true;
+      if (options.applicants) pendingApplicants = true;
+      const matchId = coalescerId(p?.matchId);
+      if (matchId != null) matchIds.add(matchId);
+      const bookingId = coalescerId(p?.bookingId);
+      if (bookingId != null) bookingIds.add(bookingId);
+      const tournamentId = coalescerId(p?.tournamentId);
+      if (tournamentId != null) tournamentIds.add(tournamentId);
+      arm();
+    },
+    scheduleReconcile() {
+      pendingReconcile = true;
+      arm();
+    },
+    flush,
+    cancel() {
+      clearTimer();
+      pendingSince = null;
+      pendingBase = false;
+      pendingReconcile = false;
+      pendingApplicants = false;
+      matchIds.clear();
+      bookingIds.clear();
+      tournamentIds.clear();
+    },
+  };
 }
 
 /**
@@ -717,6 +959,22 @@ const NAV_COUNT_TOURNAMENT_EVENTS = [
 export function useRealtimeCacheUpdates(): void {
   const qc = useQueryClient();
 
+  // Match events arrive in bursts (one lifecycle emits several signals, and
+  // `match.available` is broadcast to the player room). Coalesce their
+  // invalidations into one trailing flush so a burst cannot issue hundreds of
+  // refetches against the shared per-IP API budget.
+  const matchInvalidator = useMemo(
+    () => createMatchInvalidationCoalescer(qc),
+    [qc],
+  );
+  const scheduleMatchInvalidation = (
+    p?: Record<string, any>,
+    options?: { applicants?: boolean },
+  ): void => matchInvalidator.schedule(p, options);
+
+  // Never lose a queued invalidation when the updater unmounts.
+  useEffect(() => () => matchInvalidator.flush(), [matchInvalidator]);
+
   // Group 5 — reconnect reconciliation. When the socket drops and reconnects,
   // events emitted while disconnected are NOT replayed (deferred durability
   // architecture). The minimal, cache-centred safety net is to refetch the
@@ -727,11 +985,11 @@ export function useRealtimeCacheUpdates(): void {
       const previous = previousSocketStateRef.current;
       previousSocketStateRef.current = next;
       if (next === 'connected' && (previous === 'disconnected' || previous === 'reconnecting')) {
-        invalidateRealtimeReconcile(qc);
+        matchInvalidator.scheduleReconcile();
       }
     });
     return unsub;
-  }, [qc]);
+  }, [matchInvalidator]);
 
   // ── Booking events ─────────────────────────────────────────────
   const invalidateSlots = (p: any) => {
@@ -1020,49 +1278,39 @@ export function useRealtimeCacheUpdates(): void {
   // Every lifecycle signal invalidates the match detail, result page, applicant
   // roster and the public/home/admin/org lists. Tenant scoping happens on the
   // server; here we simply refresh whatever the event reaches.
-  useSocketEvent('match.available', (p: any) => {
-    invalidateMatchKeys(qc, p);
-  });
-
-  useSocketEvent('match.removed', (p: any) => {
-    invalidateMatchKeys(qc, p);
-  });
-
-  useSocketEvent('match.updated', (p: any) => {
-    invalidateMatchKeys(qc, p);
+  //
+  // R3: use the ref-backed `useSocketEvents` pattern (same as the other match
+  // lists below) so a QueryClient change replaces the coalescer instead of
+  // leaving these three subscriptions bound to a stale one.
+  useSocketEvents(MATCH_LIST_SOCKET_EVENTS, (_eventType, p: any) => {
+    scheduleMatchInvalidation(p);
   });
 
   useSocketEvents(MATCH_LIFECYCLE_EXTRA_EVENTS, (_eventType, p: any) => {
-    invalidateMatchKeys(qc, p);
+    scheduleMatchInvalidation(p);
   });
 
   // Participant/session lifecycle: the roster depth of a match changed.
   useSocketEvents(PARTICIPANT_SESSION_EVENTS, (_eventType, p: any) => {
-    invalidateMatchKeys(qc, p);
-    qc.invalidateQueries({ queryKey: ['match-applicants'] });
+    scheduleMatchInvalidation(p, { applicants: true });
   });
 
   // Invitation lifecycle: the recipient's badge + the applicant roster refresh.
   useSocketEvents(INVITATION_SOCKET_EVENTS, (_eventType, p: any) => {
-    invalidateMatchKeys(qc, p);
-    qc.invalidateQueries({ queryKey: ['match-applicants'] });
+    scheduleMatchInvalidation(p, { applicants: true });
   });
 
   // Join-request / waiting-list changes mutate the applicant roster live.
   useSocketEvents(JOIN_REQUEST_EVENTS, (_eventType, p: any) => {
-    invalidateMatchKeys(qc, p);
-    qc.invalidateQueries({ queryKey: ['match-applicants'] });
+    scheduleMatchInvalidation(p, { applicants: true });
   });
 
   // Match result lifecycle events (submitted/approved/disputed/resolved/…)
   // reach the participant user rooms + the admin room. Refresh the match
   // detail, the result page, the public/home lists and the admin workbench.
   useSocketEvents(MATCH_RESULT_SOCKET_EVENTS, (_eventType, p: any) => {
-    invalidateMatchKeys(qc, p);
-    if (p?.matchId) {
-      qc.invalidateQueries({ queryKey: ['match', p.matchId] });
-      qc.invalidateQueries({ queryKey: ['match-result', p.matchId] });
-    }
+    // `schedule` already refreshes ['match', id] and ['match-result', id].
+    scheduleMatchInvalidation(p, { applicants: true });
   });
 
   // ── Academy events ─────────────────────────────────────────────

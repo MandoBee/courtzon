@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -78,6 +78,10 @@ beforeEach(() => {
   Object.keys(captured).forEach((k) => delete captured[k]);
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('Tournament Hub realtime parity (Step 3H)', () => {
   it('exports Hub-root predicate matching admin + org keys, scoped by tournament id', () => {
     expect(isTournamentHubQueryRoot('tournament-matches', 'tournament-matches')).toBe(true);
@@ -110,16 +114,20 @@ describe('Tournament Hub realtime parity (Step 3H)', () => {
     expect(matchesAny(spy, ['tournament', 5, 'bracket'])).toBe(true);
   });
 
-  it('match status_changed invalidates the Hub match query', () => {
+  it('match status_changed invalidates the Hub match query', async () => {
+    vi.useFakeTimers();
     const { spy } = setup();
     fire('match.status_changed', { tournamentId: 5, matchId: 9, toStatus: 'in_progress' });
+    await vi.advanceTimersByTimeAsync(750);
     expect(matchesAny(spy, ['tournament-matches', 5])).toBe(true);
     expect(matchesAny(spy, ['match', 9])).toBe(true);
   });
 
-  it('result approved refreshes matches + standings', () => {
+  it('result approved refreshes matches + standings', async () => {
+    vi.useFakeTimers();
     const { spy } = setup();
     fire('match.result-approved', { tournamentId: 5, matchId: 9 });
+    await vi.advanceTimersByTimeAsync(750);
     expect(matchesAny(spy, ['tournament-matches', 5])).toBe(true);
     expect(matchesAny(spy, ['tournament', 5, 'standings'])).toBe(true);
   });

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useSocketEvents } from './useSocket';
 import { useRealtimeCacheUpdates } from './useRealtimeCacheUpdates';
@@ -191,5 +191,99 @@ describe('useRealtimeCacheUpdates — subscription lifecycle after the P3-04 ref
     unmount();
 
     expect(subs).toHaveLength(0);
+  });
+});
+
+describe('useRealtimeCacheUpdates — coalesced match invalidations', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function renderCoalesced() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const view = renderHook(() => useRealtimeCacheUpdates(), {
+      wrapper: ({ children }: any) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    const keys = (): string[] =>
+      spy.mock.calls.map((call: any) => JSON.stringify(call[0]?.queryKey));
+    return { qc, spy, keys, ...view };
+  }
+
+  function Updater() {
+    useRealtimeCacheUpdates();
+    return null;
+  }
+
+  function Harness({ client }: { client: QueryClient }) {
+    return (
+      <QueryClientProvider client={client}>
+        <Updater />
+      </QueryClientProvider>
+    );
+  }
+
+  it('queues a match event instead of invalidating immediately', () => {
+    const { keys } = renderCoalesced();
+
+    emit('match.available', { matchId: 1234 });
+
+    expect(keys()).not.toContain(JSON.stringify(['public-matches']));
+    expect(keys()).not.toContain(JSON.stringify(['match', 1234]));
+  });
+
+  it('flushes a queued invalidation on unmount instead of dropping it', () => {
+    const { keys, unmount } = renderCoalesced();
+
+    emit('match.updated', { matchId: 4321 });
+    expect(keys()).not.toContain(JSON.stringify(['public-matches']));
+
+    unmount();
+
+    const flushed = keys();
+    expect(flushed).toContain(JSON.stringify(['public-matches']));
+    expect(flushed).toContain(JSON.stringify(['match', 4321]));
+    expect(flushed.filter((key) => key === JSON.stringify(['public-matches']))).toHaveLength(1);
+  });
+
+  it('flushes the trailing window once the burst goes quiet', () => {
+    const { keys } = renderCoalesced();
+
+    emit('match.available', { matchId: 11 });
+    emit('match.available', { matchId: 12 });
+    emit('match.available', { matchId: 13 });
+
+    vi.advanceTimersByTime(750);
+
+    const flushed = keys();
+    expect(flushed.filter((key) => key === JSON.stringify(['public-matches']))).toHaveLength(1);
+    for (const id of [11, 12, 13]) {
+      expect(flushed).toContain(JSON.stringify(['match', id]));
+    }
+  });
+
+  it('rebinds match subscriptions to the new coalescer when the QueryClient changes (R3)', () => {
+    const qcA = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qcB = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spyA = vi.spyOn(qcA, 'invalidateQueries');
+    const spyB = vi.spyOn(qcB, 'invalidateQueries');
+
+    const { rerender } = render(<Harness client={qcA} />);
+    rerender(<Harness client={qcB} />);
+
+    emit('match.available', { matchId: 222 });
+    vi.advanceTimersByTime(750);
+
+    const keysA = spyA.mock.calls.map((call: any) => JSON.stringify(call[0]?.queryKey));
+    const keysB = spyB.mock.calls.map((call: any) => JSON.stringify(call[0]?.queryKey));
+
+    expect(keysB).toContain(JSON.stringify(['public-matches']));
+    expect(keysB).toContain(JSON.stringify(['match', 222]));
+    expect(keysA).not.toContain(JSON.stringify(['public-matches']));
+    expect(keysA).not.toContain(JSON.stringify(['match', 222]));
   });
 });
