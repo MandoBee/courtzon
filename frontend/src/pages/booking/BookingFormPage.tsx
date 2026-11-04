@@ -72,7 +72,9 @@ export default function BookingFormPage() {
   });
 
   const { data: slotsResponse } = useQuery({
-    queryKey: ['resource-slots', resourceId, date],
+    // Keep the key numeric so realtime invalidation (`['resource-slots', p.resourceId, p.bookingDate]`,
+    // where the socket payload carries a numeric id) matches this active query.
+    queryKey: ['resource-slots', resourceId ? Number(resourceId) : null, date],
     queryFn: () => api.get(`/resources/${resourceId}/slots?date=${date}`).then((r) => r.data),
     enabled: !!resourceId && !!date,
   });

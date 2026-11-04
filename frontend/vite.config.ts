@@ -213,4 +213,11 @@ export default defineConfig(({ command }) => ({
       '/bracket-types': backend,
     },
   },
+  // `vite preview` inherits `server.proxy` by default, which made SPA routes
+  // that collide with an API prefix (e.g. `/matches`) proxy to the backend and
+  // return JSON instead of `index.html`. Preview serves the built app, whose
+  // API calls use the absolute `VITE_API_URL`, so it needs no proxy at all.
+  preview: {
+    proxy: {},
+  },
 }))

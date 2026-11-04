@@ -189,6 +189,33 @@ function roomsForUser(userId: number): string[] {
   return userId ? [`user:${userId}`] : [];
 }
 
+/**
+ * Canonical `YYYY-MM-DD` booking date for the socket payload.
+ *
+ * Domain events carry the date in two shapes: the creation paths forward the
+ * request input (`'YYYY-MM-DD'`), while the cancel/reschedule commands forward
+ * the raw row value from `bookingRepository.findById()` — and mysql2 returns a
+ * DATE column as a JS `Date` (the pool has no `dateStrings` option). A `Date`
+ * is JSON-serialised by Socket.IO as `'YYYY-MM-DDTHH:mm:ss.sssZ'`, which never
+ * matches the frontend's `['resource-slots', resourceId, bookingDate]` query key
+ * (`BookingFormPage.tsx`), so `invalidateSlots` refetches nothing and the slot
+ * stays stale until a reload.
+ *
+ * Normalising here — the single choke point every socket booking payload goes
+ * through — keeps that contract stable for all booking events and preserves
+ * `null` when the date is absent.
+ */
+function normaliseBookingDate(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  const raw = String(value);
+  // `YYYY-MM-DD`, or an ISO datetime starting with it → date part only.
+  // Anything else is passed through untouched (no other contract changes).
+  return /^\d{4}-\d{2}-\d{2}(?:$|[T\s])/.test(raw) ? raw.slice(0, 10) : raw;
+}
+
 function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocketEvent {
   const sub = eventName.split(':')[1] || 'updated';
   const typeMap: Record<string, string> = {
@@ -224,7 +251,7 @@ function mapBookingEvent(eventName: string, p: Record<string, any>): MappedSocke
       status: p.booking_status || p.status,
       resourceId,
       courtId: resourceId,
-      bookingDate: p.bookingDate || null,
+      bookingDate: normaliseBookingDate(p.bookingDate),
     },
     rooms,
   };

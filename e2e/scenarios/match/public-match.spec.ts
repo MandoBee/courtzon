@@ -129,12 +129,14 @@ test.describe('Public Match', () => {
     // "View" link (`MatchListPage.tsx:349-351`).
     await page.getByRole('button', { name: /^Joined \(/ }).click();
 
+    const viewLink = page.getByRole('link', { name: /^View$/ });
     const card = page
       .locator('div')
       .filter({ has: page.getByRole('heading', { level: 3, name: resource.name }) })
+      .filter({ has: viewLink })
       .last();
     await expect(card).toBeVisible({ timeout: 15_000 });
-    await expect(card.getByRole('link', { name: /^View$/ })).toBeVisible();
+    await expect(viewLink).toBeVisible();
   });
 
   test('second player can view and join a public match', async ({ authenticatedPlayer, browser }) => {
@@ -220,12 +222,14 @@ test.describe('Public Match', () => {
     await expect(secondPage.getByText('Joined! Awaiting approval.')).toBeVisible({ timeout: 15_000 });
 
     await secondPage.getByRole('button', { name: /^Applied \(/ }).click();
+    const withdrawButton = secondPage.getByRole('button', { name: /^Withdraw$/i });
     const appliedCard = secondPage
       .locator('div')
       .filter({ has: secondPage.getByRole('heading', { level: 3, name: resource.name }) })
+      .filter({ has: withdrawButton })
       .last();
     await expect(appliedCard).toBeVisible({ timeout: 15_000 });
-    await expect(appliedCard.getByRole('button', { name: /withdraw/i })).toBeVisible();
+    await expect(withdrawButton).toBeVisible();
 
     await secondContext.close();
   });
