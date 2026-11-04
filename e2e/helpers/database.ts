@@ -1,5 +1,6 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import mysql from 'mysql2/promise';
+import { hashPassword } from '../../backend/src/shared/utils/password';
 import {
   assertApprovedTestTarget,
   runSafeCleanup,
@@ -48,10 +49,6 @@ export async function query<T = mysql.RowDataPacket[]>(
 ): Promise<[T, mysql.FieldPacket[]]> {
   const p = await connect();
   return p.execute<T>(sql, params);
-}
-
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
 }
 
 export function generateSessionToken(): string {
@@ -124,7 +121,11 @@ export async function insertUser(data: InsertUserData): Promise<number> {
     isVerified = true,
   } = data;
 
-  const hashedPassword = hashToken(password);
+  // Password must use the application's accepted format: backend
+  // `verifyPassword` rejects anything that does not start with `$pbkdf2-`
+  // (`backend/src/shared/utils/password.ts:29-31`). Hashing with sha256 here
+  // made every seeded user fail the real phone+password login.
+  const hashedPassword = hashPassword(password);
 
   // Login looks the user up by the country-code-prefixed `full_phone`
   // (`authService.login` → `findByPhone`), and registration stores
@@ -230,12 +231,25 @@ export async function insertBranch(data: InsertBranchData): Promise<number> {
   } = data;
 
   const [result] = await query<mysql.ResultSetHeader>(
+    // Schema of record (`branches`): the location columns are `city` (string),
+    // `latitude` and `longitude`. `city_id` / `lat` / `lng` do not exist in this
+    // table, and `slug` is required by the insert, so one is generated here.
     `INSERT INTO branches (
-      organisation_id, name, city_id, country_id,
-      timezone, lat, lng, is_active,
+      public_id, organisation_id, name, slug, city, country_id,
+      timezone, latitude, longitude, is_active,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-    [organisationId, name, cityId, countryId, timezone, lat, lng, isActive],
+    ) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+    [
+      organisationId,
+      name,
+      `branch-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      String(cityId),
+      countryId,
+      timezone,
+      lat,
+      lng,
+      isActive,
+    ],
   );
   return result.insertId;
 }
@@ -262,15 +276,18 @@ export async function insertResource(
     capacity = 4,
     isActive = true,
     pricePerHour = 50,
-    currencyId = 1,
   } = data;
 
   const [result] = await query<mysql.ResultSetHeader>(
+    // Schema of record (`resources`): the price column is `hourly_price`, and the
+    // table has no `price_per_hour` and no `currency_id` column. The optional
+    // `currencyId` field stays in `InsertResourceData` for callers, but is
+    // deliberately not written here.
     `INSERT INTO resources (
-      branch_id, name, resource_type_id, sport_id,
-      capacity, is_active, price_per_hour, currency_id,
+      public_id, branch_id, name, resource_type_id, sport_id,
+      capacity, is_active, hourly_price,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+    ) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
     [
       branchId,
       name,
@@ -279,7 +296,6 @@ export async function insertResource(
       capacity,
       isActive,
       pricePerHour,
-      currencyId,
     ],
   );
   return result.insertId;

@@ -30,17 +30,25 @@ test.describe('Create Booking', () => {
     const branchId = await insertBranch(branchPayload(orgId));
     const resourceId = await insertResource(testCourts.tennisCourt(branchId));
 
-    await bookingPage.goto();
-    await bookingPage.selectResource(resourceId);
+    await bookingPage.openResource(resourceId);
     await bookingPage.selectDate(futureDate(3));
-    await bookingPage.selectTimeSlot('10:00');
+    await bookingPage.selectFirstAvailableSlot();
     await bookingPage.clickBookNow();
     await bookingPage.waitForBookingConfirmation();
 
+    const bookingId = page.url().match(/\/bookings\/(\d+)\/confirmation/)?.[1];
+    expect(bookingId).toBeDefined();
+
     await page.goto('/bookings');
     await page.waitForLoadState('networkidle');
+
+    // MyBookingsPage renders a plain card per booking and exposes no
+    // `data-testid` on it (`MyBookingsPage.tsx:160-205`). The stable,
+    // language-independent markers are the page heading and the per-booking
+    // confirmation link (`MyBookingsPage.tsx:178-184`).
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.locator('[data-testid="booking-card"], [data-testid^="booking-"]').first(),
+      page.locator(`a[href="/bookings/${bookingId}/confirmation"]`).first(),
     ).toBeVisible({ timeout: 10_000 });
   });
 

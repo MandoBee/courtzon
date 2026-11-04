@@ -28,11 +28,17 @@ test.describe('Login Smoke', () => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
     await loginPage.login('01000000000', 'wrongpassword');
-    await expect(
-      page.locator(
-        '[data-testid="login-error"], .error-message, [role="alert"], text=Invalid',
-      ).first(),
-    ).toBeVisible({ timeout: 10_000 });
+
+    // The login error surface: explicit error hooks first, then the rendered
+    // backend message ("Invalid credentials. N attempt(s) remaining.").
+    // `text=...` cannot be mixed into a CSS selector list, so the text probe is
+    // expressed as its own locator and combined with `.or()`.
+    const loginError = page
+      .locator('[data-testid="login-error"], .error-message, [role="alert"]')
+      .or(page.getByText(/invalid credentials/i))
+      .first();
+
+    await expect(loginError).toBeVisible({ timeout: 10_000 });
   });
 
 });

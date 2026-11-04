@@ -16,7 +16,7 @@ export const test = base.extend<AuthFixtures>({
       const page = await browser.newPage();
       const userData = testUsers.player();
 
-      await insertUser({
+      const playerId = await insertUser({
         phoneNumber: userData.phoneNumber,
         password: userData.password,
         fullName: userData.fullName,
@@ -25,6 +25,23 @@ export const test = base.extend<AuthFixtures>({
         timezone: userData.timezone,
         countryId: userData.countryId,
       });
+
+      // CourtZon login returns the caller's permission set, and permission-gated
+      // UI (`<Can permission="bookings.create.date">` etc.) stays hidden for a
+      // role-less user. Grant the player role BEFORE the login so the session
+      // loads the player template's permissions.
+      const [playerRoleRows] = await query<any[]>(
+        'SELECT id FROM roles WHERE slug = ? AND deleted_at IS NULL LIMIT 1',
+        ['player'],
+      );
+      if (!playerRoleRows.length) throw new Error('player role is not seeded in the test database');
+      const [playerGrant] = await query<any>(
+        'INSERT IGNORE INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, NULL)',
+        [playerId, Number(playerRoleRows[0].id)],
+      );
+      if (playerGrant && playerGrant.affectedRows === 0) {
+        throw new Error('player role grant was not applied (existing/blocked row)');
+      }
 
       const loginPage = new LoginPage(page);
       await loginPage.goto();

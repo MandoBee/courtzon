@@ -3,7 +3,7 @@ export const testCourts = {
     branchId,
     name: 'E2E Tennis Court ' + Date.now(),
     resourceTypeId: 1,
-    sportId: 1,
+    sportId: 22,
     capacity: 4,
     isActive: true,
     pricePerHour: 50,

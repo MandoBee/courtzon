@@ -37,32 +37,45 @@ test.describe('Cancel Booking', () => {
     const bookingId = createRes.data?.id || createRes.data?.data?.id;
     expect(bookingId).toBeDefined();
 
-    await page.goto('/bookings');
-    await page.waitForLoadState('networkidle');
+    // The post-login welcome splash (`LoginSplash.tsx:25-57`) is a full-screen
+    // overlay (`z-[100]`) that intercepts pointer events, and a full page load
+    // performed while its flag is set re-arms it and then redirects to `/app`.
+    // Let it finish while the page is still on its post-login route.
+    await page.waitForFunction(
+      () => sessionStorage.getItem('cz_show_login_splash') !== '1',
+      undefined,
+      { timeout: 15_000 },
+    );
+    await page
+      .locator('[role="dialog"]')
+      .waitFor({ state: 'hidden', timeout: 15_000 })
+      .catch(() => {});
 
     await page.goto(`/bookings/${bookingId}`);
     await page.waitForLoadState('networkidle');
 
-    const cancelBtn = page.locator(
-      '[data-testid="cancel-booking"], button:has-text("Cancel Booking"), button:has-text("Cancel")',
-    ).first();
-    await cancelBtn.waitFor({ state: 'visible', timeout: 10_000 });
-    await cancelBtn.click();
+    // The cancel flow is inline (`BookingDetailPage.tsx:166-199`): the trigger
+    // button reveals an optional reason input plus an inline confirm button.
+    // There is no dialog and no `data-testid` on these controls; the labels come
+    // from translation keys that fall back to their raw key, and both the
+    // English label and the raw key contain "cancel".
+    const cancelTrigger = page.getByRole('button', { name: /cancel/i }).first();
+    await cancelTrigger.click();
 
-    const confirmDialog = page.locator(
-      '[data-testid="confirm-cancel"], button:has-text("Yes, Cancel"), [role="dialog"] button:has-text("Cancel"):not(:has-text("Booking"))',
-    ).first();
-    if (await confirmDialog.isVisible().catch(() => false)) {
-      await confirmDialog.click();
-    }
+    const reasonInput = page.locator('input').first();
+    await reasonInput.fill('B2 automated cancellation');
 
-    await expect(
-      page.locator(
-        '[data-testid="booking-status"][data-status="cancelled"], ' +
-        '[data-testid="cancelled-badge"], ' +
-        'text=Booking Cancelled',
-      ).first(),
-    ).toBeVisible({ timeout: 10_000 });
+    const confirmCancel = page.getByRole('button', { name: /cancel/i }).first();
+    await confirmCancel.click();
+
+    // The detail page does not invalidate its own `['booking', id]` query
+    // (`BookingDetailPage.tsx:70-75`), so reload to read the persisted state.
+    // The status badge is the `<span>` next to the `<h1>`
+    // (`BookingDetailPage.tsx:99-102`) and renders `booking_status` verbatim.
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('h1 + span')).toHaveText(/cancelled/i, { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /cancel/i })).toHaveCount(0);
   });
 
 });
