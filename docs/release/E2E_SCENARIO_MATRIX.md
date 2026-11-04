@@ -266,8 +266,8 @@ No test was executed for this task and no scenario is claimed as `PASS`.
 
 | ID | Role | Setup | Action | Expected | Cleanup | Spec (source) | Class | Status |
 |---|---|---|---|---|---|---|---|---|
-| B1 | Player | Insert org/branch/resource; open booking page | Select court/date/slot, Book Now | Confirmation; booking card appears in `/bookings` | Rows left; campaign cleanup only | `e2e/scenarios/booking/create-booking.spec.ts:18–45` | W | NOT RUN |
-| B2 | Player | Fixture booking via API | Create (cash → confirmed) then cancel via UI | Status `cancelled`; slot released | Rows left | `e2e/scenarios/booking/cancel-booking.spec.ts:18–62` | W | **NOT RUN (unverified) — obsolete confirm call removed 2026-10-28 (spec-only); cash bookings are created confirmed (`booking.service.ts:478–480`) and cancelled through `POST /bookings/:id/cancel`. Execution still requires DB-write approval + a running stack** |
+| B1 | Player | Insert org/branch/resource; open booking page | Select court/date/slot, Book Now | Confirmation; booking card appears in `/bookings` | Rows left; campaign cleanup only | `e2e/scenarios/booking/create-booking.spec.ts:18–45` | W | **PASS (2026-11-04, local)** — `npx playwright test e2e/scenarios/booking/create-booking.spec.ts --workers=1` → **1 passed (14.6s)** (single run, no retries): slot picker → `Book Now` → confirmation page with `bookingId` **`59085`** → the booking appears in `/bookings` (confirmation link `a[href="/bookings/59085/confirmation"]` visible). Booking `59085` remains **`confirmed`**; all test rows left in place (no cleanup). Details: **§3.2c** |
+| B2 | Player | Fixture booking via API | Create (cash → confirmed) then cancel via UI | Status `cancelled`; slot released | Rows left | `e2e/scenarios/booking/cancel-booking.spec.ts:18–79` | W | **PASS (2026-11-04, local)** — `npx playwright test e2e/scenarios/booking/cancel-booking.spec.ts --workers=1 --reporter=list` → **1 passed (13.2s)**, **no errors, no retries** (single run): the API-created cash booking (`confirmed`) was cancelled through the UI (inline trigger → reason `B2 automated cancellation` → confirm), and after reload the status badge read **`cancelled`** with the cancel button gone. Booking **`59086`** is the one the test created and then cancelled; **no cleanup** — all test rows left in place. Existing bookings `59081`–`59085` untouched. Refund `transactions` row `2636` (50.00, full refund, fee 0). Target `courtzon_v3` @ `127.0.0.1:3307`; **no Live**. The previous "obsolete confirm call" blocker no longer applies: cash bookings are created confirmed (`booking.service.ts:478–480`) and the spec calls `POST /bookings/:id/cancel` via the UI |
 | B3 | Player | Fixture booking | Create public match, open list | Match visible | Rows left | `e2e/scenarios/match/public-match.spec.ts:21–45` | W | NOT RUN — fixture (`cash`) and import fixed 2026-10-28; requires DB-write approval |
 | B4 | Anonymous | ≥1 public tournament in DB | Open public list/detail; invalid id | List renders; detail identity; invalid id shows terminal error | None | `e2e/scenarios/tournament/p0-public-readonly.spec.ts:60–202` | R | **PASS (2026-11-02, Live)** — discovery `GET /public/tournaments` → **2** records (ids 14 and 10); `/tournaments/public` rendered **2 anchors**; **both** details contain their name (440 / 504 chars), **0 match cards and 0 bracket headings for either** (empty brackets = data-dependent, recorded as note per spec), no horizontal overflow at 1440; invalid id `999999999` → terminal message `This tournament is unavailable or not public. ← Back to public tournaments`; **0 page errors** in all four navigations |
 | B5 | Player | Two contexts | Book the same slot simultaneously | Exactly one succeeds; other gets conflict UI | Cancel/refund per policy | — | — | **MISSING** |
@@ -321,6 +321,26 @@ No test was executed for this task and no scenario is claimed as `PASS`.
 | B7 drawer | **NOT EXERCISED** — **both** public tournaments expose 0 `.cz-match-card`, so the spec's conditional drawer block does not apply |
 
 **Not run:** B1, B2, B3 (class W — require booking writes / approved DB-write window (§2.1)), B5 (scenario missing), B6 (blocked by its own destructive SQL, P7-02).
+
+### 3.2c B1 — local execution (2026-11-04)
+
+**Environment:** local development database `courtzon_v3` @ `127.0.0.1:3307` — the target is asserted by `assertApprovedTestTarget()` before connecting (`e2e/helpers/database.ts:27`); frontend `http://localhost:5173` and backend `http://localhost:3000` (local Docker stack). **No Hostinger Live access**; no Docker rebuild; no environment or rate-limit change.
+
+**Command:** `npx playwright test e2e/scenarios/booking/create-booking.spec.ts --workers=1` → **1 passed (14.6s)** — single run, `CI` unset (retries = 0), no other tests.
+
+| Check | Result |
+|---|---|
+| Tenant fixture | new organisation, branch and tennis resource inserted for the run |
+| Slot picker | date **`2026-11-07`** (`futureDate(3)`) and the first available slot **`08:00–09:30`** selected |
+| `Book Now` → confirmation | confirmation page reached with **`bookingId` = `59085`** in the URL |
+| `/bookings` list | page heading visible and the confirmation link `a[href="/bookings/59085/confirmation"]` visible |
+| Booking row | **`59085`** — 2026-11-07, 08:00–09:30, `private_match`, cash, **`confirmed`**, `payment_status = pending`, total 75.00 |
+| Other rows written | user `780822171` (+ `player` role grant), organisation `276002711`, branch `10050313`, resource `10050289`, sessions `1354–1356`, notifications `8198`/`8199` |
+| `booking_slots` | no rows — the cash/confirmed path does not write slot rows (verified for `resource_id = 10050289`) |
+| Data handling | **no cleanup / no deletion** — all rows left in place |
+| Existing data | untouched — bookings `59081`/`59082` (`confirmed`) and `59083`/`59084` (`cancelled`) unchanged |
+
+**Result: B1 PASS.**
 
 ### 3.3 P6-06 — Marketplace / payments / subscriptions / accounting
 
@@ -464,13 +484,13 @@ All six pages rendered (HTTP 200, `#root` non-empty) — **no page was BLOCKED**
 
 | ID | Role | Setup | Action | Expected | Cleanup | Spec (source) | Class | Status |
 |---|---|---|---|---|---|---|---|---|
-| F1 | Player | Two sessions | Create/cancel booking in one session | Other session updates without refresh | None | — | — | **SPEC APPROVED (2026-11-02) — NOT RUN** — acceptance surface fixed to the **slot picker**; booking date chosen **beyond the cancellation-policy window** to avoid a policy `409`; policy must not be modified. **D3 fixed:** two sessions of the **same player** |
+| F1 | Player | Two sessions (same player) | Create/cancel booking in one session | Other session updates without refresh | None | `e2e/scenarios/realtime/cross-session-slot-update.spec.ts` | W | **PASS (2026-11-04, local)** — `PLAYWRIGHT_BASE_URL=http://localhost:5174 npx playwright test e2e/scenarios/realtime/cross-session-slot-update.spec.ts --workers=1` → **1 passed (8.2s)** (single run, no retries). `booking.created` removed slot **`08:00–09:30`** in session A and `booking.cancelled` restored it, with **0** document reloads/navigations. Booking **`59084`** created then cancelled by the scenario; rows left in place (no cleanup). Details: **§3.6d** |
 | F2 | Player ×2 | Two users, each with an independent API session (separate `session_token`) | Fire `POST /bookings` concurrently for the same resource/date/slot | Exactly one 2xx and exactly one `409`; one booking row only; `429` is a failure | Rows left | `e2e/scenarios/realtime/simultaneous-booking.spec.ts` | W | **PASS (2026-11-03, local)** — `npx playwright test e2e/scenarios/realtime/simultaneous-booking.spec.ts --workers=1` → **one 2xx + one 409**, **no 429**, no retry. Winner booking **`59073`** (2026-11-06, 08:00–09:30, `confirmed`, cash); active bookings for the slot = **1**. Rows left in place (no cleanup). Only `409` counts as the conflict (D6); message-text assertion remains deferred |
 | F3 | Player | Socket connected | Drop/reconnect network | Cache reconciles; no duplicate events | None | `e2e/scenarios/realtime/reconnect-duplicate-events.spec.ts` | W | **PASS (2026-11-03, local) — evidence limitation.** Final run `npx playwright test e2e/scenarios/realtime/reconnect-duplicate-events.spec.ts --workers=1` executed 18:56:39–18:56:57; `test-results/.last-run.json` (Playwright-written) recorded **`{"status":"passed","failedTests":[]}`**, and the DB rows written inside that run match both phases (1 writer user, 1 organisation, 1 branch, 2 resources, 2 `public_match` bookings `59079`/`59080`). **No HTML/JUnit/JSON report exists**, so there is no assertion-by-assertion evidence. **The spec does not inject synthetic duplicate frames**, so it proves a real socket drop/reconnect plus exactly-one rendered row, not dedupe of injected duplicates. Details: §3.6c. Background: spec authored 2026-11-03; events limited to **match/tournament/academy** (in `invalidateRealtimeReconcile`); **notifications reconnect-queue excluded**. **D9 fixed:** event generated via **API** (`public_match` booking), observed on `/matches`. **Payload corrected (2026-11-03):** `match.available` carries **`bookingId`**, not `matchId` — dedupe is evaluated per `bookingId` (§3.6a). Drop is performed with Playwright `page.routeWebSocket` (real connection close), because `context.setOffline(true)` alone did not drop the live socket locally |
 
-### 3.6a F1 / F2 / F3 — approved specifications (2026-11-02; F2 and F3 executed 2026-11-03, F1 not run)
+### 3.6a F1 / F2 / F3 — approved specifications (2026-11-02; F1 executed 2026-11-04, F2 and F3 executed 2026-11-03)
 
-**F1 remains NOT RUN.** F2 and F3 were executed on 2026-11-03 (§3.6b and §3.6c); the F3 result carries an explicit evidence limitation. Every write-producing run is permitted **only** on the **local development database** `courtzon_v3` @ `127.0.0.1:3307` (persistent Docker volume) under Amendment A1, and only after explicit approval naming the local target and the expected tables/impact. It is **not** an isolated or disposable test environment. **No write of any kind may be sent to Hostinger Live** — Live is read-only for this campaign.
+**F1 executed and PASS on 2026-11-04 (§3.6d); F2 and F3 were executed on 2026-11-03 (§3.6b and §3.6c); the F3 result carries an explicit evidence limitation.** Every write-producing run is permitted **only** on the **local development database** `courtzon_v3` @ `127.0.0.1:3307` (persistent Docker volume) under Amendment A1, and only after explicit approval naming the local target and the expected tables/impact. It is **not** an isolated or disposable test environment. **No write of any kind may be sent to Hostinger Live** — Live is read-only for this campaign.
 
 **F1 — cross-session update (slot picker)**
 - **Approved:** the acceptance surface is the **slot picker** (`['resource-slots', resourceId, bookingDate]`, `frontend/src/realtime/useRealtimeCacheUpdates.ts:737–741`), and the booking date must be chosen **beyond the cancellation-policy window** so the cancel step cannot legitimately return `409` (`§3.2a` L259–261). The cancellation policy itself must **not** be modified.
@@ -536,6 +556,30 @@ All six pages rendered (HTTP 200, `#root` non-empty) — **no page was BLOCKED**
 
 **Not touched in this run:** F1 remains **NOT RUN**; F2's recorded result is unchanged; no Live/Docker/GitHub operation.
 
+### 3.6d F1 — local execution (2026-11-04)
+
+**Environment:** local development database `courtzon_v3` @ `127.0.0.1:3307`; frontend production build (`npm run build`) served by `vite preview` on `http://localhost:5174`; backend `http://localhost:3000` running the **locally built `backend/dist`**. The Docker backend container was stopped for the duration of the run and restarted afterwards, because its image carries a **pre-fix** `dist`. No Live access; **no Docker rebuild**; no environment or rate-limit change.
+
+**Command:** `PLAYWRIGHT_BASE_URL=http://localhost:5174 npx playwright test e2e/scenarios/realtime/cross-session-slot-update.spec.ts --workers=1` → **1 passed (8.2s)** — single run, `CI` unset (retries = 0), no additional tests.
+
+| Check | Result |
+|---|---|
+| Session A: initial slot grid | slot **`08:00–09:30`** rendered as available (`slotButton` count = 1) |
+| `booking.created` → session A | matching event for the tested `resourceId`/`bookingDate`; the slot button **disappeared** |
+| Cancel from session B | HTTP **200** (no `409`, cancellation policy unchanged) |
+| `booking.cancelled` → session A | matching event for the tested `resourceId`/`bookingDate`; the slot button **returned** |
+| Document reload / navigation in A | **0** (`mainFrameNavigations === 0`) |
+| Booking written by the scenario | **`59084`** — 2026-11-09, 08:00–09:30, `private_match`, cash — **created then cancelled by the scenario itself** |
+| Other rows written | user `780822170`, organisation `276002710`, branch `10050312`, resource `10050288`, sessions up to `1353` — **left in place, no cleanup** |
+| Untouched | `59081` and `59082` (`confirmed`) and `59083` (`cancelled`, earlier run) unchanged; no Live access |
+
+**Fixes required to reach PASS (application/test source only):**
+1. `frontend/src/pages/booking/BookingFormPage.tsx` — the slot query key now coerces the route param to a **number**, so `invalidateSlots` (`useRealtimeCacheUpdates.ts:737–741`, which receives a numeric `resourceId` in the event) matches the active `['resource-slots', resourceId, bookingDate]` key.
+2. `backend/src/modules/realtime/application/socket-event-mapper.ts` — new `normaliseBookingDate()` inside `mapBookingEvent` normalises `bookingDate` to **`YYYY-MM-DD`**. Cause: mysql2 returns the `DATE` column as a JS `Date`, so `booking:cancelled` serialised it as `YYYY-MM-DDTHH:mm:ss.sssZ` and never matched the query key (the create path was unaffected — it forwards the request string). Payload keys are unchanged (`bookingId`, `status`, `resourceId`, `courtId`, `bookingDate`).
+3. `e2e/scenarios/realtime/cross-session-slot-update.spec.ts` — removed the timestamp correlation between a page request and a Socket.IO frame (cross-process comparison that failed even when the refetch had occurred); the spec now asserts the user-visible contract only: matching event → slot taken → matching event → slot free, with zero navigations.
+
+**Deployment state of these fixes (explicit):** present in **source** and in the **local builds only** (`backend/dist`, frontend `dist`). The **Docker backend image was NOT rebuilt**, so the container still runs the pre-fix mapper and the Docker stack will not refresh the slot on `booking.cancelled` until a rebuild happens. **No commit, push or deploy** was performed (branch `fix/courtzon-live-phase1`; the three files above remain modified in the working tree; the branch is 1 local commit ahead of `origin`, not pushed).
+
 ## 4. Existing spec inventory (13 files, 33 tests - verified by static count)
 | Spec | Tests | Primary matrix rows | Class | Executable now? |
 |---|---:|---|---|---|
@@ -562,9 +606,9 @@ All six pages rendered (HTTP 200, `#root` non-empty) — **no page was BLOCKED**
 | P6-06 marketplace/payments | 2 rows, both gateway-dependent (C1/C2) | Marketplace, subscriptions, accounting, refund UI **not covered** |
 | P6-07 notifications/reports/settlements | D1 (blocked), D2, D5 | Reports, settlements, notifications beyond one deep link **not covered** |
 | P6-08 responsive/a11y | E1/E2 (public surface only), E4, **E3 axe scan (local, 2026-11-02, light + dark)** | E3 **PASS** after fixes (A11Y-001…006 fixed and pushed; A11Y-007 excluded); consumer/admin pages still not scanned; E2 drawer gap open |
-| P6-09 realtime | **F2 executed and PASS** (2026-11-03; §3.6b) and **F3 executed and PASS with an evidence limitation** (2026-11-03; §3.6c) | F1 (cross-session realtime update) still missing/not run. F3's evidence is the Playwright `passed` last-run status plus DB rows matching both phases — no assertion-level report — and the spec does not inject synthetic duplicate frames, so dedupe of injected duplicates remains unproven |
+| P6-09 realtime | **F1 executed and PASS** (2026-11-04; §3.6d), **F2 executed and PASS** (2026-11-03; §3.6b) and **F3 executed and PASS with an evidence limitation** (2026-11-03; §3.6c) | All three realtime scenarios now have executed evidence. The two fixes F1 required (numeric slot query key; `bookingDate` normalisation in `mapBookingEvent`) exist in **source and local builds only** — the Docker backend image still needs a rebuild to ship them. F3's evidence remains the Playwright `passed` last-run status plus DB rows matching both phases (no assertion-level report), and the F3 spec does not inject synthetic duplicate frames, so dedupe of injected duplicates remains unproven |
 
-**Phase 6 acceptance (plan §11) remains NOT MET.** Executed evidence now exists — the 2026-11-02 Live runs (A2, A4 with observation, A5, A6 deny half, B4, B7, E1/E2 attributed, E4), the **2026-11-02 local E3 axe runs (§3.5b)** (first run FAIL → A11Y-001…006 fixed → re-run **PASS in both schemes, 48/48, 0 critical, 0 serious**, A11Y-007 open by decision), and the **2026-11-03 local P6-04 runs (§3.1d: A1–A8 all PASS)**, plus the **2026-11-03 local F2/F3 runs (§3.6b, §3.6c)** — F3 with the explicit evidence/scope limitation recorded there. The E3 fixes are **committed and pushed** (`2d08621c`, `4568771f`) and were built into the local frontend image on 2026-11-03 (`b4c0f4d01a0f`); the P6-04 test-side fixes and the E2E specs (including F1/F2/F3 and B5) are preserved in a **local commit** that has **not** been pushed. BLOCKED rows (B6, C1, C2), NOT RUN rows (B1–B3, D1, D2, D5) and MISSING/not-run rows (B5, C3–C6, D3, D4, F1) remain open, and E2's drawer gap is unresolved, so the phase cannot close.
+**Phase 6 acceptance (plan §11) remains NOT MET.** Executed evidence now exists — the 2026-11-02 Live runs (A2, A4 with observation, A5, A6 deny half, B4, B7, E1/E2 attributed, E4), the **2026-11-02 local E3 axe runs (§3.5b)** (first run FAIL → A11Y-001…006 fixed → re-run **PASS in both schemes, 48/48, 0 critical, 0 serious**, A11Y-007 open by decision), the **2026-11-03 local P6-04 runs (§3.1d: A1–A8 all PASS)**, the **2026-11-03 local F2/F3 runs (§3.6b, §3.6c)** — F3 with the explicit evidence/scope limitation recorded there — and the **2026-11-04 local F1 run (§3.6d: PASS)** and the **2026-11-04 local B1 run (§3.2c: PASS)** and the **2026-11-04 local B2 run (matrix B2: PASS)**. The E3 fixes are **committed and pushed** (`2d08621c`, `4568771f`) and were built into the local frontend image on 2026-11-03 (`b4c0f4d01a0f`); the P6-04 test-side fixes and the E2E specs (including F1/F2/F3 and B5) are preserved in a **local commit** that has **not** been pushed, and the two F1 fixes are **uncommitted source changes** whose Docker backend image has **not** been rebuilt. BLOCKED rows (B6, C1, C2), NOT RUN rows (B3, D1, D2, D5) and MISSING/not-run rows (B5, C3–C6, D3, D4) remain open, and E2's drawer gap is unresolved, so the phase cannot close.
 
 ## 6. Data safety and cleanup model
 
