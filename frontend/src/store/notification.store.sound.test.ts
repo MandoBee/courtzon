@@ -14,6 +14,9 @@ vi.mock('../services/socket', () => ({
     on: vi.fn((event: string, handler: (...args: any[]) => void) => {
       __handlers[event] = handler;
     }),
+    off: vi.fn((event: string, handler: (...args: any[]) => void) => {
+      if (__handlers[event] === handler) delete __handlers[event];
+    }),
   },
 }));
 

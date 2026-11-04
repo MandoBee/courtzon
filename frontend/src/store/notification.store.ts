@@ -50,44 +50,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     // G9-D5-D — unlock audio after the user's first interaction (autoplay policy).
     initNotificationSound();
 
-    socketService.on('notification.new', (notification: AppNotification) => {
-      const state = get();
-      // The socket payload may arrive with `notificationId` (backend mapper)
-      // instead of `id` — normalize so dedup/sound/count stay correct.
-      const id = notification.id ?? (notification as any).notificationId;
-      const exists = id != null && state.items.some((n) => n.id === id);
-      if (!exists) {
-        const enriched = { ...enrichNotification(notification), ...(id != null ? { id } : {}) };
-        set({ items: [enriched, ...state.items], unreadCount: state.unreadCount + 1 });
-        // G9-D5-D — sound fires ONLY on a genuinely new socket-delivered
-        // notification (deduped by id). Reconnect/hydration/polling/rerender
-        // never trigger sound.
-        maybePlayNotificationSound();
-      }
-    });
-
-    socketService.on('notification.unread-count', () => {
-      get().refreshUnreadCount();
-    });
-
-    socketService.on('notification:reconnect-queue', (data: { ids: number[] }) => {
-      if (data?.ids?.length) {
-        const state = get();
-        const newIds = data.ids.filter((id) => !state.items.some((n) => n.id === id));
-        if (newIds.length) {
-          get().refreshUnreadCount();
-        }
-      }
-    });
-
-    socketService.on('connect', () => {
-      set({ connected: true });
-      get().handleReconnectSync();
-    });
-
-    socketService.on('disconnect', () => {
-      set({ connected: false });
-    });
+    socketService.on('notification.new', handleNotificationNew);
+    socketService.on('notification.unread-count', handleUnreadCountEvent);
+    socketService.on('notification:reconnect-queue', handleReconnectQueue);
+    socketService.on('connect', handleSocketConnect);
+    socketService.on('disconnect', handleSocketDisconnect);
 
     get().refreshUnreadCount();
 
@@ -98,6 +65,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   destroy: () => {
     const timer = get()._pollTimer;
     if (timer) clearInterval(timer);
+    // Unregister the SAME handler references init() registered — without this a
+    // destroy()/init() cycle (logout → login without a page reload) stacked a
+    // new copy of every listener on `socketService`.
+    socketService.off('notification.new', handleNotificationNew);
+    socketService.off('notification.unread-count', handleUnreadCountEvent);
+    socketService.off('notification:reconnect-queue', handleReconnectQueue);
+    socketService.off('connect', handleSocketConnect);
+    socketService.off('disconnect', handleSocketDisconnect);
     set({ initialized: false, items: [], unreadCount: 0, connected: false, _pollTimer: null });
   },
 
@@ -169,6 +144,53 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     get().markAsRead(notificationId);
   },
 }));
+
+/**
+ * Socket.IO handlers are module-level functions so `init()` and `destroy()`
+ * register/remove the SAME references. Building fresh arrow functions inside
+ * `init()` stacked a new copy of every listener on `socketService` after each
+ * destroy()/init() cycle (logout → login without a page reload).
+ */
+function handleNotificationNew(notification: AppNotification): void {
+  const state = useNotificationStore.getState();
+  // The socket payload may arrive with `notificationId` (backend mapper)
+  // instead of `id` — normalize so dedup/sound/count stay correct.
+  const id = notification.id ?? (notification as any).notificationId;
+  const exists = id != null && state.items.some((n) => n.id === id);
+  if (!exists) {
+    const enriched = { ...enrichNotification(notification), ...(id != null ? { id } : {}) };
+    useNotificationStore.setState({
+      items: [enriched, ...state.items],
+      unreadCount: state.unreadCount + 1,
+    });
+    // G9-D5-D — sound fires ONLY on a genuinely new socket-delivered
+    // notification (deduped by id). Reconnect/hydration/polling/rerender
+    // never trigger sound.
+    maybePlayNotificationSound();
+  }
+}
+
+function handleUnreadCountEvent(): void {
+  void useNotificationStore.getState().refreshUnreadCount();
+}
+
+function handleReconnectQueue(data: { ids: number[] }): void {
+  if (!data?.ids?.length) return;
+  const state = useNotificationStore.getState();
+  const newIds = data.ids.filter((id) => !state.items.some((n) => n.id === id));
+  if (newIds.length) {
+    void useNotificationStore.getState().refreshUnreadCount();
+  }
+}
+
+function handleSocketConnect(): void {
+  useNotificationStore.setState({ connected: true });
+  void useNotificationStore.getState().handleReconnectSync();
+}
+
+function handleSocketDisconnect(): void {
+  useNotificationStore.setState({ connected: false });
+}
 
 bindBadgeSync();
 
