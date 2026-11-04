@@ -160,21 +160,30 @@ async function bootstrap() {
       );
     }
 
-    // Smart translation registry sync (hash-based — skips if unchanged)
-    try {
-      const { translationsService } = await import('./modules/translations/application/translations.service.js');
-      const syncResult = await translationsService.syncKeysFromRegistry();
-      if (syncResult.skipped) {
-        app.log.info(`Translations registry up-to-date (hash match).`);
-      } else {
-        app.log.info(
-          `Translations registry synced: ${syncResult.inserted} inserted, ` +
-          `${syncResult.skipped} skipped ` +
-          `(total: ${syncResult.total} keys)`
-        );
+    // Optional: skip every startup database sync. Default (unset/0) preserves
+    // the standard behaviour, including production. Setting it to 1 is for
+    // verification/consolidation runs that must not write to the database.
+    const skipStartupDbSync = process.env.COURTZON_SKIP_STARTUP_DB_SYNC === '1';
+
+    if (skipStartupDbSync) {
+      app.log.info('Startup DB sync skipped (COURTZON_SKIP_STARTUP_DB_SYNC=1).');
+    } else {
+      // Smart translation registry sync (hash-based — skips if unchanged)
+      try {
+        const { translationsService } = await import('./modules/translations/application/translations.service.js');
+        const syncResult = await translationsService.syncKeysFromRegistry();
+        if (syncResult.skipped) {
+          app.log.info(`Translations registry up-to-date (hash match).`);
+        } else {
+          app.log.info(
+            `Translations registry synced: ${syncResult.inserted} inserted, ` +
+            `${syncResult.skipped} skipped ` +
+            `(total: ${syncResult.total} keys)`
+          );
+        }
+      } catch (err: any) {
+        app.log.warn(`Translation registry sync skipped: ${err.message}`);
       }
-    } catch (err: any) {
-      app.log.warn(`Translation registry sync skipped: ${err.message}`);
     }
 
     worker = startWorker('default');
@@ -193,12 +202,16 @@ async function bootstrap() {
     attachSocketPublisher(io);
     app.log.info('Socket.IO publisher attached');
 
-    try {
-      const { seedTemplates } = await import("./modules/notifications/application/template.service.js");
-      await seedTemplates();
-      app.log.info('Notification templates seeded');
-    } catch (err: any) {
-      app.log.warn(`Template seeding skipped: ${err.message}`);
+    if (skipStartupDbSync) {
+      app.log.info('Notification template seeding skipped (COURTZON_SKIP_STARTUP_DB_SYNC=1).');
+    } else {
+      try {
+        const { seedTemplates } = await import("./modules/notifications/application/template.service.js");
+        await seedTemplates();
+        app.log.info('Notification templates seeded');
+      } catch (err: any) {
+        app.log.warn(`Template seeding skipped: ${err.message}`);
+      }
     }
 
     notificationEngine.start();

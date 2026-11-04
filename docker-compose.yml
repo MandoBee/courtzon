@@ -92,6 +92,12 @@ services:
       # value (or unset) as unknown and FAIL-CLOSED for LOCAL_DOCKER_ONLY
       # migrations, so they can never reach production.
       COURTZON_MIGRATION_ENV: ${COURTZON_MIGRATION_ENV:-local}
+      # Opt-out for every startup database write performed by the entrypoint and
+      # the backend bootstrap (migrations, role-permission sync, translation
+      # registry sync, notification-template seeding). Default 0 = standard
+      # behaviour, including production. Set to 1 only for verification runs
+      # that must not write to the database.
+      COURTZON_SKIP_STARTUP_DB_SYNC: ${COURTZON_SKIP_STARTUP_DB_SYNC:-0}
       # Deployed Git revision, if the platform exposes it at runtime. In the
       # verified Coolify Compose setup SOURCE_COMMIT is supplied at BUILD time
       # only, so this resolves to "unknown" and /health/version reports the
