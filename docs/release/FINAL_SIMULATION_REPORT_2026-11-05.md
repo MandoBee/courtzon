@@ -3,6 +3,7 @@
 **التاريخ:** 2026-11-05
 **الفرع:** `fix/courtzon-live-phase1`
 **مرجع الكود وقت بدء المحاكاة:** `72b601ac7589fff6c80c07335a182be612f138ec` (مع تعديلات الإصلاح غير المُلتزمة بعد)
+**مرجع الكود بعد الإصلاحات:** `102ff15f40b83aa11490f72464accbfabb52d7b7` (مدفوع إلى `origin/fix/courtzon-live-phase1`)
 **البيئة:** Docker المحلي — backend `:3000`، frontend `:5173`، MySQL `courtzon_v3` على `127.0.0.1:3307`، Redis `:6379`
 **قاعدة البيانات:** `courtzon_v3` (التطوير المحلي فقط — لم تُلمس قاعدة الإنتاج)
 **سجل الأدلة الآلي:** `test-results/simulation/evidence.json` و`results.json` و`run-all-console.txt`
@@ -241,8 +242,8 @@ Playwright فعلي: رحلة لاعب سطح المكتب، شريط التنق
 | Backend image | `821a3cda84bd` — أُعيد بناؤه بعد الإصلاحات، الحاوية healthy |
 | Frontend image | `1f13559287b7` — أُعيد بناؤه بعد إصلاح `auth.store`، الحاوية healthy، `:5173` HTTP 200 |
 | MySQL/Redis | سليمان، البيانات محفوظة |
-| Commit/Push | في نهاية التقرير على `fix/courtzon-live-phase1` |
-| Hostinger | النشر التلقائي يتبع الفرع المدفوع؛ يُتحقق من `/health` بعده |
+| Commit/Push | `102ff15f` مدفوع إلى `origin/fix/courtzon-live-phase1` — تم التحقق من `git ls-remote` |
+| Hostinger | النشر التلقائي يتبع الفرع المدفوع؛ يجب التحقق من `https://api.courtzon.cloud/health/version` بعد اكتمال النشر |
 
 ---
 
