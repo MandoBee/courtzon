@@ -243,7 +243,7 @@ Playwright فعلي: رحلة لاعب سطح المكتب، شريط التنق
 | Frontend image | `1f13559287b7` — أُعيد بناؤه بعد إصلاح `auth.store`، الحاوية healthy، `:5173` HTTP 200 |
 | MySQL/Redis | سليمان، البيانات محفوظة |
 | Commit/Push | `102ff15f` مدفوع إلى `origin/fix/courtzon-live-phase1` — تم التحقق من `git ls-remote` |
-| Hostinger | النشر التلقائي يتبع الفرع المدفوع؛ يجب التحقق من `https://api.courtzon.cloud/health/version` بعد اكتمال النشر |
+| Live/Hostinger | شوهد نشر `102ff15f` على `https://api.courtzon.cloud` (`buildTime 2026-11-05T03:43:28Z`)، `/health` = ok (DB 3ms/Redis 3ms)، والواجهة `https://www.courtzon.cloud` HTTP 200. أي دفعة توثيق لاحقة لا تغيّر كود التطبيق. |
 
 ---
 

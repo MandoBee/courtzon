@@ -4444,6 +4444,6 @@ local Docker and Live in that order. **No database change, no migration, no volu
 | Health | `/health` ok (DB 1–2 ms, Redis 1–2 ms) |
 | Report | `docs/release/FINAL_SIMULATION_REPORT_2026-11-05.md` |
 | Commit / push | `102ff15f` on `fix/courtzon-live-phase1` (verified with `git ls-remote`); documentation follow-up commits may follow |
-| Live/Hostinger | re-verification required after the push; not claimed before it is observed |
+| Live | auto-deployed `102ff15f` (`buildTime 2026-11-05T03:43:28Z`); `https://api.courtzon.cloud/health` ok (DB 3 ms, Redis 3 ms); `https://www.courtzon.cloud` HTTP 200. Docs-only follow-up commits do not change application code. |
 
 **Overall completion is not changed by this section** (no checklist item is claimed DONE beyond what is evidenced above).
