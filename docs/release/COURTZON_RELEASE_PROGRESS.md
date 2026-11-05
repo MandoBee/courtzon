@@ -4475,3 +4475,55 @@ local Docker and Live in that order. **No database change, no migration, no volu
 
 **Not claimed:** real hosted-card success, gateway settlement, or full acceptance of Phase 5/P5-05. The public-key rejection is a hard blocker for hosted payments and must be resolved by the owner before acceptance.
 
+## 29. UAT log — accessibility re-run and read-only route sweep (2026-11-05)
+
+**Scope:** documentation only. This section records owner-supplied UAT results for the 2026-11-05 run. No test
+was authored, modified or re-executed; no code, configuration, database, Docker image, commit or push was changed
+by this operation. **No checklist item status and no completion percentage is changed.**
+
+### 29.1 Accessibility (axe) — UAT results
+
+| Theme | Scans | PASS | SKIP | Critical | Serious |
+|---|---:|---:|---:|---:|---:|
+| Dark | 24 | **24** | 0 | **0** | **0** |
+| Light | 24 | **20** | 4 | **0** | **0** |
+| **Total** | **48** | **44** | **4** | **0** | **0** |
+
+- The 4 light-theme results are recorded as **SKIP**, not PASS (plan §4 rule 11 — a result that did not run is
+  never reported as PASS).
+- **Zero critical** and **zero serious** violations in both themes.
+- This is a separate, later UAT observation; the earlier E3 light+dark run of 2026-11-02 (§8, P6-08, 48/48 PASS)
+  is unchanged as history.
+- **P6-08 stays IN_PROGRESS** (E2 drawer gap and unscanned consumer/admin pages remain open).
+
+### 29.2 Read-only UI route sweep
+
+- **8** read-only UI routes were swept: every route returned **HTTP 200** and reported **no page errors**
+  (no uncaught page/console errors observed).
+- The exact route list was not supplied with this instruction and is deliberately **not reconstructed** here;
+  no result is claimed for any route outside the eight swept.
+- Read-only only: no write action, no fixture, no database access, no gateway call.
+
+### 29.3 Status impact — none
+
+| Item | Recorded status | Change |
+|---|---|---|
+| Phase 6 | **4 / 10 = 40 %** (P6-01…P6-04 DONE; P6-05/08/09 IN_PROGRESS; P6-06/07/10 TODO) | none |
+| Overall completion | **55 % (55 / 100)** as recorded in §1 | none |
+| Phase 5 / P5-05 | **9 / 10 = 90 %, acceptance NOT MET**, P5-05 OPEN/DEFERRED | none |
+| Paymob | **External Blocker** (B7; P5-05; public-key rejection, §28) | none |
+
+> **Overall percentage — official (owner decision, 2026-11-05):** the official overall completion is
+> **55 % (55 / 100)** — the plan formula (`Overall % = DONE items / 100`, plan §6) applied to the 55 `DONE`
+> checklist items, matching the §1 dashboard (10+10+10+10+9+4+1+1 = 55). The **54 %** figure is a **historical
+> number**: it is the pre-P6-04 state (Phase 6 = 3/10 → 54/100, §18/§19/§25.3) and also what a literal `**DONE**`
+> count returns because P5-04's status is written `**DONE (limited, user-confirmed)**`. No checklist item was
+> added, removed or re-statused, and no other percentage in this file is changed.
+
+### 29.4 External blocker — Paymob (unchanged)
+
+Paymob remains an **External Blocker** and is **not** closed or reclassified by this log: `PAYMOB_PUBLIC_KEY` is
+rejected by Paymob (`403 Unable to authenticate this public key`, §28) while the secret key can create
+intentions; no hosted-card success, charge or gateway settlement exists. **P5-05 stays OPEN/DEFERRED** and
+Phase 5 acceptance stays **NOT MET**.
+
