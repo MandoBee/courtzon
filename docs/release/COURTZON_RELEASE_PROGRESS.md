@@ -4469,8 +4469,8 @@ local Docker and Live in that order. **No database change, no migration, no volu
 | Gateway settlements | 0 (no real Sandbox charge); not claimed |
 | Docker backend | image `58dc6b595fef`, healthy; `RELAX_RATE_LIMIT` restored to `false` |
 | Docker frontend | `1f13559287b7`, healthy, HTTP 200 |
-| Git | closure commit recorded below; pushed to `fix/courtzon-live-phase1` |
-| Live | verified after push (see commit/deploy note) |
+| Git | `b13197fe` pushed to `fix/courtzon-live-phase1` (verified with `git ls-remote`) |
+| Live | deployed `b13197fe` (`buildTime 2026-11-05T04:38:08Z`); `/health` ok (DB 0 ms, Redis 0 ms); frontend HTTP 200 |
 
 **Not claimed:** real hosted-card success, gateway settlement, or full acceptance of Phase 5/P5-05. The public-key rejection is a hard blocker for hosted payments and must be resolved by the owner before acceptance.
 

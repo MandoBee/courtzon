@@ -4,6 +4,7 @@
 **الفرع:** `fix/courtzon-live-phase1`
 **مرجع الكود وقت بدء المحاكاة:** `72b601ac7589fff6c80c07335a182be612f138ec` (مع تعديلات الإصلاح غير المُلتزمة بعد)
 **مرجع الكود بعد الإصلاحات:** `102ff15f40b83aa11490f72464accbfabb52d7b7` (مدفوع إلى `origin/fix/courtzon-live-phase1`)
+**مرجع كود إغلاق UAT:** `b13197fe3cda4cead0dc5b4668244d1c7167191f` (مدفوع ومنشور على Live)
 **البيئة:** Docker المحلي — backend `:3000`، frontend `:5173`، MySQL `courtzon_v3` على `127.0.0.1:3307`، Redis `:6379`
 **قاعدة البيانات:** `courtzon_v3` (التطوير المحلي فقط — لم تُلمس قاعدة الإنتاج)
 **سجل الأدلة الآلي:** `test-results/simulation/evidence.json` و`results.json` و`run-all-console.txt`
@@ -351,8 +352,8 @@ Playwright فعلي: رحلة لاعب سطح المكتب، شريط التنق
 | Docker backend بعد الإصلاح | image `58dc6b595fef`، container `1aaaa8ecd1b2`، healthy |
 | Docker frontend | `1f13559287b7` (بدون تغيير)، healthy |
 | RELAX_RATE_LIMIT | أُعيد إلى `false` بعد الاختبارات |
-| Git المختبر | يُحدَّد في سجل الالتزام أدناه |
-| Live | يُعاد التحقق بعد الدفع؛ الإصدار السابق `56d71427` |
+| Git المختبر | `b13197fe` — مدفوع إلى `origin/fix/courtzon-live-phase1` (تم التحقق بـ `git ls-remote`) |
+| Live | منشور `b13197fe` (`buildTime 2026-11-05T04:38:08Z`)؛ `https://api.courtzon.cloud/health` = ok (DB 0ms/Redis 0ms)، والواجهة `https://www.courtzon.cloud` HTTP 200 |
 
 ### 19.6 ما تبقى لقبول المالك
 
