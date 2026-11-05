@@ -307,7 +307,10 @@ Playwright فعلي: رحلة لاعب سطح المكتب، شريط التنق
 | الخطوة | النتيجة |
 |---|---|
 | إنشاء Intention عبر `POST /v1/intention/` بمفتاح `egy_sk_test_…` | **PASS** — `paymentId 9644526/9644527`, `clientSecret` صادر |
-| فتح Unified Checkout بالمفتاح العام `egy_pk_test_…` | **فشل** — SPA ينتقل إلى `payment-status`: «Payment declined» |
+| فتح صفحة Unified Checkout | **HTTP 200** للصفحة، لكنها تنتقل إلى `payment-status`: «Payment declined» |
+| اختبار فشل الدفع (webhook موقّع `success:false`) | **PASS** — `payment_status=failed`، 0 قيود محاسبية (محاكاة موقّعة وليست صفحة بطاقة) |
+| استرداد بطاقة حقيقي | **غير قابل للتنفيذ** — لا توجد معاملة بوابة حقيقية |
+| استرداد نقدي | **PASS** — كامل خارج النافذة، و80% داخل النافذة (C-04/C-06) |
 | نداء عنصر الدفع `GET /v1/intention/element/{pk}/{cs}/` | **HTTP 403** — `{"detail":"Unable to authenticate this public key"}` |
 | محاولة Pixel/CDN | لم تُكمل التهيئة في بيئة الاختبار؛ نفس المفتاح العام مرفوض |
 | دفع بطاقة حقيقي | **لم يُنفَّذ** — لا نموذج بطاقة يمكن عرضه |
@@ -342,6 +345,8 @@ Playwright فعلي: رحلة لاعب سطح المكتب، شريط التنق
 | Playwright كامل متوازٍ مع `RELAX_RATE_LIMIT=true` | 69 PASS / 21 FAIL / 5 SKIP؛ معظم الإخفاقات 429 على `/auth/login` (الحد لكل مسار 10/دقيقة لا يتأثر بـ RELAX) وتعارض الجلسات |
 | Playwright كامل بدون relax | 54 PASS / 41 FAIL؛ السبب الأساسي 429 |
 | سيناريوهات المحاكاة المسجلة | **82/82 PASS** بعد الإغلاق |
+| فشل الدفع (webhook موقّع) | PASS — `payment_status=failed`، لا قيود |
+| الدفع المستضاف الحقيقي | BLOCKED — 403 `Unable to authenticate this public key` |
 
 > إخفاقات Playwright الكاملة ليست عيوبًا في العيبين المُغلقين؛ هي قيود عزل/حدود معدل في حزمة E2E القديمة. الرحلات الحرجة المستهدفة (smoke/admin/simulation) تمر تسلسليًا.
 

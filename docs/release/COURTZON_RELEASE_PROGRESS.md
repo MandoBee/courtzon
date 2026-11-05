@@ -4464,6 +4464,7 @@ local Docker and Live in that order. **No database change, no migration, no volu
 | Playwright full parallel (RELAX on) | 69 PASS / 21 FAIL / 5 SKIP — dominated by the per-route `/auth/login` 10/min limit, which `RELAX_RATE_LIMIT` does not override; not a code regression |
 | Paymob intention | **PASS** — `paymentId 9644526/9644527`, test client secrets issued |
 | Paymob hosted card | **BLOCKED** — element endpoint returns 403 `{"detail":"Unable to authenticate this public key"}`; no card form, no charge, no hosted-card success claimed |
+| Paymob failed-payment path | PASS (simulated signed webhook `success:false`): `payment_status=failed`, 0 ledger rows |
 | Paymob public-key consistency | **CRITICAL OPEN CONFIG** — secret key creates intentions but `PAYMOB_PUBLIC_KEY` is rejected by Paymob; owner must align/regenerate the Test public key |
 | Accounting reconciliation | 0 unbalanced events; org A ledger 76,176.00 = 76,176.00; trial balance 76,176.00 = 76,176.00; income statement net 35,256.00; marketplace last-10 77 entries balanced |
 | Gateway settlements | 0 (no real Sandbox charge); not claimed |
