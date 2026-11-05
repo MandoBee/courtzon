@@ -142,6 +142,35 @@ it('V2 cancel of a paid COD booking posts booking:refunded → booking_cod_rever
     expect(txCount).toBe(1);
   }, 30000);
 
+  it('cancelling an UNPAID COD booking records NO refund and creates no refund transaction', async () => {
+    const bookingId = await insertBooking('pending', 11);
+    const { BookingService } = await import('../application/booking.service.js');
+    const svc = new BookingService();
+
+    const emitSpy = vi.spyOn(eventBusV2, 'emit');
+    await svc.cancelBooking(bookingId, userId, 'unpaid cancellation');
+
+    const refundedCalls = emitSpy.mock.calls.filter((c: any) => c[0] === 'booking:refunded');
+    expect(refundedCalls).toHaveLength(1);
+    // The receivable reversal is emitted for accounting, but it is NOT a refund.
+    expect((refundedCalls[0][1] as any).refundAmount).toBe(1000);
+    emitSpy.mockRestore();
+
+    const [rows] = await pool.execute<RowData>(
+      `SELECT booking_status, payment_status, refunded_amount FROM bookings WHERE id = ?`,
+      [bookingId],
+    );
+    expect((rows as any[])[0].booking_status).toBe('cancelled');
+    expect((rows as any[])[0].payment_status).toBe('pending');
+    expect(Number((rows as any[])[0].refunded_amount)).toBe(0);
+
+    const [tx] = await pool.execute<RowData>(
+      `SELECT COUNT(*) AS cnt FROM transactions WHERE source_type='booking' AND source_id=? AND type='refund'`,
+      [bookingId],
+    );
+    expect(Number((tx as any[])[0].cnt)).toBe(0);
+  }, 30000);
+
   it('source: the cancelled branch no longer early-returns after cancelBookingV2 (financial lifecycle preserved)', () => {
     const src = readFileSync(new URL('../application/booking.service.ts', import.meta.url), 'utf-8');
     const start = src.indexOf('async updateBookingStatus');
@@ -151,8 +180,8 @@ it('V2 cancel of a paid COD booking posts booking:refunded → booking_cod_rever
     // No early return immediately after the V2 transition.
     const afterV2 = method.slice(v2Idx, v2Idx + 500);
     expect(afterV2.includes('return;')).toBe(false);
-    // The canonical refund path is reachable after the V2 transition.
-    expect(afterV2).toContain('_refundCODWallet');
+    // The canonical COD settlement path is reachable after the V2 transition.
+    expect(afterV2).toContain('_settleCODCancellation');
   });
 
   it('source: the cancelled branch no longer early-returns after cancelBookingV2 (financial lifecycle preserved)', () => {
@@ -164,7 +193,7 @@ it('V2 cancel of a paid COD booking posts booking:refunded → booking_cod_rever
     // No early return immediately after the V2 transition.
     const afterV2 = method.slice(v2Idx, v2Idx + 500);
     expect(afterV2.includes('return;')).toBe(false);
-    // The canonical refund path is reachable after the V2 transition.
-    expect(afterV2).toContain('_refundCODWallet');
+    // The canonical COD settlement path is reachable after the V2 transition.
+    expect(afterV2).toContain('_settleCODCancellation');
   });
 });

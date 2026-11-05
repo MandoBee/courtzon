@@ -9,7 +9,7 @@ import { ratingService } from './rating/rating.service.js';
 import { validateAndComputeFinal, RulesValidationError, outcomeCountsForRating } from './rules/rules-engine.js';
 import type { MatchResultParticipant, MatchParticipantSlot, ParticipantSlot, MatchResultRecord, RawMatchResultPayload } from '../domain/match-result.types.js';
 import type { MatchFormatSnapshot } from '../../match/domain/match.types.js';
-import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
 import { SUBMISSION_WINDOW_HOURS, AUTO_APPROVAL_WINDOW_HOURS, ELIGIBLE_MATCH_STATUSES } from './result-window.js';
 
 export { SUBMISSION_WINDOW_HOURS, AUTO_APPROVAL_WINDOW_HOURS, ELIGIBLE_MATCH_STATUSES };
@@ -121,7 +121,10 @@ export class MatchResultService {
 
     const existing = await matchResultRepository.findByMatchId(matchIdActual);
     if (existing && existing.submissionStatus !== 'withdrawn') {
-      throw new RulesValidationError(`A result already exists for this match (${existing.submissionStatus})`);
+      // Resubmission is a conflict, not an internal error. A 409 lets the client
+      // treat it idempotently (refresh/show the existing result) instead of
+      // surfacing HTTP 500 from an unmapped RulesValidationError.
+      throw new ConflictError(`A result already exists for this match (${existing.submissionStatus})`);
     }
 
     const submissionStatus = 'pending_confirmation';

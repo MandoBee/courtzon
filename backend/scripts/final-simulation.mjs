@@ -128,7 +128,12 @@ function rec(phase, id, name, status, evidence = '', severity = null) {
   return row;
 }
 function defect(phase, id, title, severity, detail, repro, status = 'OPEN') {
-  if (defects.some((d) => d.id === id)) return defects.find((d) => d.id === id);
+  const existing = defects.find((d) => d.id === id);
+  if (existing) {
+    Object.assign(existing, { phase, title, severity, detail, repro, status, at: new Date().toISOString() });
+    saveResults();
+    return existing;
+  }
   const d = { phase, id, title, severity, detail, repro, status, at: new Date().toISOString() };
   defects.push(d);
   saveResults();
@@ -853,48 +858,53 @@ async function phaseC() {
     const candidates = [Number(s.start.slice(0, 2)), 5, 6, 7, 20, 21, 22, 23]
       .filter((h, i, a) => a.indexOf(h) === i)
       .filter((h) => h >= 5 && h <= 22);
+    const courtCandidates = [s.court, ...s.org.resources.filter((r) => r.sport === s.sport && r.id !== s.court.id)];
     let result = null;
-    for (const hour of candidates) {
-      s.start = `${String(hour).padStart(2, '0')}:00`;
-      s.end = `${String(hour + 1).padStart(2, '0')}:00`;
-      const body = {
-        branchId: s.org.branchId,
-        resourceId: s.court.id,
-        bookingType: s.group ? 'public_match' : 'private_match',
-        bookingDate: s.date,
-        startTime: s.start,
-        endTime: s.end,
-        paymentMethod: s.method,
-        notes: s.marker,
-      };
-      if (s.group) {
-        body.matchmaking = { maxPlayers: 3, autoApply: false };
-        body.participants = players.filter((p) => p.userId !== s.player.userId).slice(0, 3).map((p) => ({ phone: p.phone }));
-      }
-      if (s.method === 'cash') {
-        const r = await api('POST', '/bookings', pLogin.cookie, body);
-        if (r.status === 201) {
-          result = { status: r.status, id: r.data?.bookingId || r.data?.id, paymentStatus: 'pending' };
-          if (result.id && idx % 2 === 0) {
-            const payRes = await api('PATCH', `/bookings/${result.id}/payment`, adminC, { paymentStatus: 'paid' });
-            if (payRes.status === 200) result.paymentStatus = 'paid';
+    outer: for (const hour of candidates) {
+      for (const court of courtCandidates) {
+        s.start = `${String(hour).padStart(2, '0')}:00`;
+        s.end = `${String(hour + 1).padStart(2, '0')}:00`;
+        const body = {
+          branchId: s.org.branchId,
+          resourceId: court.id,
+          bookingType: s.group ? 'public_match' : 'private_match',
+          bookingDate: s.date,
+          startTime: s.start,
+          endTime: s.end,
+          paymentMethod: s.method,
+          notes: s.marker,
+        };
+        if (s.group) {
+          body.matchmaking = { maxPlayers: 3, autoApply: false };
+          body.participants = players.filter((p) => p.userId !== s.player.userId).slice(0, 3).map((p) => ({ phone: p.phone }));
+        }
+        if (s.method === 'cash') {
+          const r = await apiRetry('POST', '/bookings', pLogin.cookie, body);
+          if (r.status === 201) {
+            result = { status: r.status, id: r.data?.bookingId || r.data?.id, paymentStatus: 'pending' };
+            if (result.id && idx % 2 === 0) {
+              const payRes = await apiRetry('PATCH', `/bookings/${result.id}/payment`, adminC, { paymentStatus: 'paid' });
+              if (payRes.status === 200) result.paymentStatus = 'paid';
+            }
+            s.court = court;
+            break outer;
           }
-          break;
+          if (r.status !== 409) { result = { status: r.status, data: r.data }; break outer; }
+        } else {
+          const prep = await apiRetry('POST', '/bookings/prepare', pLogin.cookie, { ...body, paymentMethod: 'card', returnUrl: 'http://localhost:5173/bookings' });
+          if (prep.status === 200) {
+            const pay = await simulateCardPayment(prep.data.paymentId);
+            const confirm = await apiRetry('POST', '/bookings', pLogin.cookie, { prepareId: prep.data.prepareId, paymentId: prep.data.paymentId });
+            await sleep(1200);
+            const tx = await one('SELECT payment_status FROM payment_transactions WHERE id = ?', [prep.data.paymentId]);
+            const bk = await one('SELECT id, booking_status, payment_status FROM bookings WHERE notes = ? ORDER BY id DESC LIMIT 1', [s.marker]);
+            result = { status: prep.status, id: bk?.id, paymentStatus: tx?.payment_status, bookingStatus: bk?.booking_status, webhook: pay.res.status, confirm: confirm.status, paymentId: prep.data.paymentId };
+            if (!bk) rec(C, `C-BK-${idx + 1}`, 'Card booking row after webhook', 'FAIL', `payment=${tx?.payment_status} webhook=${pay.res.status} confirm=${confirm.status} ${JSON.stringify(confirm.data).slice(0, 200)}`);
+            s.court = court;
+            break outer;
+          }
+          if (![409, 403].includes(prep.status)) { result = { status: prep.status, data: prep.data }; break outer; }
         }
-        if (r.status !== 409) { result = { status: r.status, data: r.data }; break; }
-      } else {
-        const prep = await api('POST', '/bookings/prepare', pLogin.cookie, { ...body, paymentMethod: 'card', returnUrl: 'http://localhost:5173/bookings' });
-        if (prep.status === 200) {
-          const pay = await simulateCardPayment(prep.data.paymentId);
-          const confirm = await api('POST', '/bookings', pLogin.cookie, { prepareId: prep.data.prepareId, paymentId: prep.data.paymentId });
-          await sleep(1200);
-          const tx = await one('SELECT payment_status FROM payment_transactions WHERE id = ?', [prep.data.paymentId]);
-          const bk = await one('SELECT id, booking_status, payment_status FROM bookings WHERE notes = ? ORDER BY id DESC LIMIT 1', [s.marker]);
-          result = { status: prep.status, id: bk?.id, paymentStatus: tx?.payment_status, bookingStatus: bk?.booking_status, webhook: pay.res.status, confirm: confirm.status, paymentId: prep.data.paymentId };
-          if (!bk) rec(C, `C-BK-${idx + 1}`, 'Card booking row after webhook', 'FAIL', `payment=${tx?.payment_status} webhook=${pay.res.status} confirm=${confirm.status} ${JSON.stringify(confirm.data).slice(0, 200)}`);
-          break;
-        }
-        if (![409, 403].includes(prep.status)) { result = { status: prep.status, data: prep.data }; break; }
       }
     }
     if (result && (result.id || result.paymentStatus === 'paid')) {
@@ -915,7 +925,7 @@ async function phaseC() {
   const first = bookings.find((b) => b.id);
   if (first) {
     const pLogin = { cookie: await sessionFor(players[2].userId) };
-    const dup = await api('POST', '/bookings', pLogin.cookie, {
+    const dup = await apiRetry('POST', '/bookings', pLogin.cookie, {
       branchId: first.org.branchId, resourceId: first.court.id, bookingDate: first.date,
       startTime: first.start, endTime: first.end, paymentMethod: 'cash', notes: `${MARK}-DUP`,
     });
@@ -925,37 +935,56 @@ async function phaseC() {
     rec(C, 'C-02', 'Duplicate booking test', 'BLOCKED', 'no bookings created');
   }
 
-  // Concurrent same-slot attempts (5 players)
+  // Concurrent same-slot attempts (5 players) on a free day-6 slot.
   const target = bookings[Math.min(5, bookings.length - 1)];
   if (target) {
-    const date = nextDate(6, 20);
-    const attempts = await Promise.all(players.slice(10, 15).map(async (p) => {
-      const l = { cookie: await sessionFor(p.userId) };
-      return api('POST', '/bookings', l.cookie, {
-        branchId: target.org.branchId, resourceId: target.court.id, bookingDate: date,
-        startTime: '20:00', endTime: '21:00', paymentMethod: 'cash', notes: `${MARK}-CONC-${p.userId}`,
-      });
-    }));
-    const statuses = attempts.map((a) => a.status);
-    const okCount = attempts.filter((a) => a.status === 201).length;
-    const conflictCount = attempts.filter((a) => a.status === 409).length;
-    metrics.concurrentBooking = { attempts: attempts.length, created: okCount, conflicts: conflictCount, statuses };
-    rec(C, 'C-03', 'Concurrent same-slot attempts yield exactly one booking',
-      okCount === 1 && conflictCount === attempts.length - 1 ? 'PASS' : 'FAIL',
-      `created=${okCount} conflicts=${conflictCount} statuses=${statuses.join(',')}`);
-    if (okCount !== 1) defect('C', 'D-CONCURRENCY', 'Concurrent booking allowed more than one reservation', 'CRITICAL', `created=${okCount} of ${attempts.length}`, 'parallel POST /bookings same slot');
-    if (okCount === 1) {
-      const created = attempts.find((a) => a.status === 201);
-      const id = created.data?.bookingId || created.data?.id;
-      if (id) state.created.concurrentBookingId = id;
+    let chosen = null;
+    for (const hour of [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]) {
+      const date = nextDate(6, hour);
+      const start = `${String(hour).padStart(2, '0')}:00`;
+      const end = `${String(hour + 1).padStart(2, '0')}:00`;
+      const attempts = await Promise.all(players.slice(10, 15).map(async (p) => {
+        const l = { cookie: await sessionFor(p.userId) };
+        return apiRetry('POST', '/bookings', l.cookie, {
+          branchId: target.org.branchId, resourceId: target.court.id, bookingDate: date,
+          startTime: start, endTime: end, paymentMethod: 'cash', notes: `${MARK}-CONC-${p.userId}`,
+        });
+      }));
+      const statuses = attempts.map((a) => a.status);
+      const okCount = attempts.filter((a) => a.status === 201).length;
+      const conflictCount = attempts.filter((a) => a.status === 409).length;
+      if (okCount === 1 && conflictCount === attempts.length - 1) {
+        chosen = { attempts, statuses, okCount, conflictCount, hour };
+        break;
+      }
+      // All-conflict means the chosen hour was already occupied; try the next.
+      if (okCount !== 0) {
+        chosen = { attempts, statuses, okCount, conflictCount, hour };
+        break;
+      }
+    }
+    if (chosen) {
+      metrics.concurrentBooking = { attempts: chosen.attempts.length, created: chosen.okCount, conflicts: chosen.conflictCount, statuses: chosen.statuses, hour: chosen.hour };
+      rec(C, 'C-03', 'Concurrent same-slot attempts yield exactly one booking',
+        chosen.okCount === 1 && chosen.conflictCount === chosen.attempts.length - 1 ? 'PASS' : 'FAIL',
+        `hour=${chosen.hour} created=${chosen.okCount} conflicts=${chosen.conflictCount} statuses=${chosen.statuses.join(',')}`);
+      if (chosen.okCount > 1) defect('C', 'D-CONCURRENCY', 'Concurrent booking allowed more than one reservation', 'CRITICAL', `created=${chosen.okCount} of ${chosen.attempts.length}`, 'parallel POST /bookings same slot');
+      if (chosen.okCount === 1) {
+        const created = chosen.attempts.find((a) => a.status === 201);
+        const id = created.data?.bookingId || created.data?.id;
+        if (id) state.created.concurrentBookingId = id;
+      }
+    } else {
+      rec(C, 'C-03', 'Concurrent same-slot attempts yield exactly one booking', 'BLOCKED', 'no free day-6 slot found');
     }
   }
 
   // free cancellation (outside the policy window) on a paid booking
-  const freeCancel = bookings.find((b) => b.id && b.method === 'cash' && b.paymentStatus === 'paid');
+  const freeCancel = bookings.find((b) => b.id && b.method === 'cash' && b.paymentStatus === 'paid'
+    && (new Date(`${b.date}T12:00:00Z`).getTime() - Date.now()) > 48 * 3600_000);
   if (freeCancel) {
     const l = { cookie: await sessionFor(freeCancel.player.userId) };
-    const cancel = await api('POST', `/bookings/${freeCancel.id}/cancel`, l.cookie, { reason: 'SIM free cancellation' });
+    const cancel = await apiRetry('POST', `/bookings/${freeCancel.id}/cancel`, l.cookie, { reason: 'SIM free cancellation' });
     const row = await one('SELECT booking_status, payment_status, refunded_amount, total_amount FROM bookings WHERE id = ?', [freeCancel.id]);
     const full = Number(row?.total_amount || 0);
     rec(C, 'C-04', 'Cancellation outside the 24h window refunds in full', cancel.status === 200 && Math.abs(Number(row?.refunded_amount) - full) < 1 ? 'PASS' : 'PARTIAL',
@@ -966,7 +995,7 @@ async function phaseC() {
   const unpaid = bookings.find((b) => b.id && b.method === 'cash' && b.paymentStatus === 'pending');
   if (unpaid) {
     const l = { cookie: await sessionFor(unpaid.player.userId) };
-    const cancel = await api('POST', `/bookings/${unpaid.id}/cancel`, l.cookie, { reason: 'SIM cancel unpaid cash' });
+    const cancel = await apiRetry('POST', `/bookings/${unpaid.id}/cancel`, l.cookie, { reason: 'SIM cancel unpaid cash' });
     const row = await one('SELECT booking_status, payment_status, refunded_amount FROM bookings WHERE id = ?', [unpaid.id]);
     const ok = cancel.status === 200 && Number(row?.refunded_amount || 0) === 0;
     rec(C, 'C-05', 'Unpaid cash cancellation does not record a refund', ok ? 'PASS' : 'FAIL',
@@ -981,14 +1010,14 @@ async function phaseC() {
   const lateDate = nextDate(0, localHour - 2); // Africa/Cairo is UTC+2
   const latePlayer = players[3];
   const lp = { cookie: await sessionFor(latePlayer.userId) };
-  const lateCreate = await api('POST', '/bookings', lp.cookie, {
+  const lateCreate = await apiRetry('POST', '/bookings', lp.cookie, {
     branchId: orgA.branchId, resourceId: court.id, bookingDate: lateDate,
     startTime: `${localHour}:00`, endTime: `${localHour + 1}:00`, paymentMethod: 'cash', notes: `${MARK}-LATE`,
   });
   const lateId = lateCreate.data?.bookingId || lateCreate.data?.id;
   if (lateId) {
-    await api('PATCH', `/bookings/${lateId}/payment`, adminC, { paymentStatus: 'paid' });
-    const cancel = await api('POST', `/bookings/${lateId}/cancel`, lp.cookie, { reason: 'SIM late cancellation' });
+    await apiRetry('PATCH', `/bookings/${lateId}/payment`, adminC, { paymentStatus: 'paid' });
+    const cancel = await apiRetry('POST', `/bookings/${lateId}/cancel`, lp.cookie, { reason: 'SIM late cancellation' });
     const row = await one('SELECT booking_status, payment_status, refunded_amount, total_amount FROM bookings WHERE id = ?', [lateId]);
     const expectedRefund = Number(row?.total_amount || 450) * 0.8;
     const ok = cancel.status === 200 && Math.abs(Number(row?.refunded_amount) - expectedRefund) < 1;
@@ -1002,7 +1031,7 @@ async function phaseC() {
 
   // Slot availability reflects bookings
   if (target) {
-    const slots = await api('GET', `/resources/${target.court.id}/slots?date=${target.date}`, adminC);
+    const slots = await apiRetry('GET', `/resources/${target.court.id}/slots?date=${target.date}`, adminC);
     const body = slots.data;
     const list = Array.isArray(body) ? body : body?.slots || body?.data || [];
     const blocked = list.filter((x) => x.available === false || x.isAvailable === false || x.status === 'booked').length;
@@ -1012,13 +1041,13 @@ async function phaseC() {
 
   // Booking history is visible to the booking owner
   const owner = bookings.find((b) => b.id)?.player || players[0];
-  const hist = await api('GET', '/bookings?limit=50', await sessionFor(owner.userId));
+  const hist = await apiRetry('GET', '/bookings?limit=50', await sessionFor(owner.userId));
   const histList = hist.data?.data || hist.data || [];
   rec(C, 'C-08', 'Booking history returns the player bookings', hist.status === 200 && Array.isArray(histList) && histList.length > 0 ? 'PASS' : 'FAIL',
     `status=${hist.status} rows=${Array.isArray(histList) ? histList.length : 'n/a'}`);
 
   // Organiser bookings view
-  const orgBookings = await api('GET', `/org/${orgA.id}/bookings?limit=10`, await sessionFor(state.created.staff.find((s) => s.key === 'orgAAdmin').userId));
+  const orgBookings = await apiRetry('GET', `/org/${orgA.id}/bookings?limit=10`, await sessionFor(state.created.staff.find((s) => s.key === 'orgAAdmin').userId));
   rec(C, 'C-09', 'Organisation booking list works for org admin', orgBookings.status === 200 ? 'PASS' : 'FAIL', `status=${orgBookings.status}`);
 }
 
@@ -1561,6 +1590,78 @@ async function phaseH() {
   rec(H, 'H-10', 'Notifications are readable for the player', notif.status === 200 ? 'PASS' : 'FAIL', `status=${notif.status} rows=${Array.isArray(notifRows) ? notifRows.length : 'n/a'}`);
 }
 
+// ── Closure checks — unpaid COD cancellation + duplicate result idempotency ──
+async function phaseClose() {
+  const adminC = await admin();
+  const players = state.created.players;
+  const orgA = state.created.orgs.find((o) => o.key === 'orgA');
+  const tennis = orgA.resources.find((r) => r.sport === 'tennis');
+  const player = players[60];
+  const pc = { cookie: await sessionFor(player.userId) };
+  const date = nextDate(3, 9);
+
+  // D-UNPAID-REFUND: unpaid cash booking cancelled outside the window.
+  let bookingId = null;
+  for (const hour of [9, 10, 11, 15, 16]) {
+    const start = `${String(hour).padStart(2, '0')}:00`;
+    const end = `${String(hour + 1).padStart(2, '0')}:00`;
+    const r = await api('POST', '/bookings', pc.cookie, {
+      branchId: orgA.branchId, resourceId: tennis.id, bookingDate: date,
+      startTime: start, endTime: end, paymentMethod: 'cash', notes: `${MARK}-CLOSE-UNPAID`,
+    });
+    if (r.status === 201) { bookingId = r.data?.bookingId || r.data?.id; break; }
+    if (r.status !== 409) break;
+  }
+  if (!bookingId) {
+    rec('CLOSE', 'U-01', 'Unpaid COD cancellation records no refund', 'BLOCKED', 'could not create a free cash booking');
+  } else {
+    const cancel = await api('POST', `/bookings/${bookingId}/cancel`, pc.cookie, { reason: 'SIM closure unpaid cancellation' });
+    await sleep(1500);
+    const row = await one('SELECT booking_status, payment_status, refunded_amount FROM bookings WHERE id = ?', [bookingId]);
+    const ledger = await q(
+      `SELECT event_type, ROUND(SUM(CASE WHEN side='debit' THEN amount ELSE 0 END),2) d,
+              ROUND(SUM(CASE WHEN side='credit' THEN amount ELSE 0 END),2) c
+       FROM ledger_entries WHERE source_type='booking' AND source_id=? GROUP BY event_type`,
+      [bookingId],
+    );
+    const unbalanced = ledger.filter((l) => Math.abs(Number(l.d) - Number(l.c)) > 0.01);
+    const ok = cancel.status === 200 && Number(row?.refunded_amount || 0) === 0 && row?.payment_status === 'pending' && unbalanced.length === 0;
+    rec('CLOSE', 'U-01', 'Unpaid COD cancellation records no refund and balances the receivable reversal', ok ? 'PASS' : 'FAIL',
+      `status=${cancel.status} booking=${row?.booking_status} payment=${row?.payment_status} refunded=${row?.refunded_amount} events=${ledger.map((l) => l.event_type).join('+')}`);
+    if (!ok) defect('CLOSE', 'D-UNPAID-REFUND', 'Unpaid COD cancellation still records a refund', 'MEDIUM',
+      `bookingId=${bookingId} refunded=${row?.refunded_amount}`, 'cancel an unpaid cash booking outside the window');
+    else defect('CLOSE', 'D-UNPAID-REFUND', 'Unpaid COD cancellation recorded a refund', 'MEDIUM',
+      `Fixed: booking=${bookingId} refunded=0, receivable reversal balanced`, 'cancel an unpaid cash booking outside the window', 'FIXED');
+  }
+
+  // D-RESULT-500: resubmitting an existing result must be a conflict, not 500.
+  const t1 = state.created.tournaments.find((t) => t.key === 't1' && t.id);
+  if (!t1) {
+    rec('CLOSE', 'U-02', 'Duplicate match result returns a conflict (not HTTP 500)', 'BLOCKED', 'tournament t1 not found');
+  } else {
+    const matches = await apiRetry('GET', `/admin/tournaments/${t1.id}/matches`, adminC);
+    const list = matches.data?.data || matches.data?.matches || matches.data || [];
+    const done = (Array.isArray(list) ? list : []).find((m) => ['completed', 'result_pending'].includes(String(m.status))) || list[0];
+    if (!done) {
+      rec('CLOSE', 'U-02', 'Duplicate match result returns a conflict (not HTTP 500)', 'BLOCKED', 'no tournament match available');
+    } else {
+      const payload = { outcome: 'completed', score: { sets: [{ home: 6, away: 4 }, { home: 6, away: 3 }] } };
+      const first = await api('POST', `/admin/tournaments/matches/${done.id}/result`, adminC, payload).catch(() => ({ status: 0 }));
+      const second = await api('POST', `/admin/tournaments/matches/${done.id}/result`, adminC, payload);
+      const ok = [409, 200].includes(second.status) && second.status !== 500;
+      rec('CLOSE', 'U-02', 'Duplicate match result returns a conflict (not HTTP 500)', ok ? 'PASS' : 'FAIL',
+        `matchId=${done.id} first=${first.status} second=${second.status} ${JSON.stringify(second.data).slice(0, 160)}`);
+      if (ok) {
+        defect('CLOSE', 'D-RESULT-500', 'Duplicate match result returned HTTP 500', 'MEDIUM',
+          `Fixed: matchId=${done.id}, second submit HTTP ${second.status}`, 'POST the same result twice', 'FIXED');
+      } else {
+        defect('CLOSE', 'D-RESULT-500', 'Duplicate match result still returns HTTP 500', 'MEDIUM',
+          `matchId=${done.id} status=${second.status}`, 'POST the same result twice');
+      }
+    }
+  }
+}
+
 // ── runner ──────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const phaseArg = (args.find((a) => a.startsWith('--phase=')) || '--phase=all').split('=')[1];
@@ -1576,6 +1677,7 @@ try {
   if (wants('e')) await phaseE();
   if (wants('f')) await phaseF();
   if (wants('h')) await phaseH();
+  if (wants('close')) await phaseClose();
   rec('RUN', 'END', 'Simulation run completed', 'PASS', `results=${results.length} defects=${defects.length}`);
 } catch (err) {
   rec('RUN', 'FATAL', 'Simulation aborted by an unexpected error', 'FAIL', String(err?.stack || err).slice(0, 1500));

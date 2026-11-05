@@ -4447,3 +4447,30 @@ local Docker and Live in that order. **No database change, no migration, no volu
 | Live | auto-deployed `102ff15f` (`buildTime 2026-11-05T03:43:28Z`); `https://api.courtzon.cloud/health` ok (DB 3 ms, Redis 3 ms); `https://www.courtzon.cloud` HTTP 200. Docs-only follow-up commits do not change application code. |
 
 **Overall completion is not changed by this section** (no checklist item is claimed DONE beyond what is evidenced above).
+
+## 28. Final UAT closure (2026-11-05, second pass)
+
+**Scope:** close D-UNPAID-REFUND and D-RESULT-500, attempt the genuine Paymob hosted-card flow, reconcile the simulation ledger, and re-synchronise Docker/Git/Live. No new environment, database, migration, or destructive operation.
+
+| Item | Result |
+|---|---|
+| D-UNPAID-REFUND | **FIXED** — `_settleCODCancellation` distinguishes receivable reversal from a cash refund; unpaid COD cancellation keeps `refunded_amount=0` and posts balanced reversal events. Evidence CLOSE/U-01; new integration test passes. |
+| D-RESULT-500 | **FIXED** — duplicate match result now throws `ConflictError` (HTTP 409) instead of unmapped `RulesValidationError` (500). Evidence CLOSE/U-02; unit suite 47/47. |
+| Simulation evidence | **82/82 PASS** across A/C/CLOSE/E/F/H (no open defects in the simulation ledger) |
+| Backend unit | **4510/4510 PASS** (358 files) |
+| Frontend unit | **1481/1481 PASS** (152 files) |
+| Playwright sequential (smoke+admin+simulation) | **18/18 PASS** |
+| Playwright critical sequential | 15/20 — 5 legacy failures (login-rate/selector debt), not in the two closed defects |
+| Playwright full parallel (RELAX on) | 69 PASS / 21 FAIL / 5 SKIP — dominated by the per-route `/auth/login` 10/min limit, which `RELAX_RATE_LIMIT` does not override; not a code regression |
+| Paymob intention | **PASS** — `paymentId 9644526/9644527`, test client secrets issued |
+| Paymob hosted card | **BLOCKED** — element endpoint returns 403 `{"detail":"Unable to authenticate this public key"}`; no card form, no charge, no hosted-card success claimed |
+| Paymob public-key consistency | **CRITICAL OPEN CONFIG** — secret key creates intentions but `PAYMOB_PUBLIC_KEY` is rejected by Paymob; owner must align/regenerate the Test public key |
+| Accounting reconciliation | 0 unbalanced events; org A ledger 76,176.00 = 76,176.00; trial balance 76,176.00 = 76,176.00; income statement net 35,256.00; marketplace last-10 77 entries balanced |
+| Gateway settlements | 0 (no real Sandbox charge); not claimed |
+| Docker backend | image `58dc6b595fef`, healthy; `RELAX_RATE_LIMIT` restored to `false` |
+| Docker frontend | `1f13559287b7`, healthy, HTTP 200 |
+| Git | closure commit recorded below; pushed to `fix/courtzon-live-phase1` |
+| Live | verified after push (see commit/deploy note) |
+
+**Not claimed:** real hosted-card success, gateway settlement, or full acceptance of Phase 5/P5-05. The public-key rejection is a hard blocker for hosted payments and must be resolved by the owner before acceptance.
+

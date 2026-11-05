@@ -1036,19 +1036,12 @@ export class BookingService {
       await conn.beginTransaction();
 
       if (isCOD) {
-        const totalAmount = Number(booking.total_amount);
-        const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
         await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: userId }, String(id));
         await conn.commit();
 
-        // Wallet refund and journal entries happen outside the transaction (non-fatal)
-        if (paymentStatus === 'refunded') {
-          await this._refundCODWallet(booking, totalAmount);
-        } else if (paymentStatus === 'partially_refunded') {
-          await this._refundCODWallet(booking, refundAmount);
-        } else {
-          await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
-        }
+        // Canonical COD settlement: paid → refund/penalty; unpaid → receivable
+        // reversal only (refunded_amount stays 0, no cash movement).
+        await this._settleCODCancellation(booking, refundAmount);
       } else {
         await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: userId }, String(id));
         await conn.commit();
@@ -2515,30 +2508,20 @@ export class BookingService {
 
       const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
       const { feeAmount, refundAmount } = await this._calculateCancellationFee(booking);
-      const totalAmount = Number(booking.total_amount);
       const reason = CancellationReason.ADMIN_CANCELLED;
       const resolvedUserId = actorId ?? booking.user_id;
 
       if (isCOD) {
-        const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
-
         // The V2 cancel path must run the SAME canonical financial lifecycle as
-        // legacy: the cancel transition first, then the COD refund/penalty
-        // accounting (BUG 5). The accounting is idempotent (booking:refunded
-        // posting identity) so running it here cannot double-post.
+        // legacy: the cancel transition first, then the COD REFUND/PENALTY or
+        // (when no cash was collected) the receivable reversal.
         if (isFeatureEnabled('BOOKING_V2_CANCEL')) {
           await this.cancelBookingV2(id);
         } else {
           await executeBookingCommand('CancelBooking', cancelBookingHandler, { bookingId: id, reason, actorId: resolvedUserId }, String(id));
         }
 
-        if (paymentStatus === 'refunded') {
-          await this._refundCODWallet(booking, totalAmount);
-        } else if (paymentStatus === 'partially_refunded') {
-          await this._refundCODWallet(booking, refundAmount);
-        } else if (paymentStatus === 'penalty') {
-          await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
-        }
+        await this._settleCODCancellation(booking, refundAmount);
       } else {
         if (isFeatureEnabled('BOOKING_V2_CANCEL')) {
           await this.cancelBookingV2(id);
@@ -2624,6 +2607,40 @@ export class BookingService {
     }
   }
 
+  /**
+   * COD cancellation settlement.
+   *
+   * A COD booking is recognised as a receivable at creation, before any cash is
+   * collected. Cancelling it therefore has two distinct cases:
+   *  - cash collected (`payment_status` paid/partially_refunded): the canonical
+   *    refund/penalty lifecycle runs and `refunded_amount` advances;
+   *  - cash NOT collected (pending): only the receivable is reversed. No cash
+   *    moved, so `refunded_amount` must stay 0 and no operational COD refund
+   *    double-entry is created.
+   *
+   * The accounting reversal is emitted in both cases so the original
+   * `booking_cod_payment` / `booking_org_cash_receivable` postings never remain
+   * orphaned on a cancelled booking.
+   */
+  private async _settleCODCancellation(booking: any, refundAmount: number): Promise<void> {
+    const collected = booking.payment_status === 'paid' || booking.payment_status === 'partially_refunded';
+    const totalAmount = Number(booking.total_amount || 0);
+
+    if (!collected) {
+      await this._emitBookingRefunded(booking, totalAmount, undefined, { incrementRefundedAmount: false });
+      return;
+    }
+
+    const paymentStatus = refundAmount >= totalAmount ? 'refunded' : refundAmount > 0 ? 'partially_refunded' : 'penalty';
+    if (paymentStatus === 'refunded') {
+      await this._refundCODWallet(booking, totalAmount);
+    } else if (paymentStatus === 'partially_refunded') {
+      await this._refundCODWallet(booking, refundAmount);
+    } else {
+      await this._recordCODWalletTransaction(booking, 'penalty', `Booking #${booking.id} cancellation penalty`);
+    }
+  }
+
   private async _createCODDoubleEntry(booking: any, walletId: number, amount: number, walletSide: string, counterSide: string, type: string, description: string): Promise<void> {
     try {
       const pool = getPool();
@@ -2649,7 +2666,7 @@ export class BookingService {
     }
   }
 
-  private async _emitBookingRefunded(booking: any, refundAmount: number, conn?: mysql.PoolConnection): Promise<void> {
+  private async _emitBookingRefunded(booking: any, refundAmount: number, conn?: mysql.PoolConnection, options?: { incrementRefundedAmount?: boolean }): Promise<void> {
     if (refundAmount <= 0) return;
     const db = conn ?? getPool();
 
@@ -2667,11 +2684,16 @@ export class BookingService {
     }
     if (refundAmount <= 0) return;
 
-    // Update cumulative refunded amount (bounds repeated partial refunds).
-    await db.execute(
-      `UPDATE bookings SET refunded_amount = refunded_amount + ? WHERE id = ?`,
-      [refundAmount, booking.id],
-    );
+    // Update cumulative refunded amount (bounds repeated partial refunds). For
+    // an UNPAID COD cancellation this is a receivable reversal, not a cash
+    // refund: the accounting event is still emitted, but `refunded_amount`
+    // must stay 0 because no money was ever collected from the customer.
+    if (options?.incrementRefundedAmount !== false) {
+      await db.execute(
+        `UPDATE bookings SET refunded_amount = refunded_amount + ? WHERE id = ?`,
+        [refundAmount, booking.id],
+      );
+    }
 
     // Emit canonical booking refund accounting event. The accounting listener
     // prorates the ORIGINAL snapshot economics (never current rates). When a

@@ -65,7 +65,7 @@ vi.mock('../../../shared/event-bus/index.js', () => ({ eventBusV2: bus }));
 
 import { matchResultService } from '../application/match-result.service.js';
 import { RulesValidationError } from '../application/rules/rules-engine.js';
-import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { ForbiddenError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 
 const FORMAT = {
   formatId: 1,
@@ -200,7 +200,7 @@ describe('C3 â€” submit after withdrawal reuses the row (no second record)'
 
   it('blocks a fresh submit when an active (non-withdrawn) result exists', async () => {
     repo.findByMatchId.mockResolvedValue(makeRecord({ submissionStatus: 'approved' }));
-    await expect(matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD)).rejects.toThrow(RulesValidationError);
+    await expect(matchResultService.submitMatchResult(42, 5, VALID_PAYLOAD)).rejects.toThrow(ConflictError);
   });
 });
 
