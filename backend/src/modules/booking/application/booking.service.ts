@@ -932,12 +932,23 @@ export class BookingService {
       }
 
       // If webhook already arrived and marked the payment as 'paid' before we linked it,
-      // the listener never fired (wrong referenceType). Confirm now.
+      // the listener never fired (wrong referenceType). Confirm now AND replay the
+      // canonical payment outcome so payment_status/accounting are not skipped.
+      let paidPaymentId: number | null = null;
       if (paymentAlreadyPaid) {
+        paidPaymentId = cachedPaymentId ?? null;
+        if (!paidPaymentId) {
+          const [payRows] = await pool.execute<RowData>(
+            `SELECT id FROM payment_transactions WHERE booking_id = ? AND reference_type = 'booking' AND payment_status = 'paid' ORDER BY id DESC LIMIT 1`,
+            [bookingId!],
+          );
+          paidPaymentId = (payRows[0] as any)?.id ?? null;
+        }
         try {
           await executeBookingCommand('ConfirmBooking', confirmBookingHandler, {
             bookingId,
             actorId: userId,
+            paymentStatus: 'paid',
           }, String(bookingId!));
         } catch (confirmErr) {
           const { createModuleLogger } = await import('../../../shared/utils/logger.js');
@@ -947,6 +958,26 @@ export class BookingService {
       }
 
       const booking = await bookingRepository.findById(bookingId!);
+
+      // The webhook can land before the browser calls POST /bookings. Replaying
+      // the authoritative payment outcome after linking is what marks the booking
+      // paid and posts booking_card_payment (previously confirmed-but-pending).
+      if (booking && paymentAlreadyPaid) {
+        try {
+          await bookingRepository.persistPaymentStatus(bookingId!, 'paid');
+          eventBusV2.emit('payment:succeeded', {
+            paymentId: paidPaymentId,
+            referenceType: 'booking',
+            referenceId: bookingId,
+            amount: Number(booking.total_amount || 0),
+            metadata: { paymentMethod: booking.payment_method || 'card', currency: 'EGP' },
+          });
+        } catch (replayErr) {
+          const { createModuleLogger } = await import('../../../shared/utils/logger.js');
+          createModuleLogger('BookingService').warn({ err: replayErr, bookingId }, 'Payment outcome replay after prepare failed');
+        }
+      }
+
       return { ...booking, timezone: data.timezone || 'Africa/Cairo' };
     } catch (err) {
       try { await conn.rollback(); } catch {}
@@ -1259,7 +1290,9 @@ export class BookingService {
   private async _calculateCancellationFee(booking: any): Promise<{ feeAmount: number; refundAmount: number }> {
     const pool = getPool();
     const [orgRows] = await pool.execute<RowData>(
-      `SELECT cancellation_policy_level FROM organisations WHERE id = ?`,
+      `SELECT cancellation_policy_level, cancellation_before_hours,
+              cancellation_fee_percentage, cancellation_fee_fixed
+       FROM organisations WHERE id = ?`,
       [booking.organisation_id]
     );
 
@@ -1303,6 +1336,19 @@ export class BookingService {
         feeAmount = refundBase * feePct / 100;
       } else if (policies.length > 0) {
         feeAmount = refundBase;
+      } else {
+        // No tiered `cancellation_policies` rows exist. Fall back to the
+        // organisation-level cancellation settings that the org-portal
+        // exposes (`PUT /org/:orgId/cancellation-settings`). Without this
+        // fallback a configured late-cancellation fee was silently ignored
+        // and every cancellation refunded 100%.
+        const windowHours = Number((org as any).cancellation_before_hours ?? 0);
+        const feePct = Number((org as any).cancellation_fee_percentage ?? 0);
+        const feeFixed = Number((org as any).cancellation_fee_fixed ?? 0);
+        if (hoursUntilBooking < windowHours) {
+          const pctFee = refundBase * Math.max(0, feePct) / 100;
+          feeAmount = Math.min(refundBase, pctFee + Math.max(0, feeFixed));
+        }
       }
     }
 

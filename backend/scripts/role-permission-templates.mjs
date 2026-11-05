@@ -250,7 +250,7 @@ const PLAYER_PATTERNS = [
   /^profile\./,
   /^bookings\.(view|create|cancel|apply|manage-applicants|matchmaking)$/,
   /^bookings\.create\./,
-  /^marketplace\.(view|cart|order|wishlist|addresses|complaints\.(submit|view))$/,
+  /^marketplace\.(view|cart(\.view)?|order(\.view)?|wishlist(\.view)?|addresses(\.manage)?|complaints\.(submit|view))$/,
   // P1-01: free-selling is a PLAYER capability keyed by the player-specific
   // permissions. `marketplace.sell` belongs to shop/org seller roles and is
   // never granted to players.

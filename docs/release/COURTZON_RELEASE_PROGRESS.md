@@ -4393,3 +4393,57 @@ local Docker and Live in that order. **No database change, no migration, no volu
 | Worktrees | `CourtZon-V2-coalescer-fix-f84f5c51`, `CourtZon-V2-handler-fix-29bd7fac` and the Kilo pool worktree `reliable-tent` were removed with `git worktree remove` (no `--force`); only `C:\Users\mniaz\Desktop\CourtZon-V2` remains. |
 | Database | Unchanged: `courtzon_v3` still has 330 tables, 0 pending migrations, no permission sync executed. The Docker volume `courtzon_mysql_data` and every `courtzon_*verify*` database were left untouched. |
 | Not claimed | No payment-gateway test, no integration suite, no migration, and no Phase 5/6 acceptance change. `ci-validate` still reports its pre-existing 214 architecture findings (none in a file changed here). |
+
+## 27. Final full-system simulation (2026-11-05)
+
+**Scope:** executable end-to-end simulation against the real Docker stack and `courtzon_v3` (Amendment A1), using a new permanent harness `backend/scripts/final-simulation.mjs` and `e2e/scenarios/simulation/final-ui.spec.ts`. No new database, environment, container or temporary directory was created.
+
+| Item | Result |
+|---|---|
+| Data set | 100 players, 2 clubs (+3 marketplaces), 9 courts (padel/tennis), 9 products, 20 bookings in the final run (87 SIM bookings overall), 10 market orders in the final run (38 overall), 4 tournaments, 3 academies, 23 enrollments |
+| Recorded scenarios | **80** — **79 PASS / 1 FAIL** (evidence: `test-results/simulation/evidence.json`) |
+| Booking integrity | 20/20 final bookings; duplicate slot 409; 5-way concurrency = 1 success + 4 conflicts; late cancellation retained 20% (refund 360/450) |
+| Accounting | 20/20 final bookings journalised; every `(source_type, source_id, event_type)` balances; org A trial balance 51,218.00 debit = credit; marketplace 77 entries 42,616.00 balanced |
+| Tournaments | 4/4 completed (knockout 7 matches ×2, round robin 28 ×2) with approved results and progression |
+| Academies | 3/3 with two groups each, 6 enrollments, session + bulk attendance |
+| UI | Playwright 4/4 PASS after fixes + smoke 2/2; mobile 390×844 BottomNav verified |
+| Backend unit | **4510/4510 PASS** (358 files) |
+| Frontend unit | **1481/1481 PASS** (152 files) |
+| Integration (cancellation policy) | 6/6 PASS |
+
+### 27.1 Defects found and fixed
+
+| ID | Severity | Fix | Verification |
+|---|---|---|---|
+| D-CARD-WEBHOOK-RACE / D-BOOKING-ACCT | HIGH | Replay canonical `payment:succeeded` after linking a webhook-first prepared payment; confirm with `paymentStatus='paid'` | F-17: booking 59193 paid + 6 ledger rows |
+| D-CANCELLATION-FEE | HIGH | Fallback to `organisations.cancellation_before_hours / _fee_percentage / _fee_fixed` when no tiered policy rows exist | C-06: refund 360 of 450 |
+| D-PLAYER-MARKETPLACE-RBAC | HIGH | `PLAYER_PATTERNS` now matches `marketplace.cart.view`, `order.view`, `addresses.manage`, `wishlist.view`; permissions granted to `player` | D-01: 10/10 purchases |
+| D-QUEUE-BACKOFF | HIGH | Registered the `custom` backoff strategy in both BullMQ workers | 0 `Unknown backoff strategy custom` after rebuild |
+| D-SCOPES-401 | LOW | Retry `/my/scopes` once after 350 ms on 401 | UI 4/4 clean console |
+
+### 27.2 Open defects
+
+| ID | Severity | Description |
+|---|---|---|
+| D-UNPAID-REFUND | MEDIUM | Cancelling an unpaid cash booking writes `refunded_amount = total` (ledger nets to zero but the column implies money returned). |
+| D-RESULT-500 | MEDIUM | Re-submitting an existing tournament match result returns HTTP 500 instead of 409/idempotent 200. |
+
+### 27.3 Safety / non-claims
+
+- No destructive DB operation, no TRUNCATE, no migration, no schema change. Database writes are simulation data only (marker `SIM-FINAL`).
+- Paymob: Sandbox credentials/connectivity verified (`gatewayConnectivity=ok`, `egy_csk_test_…`), webhooks signed with the Sandbox HMAC and replay-protected. **No real card was charged**; hosted-checkout card entry and gateway settlement remain unverified and are routed to owner UAT.
+- No production/Hostinger database access. Deployment verification is limited to what is recorded in §27.4.
+- Phase 5 (P5-05) is **not** marked DONE by this simulation: the real Sandbox card lifecycle was not executed.
+
+### 27.4 Build / Docker / Git
+
+| Item | Value |
+|---|---|
+| Backend build | `npm run build` PASS; Docker image `821a3cda84bd`; container healthy |
+| Frontend build | `npm run build` PASS; Docker image `1f13559287b7`; container healthy; `http://localhost:5173` HTTP 200 |
+| Health | `/health` ok (DB 1–2 ms, Redis 1–2 ms) |
+| Report | `docs/release/FINAL_SIMULATION_REPORT_2026-11-05.md` |
+| Commit / push | recorded in the commit message of this section (branch `fix/courtzon-live-phase1`) |
+| Live/Hostinger | re-verification required after the push; not claimed before it is observed |
+
+**Overall completion is not changed by this section** (no checklist item is claimed DONE beyond what is evidenced above).

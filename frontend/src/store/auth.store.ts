@@ -136,7 +136,21 @@ function stopProactiveRefresh() {
 
 async function loadScopes(): Promise<OrgScope[]> {
   try {
-    const res = await api.get('/my/scopes');
+    let res: any;
+    try {
+      res = await api.get('/my/scopes');
+    } catch (firstErr: any) {
+      // The login request resolves as soon as the body arrives; the browser can
+      // still be committing the Set-Cookie when this immediate follow-up call
+      // fires (observed as a one-off 401 in the login UI). Retry once before
+      // treating the scope fetch as failed.
+      if (firstErr?.response?.status === 401) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        res = await api.get('/my/scopes');
+      } else {
+        throw firstErr;
+      }
+    }
     const raw = res.data?.data || res.data || [];
     const arr = Array.isArray(raw) ? raw : [];
     const orgRows = arr.filter((s: { scope_type?: string }) => !s.scope_type || s.scope_type === 'organisation');

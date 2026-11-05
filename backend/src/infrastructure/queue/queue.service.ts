@@ -182,6 +182,7 @@ export const NOTIFICATION_QUEUE_NAME = 'notifications';
 function customBackoff(attemptsMade: number): number {
   return Math.min(2000 * Math.pow(4, attemptsMade - 1), 3_600_000);
 }
+export { customBackoff };
 
 class QueueService {
   private queues = new Map<string, Queue>();
@@ -199,6 +200,9 @@ class QueueService {
         removeOnComplete: { age: 86400 },
         removeOnFail: { age: 604800 },
       },
+      // The named `custom` retry strategy is resolved by the Worker's
+      // `settings.backoffStrategy`; the Queue does not need (and its typings do
+      // not accept) a backoff-strategy setting.
     });
 
     this.queues.set(name, queue);

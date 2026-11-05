@@ -3,6 +3,7 @@ import { getRedisClient } from '../../infrastructure/redis/redis.client.js';
 import { getPool } from '../../database/mysql.js';
 import { createModuleLogger } from '../utils/logger.js';
 import { processedEventsRepository } from '../../infrastructure/event-bus/processed-events.repository.js';
+import { customBackoff } from '../../infrastructure/queue/queue.service.js';
 import { registry } from '../../infrastructure/metrics/metrics.js';
 import client from 'prom-client';
 import type { EventEnvelope } from './event-envelope.js';
@@ -69,6 +70,10 @@ export function createSubscriberWorker(config: SubscriberWorkerConfig): Worker {
       concurrency: config.concurrency,
       lockDuration: 30000,
       stalledInterval: 15000,
+      settings: {
+        backoffStrategy: (attemptsMade: number, type?: string) =>
+          (type === 'custom' ? customBackoff(attemptsMade) : -1),
+      },
     },
   );
 

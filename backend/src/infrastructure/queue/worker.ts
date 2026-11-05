@@ -1,7 +1,7 @@
 import { Worker, type WorkerOptions } from 'bullmq';
 import { getRedisClient } from '../redis/redis.client.js';
 import { createModuleLogger } from '../../shared/utils/logger.js';
-import { DEFAULT_QUEUE_NAME, type JobPayloadMap, type JobType } from './queue.service.js';
+import { DEFAULT_QUEUE_NAME, customBackoff, type JobPayloadMap, type JobType } from './queue.service.js';
 
 const log = createModuleLogger('worker');
 
@@ -23,6 +23,10 @@ export function startWorker(name: string = DEFAULT_QUEUE_NAME): Worker {
     connection: redis,
     concurrency: 5,
     lockDuration: 30000,
+    settings: {
+      backoffStrategy: (attemptsMade: number, type?: string) =>
+        (type === 'custom' ? customBackoff(attemptsMade) : -1),
+    },
   };
 
   const worker = new Worker(
