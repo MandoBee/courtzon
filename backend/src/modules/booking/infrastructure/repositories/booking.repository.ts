@@ -732,6 +732,38 @@ export class BookingRepository {
     );
   }
 
+  /**
+   * Atomically claim the `pending → paid` transition for a booking.
+   *
+   * The conditional UPDATE is the concurrency guard: concurrent requests for
+   * the same booking serialize on the row lock, and only the request that
+   * changes the row observes `affectedRows === 1`. A loser matches zero rows
+   * and must NOT publish a payment event.
+   *
+   * Only genuinely collectible states may transition to paid:
+   *  - payment_status must be exactly 'pending' (the status every creation path
+   *    writes; refunded / partially_refunded / failed / penalty / NULL are NOT
+   *    collectible source states), and
+   *  - booking_status must be confirmed / checked_in / completed (a cancelled,
+   *    expired or no-show service must never be recognised as collected).
+   *
+   * `payment_status` is NULLABLE in the schema (baseline: no NOT NULL), so
+   * 'pending' is matched explicitly — a legacy NULL never becomes paid here.
+   *
+   * Returns true only when this call performed the transition.
+   */
+  async claimPaidStatus(id: number, conn: mysql.PoolConnection): Promise<boolean> {
+    const [result] = await conn.execute<ResultSetHeader>(
+      `UPDATE bookings
+          SET payment_status = 'paid', updated_at = NOW()
+        WHERE id = ?
+          AND payment_status = 'pending'
+          AND booking_status IN ('confirmed', 'checked_in', 'completed')`,
+      [id]
+    );
+    return result.affectedRows === 1;
+  }
+
   async findAll(filters?: { orgId?: number; branchId?: number; resourceId?: number; resource?: string; branch?: string; orgName?: string; date?: string; status?: string; paymentStatus?: string; bookingType?: string; page?: number; limit?: number }): Promise<{ rows: any[]; total: number }> {
     const join = `FROM bookings b
                   LEFT JOIN users u ON u.id = b.user_id

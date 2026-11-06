@@ -48,20 +48,27 @@ test.describe('Notification Deeplink', () => {
     const bookingId = bookingRes.data?.id || bookingRes.data?.data?.id;
     expect(bookingId).toBeDefined();
 
-    await api.raw('PATCH', `/bookings/${bookingId}/confirm`);
+    // No explicit confirm call: the authoritative booking V2 cash path already
+    // confirms the booking and emits the canonical `booking:created` event.
 
     await dashboard.goto();
     await dashboard.openNotifications();
-    await notifications.waitForNotification('booking');
+    await notifications.waitForNotification(`#${bookingId}`);
 
     const count = await notifications.getNotificationCount();
     expect(count).toBeGreaterThan(0);
 
-    const items = notifications.getNotificationElements();
-    const firstItem = items.first();
-    await firstItem.click();
+    // The rendered notification must reference THIS booking (title/body carries
+    // the booking id), so a notification for another entity cannot satisfy D1.
+    const bookingNotification = notifications
+      .getNotificationElements()
+      .filter({ hasText: `#${bookingId}` })
+      .first();
+    await expect(bookingNotification).toBeVisible({ timeout: 10_000 });
+    await bookingNotification.click();
 
-    await expect(page).toHaveURL(/\/bookings\/?/, { timeout: 10_000 });
+    // Deep link must target the created booking (optional trailing slash).
+    await expect(page).toHaveURL(new RegExp(`/bookings/${bookingId}/?$`), { timeout: 10_000 });
     await expect(page.locator('#root')).toBeVisible();
   });
 

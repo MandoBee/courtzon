@@ -107,6 +107,7 @@ export default function NotificationBell() {
               {notifications.map((n: AppNotification) => (
                 <div
                   key={n.id}
+                  data-testid="notification-item"
                   className={`px-4 py-3 border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] cursor-pointer transition-colors ${!n.is_read ? 'bg-[var(--color-info-bg)]/50 ' : ''}`}
                   onClick={() => openNotification(n)}
                 >

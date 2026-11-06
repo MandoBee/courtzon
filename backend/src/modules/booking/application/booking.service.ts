@@ -470,6 +470,10 @@ export class BookingService {
           bookingType: input.bookingType || 'private_match',
           organisationId,
           branchId: input.branchId,
+        }, {
+          aggregateType: 'booking',
+          aggregateId: String(bookingId),
+          actorId: userId,
         });
 
         return { id: bookingId, bookingId, paymentUrl, clientSecret, paymentId, total_amount: bookingTotal, coach_amount: coachAmount };
@@ -514,12 +518,11 @@ export class BookingService {
         }
       }
 
-      // COD journal entries on the same connection (OPERATIONAL wallet-flow history)
-      // The canonical booking:paid emit is intentionally deferred until AFTER
-      // conn.commit() below (S11 hardening): a pre-commit emit would let the
-      // realtime socket/notification handlers fire for a booking that could still
-      // be rolled back. Preserving the exact payload.
-      let codPaidPayload: Record<string, unknown> | null = null;
+      // COD operational wallet-flow history on the same connection. This is NOT
+      // financial recognition: a confirmed cash booking is created with
+      // payment_status='pending', and `booking:paid` (→ booking_cod_payment
+      // accounting) is published ONLY when the cash is actually collected and
+      // payment_status='paid' has been persisted — see updatePaymentStatus().
       if (paymentMethod === 'cash' || paymentMethod === 'cod') {
         const [txnResult] = await conn.execute<mysql.ResultSetHeader>(
           `INSERT INTO transactions (type, source_type, source_id, currency_id, total_amount, status)
@@ -533,26 +536,9 @@ export class BookingService {
           [txnResult.insertId, userId, bookingTotal, input.branchId, organisationId, `COD booking #${bookingId}`,
            txnResult.insertId, input.branchId, bookingTotal, input.branchId, organisationId, `COD booking #${bookingId}`]
         );
-        // Canonical accounting trigger for COD — booking economics must reach
-        // ledger_entries → general_ledger via booking:paid (see accounting listener).
-        // Emitted after commit below so the event never fires for a rolled-back booking.
-        codPaidPayload = {
-          bookingId, userId,
-          organisationId,
-          grossAmount: bookingTotal, taxAmount, coachAmount,
-          organisationAmount: clubAmount, commissionAmount,
-          paymentMethod: 'cod', currency: 'EGP',
-          sourceId: bookingId,
-        };
       }
 
       await conn.commit();
-
-      // S11 hardening: booking:paid for COD/cash is emitted ONLY after commit.
-      // If commit failed the catch below rolls back and this line is never reached.
-      if (codPaidPayload) {
-        eventBusV2.emit('booking:paid', codPaidPayload as any);
-      }
 
       const booking = await bookingRepository.findById(bookingId!);
 
@@ -571,6 +557,10 @@ export class BookingService {
           bookingType,
           organisationId: booking.organisation_id || undefined,
           branchId: input.branchId || undefined,
+        }, {
+          aggregateType: 'booking',
+          aggregateId: String(bookingId),
+          actorId: userId,
         });
 
         eventBusV2.emit('booking:confirmed', {
@@ -584,6 +574,10 @@ export class BookingService {
           endTime: new Date(endAtUtc),
           startAtUtc,
           endAtUtc,
+        }, {
+          aggregateType: 'booking',
+          aggregateId: String(bookingId),
+          actorId: userId,
         });
 
         const startDate = new Date(startAtUtc);
@@ -1543,10 +1537,11 @@ export class BookingService {
    * DESIGN NOTE (revisited against the R2 stop-conditions):
    * R2 cannot reuse `bookingService.createBooking()` per occurrence because the
    * canonical service ALWAYS engages financial behavior (card → gateway charge,
-   * cash → booking_payment transaction + `booking:paid` → accounting entries),
-   * which R2 must not create. Calling it repeatedly would therefore violate the
-   * "no payment/accounting rows" rule, and adding a payment-less mode to the
-   * closed R1 createBooking signature would modify closed behavior.
+   * cash → booking_payment transaction, plus booking lifecycle events and the
+   * deferred COD collection flow), which R2 must not create. Calling it
+   * repeatedly would therefore violate the "no payment/accounting rows" rule,
+   * and adding a payment-less mode to the closed R1 createBooking signature
+   * would modify closed behavior.
    *
    * Instead each occurrence is created through the SAME canonical primitives the
    * project already uses for non-financial canonical bookings (the sanctioned
@@ -2846,35 +2841,72 @@ export class BookingService {
       throw new ForbiddenError('Payment status can only be manually changed for cash-on-delivery bookings.');
     }
 
-    await bookingRepository.persistPaymentStatus(id, paymentStatus);
+    // Idempotent fast path: an already-paid booking publishes nothing.
+    if (paymentStatus === 'paid' && booking.payment_status === 'paid') {
+      return;
+    }
 
-    // ── COD economic recognition ──
+    // Non-collection status updates (failed/penalty/refunded/...) do not
+    // publish a payment event; keep the existing unconditional write.
+    if (paymentStatus !== 'paid') {
+      await bookingRepository.persistPaymentStatus(id, paymentStatus);
+      return;
+    }
+
+    // ── Atomic COD collection claim + event publication ──
     // COD cash is collected by the organization, not CourtZon. The strongest
     // real signal that the COD obligation was economically realized is this
     // manual payment-status confirmation. Recognize CourtZon's receivable
-    // (commission + tax) ONLY now — never at booking creation. Idempotent via
-    // the canonical accounting engine (booking_cod_payment posting identity).
-    if (paymentStatus === 'paid' || paymentStatus === 'partially_refunded') {
-      try {
-        eventBusV2.emit('booking:paid', {
-          bookingId: id,
-          userId: booking.user_id,
-          organisationId: booking.organisation_id,
-          grossAmount: Number(booking.total_amount || 0),
-          taxAmount: Number(booking.tax_amount || 0),
-          // Use the persisted server-computed coach amount (0 for court-only
-          // bookings) so COD coach_session economics carry the real coach fee.
-          coachAmount: Number(booking.coach_amount || 0),
-          organisationAmount: Number(booking.club_amount || 0),
-          commissionAmount: Number(booking.commission_amount || 0),
-          paymentMethod: 'cod',
-          currency: 'EGP',
-          sourceId: id,
-        });
-      } catch (err) {
-        log.warn({ err, bookingId: id }, 'COD accounting emit failed on payment status update');
+    // (commission + tax) ONLY now — never at booking creation or confirmation.
+    //
+    // One transaction covers the conditional claim AND the published event:
+    //  - the conditional UPDATE serializes concurrent requests and exactly one
+    //    of them observes affectedRows = 1;
+    //  - `booking:paid` is written to published_events on the SAME connection,
+    //    so payment state and event commit or roll back together;
+    //  - EventBusV2 defers in-memory handlers/subscriber enqueueing until after
+    //    commit, and the outbox poller recovers a committed event if immediate
+    //    dispatch fails.
+    const claimed = await withTransaction(async (conn) => {
+      const won = await bookingRepository.claimPaidStatus(id, conn);
+      if (!won) {
+        // A concurrent request already completed the transition. Re-read on the
+        // same connection to distinguish "already paid" (idempotent no-op) from
+        // a vanished row / impossible transition.
+        const current = await bookingRepository.findById(id, conn);
+        if (!current) throw new NotFoundError('Booking');
+        if (current.payment_status !== 'paid') {
+          throw new ConflictError('Payment status transition could not be claimed');
+        }
+        return false;
       }
-    }
+
+      await eventBusV2.emit('booking:paid', {
+        bookingId: id,
+        userId: booking.user_id,
+        organisationId: booking.organisation_id,
+        grossAmount: Number(booking.total_amount || 0),
+        taxAmount: Number(booking.tax_amount || 0),
+        // Use the persisted server-computed coach amount (0 for court-only
+        // bookings) so COD coach_session economics carry the real coach fee.
+        coachAmount: Number(booking.coach_amount || 0),
+        organisationAmount: Number(booking.club_amount || 0),
+        commissionAmount: Number(booking.commission_amount || 0),
+        paymentMethod: 'cod',
+        currency: 'EGP',
+        sourceId: id,
+      }, {
+        aggregateType: 'booking',
+        aggregateId: String(id),
+        actorId: userId,
+      }, conn);
+
+      return true;
+    });
+
+    // Losing a concurrent claim is an idempotent success (the booking is paid
+    // by the winner), but this request published nothing.
+    if (!claimed) return;
   }
 
   async getAllBookings(filters?: { orgId?: number; branchId?: number; resourceId?: number; resource?: string; branch?: string; orgName?: string; date?: string; status?: string; paymentStatus?: string; bookingType?: string; page?: number; limit?: number }) {
@@ -3181,29 +3213,20 @@ export class BookingService {
       });
     }
 
-    // CASH/COD — cash is collected immediately at the court. Confirm the booking
-    // and emit booking:paid so the COD accounting lifecycle (same as V1 cash and
-    // the marketplace cash model) posts and booking:confirmed creates the public
-    // match. Without this, a V2 cash booking stayed `pending` forever (no
-    // accounting, no match, no realtime).
+    // CASH/COD — confirm the booking so booking:confirmed creates the public
+    // match and the realtime flow proceeds. Confirmation is NOT collection: the
+    // booking keeps payment_status='pending' and NO booking:paid is published
+    // here. The COD accounting lifecycle (booking_cod_payment) starts only when
+    // updatePaymentStatus() durably records payment_status='paid'.
     if (input.paymentMethod === 'cash' || input.paymentMethod === 'cod') {
       try {
         await this.confirmBookingV2(bookingId);
       } catch (confirmErr: any) {
+        // Confirmation errors are surfaced in logs but never followed by a
+        // payment event: the booking must not be treated as paid merely because
+        // a cash booking was requested.
         log.error({ err: confirmErr, bookingId }, 'createBookingV2: cash confirm failed');
       }
-      eventBusV2.emit('booking:paid', {
-        bookingId, userId,
-        organisationId,
-        grossAmount: bookingTotal,
-        taxAmount: economics.taxAmount,
-        coachAmount,
-        organisationAmount: economics.clubAmount,
-        commissionAmount: economics.commissionAmount,
-        paymentMethod: input.paymentMethod,
-        currency: 'EGP',
-        sourceId: bookingId,
-      } as any);
     }
 
     // PHASE 1 — wallet is rejected earlier; only card/gateway and cash/COD reach here.

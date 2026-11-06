@@ -356,6 +356,16 @@ describe('Coach Booking Financial Wiring', () => {
       );
       bookingId = result.bookingId;
 
+      // Cash confirmation is not collection: no COD posting may exist yet.
+      const { bookingService } = await import('../../booking/application/booking.service.js');
+      const [pre] = await pool.execute<RowData>(
+        `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id=?`,
+        [bookingId]);
+      expect(Number((pre as any[])[0].c)).toBe(0);
+
+      // Record the actual collection — the only trigger of booking:paid.
+      await bookingService.updatePaymentStatus(bookingId, 'paid', PLAYER_USER);
+
       // Wait for the org cash book + coach payout postings (async fire-and-forget).
       const deadline = Date.now() + 8000;
       let payoutCount = 0;
@@ -468,6 +478,15 @@ describe('Coach Booking Financial Wiring', () => {
       // court 200 + coach fee 100 (hourly_rate 100 × 1h) = 300 — computed server-side.
       expect(Number(b.total_amount)).toBe(300);
       expect(Number(b.coach_amount)).toBe(100);
+
+      // Cash confirmation is not collection: no COD/coach posting before payment.
+      const [pre] = await pool.execute<RowData>(
+        `SELECT COUNT(*) AS c FROM ledger_entries WHERE source_type='booking' AND source_id=?`, [bookingId]);
+      expect(Number((pre as any[])[0].c)).toBe(0);
+
+      // Record the actual collection — the only trigger of booking:paid.
+      await bookingService.updatePaymentStatus(bookingId, 'paid', PLAYER_USER);
+
       // Wait for the async COD/coach-payout postings so afterAll cleanup is deterministic.
       const deadline = Date.now() + 8000;
       let count = 0;

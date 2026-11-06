@@ -17,10 +17,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /**
  * BUG 3 — COD/cash booking:paid must reach the booking OWNER.
  *
- * The realtime mapper routes booking:paid by `userId` in the payload. Both
- * booking:paid emitters (the S11 post-commit path and updatePaymentStatus) must
- * therefore carry the booking owner's userId — never the acting admin. S11
- * (post-commit emission) and accounting idempotency must remain intact.
+ * The realtime mapper routes booking:paid by `userId` in the payload. The
+ * canonical booking:paid emitter (updatePaymentStatus, after payment_status is
+ * persisted as paid) must therefore carry the booking owner's userId — never
+ * the acting admin. Creation and confirmation never publish booking:paid.
  */
 describe('COD booking:paid owner routing (BUG 3)', () => {
   let pool: mysql.Pool;
@@ -110,16 +110,28 @@ describe('COD booking:paid owner routing (BUG 3)', () => {
     emitSpy.mockRestore();
   });
 
-  it('S11 source: the post-commit COD booking:paid payload includes the owner userId', () => {
+  it('source: creation paths never publish booking:paid; the collection path carries the owner userId', () => {
     const src = readFileSync(new URL('../application/booking.service.ts', import.meta.url), 'utf-8');
-    const declIdx = src.indexOf('let codPaidPayload');
-    expect(declIdx).toBeGreaterThan(-1);
-    const block = src.slice(declIdx, declIdx + 1800);
-    expect(block).toContain('bookingId, userId,');
-    // S11 ordering must be preserved: the emit still sits after conn.commit().
-    const commitIdx = src.indexOf('await conn.commit();');
-    const paidEmitIdx = src.indexOf("eventBusV2.emit('booking:paid'", commitIdx);
-    expect(paidEmitIdx).toBeGreaterThan(commitIdx);
+
+    const createStart = src.indexOf('async createBooking(');
+    const v2Start = src.indexOf('private async createBookingV2(');
+    const v2End = src.indexOf('private async computeBookingEconomics(');
+    expect(createStart).toBeGreaterThan(-1);
+    expect(v2Start).toBeGreaterThan(createStart);
+    expect(v2End).toBeGreaterThan(v2Start);
+
+    expect(src.slice(createStart, v2Start)).not.toContain("eventBusV2.emit('booking:paid'");
+    expect(src.slice(v2Start, v2End)).not.toContain("eventBusV2.emit('booking:paid'");
+
+    const updateStart = src.indexOf('async updatePaymentStatus(');
+    expect(updateStart).toBeGreaterThan(-1);
+    const paidEmitIdx = src.indexOf("eventBusV2.emit('booking:paid'", updateStart);
+    expect(paidEmitIdx).toBeGreaterThan(updateStart);
+
+    const block = src.slice(paidEmitIdx, paidEmitIdx + 1200);
+    expect(block).toContain('userId: booking.user_id');
+    expect(block).toContain("aggregateType: 'booking'");
+    expect(block).toContain('aggregateId: String(id)');
   });
 
   it('accounting stays exactly once when a COD booking is marked paid', async () => {

@@ -12,24 +12,23 @@ import type { RowDataPacket } from 'mysql2';
 type RowData = RowDataPacket[];
 
 /**
- * S11 hardening — COD booking:paid is emitted only AFTER the booking transaction
- * commits.
+ * COD/cash booking:paid publication contract.
  *
- * Previously the V1 createBooking COD path emitted booking:paid inside the
- * manual transaction (before conn.commit()). Because isInTransaction() is false
- * for manual beginTransaction(), the in-memory socket/notification handlers ran
- * immediately — pre-commit. This test proves:
- *   1. (source) the booking:paid emit in the V1 COD path is positioned AFTER
- *      conn.commit() and is gated so a failed commit cannot emit it.
+ * A confirmed cash booking is NOT a paid booking. `booking:paid` (and the
+ * `booking_cod_payment` accounting it drives) must be published only after
+ * `payment_status='paid'` is durably persisted by updatePaymentStatus().
+ *
+ * This file proves:
+ *   1. (source) neither the V1 createBooking nor the V2 createBookingV2 cash
+ *      path publishes booking:paid; the only producer in booking.service.ts is
+ *      updatePaymentStatus().
  *   2. (behaviour) a failing booking (invalid branch) does NOT create any
- *      booking_cod_payment ledger row → no pre-commit leak.
+ *      booking_cod_payment ledger row.
  *
- * The successful-commit ledger assertion is covered end-to-end by
- * booking-settlement.spec.ts / booking-accounting tests (booking:paid →
- * booking_cod_payment → ledger_entries); this file focuses on the S11 ordering
- * contract and the no-emit-on-failure guarantee, both deterministic.
+ * The successful-collection ledger assertion is covered by the dedicated
+ * payment-collection tests and booking-settlement.spec.ts.
  */
-describe('S11 — COD booking:paid post-commit', () => {
+describe('S11 — cash booking creation publishes no booking:paid', () => {
   let pool: mysql.Pool;
   let orgId: number; let branchId: number; let resourceId: number;
 
@@ -65,40 +64,40 @@ describe('S11 — COD booking:paid post-commit', () => {
     await pool.end();
   });
 
-  it('source: V1 COD booking:paid emit is positioned AFTER conn.commit() and gated by commit success', () => {
+  it('source: V1 createBooking cash path publishes NO booking:paid', () => {
     const src = readFileSync(new URL('../application/booking.service.ts', import.meta.url), 'utf-8');
 
-    // The booking:paid emit must appear after the commit statement in the COD path.
-    const commitIdx = src.indexOf('await conn.commit();');
-    expect(commitIdx).toBeGreaterThan(-1);
+    const createStart = src.indexOf('async createBooking(');
+    const v2Start = src.indexOf('private async createBookingV2(');
+    expect(createStart).toBeGreaterThan(-1);
+    expect(v2Start).toBeGreaterThan(createStart);
 
-    // The emit is deferred into a payload variable captured in the COD branch and
-    // emitted only after commit — the string 'booking:paid' must appear AFTER
-    // the commit index (post-commit emission), not before.
-    const paidEmitIdx = src.indexOf("eventBusV2.emit('booking:paid'", commitIdx);
-    expect(paidEmitIdx).toBeGreaterThan(commitIdx);
+    const v1Create = src.slice(createStart, v2Start);
+    expect(v1Create).not.toContain("eventBusV2.emit('booking:paid'");
 
-    // The commit happens BEFORE the emit, and the emit is inside the try (so a
-    // failed commit rolls back and the emit is never reached).
-    const tryIdx = src.indexOf('try {', commitIdx - 500);
-    expect(tryIdx).toBeGreaterThan(-1);
-    expect(paidEmitIdx).toBeLessThan(src.indexOf('} catch (err)', commitIdx));
+    // The deferred-COD payload helper belonged to the removed creation-time emit.
+    expect(src).not.toContain('codPaidPayload');
   });
 
-  it('source: the COD payload is captured (not emitted) before commit', () => {
+  it('source: V2 createBookingV2 cash path publishes NO booking:paid', () => {
     const src = readFileSync(new URL('../application/booking.service.ts', import.meta.url), 'utf-8');
 
-    // The COD branch assigns a deferred payload instead of emitting inline.
-    const codPaidPayloadDecl = src.indexOf('let codPaidPayload');
-    expect(codPaidPayloadDecl).toBeGreaterThan(-1);
-    // The inline (pre-commit) emit must NOT exist anymore — i.e. there must be no
-    // booking:paid emit before the commit index.
-    const commitIdx = src.indexOf('await conn.commit();');
-    const beforeCommit = src.slice(0, commitIdx);
-    expect(beforeCommit.includes("eventBusV2.emit('booking:paid'")).toBe(false);
+    const v2Start = src.indexOf('private async createBookingV2(');
+    const v2End = src.indexOf('private async computeBookingEconomics(');
+    expect(v2Start).toBeGreaterThan(-1);
+    expect(v2End).toBeGreaterThan(v2Start);
+
+    const v2Create = src.slice(v2Start, v2End);
+    expect(v2Create).not.toContain("eventBusV2.emit('booking:paid'");
+
+    // The only booking:paid producer in the service is the collection path.
+    const updateStart = src.indexOf('async updatePaymentStatus(');
+    expect(updateStart).toBeGreaterThan(-1);
+    const firstEmit = src.indexOf("eventBusV2.emit('booking:paid'");
+    expect(firstEmit).toBeGreaterThan(updateStart);
   });
 
-  it('behaviour: a failing booking (invalid branch) does NOT emit booking:paid (no pre-commit leak)', async () => {
+  it('behaviour: a failing booking (invalid branch) creates no booking:paid accounting', async () => {
     const { bookingService } = await import('../application/booking.service.js');
 
     const today = new Date();
