@@ -435,7 +435,45 @@ scenario, and the destructive-SQL sub-item of **P7-02** is resolved.
 | D2 | Admin | Admin fixture | Open admin dashboard | Loads admin-specific elements | None | `admin-dashboard.spec.ts` (rows A3) | W | NOT RUN |
 | D3 | Finance role | Seeded settlements | Open list/detail, pay/cancel where permitted | Correct figures; actions permission-gated | None | — | — | **MISSING** |
 | D4 | Auditor/admin | Seeded data | Run/read reports, export | Correct data; export gated | None | — | — | **MISSING** |
-| D5 | Player captain + invitee | Free team tournament | Create team, invite, accept/reject, expiry | Non-captain blocked; cross-tournament accept rejected; no financial writes | Rows left (timestamped slugs) | `e2e/scenarios/tournament/tournament-team-invitation.spec.ts:6–45` | W | NOT RUN |
+| D5 | Player captain + invitee | Free team tournament | Create team, invite, accept/reject, expiry | Non-captain blocked; cross-tournament accept rejected; no financial writes | Rows left (timestamped slugs) | `e2e/scenarios/tournament/tournament-team-invitation.spec.ts:117–262` | W | **PASS (2026-11-05, local)** — `npx playwright test e2e/scenarios/tournament/tournament-team-invitation.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **4 passed (9.5s)**, 0 failed / 0 flaky / 0 skipped, **0 retries**, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): T1 happy path **2161 ms**, T2 cross-user/cross-tournament isolation **2036 ms**, T3 reject + expiry + zero financial mutations **1902 ms**, T4 direct join + full-team capacity **1685 ms**. All writes stayed within the approved **20-table allowlist**; **8** in-app notifications created and **8/8 delivered** (`notification_delivery.status = delivered`, attempts 0); **24** `notification_audit_trail` rows; **8** `notification_analytics` rows; BullMQ completed **20540 → 20548**, failed **11** and delayed **1** unchanged; **0** dead-letter; **no external providers**; **no payment/wallet/booking/accounting writes**; updates limited to run-created rows (**0** pre-existing sessions/invitations/participants/deliveries touched); no destructive SQL. Details: **§3.4a** |
+
+### 3.4a D5 — local execution (2026-11-05)
+
+**Environment:** local development database `courtzon_v3` @ `127.0.0.1:3307`; backend `http://localhost:3000`.
+**No Live access**, no Docker rebuild, no migration/seed, no source/test edit. Runtime configuration confirmed:
+notification channels **`in_app` only** (0 channel preferences, 0 devices, 0 push tokens), `quiet_hours = 0`, and the
+V2 dispatch flag absent.
+
+**Command:** `npx playwright test e2e/scenarios/tournament/tournament-team-invitation.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1`
+→ **4 passed (9.5s)**, `expected=4 / unexpected=0 / flaky=0 / skipped=0`, retries **0**.
+
+| Scenario | Result | Duration |
+|---|---|---|
+| T1 — captain creates a team, invites a player, the invitee accepts | **PASS** | 2161 ms |
+| T2 — cross-user / cross-tournament isolation is enforced | **PASS** | 2036 ms |
+| T3 — reject + invitation expiry + zero financial mutations | **PASS** | 1902 ms |
+| T4 — direct join + full-team capacity | **PASS** | 1685 ms |
+
+**Database writes (approved 20-table allowlist only):** 19 `users`, 19 `player_profiles`, 19 `user_roles`,
+12 `user_sessions` (+12 `last_activity_at` updates), 5 each of `sports`, `sport_formats`, `organisations`,
+`tournaments`, `tournament_competitions`, `tournament_registrations`, `tournament_participants` (+5 member-cache
+updates), 13 `tournament_participant_members`, 5 `tournament_team_invitations` (+5 status/expiry updates),
+14 `audit_logs`, 45 `published_events`, 8 `notifications`, 8 `notification_rate_limits`, 8 `notification_delivery`
+(+status updates), 24 `notification_audit_trail`, 8 `notification_analytics`.
+
+| Safety check | Result |
+|---|---|
+| `notification_dead_letter_queue` | **0** writes |
+| Unauthorized tables | **none** |
+| Pre-existing rows updated/deleted | **0** — `old_sessions_touched=0`, `old_participants_touched=0`, `old_inv_touched=0`, `old_delivery_touched=0`, `old_rate_touched=0`; notifications/audit/delivery linked to pre-existing users = 0 |
+| Payment / wallet / ledger / entitlements / prizes | unchanged (**1210 / 439 / 36113 / 428 / 0**) |
+| Booking / accounting mutations | **none** |
+| External notification providers | **none** (8/8 `in_app`) |
+| BullMQ `notifications` queue | completed **20540 → 20548**; failed **11** (unchanged); delayed **1** (unchanged); waiting/active **0** |
+| Destructive SQL | none (no DELETE/TRUNCATE/DROP/ALTER/migration/seed) |
+| Source/test files | not modified |
+
+**Result: D5 PASS.** P6-07 remains **IN_PROGRESS** (D1–D4 still open).
 
 ### 3.5 P6-08 — Responsive and accessibility
 
@@ -679,7 +717,7 @@ All six pages rendered (HTTP 200, `#root` non-empty) — **no page was BLOCKED**
 | P6-04 auth/RBAC | **A1–A8 all executed and PASS** (2026-11-03, local; §3.1d) | Row complete. Org/coach/referee actors remain absent (only player + `super_admin` covered); expiry timing stays integration-only |
 | P6-05 bookings/clubs | **7 of 7 rows executed** — B1/B2 (2026-11-04), B3/B5/B6 (2026-11-05) locally; B4/B7 Live (2026-11-02) | **Row complete** — no B-row is `MISSING`, `NOT RUN` or `BLOCKED`, so **P6-05 is DONE** (basis: this scenario matrix; the P7-02 spec fix only removed the obstacle, it did not by itself complete the task) |
 | P6-06 marketplace/payments | 2 rows, both gateway-dependent (C1/C2) | Marketplace, subscriptions, accounting, refund UI **not covered** |
-| P6-07 notifications/reports/settlements | D1 (blocked), D2, D5 | Reports, settlements, notifications beyond one deep link **not covered** |
+| P6-07 notifications/reports/settlements | **D5 PASS (2026-11-05, local; §3.4a)**; D1 (not run — delivery unverified), D2 (not run; same spec as A3), D3/D4 **MISSING** | Reports, settlements, notifications beyond one deep link **not covered** |
 | P6-08 responsive/a11y | E1/E2 (public surface only), E4, **E3 axe scan (local, 2026-11-02, light + dark)** | E3 **PASS** after fixes (A11Y-001…006 fixed and pushed; A11Y-007 excluded); consumer/admin pages still not scanned; E2 drawer gap open |
 | P6-09 realtime | **F1 executed and PASS** (2026-11-04; §3.6d), **F2 executed and PASS** (2026-11-03; §3.6b) and **F3 executed and PASS with an evidence limitation** (2026-11-03; §3.6c) | All three realtime scenarios now have executed evidence. **Docker shipment of the two F1 fixes: VERIFIED (2026-11-06, read-only container inspection).** Both source fixes exist in commit **`ebbaad6f`** — `frontend/src/pages/booking/BookingFormPage.tsx` (numeric `['resource-slots', Number(resourceId), date]` query key) and `backend/src/modules/realtime/application/socket-event-mapper.ts` (`normaliseBookingDate()` in `mapBookingEvent`) — and `ebbaad6f` is an **ancestor of `b13197fe`**. The **Backend service alone** was rebuilt on 2026-11-05 (for B6, §3.2e); the **Frontend service was not** rebuilt/recreated, yet the running Frontend container already serves the fixed bundle. Direct evidence from the running containers: **Backend** `courtzon-backend` (image `sha256:4a8af27c…fad6`, running/healthy) → `/app/dist/modules/realtime/application/socket-event-mapper.js` with `normaliseBookingDate` (L211), `value.toISOString().slice(0, 10)` (L215), date-part regex/slice (L220), `mapBookingEvent` (L222), `bookingDate: normaliseBookingDate(p.bookingDate)` (L262), plus runtime wiring `socket-publisher.js` → `realtime/index.js` → `server.js`/`app.js`; **Frontend** `courtzon-frontend` (image `sha256:1f135592…bfd8a`, running/healthy, no mounts shadowing the served files) → `/usr/share/nginx/html/assets/BookingFormPage-CCu53MYO.js` containing `` queryKey:[`resource-slots`,e?Number(e):null,L] `` (minified equivalent), referenced by the served entry bundle `index-BwpvIlsC.js`, with HTTP 200 and 7,896 bytes matching the in-container file. **Scope:** this is **static artifact verification only** — **no F1 end-to-end/runtime behavioural test was executed or re-executed**, so behavioural re-verification remains unperformed. F3's evidence remains the Playwright `passed` last-run status plus DB rows matching both phases (no assertion-level report), and the F3 spec does not inject synthetic duplicate frames, so dedupe of injected duplicates remains unproven |
 
