@@ -2,36 +2,72 @@
 
 ## Overview
 
-CourtZon uses **daily full database backups** with configurable retention. Backups are taken via `mysqldump` with `--single-transaction` to avoid locking production tables. The backup user `courtzon_backup` has minimal required privileges.
+CourtZon's backup implementation supports **scheduled, encrypted full database backups** with configurable retention. Backups are taken via `mysqldump --single-transaction` to avoid locking production tables, then streamed through gzip and AES-256-GCM into `.sql.gz.enc2` artifacts with a SHA-256 sidecar.
+
+> **This describes the architecture, not verified operational status.** Production backups become possible only after `BACKUP_ENCRYPTION_KEY` and a dedicated `DB_BACKUP_USER`/`DB_BACKUP_PASSWORD` pair are provisioned and the backup directory is writable by the container's runtime user. At the time of the last audit those credentials were **not** provisioned on the production host, and no recent backup artifact existed. Backup code or a configured schedule does not prove that backups are currently succeeding — verify with a dated local artifact (see *Monitoring Backup Success/Failure*).
 
 ---
 
 ## Backup Strategy
 
+The primary backup path is the **in-process backup job** (`backend/src/infrastructure/backup/backup.service.ts`), registered as the BullMQ `database_backup` handler and scheduled daily at **00:00** (`0 0 * * *`) by `backend/src/server.ts`. The shell scripts under `scripts/` remain available for manual runs.
+
 | Aspect              | Detail                                                     |
 | ------------------- | ---------------------------------------------------------- |
-| **Frequency**       | Daily full backup (via cron at 01:00)                      |
+| **Frequency**       | Daily full backup (`database_backup` worker, `0 0 * * *`)  |
 | **Tool**            | `mysqldump --single-transaction --routines --triggers --events` |
-| **Compression**     | gzip (default on)                                          |
-| **Retention**       | 30 days local (configurable via `BACKUP_RETENTION_DAYS`)   |
-| **Backup user**     | `courtzon_backup`                                          |
-| **Output**          | `backups/` directory, timestamped filenames                |
-| **Remote**          | S3/R2 upload supported (commented out, configurable)       |
-| **Verification**    | File existence + non-zero size check after each backup     |
+| **Compression**     | gzip, streamed (never buffered in memory)                   |
+| **Encryption**      | AES-256-GCM (`CZBAK2` format), extension `.sql.gz.enc2`     |
+| **Integrity file**  | `<backup>.sha256` sidecar (`sha256sum -c` compatible)       |
+| **Retention**       | Newest `BACKUP_RETENTION_COUNT` (30) kept; optional `BACKUP_RETENTION_DAYS` age rule |
+| **Backup user**     | `DB_BACKUP_USER` + `DB_BACKUP_PASSWORD`; required in production, no fallback |
+| **Output**          | `BACKUP_DIR` — `/app/backups` in Docker                     |
+| **Remote**          | Optional S3/R2 upload (`S3_*`); off unless configured       |
+| **Verification**    | Streaming size limit, GCM tag write, SHA-256 sidecar; no restore is performed |
 
 ### Retention
 
-Old backups are automatically removed after `BACKUP_RETENTION_DAYS` (default: 30). Set to `0` to disable auto-rotation. For longer archival, enable S3 upload.
+The job keeps the newest backup unconditionally and prunes older **GCM** artifacts (`.sql.gz.enc2` and their sidecars) once `BACKUP_RETENTION_COUNT` (default `30`) is exceeded. `BACKUP_RETENTION_DAYS` (default `0`) additionally spares anything younger than that many days; `0` disables the age rule. Legacy plaintext/CBC files are never pruned by this job.
 
-### Required MySQL Privileges
+### Storage location and permissions
 
-The `courtzon_backup` user needs:
+| Item | Value |
+| ---- | ----- |
+| Backup directory | `/app/backups` (`BACKUP_DIR`) |
+| Directory ownership | `appuser:appgroup` |
+| Directory permissions | `750` |
+| Backup file and sidecar permissions | `600` (created by the job; never widened) |
+| Volume | `backend_backups` (named Docker volume) |
+
+The backend entrypoint runs as root **before dropping privileges** and initializes the backup volume:
+
+1. creates `/app/backups` if it is missing;
+2. sets ownership to `appuser:appgroup` and directory mode `750`;
+3. leaves existing contents untouched — **no recursive `chown`/`chmod`**, so previously written `600` artifacts keep their owner and mode;
+4. then switches to `appuser` via `su-exec`.
+
+This step is **fail-closed**: if directory creation, `chown`, or `chmod` fails, the entrypoint writes an error to stderr and exits non-zero, so the container does **not** start with an unusable backup directory.
+
+### Encryption key handling
+
+`BACKUP_ENCRYPTION_KEY` must be exactly 64 hex characters (32 bytes) and is **required** — the job fails closed without it. **Escrow the key securely outside the production server.** Losing it makes every encrypted backup unrecoverable; the key is not stored in the backups and cannot be derived from them.
+
+### Status
+
+A backup job that writes a local artifact is **not** proof that the data can be restored. Restorability must be demonstrated by an actual restore drill (see *Testing Backups Regularly*). The following restore blockers remain unresolved and are documented in their own sections below: DEFINER metadata (fail-closed), TLS enforcement for the restore client, and event-scheduler behavior on the restore target.
+
+
+### Required MySQL Privileges (illustrative)
+
+A dedicated backup account needs enough visibility to dump tables, views, routines, triggers, and events. The statement below is an **illustrative** grant for the production schema `courtzon_v3`:
 
 ```sql
 GRANT SELECT, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER, PROCESS, REPLICATION CLIENT
-  ON couritzon_v2.* TO 'courtzon_backup'@'localhost';
+  ON courtzon_v3.* TO 'courtzon_backup'@'%';
 FLUSH PRIVILEGES;
 ```
+
+> **Not applied.** No backup account existed in the audited production state. Provisioning the account and these grants requires explicit approval; this document does not claim they have been created. Restrict the host part to the deployment's actual client network where possible, and note that MySQL 8.0.20+ may additionally require the global `SHOW_ROUTINE` privilege (or `SELECT` on `mysql.proc` in older versions) for `mysqldump --routines` to succeed.
 
 ---
 
@@ -76,24 +112,131 @@ All backup operations are logged to `backups/backup.log`.
 
 ## Restoring from Backup
 
-### Safety
+### Entry points
 
-The restore script **always**:
-1. Prompts for confirmation (type `RESTORE` in all caps)
-2. Creates a pre-restore backup of the current database before overwriting
-3. Validates the backup file before proceeding
+There is **one** restore implementation: `backend/scripts/restore.js`.
+
+| Entry point | Notes |
+| --- | --- |
+| `npm run db:restore -- …` (from `backend/`) | Runs the Node engine directly |
+| `./scripts/restore.sh …` (repo root) | Compatibility wrapper; forwards all arguments to the Node engine and exits with its code |
+| `node backend/scripts/restore.js …` | Direct invocation |
+
+The shell wrapper contains no restore logic, does not default to
+`courtzon_v3`, and never pipes backup data into `mysql` itself.
+
+### Supported formats
+
+| Format | Extension | Verification |
+| --- | --- | --- |
+| AES-256-GCM | `.sql.gz.enc2` | `CZBAK2` magic + 12-byte nonce + full GCM authentication before SQL |
+| Legacy AES-256-CBC | `.sql.gz.enc` | IV + ciphertext; not authenticated (gzip CRC only) |
+| Legacy plain gzip | `.sql.gz` | gzip CRC |
+| Legacy plain SQL | `.sql` | No compression; no cryptographic integrity check |
+
+### Required restore credentials
+
+Restore requires an **explicit** `DB_USER` and `DB_PASSWORD`; there is no
+implicit `root` fallback and the mysql client is never started without them.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DB_USER` | Yes | Restore account with schema-object DDL + DML privileges |
+| `DB_PASSWORD` | Yes | Passed through `MYSQL_PWD`; never on the command line |
+| `DB_HOST` / `DB_PORT` | No | Default `localhost` / `3306` |
+| `BACKUP_ENCRYPTION_KEY` | For `.enc2`/`.enc` | Exactly 64 hex characters |
+
+`backend/scripts/restore.js` reads `process.env` directly. It does **not**
+source `.env`/`.env.local`; export the variables in the shell (or via your
+process manager) before invoking the restore.
+
+Use `courtzon_migration` or an equivalent account. Per
+`backend/scripts/setup-db-users.sql` it has `SELECT, INSERT, UPDATE, DELETE,
+CREATE, DROP, ALTER, INDEX, REFERENCES, LOCK TABLES` on `courtzon_v3.*`.
+`courtzon_app` has only DML and `courtzon_backup` is read-only; neither can
+restore a full dump that contains `DROP TABLE`/`CREATE TABLE`.
+
+> **WARNING:** the restore account must be authorized to create/drop/alter the
+> target schema objects. Verify the target database and take a current backup
+> before restoring anything important.
+
+### Safe target and destructive confirmation
+
+The default target is **`courtzon_restore_test`**. Any other target requires
+the exact destructive confirmation flag, whose value must equal `--db`:
+
+```bash
+# Safe default target
+DB_USER=courtzon_migration DB_PASSWORD='…' \
+  ./scripts/restore.sh --file backups/example.sql.gz.enc2
+
+# Any other target (exact confirmation required)
+DB_USER=courtzon_migration DB_PASSWORD='…' BACKUP_ENCRYPTION_KEY='…' \
+  ./scripts/restore.sh --file backups/example.sql.gz.enc2 \
+    --db courtzon_v3 --confirm-destructive=courtzon_v3
+```
+
+`DB_NAME` is **not** used to select the restore target; use `--db`. Examples
+elsewhere in this document that omit `--db` now restore into the safe default
+`courtzon_restore_test`; add `--db <name> --confirm-destructive=<name>` for any
+other database.
 
 ### Manual restore
 
 ```bash
-# Restore with confirmation prompt
-./scripts/restore.sh --file backups/courtzon_courtzon_v2_20260624_010000.sql.gz
-
-# Restore to a different database
-./scripts/restore.sh --file backups/courtzon_courtzon_v2_20260624_010000.sql.gz --db couritzon_v2_restore
+# From backend/ — encrypted backup into the designated test database
+DB_USER=courtzon_migration DB_PASSWORD='…' \
+  BACKUP_ENCRYPTION_KEY='<64 hex characters>' \
+  npm run db:restore -- --file backups/courtzon_….sql.gz.enc2
 ```
 
-Supports both `.sql` and `.sql.gz` files. The script auto-detects compression.
+Take a fresh backup before overwriting an important database. The Node restore
+engine does **not** create an automatic pre-restore backup; run
+`scripts/backup.sh` (or the scheduled backup) first.
+
+### Dry-run (plan only)
+
+`--dry-run` is a planning aid. It validates arguments, configuration, target
+selection and file accessibility, but it does **not** decrypt or authenticate
+the backup, does **not** verify the GCM tag or gzip CRC, does **not** prove that
+the backup can be restored, and does **not** execute SQL.
+
+```bash
+DB_USER=courtzon_migration DB_PASSWORD='…' BACKUP_ENCRYPTION_KEY='…' \
+  npm run db:restore -- --file backups/example.sql.gz.enc2 --dry-run
+```
+
+### Generated columns
+
+Before rewriting any `roles` INSERT, the restore engine validates the dump's own
+`CREATE TABLE \`roles\`` definition: it must declare exactly 11 columns, with
+`org_id_normalized` last and declared `GENERATED`. A missing, malformed or
+incompatible definition — or a tuple that does not have exactly 11 values —
+fails before the mysql client starts.
+
+### DEFINER metadata (fail closed)
+
+The restore engine **rejects** backups that contain executable `DEFINER`
+metadata in `CREATE TRIGGER`, `CREATE VIEW`, `CREATE PROCEDURE`,
+`CREATE FUNCTION`, or `CREATE EVENT` statements. Detection runs only after
+GCM authentication and gzip CRC verification, and before the `mysql` client is
+started. It is SQL-aware: harmless occurrences inside string literals,
+comments, column names and ordinary `INSERT` data are ignored, while executable
+`DEFINER` clauses (including those inside MySQL version comments) abort the
+restore.
+
+- No `SUPER` or `SET_USER_ID` privilege is granted as a workaround, and this
+  phase does not transform or strip `DEFINER` clauses.
+- The repository baseline contains no `DEFINER` clauses, but production
+  backups remain unverified until safely inspected; expect a rejection if the
+  live schema contains triggers, views, routines or events with `DEFINER`
+  metadata.
+- A future parser-aware `DEFINER` transformation (for example, assigning the
+  restore account) requires separate security review and tests.
+- Do **not** manually remove `DEFINER` text with broad search/replace; that can
+  corrupt SQL or change security semantics.
+- `--dry-run` remains plan-only and does not inspect or verify `DEFINER`
+  metadata.
 
 ### Post-restore verification
 
@@ -105,13 +248,12 @@ mysql -e "USE couritzon_v2; SELECT COUNT(*) FROM users; SELECT COUNT(*) FROM boo
 mysql -e "USE couritzon_v2; SELECT MAX(created_at) FROM users;"
 ```
 
-### Pre-restore backup location
+### Pre-restore safety backup
 
-The automatic pre-restore backup is saved to `backups/pre_restore_<db>_<timestamp>.sql.gz`. Use it to revert if the restore produced unexpected results:
-
-```bash
-./scripts/restore.sh --file backups/pre_restore_courtzon_v2_20260624_010500.sql.gz
-```
+The Node restore engine does **not** create an automatic pre-restore backup.
+Create one explicitly with `scripts/backup.sh` before restoring. Pre-restore
+files produced by older shell restores (`backups/pre_restore_*.sql.gz`) remain
+restorable through the same engine.
 
 ---
 
@@ -163,8 +305,10 @@ mysql -e "CREATE DATABASE IF NOT EXISTS couritzon_v2"
 LATEST=$(ls -t backups/courtzon_courtzon_v2_*.sql.gz | head -1)
 echo "Restoring from: $LATEST"
 
-# 3. Restore
-./scripts/restore.sh --file "$LATEST"
+# 3. Restore (explicit production target + destructive confirmation)
+DB_USER=courtzon_migration DB_PASSWORD='…' \
+  ./scripts/restore.sh --file "$LATEST" \
+    --db couritzon_v2 --confirm-destructive=couritzon_v2
 
 # 4. Apply any remaining binary logs (if available)
 # See Point-in-Time Recovery section above
@@ -186,12 +330,19 @@ ls -t backups/courtzon_courtzon_v2_*.sql.gz
 ### Scenario: S3 remote backup needed
 
 ```bash
-# Download from S3
-aws s3 cp s3://courtzon-backups/database/courtzon_courtzon_v2_20260624_010000.sql.gz ./backups/
+# Download the encrypted artifact and its checksum sidecar (key prefix: backups/)
+aws s3 cp s3://<bucket>/backups/courtzon_2026-06-24T01-00-00-000Z_a1b2c3.sql.gz.enc2 ./backups/
+aws s3 cp s3://<bucket>/backups/courtzon_2026-06-24T01-00-00-000Z_a1b2c3.sql.gz.enc2.sha256 ./backups/
 
-# Restore
-./scripts/restore.sh --file backups/courtzon_courtzon_v2_20260624_010000.sql.gz
+# Verify the file against its sidecar before restoring
+cd backups && sha256sum -c courtzon_2026-06-24T01-00-00-000Z_a1b2c3.sql.gz.enc2.sha256 && cd ..
+
+# Restore (the engine authenticates GCM before executing any SQL)
+DB_USER=courtzon_migration DB_PASSWORD='…' \
+  ./scripts/restore.sh --file backups/courtzon_2026-06-24T01-00-00-000Z_a1b2c3.sql.gz.enc2
 ```
+
+A matching sidecar proves file integrity only — it does not prove GCM authentication, gzip integrity, or a successful restore. The restore engine verifies GCM and gzip before it spawns MySQL.
 
 ---
 
@@ -214,9 +365,9 @@ Backups are only as good as their last successful restore test. Follow this sche
 
    ```bash
    DB_HOST=localhost DB_PORT=3308 \
-     DB_USER=root DB_PASSWORD=test \
-     DB_NAME=courtzon_v2_staging \
-     ./scripts/restore.sh --file backups/courtzon_courtzon_v2_latest.sql.gz
+     DB_USER=courtzon_migration DB_PASSWORD='…' \
+     ./scripts/restore.sh --file backups/courtzon_courtzon_v2_latest.sql.gz \
+       --db couritzon_v2_staging --confirm-destructive=couritzon_v2_staging
    ```
 
 3. **Run integrity checks**:
@@ -306,19 +457,28 @@ If the `node_exporter` or a custom exporter is deployed, expose backup metrics:
 
 | Variable                  | Default          | Description                            |
 | ------------------------- | ---------------- | -------------------------------------- |
-| `DB_HOST`                 | `localhost`      | MySQL host                             |
+| `DB_HOST`                 | `localhost`      | MySQL host (backup and restore)        |
 | `DB_PORT`                 | `3306`           | MySQL port                             |
-| `DB_NAME`                 | `courtzon_v2`    | Database name                          |
-| `DB_BACKUP_USER`          | `courtzon_backup`| Backup MySQL user                      |
-| `DB_BACKUP_PASSWORD`      | *(empty)*        | Backup MySQL password                  |
-| `BACKUP_RETENTION_DAYS`   | `30`             | Local backup retention in days         |
-| `BACKUP_S3_ENABLED`       | `false`          | Enable S3 upload (requires aws-cli)    |
-| `BACKUP_S3_BUCKET`        | `courtzon-backups`| S3 bucket name                        |
-| `BACKUP_S3_ENDPOINT`      | *(empty)*        | S3-compatible endpoint (e.g., R2)      |
-| `BACKUP_S3_ACCESS_KEY`    | *(empty)*        | S3 access key                          |
-| `BACKUP_S3_SECRET_KEY`    | *(empty)*        | S3 secret key                          |
-| `BACKUP_S3_REGION`        | `auto`           | S3 region                              |
-| `BACKUP_S3_PATH_PREFIX`   | `database/`      | Prefix for S3 keys                     |
+| `DB_NAME`                 | `courtzon_v3`    | Backup source database; **restore ignores it** (use `--db`) |
+| `BACKUP_DIR`              | `cwd/backups` (`/app/backups` in Docker) | Directory for `.enc2` artifacts and sidecars |
+| `DB_BACKUP_USER`          | production: **required**; non-production: `DB_USER`, then `courtzon_app` | Backup/dump user (read-only; **not** a restore credential). No default in production and no fallback to the application credentials |
+| `DB_BACKUP_PASSWORD`      | *(empty)*        | Backup/dump password. Must be set together with `DB_BACKUP_USER` |
+| `DB_USER`                 | *(required)*     | Restore account (no implicit `root`; use `courtzon_migration` or equivalent) |
+| `DB_PASSWORD`             | *(required)*     | Restore password, passed via `MYSQL_PWD` only |
+| `BACKUP_ENCRYPTION_KEY`   | *(empty)*        | **Required.** Exactly 64 hex characters; escrow it offline — losing it makes `.enc2` backups unrecoverable |
+| `BACKUP_ENCRYPTION_FORMAT`| `gcm`            | Only `gcm` is supported; any other value fails closed |
+| `BACKUP_RETENTION_COUNT`  | `30`             | Number of newest GCM backups kept (newest always preserved) |
+| `BACKUP_RETENTION_DAYS`   | `0`              | Spare artifacts younger than D days; `0` disables the age rule |
+| `BACKUP_MAX_BYTES`        | `68719476736` (64 GiB) | Streaming size ceiling |
+| `S3_BUCKET`               | *(empty)*        | Offsite bucket. All four `S3_*` credentials/endpoint must be set together |
+| `S3_ACCESS_KEY`           | *(empty)*        | S3 access key                          |
+| `S3_SECRET_KEY`           | *(empty)*        | S3 secret key                          |
+| `S3_ENDPOINT`             | *(empty)*        | S3-compatible endpoint (e.g. R2)       |
+| `S3_REGION`               | `auto`           | S3 region                              |
+| `S3_REQUIRED`             | *(off)*          | `"1"` = a skipped/failed upload fails the job; `"0"` = local-only success |
+
+> Offsite upload is **optional** unless `S3_REQUIRED=1`. Without `S3_*` configuration the job writes a local artifact only. The upload key prefix is `backups/<filename>`.
+
 
 ---
 
@@ -328,7 +488,8 @@ If the `node_exporter` or a custom exporter is deployed, expose backup metrics:
 | ------------------------- | --------------------------------- |
 | `scripts/backup.sh`       | Manual / cron database backup     |
 | `scripts/backup-cron.sh`  | Production cron wrapper (Hostinger)|
-| `scripts/restore.sh`      | Database restore with safety       |
+| `scripts/restore.sh`      | Compatibility wrapper → `backend/scripts/restore.js` |
+| `backend/scripts/restore.js` | The single restore engine (GCM, legacy CBC, plaintext) |
 | `backups/`                | Local backup storage directory     |
 | `backups/backup.log`      | Backup operation logs              |
-| `backups/restore.log`     | Restore operation logs             |
+| `backups/restore.log`     | Logs from older shell restore versions (no longer written by the Node engine) |

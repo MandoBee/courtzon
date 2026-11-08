@@ -104,6 +104,11 @@ services:
       # image-baked commit instead (gitCommitSource: "image"). The backend
       # treats "unknown" as absent. Never hardcode a literal SHA here.
       SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
+      # Encrypted backup artifacts (courtzon_*.sql.gz.enc2 + .sha256) are
+      # written to this path inside the container. The named volume
+      # backend_backups is mounted here; docker-entrypoint.sh sets the
+      # directory to appuser:appgroup (750) before dropping privileges.
+      BACKUP_DIR: /app/backups
     depends_on:
       mysql:
         condition: service_healthy

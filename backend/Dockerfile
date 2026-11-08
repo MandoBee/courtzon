@@ -36,6 +36,12 @@ COPY scripts/seed.sh /app/scripts/seed.sh
 RUN chmod +x /app/scripts/migrate.sh /app/scripts/seed.sh
 RUN test -f database/baseline/001_courtzon_v3.sql || test -f database/migrations/.gitkeep || echo "No baseline or migrations found"
 
+# Create the backup mountpoint BEFORE the chown below so a newly initialized
+# named volume (backend_backups mounted at /app/backups) inherits
+# appuser:appgroup from the image. An already-initialized volume keeps its
+# existing ownership; docker-entrypoint.sh corrects that at startup.
+RUN mkdir -p /app/backups
+
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

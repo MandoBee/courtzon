@@ -43,6 +43,37 @@ else
   chmod 775 "$UP"
 fi
 
+# ── Fix the backup volume directory ownership ──────────────────────
+# The backend_backups named volume is mounted at /app/backups. Docker
+# initializes a volume mountpoint owned by root:root, so the non-root appuser
+# cannot create backups there. This path is a dedicated mount: only the
+# directory itself is changed — contents are NOT recursively chowned and file
+# modes are NOT touched, so existing backup artifacts keep their 0600 mode.
+# Dirs: 750 (owner rwx, group r-x) — no world access to encrypted dumps.
+BK="/app/backups"
+if [ -d "$BK" ]; then
+  if ! chown appuser:appgroup "$BK"; then
+    echo "ERROR: cannot set ownership of $BK to appuser:appgroup" >&2
+    exit 1
+  fi
+  if ! chmod 750 "$BK"; then
+    echo "ERROR: cannot set permissions of $BK to 750" >&2
+    exit 1
+  fi
+  echo "Backup directory ownership fixed for $BK (dir:750, files untouched)"
+else
+  mkdir -p "$BK"
+  if ! chown appuser:appgroup "$BK"; then
+    echo "ERROR: cannot set ownership of $BK to appuser:appgroup" >&2
+    exit 1
+  fi
+  if ! chmod 750 "$BK"; then
+    echo "ERROR: cannot set permissions of $BK to 750" >&2
+    exit 1
+  fi
+  echo "Backup directory created: $BK (dir:750)"
+fi
+
 echo "Waiting for MySQL..."
 until nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do
   sleep 1
