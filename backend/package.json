@@ -11,7 +11,7 @@
     "db:fresh": "node scripts/migrate.js --fresh",
     "db:seed": "node scripts/seed.js",
     "db:backup": "bash ../scripts/backup.sh",
-    "db:restore": "bash ../scripts/restore.sh",
+    "db:restore": "node scripts/restore.js",
     "db:status": "node scripts/migrate.js --status",
     "emergency-repair": "node scripts/emergency-repair.js",
     "bootstrap-admin": "node scripts/bootstrap-admin.js",
