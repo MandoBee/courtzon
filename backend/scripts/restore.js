@@ -79,6 +79,7 @@ import { createGunzip } from 'node:zlib';
 import { createDecipheriv } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
+import { describeDbTlsPolicy, resolveDbTlsPolicy } from './db-tls.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -124,9 +125,21 @@ export class RestoreError extends Error {
 
 export class RestoreArgumentError extends RestoreError {}
 export class RestoreFormatError extends RestoreError {}
+export class RestoreDefinerHeaderOversizeError extends RestoreFormatError {}
+export class RestoreDefinerHeaderIncompleteError extends RestoreFormatError {}
+export class RestoreDefinerTruncatedError extends RestoreFormatError {}
 export class RestoreKeyError extends RestoreError {}
 export class RestoreSpoolLimitError extends RestoreError {}
-export class RestoreDatabaseError extends RestoreError {}
+export class RestoreDatabaseError extends RestoreError {
+  constructor(message, options) {
+    super(message, options);
+    /** True once the mysql client was started (the target may be partial). */
+    this.restoreStarted = options?.restoreStarted === true;
+  }
+}
+
+/** Raised when a pre-import safety probe or policy check forbids the restore. */
+export class RestoreSafetyError extends RestoreError {}
 
 export class RestoreCleanupUnsafeError extends RestoreError {
   constructor(message, spoolDir, options) {
@@ -144,7 +157,12 @@ const VALUE_OPTIONS = new Set([
   '--spool-dir',
   '--max-spool-bytes',
 ]);
-const FLAG_OPTIONS = new Set(['--dry-run', '--help']);
+const FLAG_OPTIONS = new Set([
+  '--dry-run',
+  '--help',
+  '--allow-event-scheduler-risk',
+  '--allow-trigger-create-with-binlog',
+]);
 
 export function parseRestoreArgs(argv) {
   if (!Array.isArray(argv)) {
@@ -160,6 +178,8 @@ export function parseRestoreArgs(argv) {
     maxSpoolBytes: DEFAULT_MAX_SPOOL_BYTES,
     dryRun: false,
     help: false,
+    allowEventSchedulerRisk: false,
+    allowTriggerCreateWithBinlog: false,
   };
   const seen = new Set();
 
@@ -189,6 +209,8 @@ export function parseRestoreArgs(argv) {
         throw new RestoreArgumentError(`${name} does not accept a value`);
       }
       if (name === '--dry-run') parsed.dryRun = true;
+      else if (name === '--allow-event-scheduler-risk') parsed.allowEventSchedulerRisk = true;
+      else if (name === '--allow-trigger-create-with-binlog') parsed.allowTriggerCreateWithBinlog = true;
       else parsed.help = true;
       continue;
     }
@@ -1122,7 +1144,36 @@ export function createRolesGeneratedColumnRewriter(options = {}) {
 
 // ── DEFINER policy (fail closed) ─────────────────────────────────────────────
 
-const DEFAULT_DEFINER_HEADER_LIMIT = 64 * 1024;
+const DEFAULT_DEFINER_HEADER_LIMIT = 64 * 1024; // UTF-8 bytes, not UTF-16 code units
+
+/** UTF-8 byte length of a JavaScript string. */
+export function utf8ByteLength(text) {
+  return Buffer.byteLength(text, 'utf8');
+}
+
+/**
+ * End offset (UTF-16 code units) of the longest prefix of `text` whose UTF-8
+ * encoding does not exceed `maxBytes`. Never splits a surrogate pair.
+ */
+export function utf8PrefixEnd(text, maxBytes) {
+  if (typeof text !== 'string') {
+    throw new RestoreArgumentError('Header text must be a string.');
+  }
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new RestoreArgumentError(`Invalid UTF-8 byte limit: ${maxBytes}`);
+  }
+
+  let bytes = 0;
+  let index = 0;
+  while (index < text.length) {
+    const codePoint = text.codePointAt(index);
+    const width = codePoint <= 0x7F ? 1 : codePoint <= 0x7FF ? 2 : codePoint <= 0xFFFF ? 3 : 4;
+    if (bytes + width > maxBytes) break;
+    bytes += width;
+    index += codePoint > 0xFFFF ? 2 : 1;
+  }
+  return index;
+}
 
 const CREATE_OBJECT_KEYWORDS = new Set([
   'TABLE',
@@ -1153,6 +1204,10 @@ const DEFINER_INCOMPLETE_MESSAGE =
   'Unsafe restore: the SQL dump contains a CREATE statement whose DEFINER metadata could not be verified ' +
   '(incomplete, malformed or ambiguous). No SQL was executed.';
 
+const DEFINER_HEADER_OVERSIZE_MESSAGE =
+  'Unsafe restore: the SQL dump contains a CREATE header larger than the supported limit, so its ' +
+  'DEFINER metadata could not be verified. No SQL was executed.';
+
 const DEFINER_TRUNCATED_MESSAGE =
   'Unsafe restore: the SQL dump ended inside a quoted string or comment, so DEFINER metadata could not be verified. ' +
   'No SQL was executed.';
@@ -1161,7 +1216,21 @@ function isIdentifierCharacter(ch) {
   return /[A-Za-z0-9_$]/.test(ch);
 }
 
-function nextMeaningfulCharacter(text, index) {
+/** Last identifier token in a CREATE header (the object keyword). */
+function lastIdentifier(text) {
+  const match = /([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(text);
+  return match ? match[1].toLowerCase() : '';
+}
+
+/** MySQL treats `--` as a comment only when followed by whitespace or control. */
+function isDashCommentStart(text, index) {
+  if (text[index] !== '-' || text[index + 1] !== '-') return false;
+  const next = text[index + 2];
+  return next === undefined || /[ \t\r\n\f\v\x00-\x1F]/.test(next);
+}
+
+/** Index of the next meaningful character, or -1 at end of input. */
+function nextMeaningfulIndex(text, index) {
   let position = index;
   while (position < text.length) {
     const ch = text[position];
@@ -1169,7 +1238,7 @@ function nextMeaningfulCharacter(text, index) {
       position += 1;
       continue;
     }
-    if (ch === '-' && text[position + 1] === '-') {
+    if (isDashCommentStart(text, position)) {
       while (position < text.length && text[position] !== '\n') position += 1;
       continue;
     }
@@ -1178,63 +1247,466 @@ function nextMeaningfulCharacter(text, index) {
       continue;
     }
     if (ch === '/' && text[position + 1] === '*') {
+      // Executable comments are never trivia: never silently skip SQL that
+      // MySQL would execute between DEFINER and `=`.
+      if (text[position + 2] === '!') return -1;
       const end = text.indexOf('*/', position + 2);
-      if (end < 0) return '';
+      if (end < 0) return -1;
       position = end + 2;
       continue;
     }
-    return ch;
+    return position;
   }
-  return '';
+  return -1;
+}
+
+// ALGORITHM is intentionally absent: MySQL requires it before DEFINER, never
+// after it. SQL is validated separately because it is only valid in a VIEW
+// context (SQL SECURITY ... VIEW).
+const DEFINER_CONTINUATIONS = new Set([
+  'TRIGGER',
+  'PROCEDURE',
+  'FUNCTION',
+  'EVENT',
+  'VIEW',
+  'SQL',
+]);
+
+function isQuoteCharacter(ch) {
+  return ch === "'" || ch === '"' || ch === '`';
+}
+
+/** True for a character that would extend a continuation keyword. */
+function isIdentifierContinuationChar(ch) {
+  return typeof ch === 'string' && /[A-Za-z0-9_$\u0080-\uFFFF]/.test(ch);
+}
+
+function readKeyword(text, position) {
+  let index = position;
+  while (index < text.length && /[A-Za-z_]/.test(text[index])) index += 1;
+  if (index === position) return null;
+  return { token: text.slice(position, index).toUpperCase(), end: index };
+}
+
+/**
+ * Skip whitespace and ordinary comments between DEFINER tokens. Returns -1 for
+ * an unterminated comment or for an executable (`/*!`) comment, which must not
+ * be treated as trivia.
+ */
+function skipDefinerTrivia(text, position) {
+  let index = position;
+  while (index < text.length) {
+    const ch = text[index];
+    if (/\s/.test(ch)) {
+      index += 1;
+      continue;
+    }
+    if (isDashCommentStart(text, index)) {
+      while (index < text.length && text[index] !== '\n') index += 1;
+      continue;
+    }
+    if (ch === '#') {
+      while (index < text.length && text[index] !== '\n') index += 1;
+      continue;
+    }
+    if (ch === '/' && text[index + 1] === '*') {
+      if (text[index + 2] === '!') return -1;
+      const end = text.indexOf('*/', index + 2);
+      if (end < 0) return -1;
+      index = end + 2;
+      continue;
+    }
+    return index;
+  }
+  return index;
+}
+
+function readQuotedAccountPart(text, position) {
+  const quote = text[position];
+  let index = position + 1;
+  while (index < text.length) {
+    const ch = text[index];
+    if (ch === '\\' && quote !== '`') {
+      index += 2;
+      continue;
+    }
+    if (ch === quote) {
+      if (text[index + 1] === quote) {
+        index += 2;
+        continue;
+      }
+      return index + 1;
+    }
+    index += 1;
+  }
+  return -1;
+}
+
+/**
+ * Read one bare account token. Stops only at a syntactic delimiter, so a
+ * non-ASCII or otherwise unexpected character can never silently truncate the
+ * value: the whole token is consumed and the continuation check decides. The
+ * returned offset is exclusive, or -1 when the token is empty.
+ */
+function readBareAccountTokenEnd(text, position) {
+  let index = position;
+  while (index < text.length) {
+    const ch = text[index];
+    if (/\s/.test(ch)) break;
+    if (ch === '@' || ch === ';' || ch === '(' || ch === ')') break;
+    if (isQuoteCharacter(ch)) break;
+    if (ch === '-' && text[index + 1] === '-') break;
+    if (ch === '#') break;
+    if (ch === '/' && (text[index + 1] === '*' || text[index + 1] === '/')) break;
+    if (ch === '*' && text[index + 1] === '/') break;
+    index += 1;
+  }
+  return index > position ? index : -1;
+}
+
+function readAccountPartEnd(text, position) {
+  return isQuoteCharacter(text[position])
+    ? readQuotedAccountPart(text, position)
+    : readBareAccountTokenEnd(text, position);
+}
+
+// Conservative unquoted account-name character policy. User names allow the
+// standard identifier characters (ASCII letters, digits, `_`, `$`, plus Unicode
+// letters/numbers/combining marks). Host names additionally allow `.`, `%`, `:`
+// and `-` for hostnames, IPv4/IPv6 and wildcard forms. Everything else must be
+// quoted or is rejected. This is intentionally narrower than "any non-delimiter
+// character" and preserves the project's prior ASCII assumptions.
+const BARE_USER_ASCII = /[A-Za-z0-9_$]/;
+const BARE_HOST_ASCII = /[A-Za-z0-9_.%$:-]/;
+const BARE_ACCOUNT_UNICODE = /[\p{L}\p{N}\p{M}]/u;
+
+function isAllowedBareAccountCharacter(ch, kind) {
+  const ascii = kind === 'host' ? BARE_HOST_ASCII : BARE_USER_ASCII;
+  return ascii.test(ch) || BARE_ACCOUNT_UNICODE.test(ch);
+}
+
+function isValidBareAccountToken(token, kind) {
+  if (typeof token !== 'string' || token.length === 0) return false;
+  for (const ch of token) {
+    if (!isAllowedBareAccountCharacter(ch, kind)) return false;
+  }
+  return true;
+}
+
+/**
+ * Validate `SQL SECURITY {DEFINER|INVOKER}` followed by either `VIEW` or the
+ * close of the current version comment. The VIEW requirement is enforced by
+ * the caller after the object keyword is known.
+ */
+function isViewSecurityContinuation(text, position, insideVersion) {
+  let index = skipDefinerTrivia(text, position);
+  if (index < 0 || index >= text.length) return false;
+
+  let keyword = readKeyword(text, index);
+  if (!keyword || keyword.token !== 'SECURITY') return false;
+  if (isIdentifierContinuationChar(text[keyword.end])) return false;
+
+  index = skipDefinerTrivia(text, keyword.end);
+  if (index < 0 || index >= text.length) return false;
+
+  keyword = readKeyword(text, index);
+  if (!keyword || (keyword.token !== 'DEFINER' && keyword.token !== 'INVOKER')) {
+    return false;
+  }
+  if (isIdentifierContinuationChar(text[keyword.end])) return false;
+
+  index = skipDefinerTrivia(text, keyword.end);
+  if (index < 0 || index >= text.length) return false;
+
+  if (text[index] === '*' && text[index + 1] === '/') {
+    return insideVersion === true;
+  }
+
+  keyword = readKeyword(text, index);
+  if (!keyword || keyword.token !== 'VIEW') return false;
+  return !isIdentifierContinuationChar(text[keyword.end]);
+}
+
+/**
+ * Validate the token that follows a complete DEFINER value. Returns an explicit
+ * failure for missing, generic, ambiguous, or identifier-extension
+ * continuations. A version-comment close is accepted only while the lexer is
+ * inside the version comment that it closes.
+ */
+function isSupportedDefinerContinuation(text, position, insideVersion) {
+  if (position < 0 || position >= text.length) {
+    return { ok: false, requiresView: false };
+  }
+  if (text[position] === '*' && text[position + 1] === '/') {
+    return { ok: insideVersion === true, requiresView: false };
+  }
+
+  const keyword = readKeyword(text, position);
+  if (!keyword) return { ok: false, requiresView: false };
+  if (isIdentifierContinuationChar(text[keyword.end])) {
+    return { ok: false, requiresView: false };
+  }
+
+  if (keyword.token === 'SQL') {
+    return {
+      ok: isViewSecurityContinuation(text, keyword.end, insideVersion),
+      requiresView: true,
+    };
+  }
+
+  return {
+    ok: DEFINER_CONTINUATIONS.has(keyword.token),
+    requiresView: false,
+  };
+}
+
+/** Parse `user[@host]` after the user token and require a valid continuation. */
+function finishDefinerValue(text, userEnd, insideVersion) {
+  let end = userEnd;
+  let after = skipDefinerTrivia(text, end);
+  if (after < 0) return null;
+
+  if (text[after] === '@') {
+    const hostStart = skipDefinerTrivia(text, after + 1);
+    if (hostStart < 0 || hostStart >= text.length) return null;
+
+    const hostEnd = readAccountPartEnd(text, hostStart);
+    if (hostEnd <= 0) return null;
+    if (!isQuoteCharacter(text[hostStart]) && !isValidBareAccountToken(text.slice(hostStart, hostEnd), 'host')) {
+      return null;
+    }
+
+    end = hostEnd;
+    after = skipDefinerTrivia(text, end);
+    if (after < 0) return null;
+    if (text[after] === '@') return null;
+  }
+
+  const continuation = isSupportedDefinerContinuation(text, after, insideVersion);
+  return continuation.ok ? { end, requiresView: continuation.requiresView } : null;
+}
+
+/**
+ * Parse `= user[@host]` (quoted or bare, or CURRENT_USER) and return the
+ * exclusive end offset, or null when the clause is malformed, truncated or not
+ * followed by a supported CREATE continuation. Never returns a shortened span.
+ */
+function parseDefinerValue(text, equalsIndex, insideVersion) {
+  if (text[equalsIndex] !== '=') return null;
+
+  const index = skipDefinerTrivia(text, equalsIndex + 1);
+  if (index < 0 || index >= text.length) return null;
+
+  if (isQuoteCharacter(text[index])) {
+    const userEnd = readQuotedAccountPart(text, index);
+    if (userEnd <= 0) return null;
+    return finishDefinerValue(text, userEnd, insideVersion);
+  }
+
+  const userEnd = readBareAccountTokenEnd(text, index);
+  if (userEnd <= 0) return null;
+
+  const token = text.slice(index, userEnd);
+  if (!isValidBareAccountToken(token, 'user')) return null;
+  if (token.toUpperCase() === 'CURRENT_USER') {
+    let end = userEnd;
+    let after = skipDefinerTrivia(text, end);
+    if (after < 0) return null;
+
+    if (text[after] === '(') {
+      const close = skipDefinerTrivia(text, after + 1);
+      if (close < 0 || text[close] !== ')') return null;
+      end = close + 1;
+      after = skipDefinerTrivia(text, end);
+      if (after < 0) return null;
+    }
+
+    // CURRENT_USER@host is not valid MySQL syntax; never remove a partial clause.
+    if (text[after] === '@') return null;
+    const continuation = isSupportedDefinerContinuation(text, after, insideVersion);
+    return continuation.ok ? { end, requiresView: continuation.requiresView } : null;
+  }
+
+  return finishDefinerValue(text, userEnd, insideVersion);
 }
 
 /**
  * Classifies a buffered CREATE header (starting at the CREATE token) without
  * executing SQL. Returns one of:
- *   - { status: 'object', end, insideVersion }
- *   - { status: 'definer' }
+ *   - { status: 'object', end, insideVersion, versionOpen }
+ *   - { status: 'definer', start, end, insideVersion, versionOpen, requiresView }
+ *   - { status: 'definer' } (malformed; no span)
  *   - { status: 'terminated' }
  *   - { status: 'incomplete' }
  *   - { status: 'oversize' }
  *
  * DEFINER detection requires the keyword in the CREATE header, before the
  * object keyword. `SQL SECURITY DEFINER` (without `=`) is not a DEFINER
- * clause and is ignored. Strings, quoted identifiers, line comments and
+ * clause and is ignored, but any `DEFINER =` while a SECURITY context is
+ * active is malformed and fails closed. Nested `/*!` executable-comment
+ * openers are also rejected. Strings, quoted identifiers, line comments and
  * regular block comments are ignored; MySQL executable version comments
  * are treated as executable code because mysqldump places DEFINER metadata
  * inside them.
  */
-export function classifyCreateHeader(text, maxHeaderBytes = DEFAULT_DEFINER_HEADER_LIMIT) {
+export function classifyCreateHeader(
+  text,
+  maxHeaderBytes = DEFAULT_DEFINER_HEADER_LIMIT,
+  initialMode = 'code',
+) {
   if (typeof text !== 'string') return { status: 'incomplete' };
-  if (text.length > maxHeaderBytes) return { status: 'oversize' };
+  if (utf8ByteLength(text) > maxHeaderBytes) return { status: 'oversize' };
 
-  let mode = 'code';
+  let mode = initialMode === 'version' ? 'version' : 'code';
   let quoteReturn = 'code';
   let lineReturn = 'code';
   let blockReturn = 'code';
   let token = '';
   let previousToken = '';
   let sawCreate = false;
+  let inSqlSecurity = false;
+  let sawSecurity = false;
+  let versionOpen = -1;
+  let headerPhase = 'start';
+  let seenOrReplace = false;
+  let seenAlgorithm = false;
+  let seenSqlSecurity = false;
+  let unexpectedHeaderToken = false;
+  let algorithmEqualsSeen = false;
+
+  const malformed = () => ({ status: 'definer' });
 
   const flushToken = (index) => {
     if (!token) return null;
     const upper = token.toUpperCase();
-    if (upper === 'CREATE') sawCreate = true;
-    if (sawCreate) {
-      if (upper === 'DEFINER') {
-        const next = nextMeaningfulCharacter(text, index);
-        if (next === '=') return { status: 'definer' };
-        if (previousToken === 'SECURITY') {
-          previousToken = upper;
-          token = '';
-          return null;
-        }
-        return { status: 'definer' };
+
+    if (!sawCreate) {
+      if (upper !== 'CREATE') {
+        unexpectedHeaderToken = true;
+        previousToken = upper;
+        token = '';
+        return null;
       }
-      if (CREATE_OBJECT_KEYWORDS.has(upper)) {
-        return { status: 'object', end: index, insideVersion: mode === 'version' };
-      }
+      sawCreate = true;
+      headerPhase = 'start';
+      previousToken = upper;
+      token = '';
+      return null;
     }
+
+    if (upper === 'CREATE') {
+      unexpectedHeaderToken = true;
+      previousToken = upper;
+      token = '';
+      return null;
+    }
+
+    if (upper === 'DEFINER') {
+      const equalsIndex = nextMeaningfulIndex(text, index);
+      if (equalsIndex >= 0 && text[equalsIndex] === '=') {
+        // A DEFINER= token is valid only in the initial header phase, not
+        // after unexpected tokens or inside/after a SECURITY clause.
+        if (
+          headerPhase !== 'start' ||
+          unexpectedHeaderToken ||
+          inSqlSecurity ||
+          sawSecurity ||
+          previousToken === 'SECURITY'
+        ) {
+          return malformed();
+        }
+        const span = parseDefinerValue(text, equalsIndex, mode === 'version');
+        if (!span) return malformed();
+        return {
+          status: 'definer',
+          start: index - token.length,
+          end: span.end,
+          insideVersion: mode === 'version',
+          versionOpen,
+          requiresView: span.requiresView === true,
+        };
+      }
+      if (headerPhase === 'afterSecurity' && previousToken === 'SECURITY') {
+        // SQL SECURITY DEFINER is a value, not a DEFINER clause.
+        previousToken = upper;
+        headerPhase = 'start';
+        token = '';
+        return null;
+      }
+      return malformed();
+    }
+
+    if (CREATE_OBJECT_KEYWORDS.has(upper)) {
+      // Object headers without a DEFINER are outside the sanitizer's
+      // transformation scope. Returning the object here preserves restore
+      // compatibility for CREATE statements the sanitizer does not transform.
+      inSqlSecurity = false;
+      sawSecurity = false;
+      return {
+        status: 'object',
+        end: index,
+        insideVersion: mode === 'version',
+        versionOpen,
+      };
+    }
+
+    if (upper === 'OR') {
+      if (headerPhase !== 'start' || seenOrReplace || seenAlgorithm || seenSqlSecurity) {
+        unexpectedHeaderToken = true;
+      } else {
+        headerPhase = 'afterOr';
+        seenOrReplace = true;
+      }
+    } else if (upper === 'REPLACE') {
+      if (headerPhase !== 'afterOr') {
+        unexpectedHeaderToken = true;
+      } else {
+        headerPhase = 'start';
+      }
+    } else if (upper === 'ALGORITHM') {
+      if (headerPhase !== 'start' || seenAlgorithm || seenSqlSecurity) {
+        unexpectedHeaderToken = true;
+      } else {
+        const equalsIndex = nextMeaningfulIndex(text, index);
+        if (equalsIndex < 0 || text[equalsIndex] !== '=') {
+          unexpectedHeaderToken = true;
+        } else {
+          headerPhase = 'algorithmValue';
+          seenAlgorithm = true;
+          algorithmEqualsSeen = false;
+        }
+      }
+    } else if (upper === 'UNDEFINED' || upper === 'MERGE' || upper === 'TEMPTABLE') {
+      if (headerPhase !== 'algorithmValue') {
+        unexpectedHeaderToken = true;
+      } else {
+        headerPhase = 'start';
+        algorithmEqualsSeen = false;
+      }
+    } else if (upper === 'SQL') {
+      if (headerPhase !== 'start' || seenSqlSecurity) {
+        unexpectedHeaderToken = true;
+      } else {
+        headerPhase = 'afterSql';
+        seenSqlSecurity = true;
+      }
+    } else if (upper === 'SECURITY') {
+      if (headerPhase !== 'afterSql') {
+        unexpectedHeaderToken = true;
+      }
+      sawSecurity = true;
+      inSqlSecurity = previousToken === 'SQL';
+      headerPhase = 'afterSecurity';
+    } else if (upper === 'INVOKER') {
+      if (headerPhase !== 'afterSecurity') {
+        unexpectedHeaderToken = true;
+      } else {
+        headerPhase = 'start';
+      }
+    } else {
+      unexpectedHeaderToken = true;
+    }
+
     previousToken = upper;
     token = '';
     return null;
@@ -1247,6 +1719,9 @@ export function classifyCreateHeader(text, maxHeaderBytes = DEFAULT_DEFINER_HEAD
 
     if (mode === 'single' || mode === 'double' || mode === 'backtick') {
       const quote = mode === 'single' ? "'" : mode === 'double' ? '"' : '`';
+      if (quoteReturn === 'version' && ch === '*' && next === '/') {
+        return { status: 'definer' };
+      }
       if (ch === '\\' && mode !== 'backtick') {
         index += 2;
         continue;
@@ -1277,6 +1752,7 @@ export function classifyCreateHeader(text, maxHeaderBytes = DEFAULT_DEFINER_HEAD
     }
     if (mode === 'version' && ch === '*' && next === '/') {
       mode = 'code';
+      versionOpen = -1;
       index += 2;
       continue;
     }
@@ -1292,18 +1768,21 @@ export function classifyCreateHeader(text, maxHeaderBytes = DEFAULT_DEFINER_HEAD
 
     if (mode === 'code' && ch === ';') return { status: 'terminated' };
     if (ch === "'" || ch === '"' || ch === '`') {
+      if (sawCreate) unexpectedHeaderToken = true;
       quoteReturn = mode;
       mode = ch === "'" ? 'single' : ch === '"' ? 'double' : 'backtick';
       index += 1;
       continue;
     }
     if (ch === '-' && next === '-') {
+      if (mode === 'version') return { status: 'definer' };
       lineReturn = mode;
       mode = 'line';
       index += 2;
       continue;
     }
     if (ch === '#') {
+      if (mode === 'version') return { status: 'definer' };
       lineReturn = mode;
       mode = 'line';
       index += 1;
@@ -1311,13 +1790,39 @@ export function classifyCreateHeader(text, maxHeaderBytes = DEFAULT_DEFINER_HEAD
     }
     if (ch === '/' && next === '*') {
       if (text[index + 2] === '!') {
+        // MySQL comments do not nest. A second executable-comment opener while
+        // already in version mode makes the active opener ambiguous.
+        if (mode === 'version') return { status: 'definer' };
+        versionOpen = index;
         mode = 'version';
+        index += 3;
+        // Skip the optional version number of a later executable comment;
+        // it is part of the comment opener, not a CREATE-header token.
+        while (index < text.length && /[0-9]/.test(text[index])) index += 1;
       } else {
+        if (mode === 'version') return { status: 'definer' };
         blockReturn = mode;
         mode = 'block';
+        index += 2;
       }
-      index += 2;
       continue;
+    }
+    if (sawCreate) {
+      if (/\s/.test(ch)) {
+        index += 1;
+        continue;
+      }
+      if (ch === '=') {
+        if (headerPhase === 'algorithmValue' && !algorithmEqualsSeen) {
+          algorithmEqualsSeen = true;
+          index += 1;
+          continue;
+        }
+        unexpectedHeaderToken = true;
+        index += 1;
+        continue;
+      }
+      unexpectedHeaderToken = true;
     }
     index += 1;
   }
@@ -1357,6 +1862,7 @@ export function createDefinerGuard(options = {}) {
   let buffering = false;
   let header = '';
   let lastSignificantChar = '';
+  const deferredSegments = [];
 
   return new Transform({
     transform(chunk, _encoding, callback) {
@@ -1377,10 +1883,10 @@ export function createDefinerGuard(options = {}) {
         dashPending = false;
         slashPending = false;
         if (mode === 'line' && lineReturn !== 'code') {
-          throw new RestoreFormatError(DEFINER_TRUNCATED_MESSAGE);
+          throw new RestoreDefinerTruncatedError(DEFINER_TRUNCATED_MESSAGE);
         }
         if (mode === 'single' || mode === 'double' || mode === 'backtick' || mode === 'block' || mode === 'version') {
-          throw new RestoreFormatError(DEFINER_TRUNCATED_MESSAGE);
+          throw new RestoreDefinerTruncatedError(DEFINER_TRUNCATED_MESSAGE);
         }
         callback();
       } catch (error) {
@@ -1405,7 +1911,13 @@ export function createDefinerGuard(options = {}) {
   }
 
   function processText(stream, text, final) {
-    let pending = text;
+    let pending;
+    if (deferredSegments.length > 0) {
+      if (text) deferredSegments.push(text);
+      pending = deferredSegments.shift();
+    } else {
+      pending = text;
+    }
     let output = '';
 
     const append = (value) => {
@@ -1418,21 +1930,58 @@ export function createDefinerGuard(options = {}) {
       }
     };
 
-    while (pending.length > 0 || buffering) {
+    while (pending.length > 0 || buffering || deferredSegments.length > 0) {
+      if (pending.length === 0 && deferredSegments.length > 0) {
+        pending = deferredSegments.shift();
+      }
       if (buffering) {
-        header += pending;
-        pending = '';
+        // Consume at most the remaining UTF-8 header budget from the current
+        // chunk. The remainder stays in `pending` and is processed after the
+        // object keyword is classified. Never append an entire SQL body to
+        // `header`, and never split a decoded Unicode character.
+        const headerBytes = utf8ByteLength(header);
+        const headerBudget = maxHeaderBytes - headerBytes;
+        if (headerBudget > 0 && pending.length > 0) {
+          const take = utf8PrefixEnd(pending, headerBudget);
+          if (take > 0) {
+            header += pending.slice(0, take);
+            pending = pending.slice(take);
+          }
+        }
+
         const decision = classifyCreateHeader(header, maxHeaderBytes);
         if (decision.status === 'incomplete') {
-          if (final) throw new RestoreFormatError(DEFINER_INCOMPLETE_MESSAGE);
-          flushOutput();
-          return;
+          if (final && pending.length === 0) {
+            throw new RestoreDefinerHeaderIncompleteError(DEFINER_INCOMPLETE_MESSAGE);
+          }
+          if (pending.length === 0) {
+            flushOutput();
+            return;
+          }
+          // More input exists, but it cannot be added without exceeding the
+          // UTF-8 header limit. This is an oversized header, not a valid body.
+          throw new RestoreDefinerHeaderOversizeError(DEFINER_HEADER_OVERSIZE_MESSAGE);
         }
-        if (decision.status === 'definer') throw new RestoreFormatError(DEFINER_POLICY_MESSAGE);
-        if (decision.status !== 'object') throw new RestoreFormatError(DEFINER_INCOMPLETE_MESSAGE);
+        if (decision.status === 'oversize') {
+          throw new RestoreDefinerHeaderOversizeError(DEFINER_HEADER_OVERSIZE_MESSAGE);
+        }
+        if (decision.status === 'definer') {
+          throw new RestoreFormatError(DEFINER_POLICY_MESSAGE);
+        }
+        if (decision.status !== 'object') {
+          throw new RestoreDefinerHeaderIncompleteError(DEFINER_INCOMPLETE_MESSAGE);
+        }
+        if (typeof options.onObjectKind === 'function') {
+          const kind = lastIdentifier(header.slice(0, decision.end));
+          if (kind) options.onObjectKind(kind);
+        }
         flushOutput();
         stream.push(header.slice(0, decision.end));
-        pending = header.slice(decision.end);
+        const headerTail = header.slice(decision.end);
+        if (headerTail) {
+          if (pending) deferredSegments.unshift(pending);
+          pending = headerTail;
+        }
         header = '';
         buffering = false;
         mode = decision.insideVersion ? 'version' : 'code';
@@ -1546,8 +2095,7 @@ export function createDefinerGuard(options = {}) {
             buffering = true;
             header = token;
             token = '';
-            header += pending.slice(i);
-            pending = '';
+            pending = pending.slice(i);
             startedBuffering = true;
             break;
           }
@@ -1612,6 +2160,10 @@ export function createDefinerGuard(options = {}) {
           lastSignificantChar = token[token.length - 1] ?? lastSignificantChar;
           token = '';
         }
+        if (deferredSegments.length > 0) {
+          pending = deferredSegments.shift();
+          continue;
+        }
         flushOutput();
         return;
       }
@@ -1672,12 +2224,22 @@ async function closeStreamsAndConfirm(streams, timeoutMs) {
  * the caller can clean up the spool before any MySQL process starts.
  */
 async function verifySpoolDefinerPolicy(spoolPath) {
+  const objects = { triggers: 0, procedures: 0, functions: 0, events: 0, views: 0 };
   const sink = new Writable({
     write(_chunk, _encoding, callback) {
       callback();
     },
   });
-  await pipeline(createReadStream(spoolPath), createDefinerGuard(), sink);
+  await pipeline(createReadStream(spoolPath), createDefinerGuard({
+    onObjectKind(kind) {
+      if (kind === 'trigger') objects.triggers += 1;
+      else if (kind === 'procedure') objects.procedures += 1;
+      else if (kind === 'function') objects.functions += 1;
+      else if (kind === 'event') objects.events += 1;
+      else if (kind === 'view') objects.views += 1;
+    },
+  }), sink);
+  return objects;
 }
 
 /**
@@ -1756,13 +2318,14 @@ export async function prepareSpool(options) {
     // The spool is only readable here after GCM authentication and gzip CRC
     // verification completed. Scan it for executable DEFINER metadata before
     // returning it to the caller (and before any MySQL process can start).
-    await verifySpoolDefinerPolicy(spoolPath);
+    const objects = await verifySpoolDefinerPolicy(spoolPath);
 
     return {
       spoolDir,
       spoolPath,
       format,
       spoolBytes: statSync(spoolPath).size,
+      objects,
     };
   } catch (error) {
     const streamsClosed = await closeStreamsAndConfirm(streams, streamCloseTimeoutMs);
@@ -1823,6 +2386,7 @@ export async function runMysqlRestore(options) {
     `--port=${dbConfig.port}`,
     `--user=${dbConfig.user}`,
     `--database=${database}`,
+    ...(Array.isArray(options.tlsCliArgs) ? options.tlsCliArgs : []),
   ];
 
   let child;
@@ -1916,7 +2480,7 @@ export async function runMysqlRestore(options) {
       `Restore failed (mysql exit code ${exit.code ?? 'null'}${exit.signal ? `, signal ${exit.signal}` : ''}). ` +
         `The target database "${database}" may have been partially modified by the SQL mysql already executed.` +
         (details.length ? `\n${details.join('\n')}` : ''),
-      { cause: pipeError ?? undefined },
+      { cause: pipeError ?? undefined, restoreStarted: true },
     );
   }
 
@@ -1924,7 +2488,458 @@ export async function runMysqlRestore(options) {
 }
 
 /**
- * Full non-dry-run orchestration: spool (verify) -> mysql -> cleanup.
+ * Read-only pre-import probe SQL. The database name is validated
+ * (letters/digits/underscore) before this is built, so interpolation is safe.
+ */
+function buildProbeSql(database) {
+  return [
+    "SELECT '@@event_scheduler', @@GLOBAL.event_scheduler;",
+    "SELECT '@@log_bin', @@GLOBAL.log_bin;",
+    "SELECT '@@log_bin_trust_function_creators', @@GLOBAL.log_bin_trust_function_creators;",
+    `SELECT '@@schema_exists', COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '${database}';`,
+    `SELECT '@@target_events', COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA = '${database}';`,
+  ].join('\n');
+}
+
+const PROBE_KEYS = [
+  '@@event_scheduler',
+  '@@log_bin',
+  '@@log_bin_trust_function_creators',
+  '@@schema_exists',
+  '@@target_events',
+];
+
+/**
+ * `SHOW EVENTS` requires the EVENT privilege on the schema (or globally), so a
+ * successful execution establishes that the account can see every event in the
+ * target database. The server evaluates effective privileges, including active
+ * roles, which is why no grant text is parsed here.
+ */
+function buildEventVisibilitySql(database) {
+  return `SHOW EVENTS FROM \`${database}\`;`;
+}
+
+/**
+ * Default visibility prober: a second read-only mysql invocation using the same
+ * TLS arguments and MYSQL_PWD handling. It resolves only when the server
+ * accepted `SHOW EVENTS`; any denial or transport failure makes visibility
+ * unproven (the caller then refuses while the scheduler is ON).
+ */
+export async function defaultEventVisibilityProbe(options) {
+  const {
+    database,
+    dbConfig,
+    tlsCliArgs = [],
+    spawnImpl,
+    env = process.env,
+    closeTimeoutMs,
+  } = options;
+  // Validate here too: this helper is exported and may be called directly.
+  validateDatabaseName(database);
+  const runner = options.probeRunner ?? defaultProbeRunner;
+  await runner({
+    database,
+    dbConfig,
+    tlsCliArgs,
+    sql: buildEventVisibilitySql(database),
+    spawnImpl,
+    env,
+    kind: 'event-visibility',
+    ...(closeTimeoutMs === undefined ? {} : { closeTimeoutMs }),
+  });
+  return true;
+}
+
+/**
+ * Default probe transport: a single read-only `mysql -N -B -e` invocation
+ * using the same resolved TLS arguments and MYSQL_PWD handling as the import.
+ */
+export function defaultProbeRunner(options) {
+  const {
+    dbConfig,
+    tlsCliArgs = [],
+    sql,
+    spawnImpl = spawn,
+    closeTimeoutMs = CHILD_CLOSE_TIMEOUT_MS,
+  } = options;
+
+  const args = [
+    `--host=${dbConfig.host}`,
+    `--port=${dbConfig.port}`,
+    `--user=${dbConfig.user}`,
+    ...tlsCliArgs,
+    '-N',
+    '-B',
+    '-e',
+    sql,
+  ];
+
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawnImpl('mysql', args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, MYSQL_PWD: dbConfig.password ?? '' },
+      });
+    } catch (error) {
+      reject(new RestoreSafetyError(
+        `Could not start the safety probe mysql client: ${error?.message ?? String(error)}. Refusing to restore.`,
+        { cause: error },
+      ));
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    let closed = false;
+    let spawnError = null;
+    let timer = null;
+
+    const finish = (error, value) => {
+      if (closed) return;
+      closed = true;
+      if (timer) clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(value);
+    };
+
+    child.stdout?.on('data', (chunk) => {
+      if (stdout.length < 64 * 1024) stdout += chunk.toString();
+    });
+    child.stderr?.on('data', (chunk) => {
+      if (stderr.length < 16 * 1024) stderr += chunk.toString();
+    });
+    child.once('error', (error) => {
+      spawnError = error;
+      // Fail immediately instead of waiting for a `close` that may never come.
+      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      finish(new RestoreSafetyError(
+        `Safety probe mysql client failed: ${error?.message ?? String(error)}. Refusing to restore.`,
+        { cause: error },
+      ));
+    });
+    child.once('close', (code, signal) => {
+      // Already rejected by the error handler; avoid double settlement.
+      if (spawnError) return;
+      if (code !== 0 || signal) {
+        finish(new RestoreSafetyError(
+          `Safety probe failed (mysql exit code ${code ?? 'null'}${signal ? `, signal ${signal}` : ''}) ` +
+            `— required variables or privileges may be unavailable. Refusing to restore.` +
+            (stderr.trim() ? `\nmysql stderr: ${stderr.trim()}` : ''),
+        ));
+        return;
+      }
+      finish(null, stdout);
+    });
+
+    timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      finish(new RestoreSafetyError('Safety probe timed out. Refusing to restore.'));
+    }, closeTimeoutMs);
+    if (typeof timer.unref === 'function') timer.unref();
+  });
+}
+
+/** Parse `mysql -N -B` output into the five required probe values. */
+export function parseSafetyProbeOutput(raw) {
+  const values = new Map();
+  for (const line of String(raw ?? '').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const tab = line.indexOf('\t');
+    if (tab < 0) {
+      throw new RestoreSafetyError('Safety probe returned malformed output. Refusing to restore.');
+    }
+    const key = line.slice(0, tab).trim();
+    const value = line.slice(tab + 1).trim();
+    if (!PROBE_KEYS.includes(key)) continue;
+    if (values.has(key)) {
+      throw new RestoreSafetyError(`Safety probe returned "${key}" more than once. Refusing to restore.`);
+    }
+    values.set(key, value);
+  }
+
+  for (const key of PROBE_KEYS) {
+    if (!values.has(key)) {
+      throw new RestoreSafetyError(
+        `Safety probe did not return "${key}"; the server may not expose it. Refusing to restore.`,
+      );
+    }
+  }
+
+  return {
+    eventScheduler: values.get('@@event_scheduler'),
+    logBin: values.get('@@log_bin'),
+    trustFunctionCreators: values.get('@@log_bin_trust_function_creators'),
+    schemaExists: values.get('@@schema_exists'),
+    targetEvents: values.get('@@target_events'),
+  };
+}
+
+function normalizeOnOff(value) {
+  const upper = String(value ?? '').trim().toUpperCase();
+  if (upper === 'ON' || upper === '1') return 'ON';
+  if (upper === 'OFF' || upper === '0') return 'OFF';
+  return null;
+}
+
+/**
+ * Remove anything that could resemble a credential, key or certificate body
+ * from a probe error before it is shown to an operator.
+ *
+ * Handles quoted values with spaces, `--password`/`-p` flag forms, password
+ * assignments, long hex key material, PEM bodies, terminal escape sequences and
+ * unsafe control characters. Output is capped at 300 characters.
+ */
+export function sanitizeSafetyError(message) {
+  let text = typeof message === 'string' ? message : String(message ?? '');
+
+  // 1. Terminal escape sequences and unsafe control characters (keep \t \n \r
+  //    so the whitespace collapse below still separates words).
+  text = text.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '');           // CSI … m
+  text = text.replace(/\u001B\][\s\S]*?(?:\u0007|\u001B\\)/g, ''); // OSC … BEL/ST
+  text = text.replace(/\u001B[@-_]/g, '');                         // other ESC sequences
+  text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '');
+
+  // 2. PEM material: drop the marker body and everything after it.
+  text = text.replace(/-----BEGIN [^-]*-----[\s\S]*/gi, '-----BEGIN *** (redacted)');
+
+  // 3. Password flags, including quoted values that contain spaces.
+  text = text.replace(/(--password(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi, '$1***');
+  text = text.replace(/(^|[\s"'=])-p\s*("[^"]*"|'[^']*'|\S+)/g, '$1-p***');
+
+  // 4. MYSQL_PWD and password-style assignments (quoted or bare).
+  text = text.replace(/(MYSQL_PWD=)("[^"]*"|'[^']*'|\S+)/gi, '$1***');
+  text = text.replace(/\b(password|passwd|pwd)\s*[=:]\s*("[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1=***');
+
+  // 5. Hex key material: 64 characters or longer.
+  text = text.replace(/\b[0-9a-fA-F]{64,}\b/g, '***');
+
+  // 6. Collapse whitespace and cap the diagnostic length.
+  text = text.replace(/\s+/g, ' ').trim();
+  return text.slice(0, 300);
+}
+
+/** Classify a visibility failure without exposing its raw detail. */
+export function classifyVisibilityFailure(message) {
+  const text = String(message ?? '');
+  if (/timed out/i.test(text)) return 'timeout';
+  if (/ERROR 1227|ERROR 1142|ERROR 1044|Access denied|EVENT privilege/i.test(text)) {
+    return 'permission-denied';
+  }
+  if (/Could not start the safety probe|mysql client failed|ENOENT|ECONNREFUSED|EHOSTUNREACH|socket/i.test(text)) {
+    return 'transport';
+  }
+  return 'unknown';
+}
+
+/**
+ * Run the read-only pre-import probes. Fails closed when any probe cannot be
+ * completed or returns a value that cannot be interpreted.
+ */
+export async function runSafetyProbes(options) {
+  const {
+    database,
+    dbConfig,
+    tlsCliArgs = [],
+    probeRunner = defaultProbeRunner,
+    eventVisibilityProbe = defaultEventVisibilityProbe,
+    spawnImpl,
+    env = process.env,
+  } = options;
+
+  // Library callers may bypass the CLI, so validate before any SQL is built.
+  validateDatabaseName(database);
+
+  const sql = buildProbeSql(database);
+
+  let raw;
+  try {
+    raw = await probeRunner({ database, dbConfig, tlsCliArgs, sql, spawnImpl, env });
+  } catch (error) {
+    if (error instanceof RestoreSafetyError) throw error;
+    throw new RestoreSafetyError(
+      `Pre-import safety probe could not be completed (${error?.message ?? String(error)}). Refusing to restore.`,
+      { cause: error },
+    );
+  }
+
+  const parsed = parseSafetyProbeOutput(raw);
+
+  const eventScheduler = String(parsed.eventScheduler ?? '').trim().toUpperCase();
+  if (!['ON', 'OFF', 'DISABLED'].includes(eventScheduler)) {
+    throw new RestoreSafetyError(
+      'Could not interpret @@GLOBAL.event_scheduler; refusing to restore without a verified scheduler state.',
+    );
+  }
+
+  const logBin = normalizeOnOff(parsed.logBin);
+  if (logBin === null) {
+    throw new RestoreSafetyError('Could not interpret @@GLOBAL.log_bin; refusing to restore.');
+  }
+
+  const trustFunctionCreators = normalizeOnOff(parsed.trustFunctionCreators);
+  if (trustFunctionCreators === null) {
+    throw new RestoreSafetyError(
+      'Could not interpret @@GLOBAL.log_bin_trust_function_creators; refusing to restore.',
+    );
+  }
+
+  if (String(parsed.schemaExists).trim() !== '1') {
+    throw new RestoreSafetyError(
+      `Target database "${database}" does not exist. This tool never creates schemas; ` +
+        'create it explicitly (with approval) and re-run.',
+    );
+  }
+
+  if (!/^\d+$/.test(String(parsed.targetEvents).trim())) {
+    throw new RestoreSafetyError(
+      'Could not interpret the target event count; refusing to restore without a verified scheduler risk assessment.',
+    );
+  }
+
+  // A zero count is only meaningful when the account can actually see every
+  // event. SHOW EVENTS is the semantic check: the server denies it without the
+  // EVENT privilege (direct or through active roles), and lists all events
+  // when the privilege is held.
+  let eventVisibility = 'unproven';
+  let visibilityError = null;
+  let visibilityFailureKind = null;
+  try {
+    const result = await eventVisibilityProbe({
+      database,
+      dbConfig,
+      tlsCliArgs,
+      probeRunner,
+      spawnImpl,
+      env,
+    });
+    if (result === true) {
+      eventVisibility = 'proven';
+    } else {
+      visibilityFailureKind = 'unexpected-result';
+      visibilityError = result === false
+        ? 'the visibility probe reported false'
+        : `the visibility probe returned ${result === undefined ? 'undefined' : typeof result}`;
+    }
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    visibilityFailureKind = classifyVisibilityFailure(raw);
+    visibilityError = sanitizeSafetyError(raw);
+    // Event rows are never logged; only the sanitized failure reason is kept.
+  }
+
+  return {
+    eventScheduler,
+    logBin,
+    trustFunctionCreators,
+    targetEventCount: Number(String(parsed.targetEvents).trim()),
+    databaseExists: true,
+    eventVisibility,
+    visibilityError,
+    visibilityFailureKind,
+  };
+}
+
+/**
+ * Decide whether the probed server state and the verified artifact objects are
+ * safe to import. Refuses by default; the two override flags only acknowledge a
+ * reviewed risk — nothing in MySQL is changed.
+ */
+export function evaluateRestoreSafety(options) {
+  const {
+    probes,
+    objects = {},
+    allowEventSchedulerRisk = false,
+    allowTriggerCreateWithBinlog = false,
+  } = options;
+
+  const warnings = [];
+  const artifactEvents = objects.events ?? 0;
+  const eventsExist = probes.targetEventCount > 0 || artifactEvents > 0;
+  const visibilityProven = probes.eventVisibility === 'proven';
+  const visibilityReason = probes.visibilityFailureKind
+    ? ` Reason: ${probes.visibilityFailureKind}` +
+      (probes.visibilityError ? ` - ${probes.visibilityError}` : '') + '.'
+    : '';
+
+  if (probes.eventScheduler === 'ON') {
+    if (!visibilityProven) {
+      if (!allowEventSchedulerRisk) {
+        throw new RestoreSafetyError(
+          'Could not prove that the restore account can see every event in the target database ' +
+            '(SHOW EVENTS was denied or could not be completed). A privilege-filtered count of zero ' +
+            'does NOT prove that no events exist. Refusing to restore while the Event Scheduler is ON. ' +
+            'Grant EVENT on the target schema or globally, or re-run with --allow-event-scheduler-risk ' +
+            'to acknowledge the risk. This tool never enables, disables or alters the scheduler.' +
+            visibilityReason,
+        );
+      }
+      warnings.push(
+        'WARNING: event visibility could not be proven; continuing because --allow-event-scheduler-risk ' +
+          'was supplied. Hidden events may exist and execute during/after the import. ' +
+          'The scheduler was NOT modified.' + visibilityReason,
+      );
+    } else if (eventsExist) {
+      if (!allowEventSchedulerRisk) {
+        throw new RestoreSafetyError(
+          'Event Scheduler is ON and events could execute during or after this restore ' +
+            `(events already in the target: ${probes.targetEventCount}, events in the artifact: ${artifactEvents}). ` +
+            'Refusing to restore by default. Review the event definitions and, only if acceptable, re-run with ' +
+            '--allow-event-scheduler-risk. This tool never enables, disables or alters the scheduler.',
+        );
+      }
+      warnings.push(
+        'WARNING: Event Scheduler is ON and events exist; continuing because --allow-event-scheduler-risk was supplied. ' +
+          'The scheduler was NOT modified and events may execute during/after the import.',
+      );
+    }
+  } else if (!visibilityProven) {
+    warnings.push(
+      'NOTE: event visibility could not be proven, but the Event Scheduler is OFF, so events cannot execute.' +
+        visibilityReason,
+    );
+  }
+
+  const unsafeObjects = (objects.triggers ?? 0) + (objects.functions ?? 0);
+  if (probes.logBin === 'ON' && probes.trustFunctionCreators === 'OFF' && unsafeObjects > 0) {
+    if (!allowTriggerCreateWithBinlog) {
+      throw new RestoreSafetyError(
+        'Binary logging is enabled and log_bin_trust_function_creators=OFF, while the artifact creates ' +
+          `${objects.triggers} trigger(s) and ${objects.functions} function(s). Creating them requires ` +
+          'SET_USER_ID/SUPER or a server setting change. Refusing to restore by default. Only if the restore ' +
+          'account is known to hold that privilege, re-run with --allow-trigger-create-with-binlog. ' +
+          'This tool never changes global variables.',
+      );
+    }
+    warnings.push(
+      'WARNING: binary logging is enabled with log_bin_trust_function_creators=OFF; continuing because ' +
+        '--allow-trigger-create-with-binlog was supplied. No server variable was modified.',
+    );
+  }
+
+  if (probes.eventScheduler === 'DISABLED') {
+    warnings.push(
+      'NOTE: Event Scheduler is DISABLED on the target; events restore but cannot execute until it is enabled.',
+    );
+  }
+
+  return { warnings };
+}
+
+/** Resolve the shared TLS policy; any unsafe/unsupported value fails closed. */
+export function resolveRestoreTlsPolicy(env = process.env) {
+  try {
+    return resolveDbTlsPolicy(env);
+  } catch (error) {
+    throw new RestoreSafetyError(
+      `Database TLS policy is not safe for restore: ${error?.message ?? String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Full non-dry-run orchestration: spool (verify) -> safety probes -> mysql -> cleanup.
  */
 export async function restoreFromBackup(options) {
   const {
@@ -1937,23 +2952,59 @@ export async function restoreFromBackup(options) {
     dbConfig,
     spawnImpl,
     dryRun = false,
+    tlsCliArgs,
+    probeRunner,
+    env = process.env,
+    allowEventSchedulerRisk = false,
+    allowTriggerCreateWithBinlog = false,
+    stderr = (line) => console.error(line),
   } = options;
 
   if (dryRun) return { dryRun: true };
+
+  const resolvedTlsCliArgs = Array.isArray(tlsCliArgs)
+    ? tlsCliArgs
+    : resolveRestoreTlsPolicy(env).cliArgs;
 
   const spool = await prepareSpool({ filePath, format, key, spoolBaseDir, maxSpoolBytes });
   let preserveSpool = false;
 
   try {
+    const probes = await runSafetyProbes({
+      database,
+      dbConfig,
+      tlsCliArgs: resolvedTlsCliArgs,
+      probeRunner,
+      spawnImpl,
+      env,
+    });
+
+    const safety = evaluateRestoreSafety({
+      probes,
+      objects: spool.objects,
+      allowEventSchedulerRisk,
+      allowTriggerCreateWithBinlog,
+    });
+    for (const warning of safety.warnings) stderr(warning);
+
     await runMysqlRestore({
       spoolPath: spool.spoolPath,
       database,
       dbConfig,
       spawnImpl,
+      tlsCliArgs: resolvedTlsCliArgs,
     });
-    return { spoolDir: spool.spoolDir, spoolBytes: spool.spoolBytes };
+    return { spoolDir: spool.spoolDir, spoolBytes: spool.spoolBytes, objects: spool.objects };
   } catch (error) {
-    preserveSpool = error instanceof RestoreCleanupUnsafeError;
+    const partial = error instanceof RestoreDatabaseError && error.restoreStarted === true;
+    preserveSpool = error instanceof RestoreCleanupUnsafeError || partial;
+    if (partial) {
+      stderr(
+        `\nERROR: the import failed after it started; the target database "${database}" may have been PARTIALLY modified.`,
+      );
+      stderr(`The verified spool was retained for inspection/retry: ${spool.spoolDir}`);
+      stderr('No automatic retry was attempted. Inspect the target, then remove the spool manually when it is no longer needed.');
+    }
     throw error;
   } finally {
     if (!preserveSpool) {
@@ -1982,6 +3033,14 @@ Options:
   --confirm-destructive <name>   Required for non-default targets; must equal --db
   --spool-dir <dir>              Existing directory for the private spool
   --max-spool-bytes <n>          Maximum decompressed spool size (bytes)
+  --allow-event-scheduler-risk   Acknowledge that Event Scheduler is ON and events
+                                 exist (or are in the artifact). Never modifies the
+                                 scheduler. Blocked by default.
+  --allow-trigger-create-with-binlog
+                                 Acknowledge that triggers/functions need
+                                 SET_USER_ID/SUPER while log_bin=ON and
+                                 log_bin_trust_function_creators=OFF. Never
+                                 changes global variables. Blocked by default.
   --dry-run                      Plan only: validates arguments, configuration,
                                  target selection and file accessibility. Does NOT
                                  decrypt/authenticate the backup, verify gzip CRC,
@@ -1991,6 +3050,8 @@ Options:
 Environment:
   BACKUP_ENCRYPTION_KEY          Exactly 64 hex characters (encrypted backups)
   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
+  DB_TLS_MODE, DB_TLS_CA_PATH    Shared database TLS policy (disable | require |
+                                 verify-ca); the same policy as migrations/backups.
 `);
 }
 
@@ -2051,10 +3112,15 @@ export async function main(argv, options = {}) {
     stdout('  2. Verify GCM authentication (if GCM) and gzip CRC/end-of-stream');
     stdout('  3. Spool into a private directory (0700), spool file 0600');
     stdout("  4. Validate the dump's CREATE TABLE `roles` and rewrite only the generated column to DEFAULT");
-    stdout(`  5. Pipe the verified spool to: mysql --host=... --port=... --user=... --database=${database}`);
+    stdout('  5. Refuse DEFINER metadata (fail closed) and resolve the shared DB_TLS_MODE policy');
+    stdout('  6. Probe @@GLOBAL.event_scheduler, @@GLOBAL.log_bin and the target event count; refuse unsafe states');
+    stdout(`  7. Pipe the verified spool to: mysql --host=... --port=... --user=... --database=${database}`);
     stdout('\nNo SQL was executed.');
     return 0;
   }
+
+  const tlsPolicy = resolveRestoreTlsPolicy(env);
+  stdout(`\nTLS policy:   ${describeDbTlsPolicy(tlsPolicy)}`);
 
   await restoreFromBackup({
     filePath: opened.filePath,
@@ -2064,6 +3130,12 @@ export async function main(argv, options = {}) {
     maxSpoolBytes,
     database,
     dbConfig,
+    env,
+    tlsCliArgs: tlsPolicy.cliArgs,
+    probeRunner: options.probeRunner,
+    allowEventSchedulerRisk: parsed.allowEventSchedulerRisk,
+    allowTriggerCreateWithBinlog: parsed.allowTriggerCreateWithBinlog,
+    stderr,
   });
 
   stdout(`\n✅ Restore completed into "${database}".`);
