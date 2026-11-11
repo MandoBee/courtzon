@@ -179,6 +179,19 @@ function canManageTournaments(templateSlug: string, permissionKey: string): bool
     && (permissionKey === 'tournaments.create' || permissionKey.startsWith('tournaments.create.'));
 }
 
+// ── G11.20 — Competition Category Management ──────────────────────────────
+// `tournament.competition.*` sits inside the ADMIN_ONLY_PREFIXES `tournament.`
+// family, so without an explicit grant NO role would ever receive it and the
+// management routes would 403 for everyone. The grant is deliberately scoped to
+// the same tournament-admin roles that already hold `org.tournaments.manage`
+// (the capability these routes extend) — never opened to players, sellers or
+// operational roles.
+const TOURNAMENT_COMPETITION_MANAGE_ROLES = new Set(['org-admin', 'master-admin']);
+function canManageTournamentCompetitions(templateSlug: string, permissionKey: string): boolean {
+  return TOURNAMENT_COMPETITION_MANAGE_ROLES.has(templateSlug)
+    && permissionKey.startsWith('tournament.competition.');
+}
+
 // ── Group 1C — platform Tournament Admin Workbench (master-admin navigation) ──
 // master-admin is a genuine platform ADMIN; it must be able to REACH the existing
 // Tournament Admin Workbench screens (dashboard / list / bracket-types)
@@ -198,6 +211,14 @@ const TOURNAMENT_WORKBENCH_KEYS = new Set([
   'tournament.view',
   'tournament.dashboard.view',
   'tournament.create',
+  // G11 Phase 3 — a tournament is ALWAYS owned by an organisation (the CourtZon
+  // platform never creates, owns, funds, or recognises one). `tournament.create`
+  // is now purely the UI gate for the Workbench create screen; the screen itself
+  // requires this key to pick the owning organisation and then submits through
+  // the authoritative organisation-scoped route `POST /org/:orgId/tournaments`.
+  // The removed `POST /admin/tournaments` route is what used to make it a
+  // backend capability, so there is no longer a platform-wide create path.
+  'tournament.create.organisation',
   'tournament.update',
   'tournament.publish',
   'tournament.delete',
@@ -206,6 +227,11 @@ const TOURNAMENT_WORKBENCH_KEYS = new Set([
   'tournament.result.manage',
   'tournaments.edit',
   'tournaments.delete',
+  // G11.5 — prize payout management (workbench route guards + actions).
+  'tournaments.awards.view',
+  'tournaments.awards.grant',
+  'tournaments.awards.refund',
+  'tournaments.awards.withdraw',
 ]);
 function canAccessTournamentWorkbench(templateSlug: string, permissionKey: string): boolean {
   return templateSlug === 'master-admin' && TOURNAMENT_WORKBENCH_KEYS.has(permissionKey);
@@ -236,7 +262,7 @@ const PLAYER_PATTERNS = [
   /^profile\./,
   /^bookings\.(view|create|cancel|apply|manage-applicants|matchmaking)$/,
   /^bookings\.create\./,
-  /^marketplace\.(view|cart|order|wishlist|addresses|complaints\.(submit|view))$/,
+  /^marketplace\.(view|cart(\.view)?|order(\.view)?|wishlist(\.view)?|addresses(\.manage)?|complaints\.(submit|view))$/,
   // P1-01: free-selling is a PLAYER capability keyed by the player-specific
   // permissions. `marketplace.sell` belongs to shop/org seller roles and is
   // never granted to players.
@@ -355,7 +381,13 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   // D4 Expanded — org admins export their OWN settlements (server-side export
   // is tenant-scoped by resolveOrgScope).
   'settlements.export',
+  'org.finance.position.view',
   'academies.enroll',
+  // G11.5 — prize payout management for organisation administrators.
+  'tournaments.awards.view',
+  'tournaments.awards.grant',
+  'tournaments.awards.refund',
+  'tournaments.awards.withdraw',
 ]);
 
 const SHOP_ADMIN_PATTERNS = [
@@ -636,6 +668,10 @@ const AUDITOR_PATTERNS = [
   /^home\./,
   /^sidebar\./,
   /^notifications\.view/,
+  // Read-only Finance navigation (view-only capabilities already granted above).
+  // C10 parity — ported from the .mjs sync template.
+  /^org\.sidebar\.finance/,
+  /^org\.sidebar\.accounting/,
 ];
 
 const READ_ONLY_ADMIN_PATTERNS = [
@@ -646,6 +682,10 @@ const READ_ONLY_ADMIN_PATTERNS = [
   /^home\./,
   /^sidebar\./,
   /^notifications\.view/,
+  // Read-only Finance navigation (view-only capabilities already granted above).
+  // C10 parity — ported from the .mjs sync template.
+  /^org\.sidebar\.finance/,
+  /^org\.sidebar\.accounting/,
 ];
 
 const ACCOUNTANT_PATTERNS = [
@@ -659,6 +699,10 @@ const ACCOUNTANT_PATTERNS = [
   /^coupons\./,
   /^commission-rules\./,
   /^wallet\./,
+  // Organisation-scoped accounting (assigned via org portal) — C10 parity with
+  // the .mjs sync template.
+  /^org\.accounting\./,
+  /^org\.sidebar\.accounting/,
   // AdminLayout finance sidebar (leaf items only; parents render when a child passes)
   /^sidebar\.(dashboard|reports|settlements|admin-bookings|finance-dashboard|finance-ledger|finance-reports|finance-transactions|withdrawal-requests|coupons|marketplace-orders)$/,
 ];
@@ -714,6 +758,7 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (canManageTournaments(templateSlug, permissionKey)) return true;
+    if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -800,6 +845,9 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     // Group 5B UAT — master-admin is a genuine ADMIN role that manages org
     // tournaments; it receives the shared create-screen field permissions.
     if (canManageTournaments(templateSlug, permissionKey)) return true;
+    // G11.20 — competition category management extends the org.tournaments.manage
+    // capability, so the same tournament-admin roles receive the keys.
+    if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
     // Group 1C — master-admin reaches the existing Tournament Admin Workbench
     // through normal navigation (sidebar keys) and passes its route guards
     // (tournament.* + admin-tournaments.view). Explicit grant BEFORE the

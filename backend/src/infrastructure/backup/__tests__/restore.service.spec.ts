@@ -14,6 +14,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { EventEmitter } from 'node:events';
@@ -28,6 +29,15 @@ import * as restore from '../../../../scripts/restore.js';
 const KEY_HEX = 'a'.repeat(64);
 const KEY = Buffer.from(KEY_HEX, 'hex');
 const DB_CONFIG = { host: '127.0.0.1', port: '3306', user: 'tester', password: 'top-secret' };
+
+/** Safe probe output: scheduler off, no binary logging, target exists, no events. */
+const SAFE_PROBE_OUTPUT = [
+  '@@event_scheduler\tOFF',
+  '@@log_bin\tOFF',
+  '@@log_bin_trust_function_creators\tOFF',
+  '@@schema_exists\t1',
+  '@@target_events\t0',
+].join('\n');
 
 const ROLES_DDL = [
   'CREATE TABLE `roles` (',
@@ -1170,6 +1180,8 @@ describe('restoreFromBackup', () => {
       database: restore.DEFAULT_TARGET_DB,
       dbConfig: DB_CONFIG,
       spawnImpl,
+      tlsCliArgs: [],
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
     });
 
     expect(spawnImpl).toHaveBeenCalledTimes(1);
@@ -1190,5 +1202,823 @@ describe('restoreFromBackup', () => {
     });
     expect(result).toEqual({ dryRun: true });
     expect(spawnImpl).not.toHaveBeenCalled();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 2.12 Group B — restore TLS, pre-import safety probes, scheduler and
+// binary-logging guards, partial-restore handling.
+//
+// SAFETY: still no database, mysql client, Redis or network. Probe output is
+// injected; the mysql child is the existing in-memory fake.
+// ════════════════════════════════════════════════════════════════════════════
+
+function probeOutput(overrides: {
+  event_scheduler?: string;
+  log_bin?: string;
+  trust?: string;
+  schema_exists?: string;
+  target_events?: string;
+} = {}): string {
+  const pick = (key: keyof typeof overrides, fallback: string) => overrides[key] ?? fallback;
+  return [
+    `@@event_scheduler\t${pick('event_scheduler', 'OFF')}`,
+    `@@log_bin\t${pick('log_bin', 'OFF')}`,
+    `@@log_bin_trust_function_creators\t${pick('trust', 'OFF')}`,
+    `@@schema_exists\t${pick('schema_exists', '1')}`,
+    `@@target_events\t${pick('target_events', '0')}`,
+  ].join('\n');
+}
+
+const NO_OBJECTS = { triggers: 0, procedures: 0, functions: 0, events: 0, views: 0 };
+const SAFE_PROBES = {
+  eventScheduler: 'OFF',
+  logBin: 'OFF',
+  trustFunctionCreators: 'OFF',
+  targetEventCount: 0,
+  databaseExists: true,
+  eventVisibility: 'proven',
+};
+
+describe('restore TLS policy', () => {
+  it('fails closed outside local when DB_TLS_MODE is unset', () => {
+    expect(() => restore.resolveRestoreTlsPolicy({ COURTZON_MIGRATION_ENV: 'production' }))
+      .toThrow(/TLS policy is not safe for restore/);
+  });
+
+  it('fails closed on an invalid mode', () => {
+    expect(() => restore.resolveRestoreTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'prefer',
+    })).toThrow(/Invalid DB_TLS_MODE/);
+  });
+
+  it('reuses the shared MariaDB argument table for require', () => {
+    const policy = restore.resolveRestoreTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'require',
+    });
+    expect(policy.cliArgs).toEqual(['--ssl', '--skip-ssl-verify-server-cert']);
+  });
+
+  it('never falls back to plaintext in an unclassified environment', () => {
+    expect(() => restore.resolveRestoreTlsPolicy({})).toThrow(/cannot be/i);
+  });
+
+  it('passes the resolved TLS arguments to the actual import client', async () => {
+    const spoolPath = join(workDir, 'tls-import-spool.sql');
+    writeFileSync(spoolPath, 'SELECT 1;\n');
+    const spawnImpl = vi.fn(() => createFakeChild({ code: 0 }));
+
+    await restore.runMysqlRestore({
+      spoolPath,
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl,
+      tlsCliArgs: ['--ssl', '--skip-ssl-verify-server-cert'],
+    });
+
+    const [, args] = spawnImpl.mock.calls[0] as [string, string[]];
+    expect(args).toContain('--ssl');
+    expect(args).toContain('--skip-ssl-verify-server-cert');
+    expect(args.join(' ')).not.toContain(DB_CONFIG.password);
+  });
+});
+
+describe('pre-import safety probes', () => {
+  const database = restore.DEFAULT_TARGET_DB;
+
+  it('passes the resolved TLS arguments to the probe client', async () => {
+    let seen: Record<string, unknown> | null = null;
+    await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      tlsCliArgs: ['--ssl', '--ssl-ca=/tmp/test-ca.pem'],
+      probeRunner: async (options: Record<string, unknown>) => {
+        seen = options;
+        return SAFE_PROBE_OUTPUT;
+      },
+    });
+    expect(seen).not.toBeNull();
+    expect((seen as Record<string, unknown>).tlsCliArgs)
+      .toEqual(['--ssl', '--ssl-ca=/tmp/test-ca.pem']);
+  });
+
+  it('uses read-only SQL and never changes the scheduler or global variables', async () => {
+    const statements: string[] = [];
+    await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      tlsCliArgs: [],
+      probeRunner: async (options: Record<string, unknown>) => {
+        statements.push(String(options.sql));
+        return SAFE_PROBE_OUTPUT;
+      },
+    });
+    const probeSql = statements[0];
+    const visibilitySql = statements[1];
+    expect(probeSql).toMatch(/SELECT/i);
+    expect(probeSql).not.toMatch(/SET\s+GLOBAL|ALTER\s+EVENT|CREATE\s+EVENT|DROP\s+EVENT|SET\s+@@/i);
+    expect(visibilitySql).toMatch(/^SHOW EVENTS FROM/i);
+    expect(visibilitySql).not.toMatch(/SET\s+GLOBAL|ALTER\s+EVENT|CREATE\s+EVENT|DROP\s+EVENT|SET\s+@@/i);
+  });
+
+  it('fails closed when the probe cannot run', async () => {
+    await expect(restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => { throw new Error('access denied'); },
+    })).rejects.toThrow(/safety probe could not be completed/i);
+  });
+
+  it('fails closed on malformed or incomplete probe output', async () => {
+    await expect(restore.runSafetyProbes({
+      database, dbConfig: DB_CONFIG, probeRunner: async () => 'garbage',
+    })).rejects.toThrow(/malformed/);
+
+    await expect(restore.runSafetyProbes({
+      database, dbConfig: DB_CONFIG, probeRunner: async () => '@@event_scheduler\tOFF',
+    })).rejects.toThrow(/did not return/);
+  });
+
+  it('fails closed on an unrecognised scheduler value', async () => {
+    await expect(restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => probeOutput({ event_scheduler: 'MAYBE' }),
+    })).rejects.toThrow(/Could not interpret @@GLOBAL\.event_scheduler/);
+  });
+
+  it('fails closed when the target database does not exist', async () => {
+    await expect(restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => probeOutput({ schema_exists: '0' }),
+    })).rejects.toThrow(/does not exist/);
+  });
+
+  it('normalises 1/0 values to ON/OFF', async () => {
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => probeOutput({ log_bin: '1', trust: '0' }),
+    });
+    expect(probes.logBin).toBe('ON');
+    expect(probes.trustFunctionCreators).toBe('OFF');
+  });
+});
+
+describe('event visibility probe', () => {
+  const database = restore.DEFAULT_TARGET_DB;
+
+  it('accepts visibility proven by a global EVENT privilege', async () => {
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => true,
+    });
+    expect(probes.eventVisibility).toBe('proven');
+    expect(probes.visibilityError).toBeNull();
+  });
+
+  it('accepts visibility proven on the target schema', async () => {
+    // SCHEMA-level EVENT grants make SHOW EVENTS succeed; the probe consumes the
+    // server's decision, not the grant text.
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => true,
+    });
+    expect(probes.eventVisibility).toBe('proven');
+  });
+
+  it('accepts visibility granted through active roles', async () => {
+    // MySQL/MariaDB evaluate active roles inside the privilege check, so a
+    // role-derived EVENT privilege also returns success here.
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => true,
+    });
+    expect(probes.eventVisibility).toBe('proven');
+  });
+
+  it('marks visibility unproven when the EVENT privilege is absent', async () => {
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => {
+        throw new restore.RestoreSafetyError(
+          'Access denied; you need (at least one of) the EVENT privilege(s) for this operation',
+        );
+      },
+    });
+    expect(probes.eventVisibility).toBe('unproven');
+    expect(probes.visibilityError).toMatch(/EVENT privilege/);
+  });
+
+  it('marks visibility unproven when the privilege probe output is unavailable or malformed', async () => {
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => {
+        throw new Error('unexpected output from the visibility probe');
+      },
+    });
+    expect(probes.eventVisibility).toBe('unproven');
+    expect(probes.visibilityError).toMatch(/unexpected output/);
+  });
+
+  it('passes the TLS arguments to the visibility probe', async () => {
+    let seenTls: unknown = null;
+    await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      tlsCliArgs: ['--ssl', '--skip-ssl-verify-server-cert'],
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async (options: Record<string, unknown>) => {
+        seenTls = options.tlsCliArgs;
+        return true;
+      },
+    });
+    expect(seenTls).toEqual(['--ssl', '--skip-ssl-verify-server-cert']);
+  });
+});
+
+describe('event visibility safety', () => {
+  it('blocks when visibility is unproven and the scheduler is ON, even with zero visible events', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: {
+        ...SAFE_PROBES,
+        eventScheduler: 'ON',
+        targetEventCount: 0,
+        eventVisibility: 'unproven',
+      },
+      objects: NO_OBJECTS,
+    })).toThrow(/Could not prove that the restore account can see every event/);
+  });
+
+  it('allows the explicit override when visibility is unproven, with a warning', () => {
+    const result = restore.evaluateRestoreSafety({
+      probes: { ...SAFE_PROBES, eventScheduler: 'ON', eventVisibility: 'unproven' },
+      objects: NO_OBJECTS,
+      allowEventSchedulerRisk: true,
+    });
+    expect(result.warnings.join(' ')).toMatch(/event visibility could not be proven/i);
+    expect(result.warnings.join(' ')).toMatch(/scheduler was NOT modified/i);
+  });
+
+  it('keeps the safe path when visibility is proven and no events exist', () => {
+    const result = restore.evaluateRestoreSafety({
+      probes: { ...SAFE_PROBES, eventScheduler: 'ON', eventVisibility: 'proven' },
+      objects: NO_OBJECTS,
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('reports unproven visibility but proceeds when the scheduler is OFF', () => {
+    const result = restore.evaluateRestoreSafety({
+      probes: { ...SAFE_PROBES, eventVisibility: 'unproven' },
+      objects: NO_OBJECTS,
+    });
+    expect(result.warnings.join(' ')).toMatch(/visibility could not be proven/i);
+    expect(result.warnings.join(' ')).toMatch(/Event Scheduler is OFF/i);
+  });
+
+  it('does not let the scheduler override bypass an unsafe TLS policy', async () => {
+    await expect(restore.restoreFromBackup({
+      filePath: join(workDir, 'unused-tls-check.sql.gz.enc2'),
+      format: 'gcm',
+      key: KEY,
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      env: { COURTZON_MIGRATION_ENV: 'production' },
+      allowEventSchedulerRisk: true,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+    })).rejects.toThrow(/TLS policy is not safe/);
+  });
+});
+
+describe('event scheduler safety', () => {
+  it('blocks when the scheduler is ON and the target already has events', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: { ...SAFE_PROBES, eventScheduler: 'ON', targetEventCount: 2 },
+      objects: NO_OBJECTS,
+    })).toThrow(/Event Scheduler is ON/);
+  });
+
+  it('blocks when the scheduler is ON and the artifact creates events', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: { ...SAFE_PROBES, eventScheduler: 'ON' },
+      objects: { ...NO_OBJECTS, events: 1 },
+    })).toThrow(/Event Scheduler is ON/);
+  });
+
+  it('allows the explicit override with a clear warning and never changes the scheduler', () => {
+    const result = restore.evaluateRestoreSafety({
+      probes: { ...SAFE_PROBES, eventScheduler: 'ON' },
+      objects: { ...NO_OBJECTS, events: 1 },
+      allowEventSchedulerRisk: true,
+    });
+    expect(result.warnings.join(' ')).toMatch(/scheduler was NOT modified/i);
+    expect(result.warnings.join(' ')).toMatch(/may execute/i);
+  });
+
+  it('follows the safe path when the scheduler is OFF', () => {
+    const result = restore.evaluateRestoreSafety({
+      probes: SAFE_PROBES,
+      objects: { ...NO_OBJECTS, events: 1 },
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('does not treat --confirm-destructive as scheduler consent', () => {
+    const parsed = restore.parseRestoreArgs([
+      '--file', 'backup.sql.gz.enc2',
+      '--db', 'courtzon_v3',
+      '--confirm-destructive=courtzon_v3',
+    ]);
+    expect(parsed.allowEventSchedulerRisk).toBe(false);
+    expect(parsed.allowTriggerCreateWithBinlog).toBe(false);
+  });
+
+  it('continues with the explicit override, warns, and starts the import', async () => {
+    const eventSql = [
+      ROLES_DDL,
+      'CREATE EVENT `ev_test` ON SCHEDULE EVERY 1 DAY DO DELETE FROM `roles` WHERE 1 = 0;',
+    ].join('\n');
+    const filePath = writeFixture('scheduler-override.sql.gz.enc2', encryptGcm(gzipSql(eventSql)));
+    const spawnImpl = vi.fn(() => createFakeChild({ code: 0 }));
+    const messages: string[] = [];
+
+    await restore.restoreFromBackup({
+      filePath,
+      format: 'gcm',
+      key: KEY,
+      spoolBaseDir: makeSpoolBase('scheduler-override'),
+      maxSpoolBytes: restore.DEFAULT_MAX_SPOOL_BYTES,
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl,
+      tlsCliArgs: [],
+      probeRunner: async () => probeOutput({ event_scheduler: 'ON' }),
+      allowEventSchedulerRisk: true,
+      stderr: (line: string) => messages.push(line),
+    });
+
+    expect(spawnImpl).toHaveBeenCalledTimes(1);
+    expect(messages.join(' ')).toMatch(/Event Scheduler is ON/i);
+    expect(messages.join(' ')).toMatch(/NOT modified/i);
+  });
+});
+
+describe('binary logging safety', () => {
+  const binlogProbes = {
+    ...SAFE_PROBES,
+    logBin: 'ON',
+    trustFunctionCreators: 'OFF',
+  };
+
+  it('blocks triggers when binary logging is on and trust is off', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: binlogProbes,
+      objects: { ...NO_OBJECTS, triggers: 1 },
+    })).toThrow(/log_bin_trust_function_creators=OFF/);
+  });
+
+  it('blocks functions too', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: binlogProbes,
+      objects: { ...NO_OBJECTS, functions: 2 },
+    })).toThrow(/log_bin_trust_function_creators=OFF/);
+  });
+
+  it('allows procedures only', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: binlogProbes,
+      objects: { ...NO_OBJECTS, procedures: 3 },
+    })).not.toThrow();
+  });
+
+  it('allows the combination when trust_function_creators is ON', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: { ...binlogProbes, trustFunctionCreators: 'ON' },
+      objects: { ...NO_OBJECTS, triggers: 1 },
+    })).not.toThrow();
+  });
+
+  it('allows triggers when binary logging is OFF', () => {
+    expect(() => restore.evaluateRestoreSafety({
+      probes: SAFE_PROBES,
+      objects: { ...NO_OBJECTS, triggers: 1, functions: 1 },
+    })).not.toThrow();
+  });
+
+  it('allows the explicit override with a warning and changes no variable', () => {
+    const result = restore.evaluateRestoreSafety({
+      probes: binlogProbes,
+      objects: { ...NO_OBJECTS, triggers: 1 },
+      allowTriggerCreateWithBinlog: true,
+    });
+    expect(result.warnings.join(' ')).toMatch(/No server variable was modified/i);
+  });
+});
+
+describe('partial restore handling', () => {
+  it('retains the verified spool and reports possible partial modification', async () => {
+    const filePath = writeFixture('partial-failure.sql.gz.enc2', encryptGcm(gzipSql()));
+    const spoolBaseDir = makeSpoolBase('partial');
+    const messages: string[] = [];
+
+    await expect(restore.restoreFromBackup({
+      filePath,
+      format: 'gcm',
+      key: KEY,
+      spoolBaseDir,
+      maxSpoolBytes: restore.DEFAULT_MAX_SPOOL_BYTES,
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl: () => createFakeChild({ code: 1, stderr: 'ERROR 1146: table missing' }),
+      tlsCliArgs: [],
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      stderr: (line: string) => messages.push(line),
+    })).rejects.toThrow(/partially modified/);
+
+    const retained = readdirSync(spoolBaseDir);
+    expect(retained).toHaveLength(1);
+    expect(messages.join('\n')).toContain(retained[0]);
+    expect(messages.join('\n')).toMatch(/No automatic retry was attempted/);
+
+    const retainedPath = join(spoolBaseDir, retained[0]);
+    if (process.platform !== 'win32') {
+      expect(statSync(retainedPath).mode & 0o777).toBe(0o700);
+    }
+    rmSync(retainedPath, { recursive: true, force: true });
+  });
+
+  it('does not run safety probes when DEFINER verification fails first', async () => {
+    const definerSql = [
+      ROLES_DDL,
+      'DELIMITER ;;',
+      '/*!50003 CREATE*/ /*!50017 DEFINER=`alice`@`localhost`*/ /*!50003 TRIGGER `t` BEFORE INSERT ON `roles` FOR EACH ROW SET @a=1 */;;',
+      'DELIMITER ;',
+    ].join('\n');
+    const filePath = writeFixture('definer-block.sql.gz.enc2', encryptGcm(gzipSql(definerSql)));
+    const probeRunner = vi.fn(async () => SAFE_PROBE_OUTPUT);
+
+    await expect(restore.restoreFromBackup({
+      filePath,
+      format: 'gcm',
+      key: KEY,
+      spoolBaseDir: makeSpoolBase('definer'),
+      maxSpoolBytes: restore.DEFAULT_MAX_SPOOL_BYTES,
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl: vi.fn(),
+      tlsCliArgs: [],
+      probeRunner,
+    })).rejects.toThrow(/DEFINER/);
+
+    expect(probeRunner).not.toHaveBeenCalled();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 2.12 Group C — visibility transport hardening
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('event visibility transport', () => {
+  it('resolves proven for a successful SHOW EVENTS with empty output', async () => {
+    const spawnImpl = vi.fn(() => createFakeChild({ code: 0 }));
+
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      tlsCliArgs: ['--ssl', '--skip-ssl-verify-server-cert'],
+      spawnImpl,
+    })).resolves.toBe(true);
+
+    expect(spawnImpl).toHaveBeenCalledTimes(1);
+    const [command, args, options] = spawnImpl.mock.calls[0] as [string, string[], { env: Record<string, string> }];
+    expect(command).toBe('mysql');
+    expect(args.join(' ')).toContain(`SHOW EVENTS FROM \`${restore.DEFAULT_TARGET_DB}\``);
+    expect(args).toContain('--ssl');
+    expect(args).toContain('--skip-ssl-verify-server-cert');
+    expect(args.join(' ')).not.toContain('--password');
+    expect(args.join(' ')).not.toContain(DB_CONFIG.password);
+    expect(options.env.MYSQL_PWD).toBe(DB_CONFIG.password);
+  });
+
+  it('treats a permission-denied exit code as a failure', async () => {
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl: () => createFakeChild({
+        code: 1,
+        stderr: 'ERROR 1227 (42000): Access denied; you need (at least one of) the EVENT privilege(s)',
+      }),
+    })).rejects.toThrow(/ERROR 1227/);
+  });
+
+  it('treats any non-zero exit as a failure', async () => {
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl: () => createFakeChild({ code: 2 }),
+    })).rejects.toThrow(/exit code 2/);
+  });
+
+  it('treats a synchronous spawn failure as a failure', async () => {
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl: () => { throw new Error('spawn boom'); },
+    })).rejects.toThrow(/Could not start the safety probe/);
+  });
+
+  it('treats a child-process error event as a failure', async () => {
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl: () => createFakeChild({ error: new Error('ENOENT: mysql not found') }),
+    })).rejects.toThrow(/mysql client failed/);
+  });
+
+  it('treats a timeout as a failure', async () => {
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      closeTimeoutMs: 10,
+      spawnImpl: () => createFakeChild({ code: 0, closeDelayMs: 100 }),
+    })).rejects.toThrow(/timed out/);
+  });
+});
+
+describe('event visibility result handling', () => {
+  const database = restore.DEFAULT_TARGET_DB;
+
+  it('marks visibility unproven when the probe explicitly returns false', async () => {
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => false,
+    });
+    expect(probes.eventVisibility).toBe('unproven');
+    expect(probes.visibilityFailureKind).toBe('unexpected-result');
+    expect(probes.visibilityError).toMatch(/reported false/);
+  });
+
+  it('marks visibility unproven for a malformed or missing result', async () => {
+    const malformed = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => 'ok',
+    });
+    expect(malformed.eventVisibility).toBe('unproven');
+    expect(malformed.visibilityFailureKind).toBe('unexpected-result');
+
+    const missing = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => undefined,
+    });
+    expect(missing.eventVisibility).toBe('unproven');
+    expect(missing.visibilityError).toMatch(/undefined/);
+  });
+
+  it('classifies permission denial, timeout and transport failures distinctly', async () => {
+    const denied = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => {
+        throw new Error('ERROR 1227 (42000): Access denied; you need the EVENT privilege');
+      },
+    });
+    expect(denied.visibilityFailureKind).toBe('permission-denied');
+
+    const timeout = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => {
+        throw new Error('Safety probe timed out. Refusing to restore.');
+      },
+    });
+    expect(timeout.visibilityFailureKind).toBe('timeout');
+
+    const transport = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => {
+        throw new Error('Could not start the safety probe mysql client: ENOENT');
+      },
+    });
+    expect(transport.visibilityFailureKind).toBe('transport');
+  });
+
+  it('surfaces a sanitized reason in the refusal and the OFF note', async () => {
+    const unproven = {
+      ...SAFE_PROBES,
+      eventScheduler: 'ON',
+      eventVisibility: 'unproven',
+      visibilityFailureKind: 'permission-denied',
+      visibilityError: 'ERROR 1227 (42000): Access denied; EVENT privilege needed',
+    };
+
+    expect(() => restore.evaluateRestoreSafety({ probes: unproven, objects: NO_OBJECTS }))
+      .toThrow(/permission-denied[\s\S]*ERROR 1227/);
+
+    const off = restore.evaluateRestoreSafety({
+      probes: { ...unproven, eventScheduler: 'OFF' },
+      objects: NO_OBJECTS,
+    });
+    expect(off.warnings.join(' ')).toMatch(/permission-denied[\s\S]*ERROR 1227/);
+  });
+
+  it('redacts credentials and key material from the surfaced reason', async () => {
+    const secret = 'hunter2-secret';
+    const fakeKey = 'a'.repeat(64);
+    const probes = await restore.runSafetyProbes({
+      database,
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => {
+        throw new Error(
+          `mysql --password=${secret} MYSQL_PWD=${secret} failed; key=${fakeKey}\n` +
+          '-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----',
+        );
+      },
+    });
+
+    expect(probes.eventVisibility).toBe('unproven');
+    expect(probes.visibilityError).not.toContain(secret);
+    expect(probes.visibilityError).not.toContain(fakeKey);
+    expect(probes.visibilityError).not.toContain('MIIBfake');
+  });
+
+  it('rejects an unsafe database identifier before any probe process starts', async () => {
+    const probeRunner = vi.fn(async () => SAFE_PROBE_OUTPUT);
+
+    await expect(restore.runSafetyProbes({
+      database: 'x`; DROP TABLE users; --',
+      dbConfig: DB_CONFIG,
+      probeRunner,
+    })).rejects.toThrow(/Unsafe target database name/);
+
+    expect(probeRunner).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid identifier unchanged', async () => {
+    const probes = await restore.runSafetyProbes({
+      database: 'courtzon_restore_test',
+      dbConfig: DB_CONFIG,
+      probeRunner: async () => SAFE_PROBE_OUTPUT,
+      eventVisibilityProbe: async () => true,
+    });
+    expect(probes.databaseExists).toBe(true);
+    expect(probes.eventVisibility).toBe('proven');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 2.13 — sanitizer hardening, direct probe validation, process edges
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('sanitizeSafetyError hardening', () => {
+  it('redacts a double-quoted --password value that contains spaces', () => {
+    const out = restore.sanitizeSafetyError('cmd --password="multi word secret" failed');
+    expect(out).not.toContain('multi word secret');
+    expect(out).toContain('--password=***');
+    expect(out).toContain('failed');
+  });
+
+  it('redacts a single-quoted --password value that contains spaces', () => {
+    const out = restore.sanitizeSafetyError("cmd --password='multi word secret' failed");
+    expect(out).not.toContain('multi word secret');
+    expect(out).toContain('--password=***');
+  });
+
+  it('redacts -pSECRET and -p SECRET forms', () => {
+    expect(restore.sanitizeSafetyError('cmd -psecret123 rest')).not.toContain('secret123');
+    expect(restore.sanitizeSafetyError('cmd -p secret123 rest')).not.toContain('secret123');
+    expect(restore.sanitizeSafetyError('cmd -psecret123 rest')).toContain('-p***');
+  });
+
+  it('redacts quoted password assignments', () => {
+    for (const raw of ['PASSWORD="two words"', "password: 'two words'", 'passwd="a b"']) {
+      const out = restore.sanitizeSafetyError(`before ${raw} after`);
+      expect(out).not.toContain('two words');
+      expect(out).not.toContain('a b');
+      expect(out).toContain('***');
+    }
+  });
+
+  it('redacts hex key material longer than 64 characters', () => {
+    const key = 'f'.repeat(80);
+    expect(restore.sanitizeSafetyError(`key=${key} done`)).not.toContain(key);
+  });
+
+  it('strips ANSI escapes and control characters but keeps readable text', () => {
+    const out = restore.sanitizeSafetyError('bad \u001b[31mred\u001b[0m\u0007 text');
+    expect(out).not.toMatch(/\u001b/);
+    expect(out).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+    expect(out).toContain('bad red text');
+  });
+
+  it('keeps legitimate diagnostics readable and preserves the 300-character cap', () => {
+    const legit = 'Safety probe failed (mysql exit code 1) — required variables or privileges may be unavailable. '
+      + 'mysql stderr: ERROR 1227 (42000): Access denied';
+    const out = restore.sanitizeSafetyError(legit);
+    expect(out).toContain('ERROR 1227');
+    expect(out).toContain('required variables or privileges');
+    expect(restore.sanitizeSafetyError('x'.repeat(1000))).toHaveLength(300);
+  });
+});
+
+describe('defaultEventVisibilityProbe validation', () => {
+  it('rejects an unsafe database identifier before spawning', async () => {
+    const spawnImpl = vi.fn();
+    await expect(restore.defaultEventVisibilityProbe({
+      database: 'x`; DROP TABLE users; --',
+      dbConfig: DB_CONFIG,
+      spawnImpl,
+    })).rejects.toThrow(/Unsafe target database name/);
+    expect(spawnImpl).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid database identifier', async () => {
+    await expect(restore.defaultEventVisibilityProbe({
+      database: 'courtzon_restore_test',
+      dbConfig: DB_CONFIG,
+      spawnImpl: () => createFakeChild({ code: 0 }),
+    })).resolves.toBe(true);
+  });
+});
+
+describe('probe process edge cases', () => {
+  it('rejects a signal-only termination', async () => {
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      spawnImpl: () => createFakeChild({ code: 0, signal: 'SIGKILL' }),
+    })).rejects.toThrow(/signal SIGKILL/);
+  });
+
+  it('rejects immediately when the child emits error and never closes', async () => {
+    const spawnImpl = vi.fn(() => {
+      const child = new EventEmitter();
+      child.stdin = new Writable({ write(_c: unknown, _e: unknown, cb: () => void) { cb(); } });
+      child.stderr = new PassThrough();
+      child.kill = vi.fn();
+      setTimeout(() => child.emit('error', new Error('boom-no-close')), 0);
+      return child;
+    });
+
+    await expect(restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      closeTimeoutMs: 500,
+      spawnImpl,
+    })).rejects.toThrow(/mysql client failed: boom-no-close/);
+  });
+
+  it('settles exactly once when a timed-out child closes later', async () => {
+    let settlements = 0;
+    const promise = restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      closeTimeoutMs: 10,
+      spawnImpl: () => createFakeChild({ code: 0, closeDelayMs: 60 }),
+    });
+    promise.then(() => { settlements += 1; }, () => { settlements += 1; });
+
+    await expect(promise).rejects.toThrow(/timed out/);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 90));
+    expect(settlements).toBe(1);
+  });
+
+  it('settles exactly once on success and does not fire the timeout afterwards', async () => {
+    let settlements = 0;
+    const promise = restore.defaultEventVisibilityProbe({
+      database: restore.DEFAULT_TARGET_DB,
+      dbConfig: DB_CONFIG,
+      closeTimeoutMs: 20,
+      spawnImpl: () => createFakeChild({ code: 0, closeDelayMs: 1 }),
+    });
+    promise.then(() => { settlements += 1; }, () => { settlements += 1; });
+
+    await expect(promise).resolves.toBe(true);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 45));
+    expect(settlements).toBe(1);
   });
 });

@@ -605,7 +605,7 @@ const FINANCE_MANAGER_PATTERNS = [
   /^bookings\.view/,
   /^admin\.bookings\.view/,
   /^marketplace\.admin\.orders/,
-  /^sidebar\.(dashboard|reports|settlements|admin-bookings|finance-dashboard|finance-ledger|finance-reports|finance-transactions|withdrawal-requests|coupons|marketplace-orders)/,
+  /^sidebar\.(dashboard|reports|settlements|admin-bookings|finance-dashboard|finance-ledger|finance-reports|finance-transactions|withdrawal-requests|coupons|marketplace-orders)$/,
 ];
 
 const OPERATIONS_MANAGER_PATTERNS = [
@@ -826,7 +826,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
     return false;
   }
 
-if (templateSlug === 'master-admin') {
+  if (templateSlug === 'master-admin') {
     if (canManageAcademy(templateSlug, permissionKey)) return true;
     // Explicitly granted platform capabilities hidden behind ADMIN_ONLY_PREFIXES.
     // Match-Result admin lets master-admin resolve disputes / mark no-result /

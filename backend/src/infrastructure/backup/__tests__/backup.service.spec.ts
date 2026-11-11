@@ -725,4 +725,362 @@ describe('retention', () => {
       lock.release();
     }
   });
+
+  it('always preserves the newest artifact even when count is 1', async () => {
+    const lock = service.acquireBackupLock();
+    try {
+      const oldest = writeBackupFile('courtzon_2020-01-01T00-00-00-000Z_nnnnnn.sql.gz.enc2', 3 * DAY_MS);
+      const middle = writeBackupFile('courtzon_2020-01-02T00-00-00-000Z_oooooo.sql.gz.enc2', 2 * DAY_MS);
+      const newest = writeBackupFile('courtzon_2020-01-03T00-00-00-000Z_pppppp.sql.gz.enc2', 0);
+
+      const result = await service.pruneOldBackups(lock, { count: 1, days: 0 });
+
+      expect(result.pruned).toBe(2);
+      expect(existsSync(oldest)).toBe(false);
+      expect(existsSync(middle)).toBe(false);
+      expect(existsSync(newest)).toBe(true);
+    } finally {
+      lock.release();
+    }
+  });
+});
+
+// ============================================================================
+// Phase 2.12 Group A — dump TLS, S3 status and local sidecar integrity
+//
+// SAFETY: still no database, mysqldump, S3 or network. The TLS policy is a
+// pure environment resolver, the CA is a public self-signed test certificate,
+// and the S3 uploader is injected as an in-memory fake.
+// ============================================================================
+
+const TEST_CA_PEM = `-----BEGIN CERTIFICATE-----
+MIIDFzCCAf+gAwIBAgIUG0QnRCu38HDRP+qDlYocoky5QV4wDQYJKoZIhvcNAQEL
+BQAwGzEZMBcGA1UEAwwQQ291cnRab24gVGVzdCBDQTAeFw0yNjExMDgyMzI2NDRa
+Fw0zNjExMDUyMzI2NDRaMBsxGTAXBgNVBAMMEENvdXJ0Wm9uIFRlc3QgQ0EwggEi
+MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCOI+3gC+yYqeCXA5/epljVTUza
+SivLGYrxZTF7XD4+7qqkMWZKXH16BCaSOmJLAzBHEG7PUPWtbDdFrt5MVvMxs0ce
+8HChX8gZ/if/oIoIJgwj2jCGxjOBYrQfQpSGDwmYrMXWbJYlcEPFlZSTCdSAASC2
+XfPKFizcBkHJ004ki7OMcy1UdgyVdc49MJb5ThPUF5SvgVT1g4KGCTesWHn0GOpA
+M9nXbYl35OjNJCAvIEzAQniSQFK2BxMvsp3DYVpuoIlawwSefdwtFzuJGEuNerkg
+8Nt/7CjcfS53dfPWdFgoxcMOIEtVzIwu4xwLcyo2PeXrtWdUfNWgl6kWM3H1AgMB
+AAGjUzBRMB0GA1UdDgQWBBRMx3GYMOjRgFuReZrvJ1dHfktsETAfBgNVHSMEGDAW
+gBRMx3GYMOjRgFuReZrvJ1dHfktsETAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
+DQEBCwUAA4IBAQAQ4qyQ0egBP4Sfpa/GYbliZiaD8tti8Vj57y0ULtxkDLsmjmtP
+d5QT3KUEXiF182lKDHSD0UNFsiB5VqCNq4x83lRDO7DObcSolpLAtG6LxRoNGB2R
+RrNtECxY/UuZdfXWKyD1XLWhY7Hq1v1sKxotzaPvrXjwuK0OXw16MvzFm2ilL0Ki
+KCjZE10oKgRO9dvSbGzp86yD1aukd2iGWcBhCXRFYETiRqz24L6Uz60/ft0zkPJP
+Tc7CMFOeY9fU1hr0/vKC3+2EYDb3ioYZKHgH8yR7JJ2LU7p5AhqL9fSpAiT2eY7X
+GxOTZQAjtHG4H55OtLaiDrU85bgzhrwendLV
+-----END CERTIFICATE-----
+`;
+
+describe('classifyBackupDatabaseEnvironment', () => {
+  it('prefers COURTZON_MIGRATION_ENV over NODE_ENV', () => {
+    expect(service.classifyBackupDatabaseEnvironment({
+      COURTZON_MIGRATION_ENV: 'local',
+      NODE_ENV: 'production',
+    })).toBe('local');
+    expect(service.classifyBackupDatabaseEnvironment({
+      COURTZON_MIGRATION_ENV: 'production',
+      NODE_ENV: 'development',
+    })).toBe('non-local');
+  });
+
+  it('treats development/test as local and any other NODE_ENV as non-local', () => {
+    expect(service.classifyBackupDatabaseEnvironment({ NODE_ENV: 'development' })).toBe('local');
+    expect(service.classifyBackupDatabaseEnvironment({ NODE_ENV: 'test' })).toBe('local');
+    expect(service.classifyBackupDatabaseEnvironment({ NODE_ENV: 'production' })).toBe('non-local');
+  });
+
+  it('returns unknown when both signals are unset', () => {
+    expect(service.classifyBackupDatabaseEnvironment({})).toBe('unknown');
+  });
+});
+
+describe('resolveBackupTlsPolicy', () => {
+  let caDir: string;
+  let caPath: string;
+  let notPemPath: string;
+
+  beforeAll(() => {
+    caDir = mkdtempSync(join(tmpdir(), 'courtzon-backup-tls-'));
+    caPath = join(caDir, 'ca.pem');
+    writeFileSync(caPath, TEST_CA_PEM);
+    notPemPath = join(caDir, 'not-a-cert.txt');
+    writeFileSync(notPemPath, 'this is not a certificate');
+  });
+
+  afterAll(() => {
+    try {
+      rmSync(caDir, { recursive: true, force: true });
+    } catch {
+      /* best effort on Windows */
+    }
+  });
+
+  it('defaults to disable only in an explicitly local environment', () => {
+    const policy = service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'local',
+      NODE_ENV: 'production',
+    });
+    expect(policy.mode).toBe('disable');
+    expect(policy.environment).toBe('local');
+    expect(policy.cliArgs).toEqual(['--skip-ssl']);
+    expect(policy.warnings).toEqual([]);
+  });
+
+  it('requests TLS and disables certificate verification for require', () => {
+    const policy = service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'require',
+    });
+    expect(policy.mode).toBe('require');
+    expect(policy.cliArgs).toEqual(['--ssl', '--skip-ssl-verify-server-cert']);
+    expect(policy.warnings).toEqual([]);
+  });
+
+  it('verifies the CA for verify-ca when a valid PEM is supplied', () => {
+    const policy = service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'verify-ca',
+      DB_TLS_CA_PATH: caPath,
+    });
+    expect(policy.mode).toBe('verify-ca');
+    expect(policy.cliArgs).toEqual([
+      '--ssl',
+      `--ssl-ca=${caPath}`,
+      '--ssl-verify-server-cert',
+    ]);
+  });
+
+  it('fails closed when verify-ca has no DB_TLS_CA_PATH', () => {
+    expect(() => service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'verify-ca',
+    })).toThrow(/verify-ca requires DB_TLS_CA_PATH/);
+  });
+
+  it('fails closed when the CA path does not exist', () => {
+    expect(() => service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'verify-ca',
+      DB_TLS_CA_PATH: join(caDir, 'missing.pem'),
+    })).toThrow(/does not exist or is not accessible/);
+  });
+
+  it('fails closed when the CA file is not a PEM certificate', () => {
+    expect(() => service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'verify-ca',
+      DB_TLS_CA_PATH: notPemPath,
+    })).toThrow(/not a PEM certificate file/);
+  });
+
+  it('fails closed on an unsupported DB_TLS_MODE', () => {
+    expect(() => service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'prefer',
+    })).toThrow(/Invalid DB_TLS_MODE/);
+  });
+
+  it('fails closed when DB_TLS_MODE is unset outside local', () => {
+    expect(() => service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+    })).toThrow(/must choose an explicit/);
+  });
+
+  it('fails closed when the environment cannot be classified', () => {
+    expect(() => service.resolveBackupTlsPolicy({})).toThrow(/cannot be\s+classified/);
+  });
+
+  it('warns when plaintext is explicitly selected outside local', () => {
+    const policy = service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'disable',
+    });
+    expect(policy.mode).toBe('disable');
+    expect(policy.warnings).toHaveLength(1);
+    expect(policy.warnings[0]).toMatch(/NOT encrypted/);
+  });
+});
+
+describe('buildDumpArgs', () => {
+  const db = {
+    host: 'db.internal',
+    port: '3306',
+    user: 'courtzon_backup',
+    password: 'redacted',
+    database: 'courtzon_v3',
+  };
+
+  it('keeps the existing dump flags and omits TLS flags by default', () => {
+    const args = service.buildDumpArgs(db);
+    expect(args).toEqual([
+      '--single-transaction',
+      '--routines',
+      '--triggers',
+      '--events',
+      '--host=db.internal',
+      '--port=3306',
+      '--user=courtzon_backup',
+      'courtzon_v3',
+    ]);
+  });
+
+  it('injects the resolved TLS arguments into the mysqldump invocation', () => {
+    const tls = service.resolveBackupTlsPolicy({
+      COURTZON_MIGRATION_ENV: 'production',
+      DB_TLS_MODE: 'require',
+    });
+    const args = service.buildDumpArgs(db, tls.cliArgs);
+    expect(args).toContain('--ssl');
+    expect(args).toContain('--skip-ssl-verify-server-cert');
+    expect(args.indexOf('--ssl')).toBeGreaterThan(args.indexOf('--events'));
+    expect(args.indexOf('--ssl')).toBeLessThan(args.indexOf('--host=db.internal'));
+  });
+});
+
+describe('parseRequireSidecar', () => {
+  it('defaults to off for undefined or empty values', () => {
+    expect(service.parseRequireSidecar(undefined)).toBe(false);
+    expect(service.parseRequireSidecar('')).toBe(false);
+    expect(service.parseRequireSidecar('0')).toBe(false);
+  });
+
+  it('enables strict sidecar enforcement for "1"', () => {
+    expect(service.parseRequireSidecar('1')).toBe(true);
+  });
+
+  it('rejects anything other than "0" or "1"', () => {
+    for (const raw of ['true', 'false', 'yes', '2', '01', ' 1']) {
+      expect(() => service.parseRequireSidecar(raw)).toThrow(/BACKUP_REQUIRE_SIDECAR/);
+    }
+  });
+});
+
+describe('writeArtifactSidecar', () => {
+  let dir: string;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'courtzon-backup-sidecar-'));
+  });
+
+  afterAll(() => {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* best effort on Windows */
+    }
+  });
+
+  it('writes a sha256sum-compatible sidecar and reports ok integrity', async () => {
+    const artifact = join(dir, 'courtzon_test_ok.sql.gz.enc2');
+    writeFileSync(artifact, 'encrypted-bytes');
+
+    const result = await service.writeArtifactSidecar(artifact, false);
+
+    expect(result.integrity).toBe('ok');
+    expect(result.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.sidecarPath).toBe(`${artifact}.sha256`);
+    expect(existsSync(`${artifact}.sha256`)).toBe(true);
+    const content = readFileSync(`${artifact}.sha256`, 'utf8');
+    expect(content).toBe(`${result.sha256}  courtzon_test_ok.sql.gz.enc2\n`);
+  });
+
+  it('reports degraded integrity without throwing when the sidecar cannot be written', async () => {
+    const missing = join(dir, 'does-not-exist.sql.gz.enc2');
+
+    const result = await service.writeArtifactSidecar(missing, false);
+
+    expect(result).toEqual({ sha256: null, sidecarPath: null, integrity: 'degraded' });
+  });
+
+  it('fails closed when BACKUP_REQUIRE_SIDECAR is enabled', async () => {
+    const missing = join(dir, 'also-missing.sql.gz.enc2');
+
+    await expect(service.writeArtifactSidecar(missing, true))
+      .rejects.toThrow(/BACKUP_REQUIRE_SIDECAR=1/);
+  });
+});
+
+describe('uploadArtifactsToS3', () => {
+  const s3Config = {
+    bucket: 'court-backups',
+    accessKeyId: 'test-access',
+    secretAccessKey: 'test-secret',
+    endpoint: 'https://s3.invalid',
+    region: 'auto',
+  };
+
+  it('reports succeeded when the artifact and its sidecar upload', async () => {
+    const calls: string[] = [];
+    const outcome = await service.uploadArtifactsToS3({
+      s3Config,
+      finalPath: '/tmp/courtzon_x.sql.gz.enc2',
+      filename: 'courtzon_x.sql.gz.enc2',
+      sidecarPath: '/tmp/courtzon_x.sql.gz.enc2.sha256',
+      s3Required: false,
+      upload: async (_cfg, _file, name) => { calls.push(name); },
+    });
+
+    expect(outcome.s3).toBe('succeeded');
+    expect(outcome.s3Error).toBeUndefined();
+    expect(calls).toEqual(['courtzon_x.sql.gz.enc2', 'courtzon_x.sql.gz.enc2.sha256']);
+  });
+
+  it('reports partial when the sidecar upload fails and S3 is optional', async () => {
+    const outcome = await service.uploadArtifactsToS3({
+      s3Config,
+      finalPath: '/tmp/courtzon_y.sql.gz.enc2',
+      filename: 'courtzon_y.sql.gz.enc2',
+      sidecarPath: '/tmp/courtzon_y.sql.gz.enc2.sha256',
+      s3Required: false,
+      upload: async (_cfg, _file, name) => {
+        if (name.endsWith('.sha256')) throw new Error('sidecar denied');
+      },
+    });
+
+    expect(outcome).toEqual({ s3: 'partial', s3Error: 'sidecar denied' });
+  });
+
+  it('fails the call when the sidecar upload fails and S3_REQUIRED=1', async () => {
+    await expect(service.uploadArtifactsToS3({
+      s3Config,
+      finalPath: '/tmp/courtzon_z.sql.gz.enc2',
+      filename: 'courtzon_z.sql.gz.enc2',
+      sidecarPath: '/tmp/courtzon_z.sql.gz.enc2.sha256',
+      s3Required: true,
+      upload: async (_cfg, _file, name) => {
+        if (name.endsWith('.sha256')) throw new Error('sidecar denied');
+      },
+    })).rejects.toThrow(/Sidecar upload failed and S3_REQUIRED=1/);
+  });
+
+  it('reports failed without throwing when the artifact upload fails', async () => {
+    const outcome = await service.uploadArtifactsToS3({
+      s3Config,
+      finalPath: '/tmp/courtzon_w.sql.gz.enc2',
+      filename: 'courtzon_w.sql.gz.enc2',
+      sidecarPath: null,
+      s3Required: false,
+      upload: async () => { throw new Error('artifact denied'); },
+    });
+
+    expect(outcome).toEqual({ s3: 'failed', s3Error: 'artifact denied' });
+  });
+
+  it('reports succeeded without a second upload when no sidecar exists', async () => {
+    let calls = 0;
+    const outcome = await service.uploadArtifactsToS3({
+      s3Config,
+      finalPath: '/tmp/courtzon_v.sql.gz.enc2',
+      filename: 'courtzon_v.sql.gz.enc2',
+      sidecarPath: null,
+      s3Required: true,
+      upload: async () => { calls += 1; },
+    });
+
+    expect(outcome.s3).toBe('succeeded');
+    expect(calls).toBe(1);
+  });
 });

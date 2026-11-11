@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { permissionMatchesTemplate, TEMPLATE_SLUGS } from '../application/role-permission-templates.js';
 
 /**
@@ -45,6 +48,18 @@ const D4_PARITY_KEYS = [
   'reports.export.csv',
   'accounting.export.summary',
 ];
+
+/** All permission keys registered in the frontend registry (broad parity). */
+function readRegistryKeys(): string[] {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const registryPath = resolve(here, '../../../../../frontend/src/permissions/registry.ts');
+  const source = readFileSync(registryPath, 'utf8');
+  const keys: string[] = [];
+  const re = /permissionKey:\s*'([^']+)'/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) keys.push(m[1]);
+  return keys;
+}
 
 describe('D4 Expanded — export permissions in the role templates (.ts/.mjs parity)', () => {
   for (const slug of ['auditor', 'read-only-admin']) {
@@ -248,6 +263,19 @@ describe('D4 Expanded — export permissions in the role templates (.ts/.mjs par
       'sidebar.settlements-bookings',
     ]) {
       expect(D4_PARITY_KEYS).not.toContain(unrelated);
+    }
+  });
+
+  it('.ts and .mjs agree on every registered permission for ALL 26 templates', () => {
+    // Broad contract retained from the original local test: the unified branch
+    // restores the G11/C10/.mjs-anchor changes, so full parity is expected.
+    const keys = readRegistryKeys();
+    expect(keys.length).toBeGreaterThan(700);
+    for (const slug of TEMPLATE_SLUGS) {
+      for (const key of keys) {
+        expect(permissionMatchesTemplate(slug, key), `${slug} / ${key}`)
+          .toBe(mjsMatch(slug, key));
+      }
     }
   });
 });

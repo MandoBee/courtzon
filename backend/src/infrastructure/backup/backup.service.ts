@@ -24,7 +24,7 @@ import { basename, join, resolve } from 'node:path';
 import { Transform, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
-import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import { X509Certificate, createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { createModuleLogger } from '../../shared/utils/logger.js';
 
 const log = createModuleLogger('backup');
@@ -66,7 +66,7 @@ const MAX_MAX_BACKUP_BYTES = 1024 * 1024 * 1024 * 1024; // 1 TiB
 
 const LOCK_PATH = join(BACKUP_DIR, '.courtzon-backup.lock');
 
-interface BackupIdentity {
+export interface BackupIdentity {
   host: string;
   port: string;
   user: string;
@@ -107,7 +107,14 @@ export interface BackupResult {
   localPath: string;
   localSha256: string | null;
   sidecarPath: string | null;
-  s3: 'skipped' | 'succeeded' | 'failed';
+  /**
+   * Local artifact integrity:
+   *   'ok'       — the SHA-256 sidecar was written and fsynced.
+   *   'degraded' — the encrypted artifact is finalized but its sidecar is
+   *                missing, so checksum verification is not available.
+   */
+  integrity: 'ok' | 'degraded';
+  s3: 'skipped' | 'succeeded' | 'partial' | 'failed';
   s3Error?: string;
 }
 
@@ -164,6 +171,14 @@ export class BackupRetentionError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = 'BackupRetentionError';
+  }
+}
+
+/** Raised when the configured database TLS policy cannot be applied safely. */
+export class BackupTlsPolicyError extends BackupConfigurationError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BackupTlsPolicyError';
   }
 }
 
@@ -263,6 +278,178 @@ export function parseS3Config(env: NodeJS.ProcessEnv): S3Config | null {
     endpoint: values.S3_ENDPOINT as string,
     region: env.S3_REGION || 'auto',
   };
+}
+
+/** Strict boolean for BACKUP_REQUIRE_SIDECAR: only "0"/"1" (default OFF). */
+export function parseRequireSidecar(raw: string | undefined): boolean {
+  if (raw === undefined || raw === '') return false;
+  if (raw !== '0' && raw !== '1') {
+    throw new BackupConfigurationError('BACKUP_REQUIRE_SIDECAR must be "0" or "1"');
+  }
+  return raw === '1';
+}
+
+// ── Dump client TLS (mirrors backend/scripts/db-tls.js) ─────────────────────
+// The TypeScript build cannot import backend/scripts/db-tls.js (it lives
+// outside `rootDir: src`), so the same policy table and validation rules are
+// implemented here and covered by unit tests. Keep the two in sync.
+
+export type BackupTlsMode = 'disable' | 'require' | 'verify-ca';
+export type DatabaseEnvironmentClass = 'local' | 'non-local' | 'unknown';
+
+export const BACKUP_TLS_MODES: readonly BackupTlsMode[] = Object.freeze([
+  'disable',
+  'require',
+  'verify-ca',
+]);
+
+export interface BackupTlsPolicy {
+  mode: BackupTlsMode;
+  environment: DatabaseEnvironmentClass;
+  cliArgs: string[];
+  warnings: string[];
+}
+
+/** Trim + lowercase only; internal whitespace is preserved so typos are rejected. */
+function normalizeDbTlsValue(value: string | undefined): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+/**
+ * Classify the deployment environment — mirrors `classifyDatabaseEnvironment`
+ * in db-tls.js: COURTZON_MIGRATION_ENV wins, then NODE_ENV; both unset is
+ * `unknown` and is never treated as local.
+ */
+export function classifyBackupDatabaseEnvironment(
+  env: NodeJS.ProcessEnv = process.env,
+): DatabaseEnvironmentClass {
+  const migrationEnv = normalizeDbTlsValue(env.COURTZON_MIGRATION_ENV);
+  if (migrationEnv) return migrationEnv === 'local' ? 'local' : 'non-local';
+
+  const nodeEnv = normalizeDbTlsValue(env.NODE_ENV);
+  if (!nodeEnv) return 'unknown';
+
+  return nodeEnv === 'development' || nodeEnv === 'test' ? 'local' : 'non-local';
+}
+
+function validateBackupCaCertificate(caPath: string): void {
+  let stats;
+  try {
+    stats = statSync(caPath);
+  } catch {
+    throw new BackupTlsPolicyError(
+      `DB_TLS_MODE=verify-ca: DB_TLS_CA_PATH does not exist or is not accessible: ${caPath}`,
+    );
+  }
+  if (!stats.isFile()) {
+    throw new BackupTlsPolicyError(
+      `DB_TLS_MODE=verify-ca: DB_TLS_CA_PATH is not a regular file: ${caPath}`,
+    );
+  }
+
+  let pem: string;
+  try {
+    pem = readFileSync(caPath, 'utf8');
+  } catch {
+    throw new BackupTlsPolicyError(
+      `DB_TLS_MODE=verify-ca: DB_TLS_CA_PATH is not readable: ${caPath}`,
+    );
+  }
+  if (!pem.includes('BEGIN CERTIFICATE')) {
+    throw new BackupTlsPolicyError(
+      `DB_TLS_MODE=verify-ca: DB_TLS_CA_PATH is not a PEM certificate file: ${caPath}`,
+    );
+  }
+  try {
+    // Throws on malformed DER/base64 payloads: a PEM header alone is not enough.
+    new X509Certificate(pem);
+  } catch {
+    throw new BackupTlsPolicyError(
+      `DB_TLS_MODE=verify-ca: DB_TLS_CA_PATH contains an invalid certificate: ${caPath}`,
+    );
+  }
+}
+
+/**
+ * Resolve the dump client TLS policy. Fails closed: a non-local (or
+ * unclassified) deployment must state DB_TLS_MODE explicitly, and verify-ca
+ * requires a readable, valid PEM CA at DB_TLS_CA_PATH.
+ */
+export function resolveBackupTlsPolicy(env: NodeJS.ProcessEnv = process.env): BackupTlsPolicy {
+  const environment = classifyBackupDatabaseEnvironment(env);
+  const raw = normalizeDbTlsValue(env.DB_TLS_MODE);
+
+  let mode: BackupTlsMode;
+  if (!raw) {
+    if (environment === 'local') {
+      mode = 'disable';
+    } else if (environment === 'non-local') {
+      throw new BackupTlsPolicyError(
+        'DB_TLS_MODE is not set. Non-local deployments must choose an explicit ' +
+          'database TLS policy: disable, require or verify-ca ' +
+          '(COURTZON_MIGRATION_ENV/NODE_ENV report a non-local environment). ' +
+          'Refusing to fall back to plaintext.',
+      );
+    } else {
+      throw new BackupTlsPolicyError(
+        'DB_TLS_MODE is not set and the deployment environment cannot be ' +
+          'classified (COURTZON_MIGRATION_ENV and NODE_ENV are both unset). ' +
+          'Set DB_TLS_MODE explicitly to one of: disable, require, verify-ca. ' +
+          'Refusing to infer local plaintext from missing environment variables.',
+      );
+    }
+  } else if (!BACKUP_TLS_MODES.includes(raw as BackupTlsMode)) {
+    throw new BackupTlsPolicyError(
+      `Invalid DB_TLS_MODE "${raw}". Expected one of: ${BACKUP_TLS_MODES.join(', ')}.`,
+    );
+  } else {
+    mode = raw as BackupTlsMode;
+  }
+
+  let caPath: string | null = null;
+  if (mode === 'verify-ca') {
+    caPath = typeof env.DB_TLS_CA_PATH === 'string' ? env.DB_TLS_CA_PATH.trim() : '';
+    if (!caPath) {
+      throw new BackupTlsPolicyError(
+        'DB_TLS_MODE=verify-ca requires DB_TLS_CA_PATH to point at the PEM CA ' +
+          'certificate used to sign the MySQL server certificate.',
+      );
+    }
+    if (/\s/.test(caPath)) {
+      throw new BackupTlsPolicyError(
+        'DB_TLS_CA_PATH must not contain whitespace: the dump client and the ' +
+          'other database clients must resolve the identical path.',
+      );
+    }
+    validateBackupCaCertificate(caPath);
+  }
+
+  const warnings: string[] = [];
+  if (mode === 'disable' && environment !== 'local') {
+    warnings.push(
+      'WARNING: DB_TLS_MODE=disable is explicitly set in a non-local ' +
+        'environment — the mysqldump connection is NOT encrypted.',
+    );
+  }
+
+  const cliArgs = mode === 'disable'
+    ? ['--skip-ssl']
+    : mode === 'require'
+      // --ssl requests TLS; MariaDB's client verifies by default, so identity
+      // verification must be disabled explicitly for "encrypted only".
+      ? ['--ssl', '--skip-ssl-verify-server-cert']
+      : ['--ssl', `--ssl-ca=${caPath}`, '--ssl-verify-server-cert'];
+
+  return { mode, environment, cliArgs, warnings };
+}
+
+/** Secret-free one-line description safe to log. */
+export function describeBackupTlsPolicy(policy: BackupTlsPolicy): string {
+  if (policy.mode === 'disable') return 'disable (plaintext)';
+  if (policy.mode === 'require') {
+    return 'require (encrypted; server certificate not verified)';
+  }
+  return 'verify-ca (encrypted; CA + hostname verified)';
 }
 
 function getBackupIdentity(): BackupIdentity {
@@ -690,12 +877,13 @@ export function createBackupSizeLimiter(maxBytes: number, initialBytes = 0): Tra
   });
 }
 
-function dumpArgs(db: BackupIdentity): string[] {
+export function buildDumpArgs(db: BackupIdentity, tlsCliArgs: string[] = []): string[] {
   return [
     '--single-transaction',
     '--routines',
     '--triggers',
     '--events',
+    ...tlsCliArgs,
     `--host=${db.host}`,
     `--port=${db.port}`,
     `--user=${db.user}`,
@@ -706,6 +894,7 @@ function dumpArgs(db: BackupIdentity): string[] {
 async function streamDumpToFile(
   tmpPath: string,
   db: BackupIdentity,
+  tlsCliArgs: string[],
   key: Buffer,
   lock: BackupLockHandle,
   maxBackupBytes: number,
@@ -727,7 +916,7 @@ async function streamDumpToFile(
   try {
     writeFileSync(tmpPath, header, { mode: 0o600 });
 
-    child = spawn('mysqldump', dumpArgs(db), {
+    child = spawn('mysqldump', buildDumpArgs(db, tlsCliArgs), {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, MYSQL_PWD: db.password },
     });
@@ -980,6 +1169,66 @@ async function uploadWithRetry(s3Config: S3Config, filepath: string, filename: s
   throw new S3UploadError('S3 upload failed');
 }
 
+export interface S3ArtifactUploadOptions {
+  s3Config: S3Config;
+  finalPath: string;
+  filename: string;
+  sidecarPath: string | null;
+  s3Required: boolean;
+  /** Injected for tests; production passes `uploadWithRetry`. */
+  upload?: (s3Config: S3Config, filepath: string, filename: string) => Promise<void>;
+}
+
+export interface S3ArtifactUploadOutcome {
+  s3: 'succeeded' | 'partial' | 'failed';
+  s3Error?: string;
+}
+
+/**
+ * Upload the encrypted artifact and, when present, its SHA-256 sidecar.
+ *
+ * Status is never overstated: if the artifact uploads but the sidecar upload
+ * fails the outcome is `partial`. A failure to upload the artifact is
+ * `failed`; the caller decides whether `S3_REQUIRED=1` must abort the job.
+ * Artifact-upload failures are returned (not thrown) so the caller can run
+ * retention/cleanup first. The only thrown error is the sidecar failure when
+ * `S3_REQUIRED=1`, which must fail the job.
+ */
+export async function uploadArtifactsToS3(
+  options: S3ArtifactUploadOptions,
+): Promise<S3ArtifactUploadOutcome> {
+  const {
+    s3Config,
+    finalPath,
+    filename,
+    sidecarPath,
+    s3Required,
+    upload = uploadWithRetry,
+  } = options;
+
+  try {
+    await upload(s3Config, finalPath, filename);
+  } catch (error) {
+    return {
+      s3: 'failed',
+      s3Error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  if (!sidecarPath) return { s3: 'succeeded' };
+
+  try {
+    await upload(s3Config, sidecarPath, `${filename}.sha256`);
+    return { s3: 'succeeded' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (s3Required) {
+      throw new S3UploadError(`Sidecar upload failed and S3_REQUIRED=1: ${message}`);
+    }
+    return { s3: 'partial', s3Error: message };
+  }
+}
+
 async function sha256File(filePath: string): Promise<string> {
   const hash = createHash('sha256');
   await pipeline(createReadStream(filePath), new Writable({
@@ -989,6 +1238,43 @@ async function sha256File(filePath: string): Promise<string> {
     },
   }));
   return hash.digest('hex');
+}
+
+export interface ArtifactSidecarResult {
+  sha256: string | null;
+  sidecarPath: string | null;
+  integrity: 'ok' | 'degraded';
+}
+
+/**
+ * Hash the finalized artifact and write its mode-0600 SHA-256 sidecar.
+ *
+ * The artifact is never removed here. When `requireSidecar` is false a sidecar
+ * failure yields `integrity: 'degraded'` so callers cannot mistake it for full
+ * integrity; when true the failure is raised after the artifact was finalized.
+ */
+export async function writeArtifactSidecar(
+  finalPath: string,
+  requireSidecar: boolean,
+): Promise<ArtifactSidecarResult> {
+  try {
+    const sha256 = await sha256File(finalPath);
+    const sidecarPath = `${finalPath}.sha256`;
+    writeFileSync(sidecarPath, `${sha256}  ${basename(finalPath)}\n`, { mode: 0o600 });
+    fsyncFile(sidecarPath);
+    return { sha256, sidecarPath, integrity: 'ok' };
+  } catch (error) {
+    log.error({ err: error }, 'Backup saved but the SHA-256 sidecar could not be written');
+    if (requireSidecar) {
+      // The finalized encrypted artifact is deliberately preserved: a sidecar
+      // failure must never destroy a valid backup.
+      throw new BackupConfigurationError(
+        'BACKUP_REQUIRE_SIDECAR=1 but the SHA-256 sidecar could not be written: ' +
+          (error instanceof Error ? error.message : String(error)),
+      );
+    }
+    return { sha256: null, sidecarPath: null, integrity: 'degraded' };
+  }
 }
 
 function fsyncFile(filePath: string): void {
@@ -1132,6 +1418,14 @@ function pruneBackupCandidate(
  * preserved. Sidecars are removed before their backup file, lock ownership is
  * checked before every unlink, and failures are surfaced - never silently
  * reported as success. Legacy CBC/plaintext files are never touched.
+ *
+ * Known limitation (deliberate): "newest" is an mtime ordering, NOT proof that
+ * the artifact decrypts or authenticates. A corrupt newest artifact does not
+ * prevent older copies from being pruned once they fall outside the count/day
+ * window, because verifying every candidate would require decrypting it under
+ * the backup lock. Integrity-aware pruning is a larger redesign and is NOT
+ * implemented here; operators must monitor backup age/size and run restore
+ * drills rather than rely on retention as a validity check.
  */
 export async function pruneOldBackups(
   lock: BackupLockHandle,
@@ -1199,7 +1493,14 @@ async function performBackup(): Promise<BackupResult> {
   const retention = parseRetentionSettings(process.env);
   const maxBackupBytes = parseMaxBackupBytes(process.env);
   const s3Required = parseS3Required(process.env.S3_REQUIRED);
+  const requireSidecar = parseRequireSidecar(process.env.BACKUP_REQUIRE_SIDECAR);
   const db = getBackupIdentity();
+  const tls = resolveBackupTlsPolicy(process.env);
+  for (const warning of tls.warnings) log.warn(warning);
+  log.info(
+    { mode: tls.mode, environment: tls.environment },
+    `Dump client TLS policy: ${describeBackupTlsPolicy(tls)}`,
+  );
 
   assertBackupDirectoryReady();
 
@@ -1218,7 +1519,7 @@ async function performBackup(): Promise<BackupResult> {
 
     log.info({ database: db.database, dir: BACKUP_DIR }, 'Starting encrypted database backup');
 
-    await streamDumpToFile(tmpPath, db, key, lock, maxBackupBytes);
+    await streamDumpToFile(tmpPath, db, tls.cliArgs, key, lock, maxBackupBytes);
 
     if (!lock.isOwned()) {
       throw new BackupLockError(
@@ -1248,25 +1549,22 @@ async function performBackup(): Promise<BackupResult> {
     tmpPath = '';
     fsyncDirectory(BACKUP_DIR);
 
-    let localSha256: string | null = null;
-    let sidecarPath: string | null = null;
-    try {
-      localSha256 = await sha256File(finalPath);
-      sidecarPath = `${finalPath}.sha256`;
-      writeFileSync(sidecarPath, `${localSha256}  ${basename(finalPath)}\n`, { mode: 0o600 });
-      fsyncFile(sidecarPath);
-    } catch (error) {
-      log.error({ err: error }, 'Backup saved but the SHA-256 sidecar could not be written');
-      sidecarPath = null;
-    }
+    const sidecar = await writeArtifactSidecar(finalPath, requireSidecar);
+    const localSha256 = sidecar.sha256;
+    const sidecarPath = sidecar.sidecarPath;
+    const integrity = sidecar.integrity;
 
     const result: BackupResult = {
       localPath: finalPath,
       localSha256,
       sidecarPath,
+      integrity,
       s3: 'skipped',
     };
-    log.info({ path: finalPath, sha256: localSha256 }, 'Encrypted backup created locally');
+    log.info(
+      { path: finalPath, sha256: localSha256, integrity },
+      'Encrypted backup created locally',
+    );
 
     let s3Config: S3Config | null;
     try {
@@ -1283,27 +1581,39 @@ async function performBackup(): Promise<BackupResult> {
       }
       log.info('S3 upload skipped — no S3 configuration');
     } else {
+      let outcome: S3ArtifactUploadOutcome;
       try {
-        await uploadWithRetry(s3Config, finalPath, filename);
-        if (sidecarPath) {
-          try {
-            await uploadWithRetry(s3Config, sidecarPath, `${filename}.sha256`);
-          } catch (error) {
-            log.error({ err: error }, 'Sidecar upload failed — local backup and sidecar retained');
-          }
-        }
-        result.s3 = 'succeeded';
+        outcome = await uploadArtifactsToS3({
+          s3Config,
+          finalPath,
+          filename,
+          sidecarPath,
+          s3Required,
+        });
       } catch (error) {
-        result.s3 = 'failed';
+        // Only thrown for a required sidecar upload failure.
+        result.s3 = 'partial';
         result.s3Error = error instanceof Error ? error.message : String(error);
-        log.error({ err: error }, 'S3 upload failed — local backup retained');
+        await pruneAfterFailure(lock, retention);
+        throw error;
+      }
 
+      result.s3 = outcome.s3;
+      result.s3Error = outcome.s3Error;
+
+      if (outcome.s3 === 'failed') {
+        log.error({ error: outcome.s3Error }, 'S3 upload failed — local backup retained');
         if (s3Required) {
           await pruneAfterFailure(lock, retention);
           throw new S3UploadError(
-            `S3 upload failed and S3_REQUIRED=1: ${result.s3Error}`,
+            `S3 upload failed and S3_REQUIRED=1: ${outcome.s3Error}`,
           );
         }
+      } else if (outcome.s3 === 'partial') {
+        log.error(
+          { error: outcome.s3Error },
+          'S3 sidecar upload failed — offsite artifact has no checksum; local artifact and sidecar retained',
+        );
       }
     }
 
@@ -1351,6 +1661,7 @@ export async function runDatabaseBackup(): Promise<void> {
       localPath: result.localPath,
       localSha256: result.localSha256,
       sidecarPath: result.sidecarPath,
+      integrity: result.integrity,
       s3: result.s3,
       s3Error: result.s3Error,
     },
