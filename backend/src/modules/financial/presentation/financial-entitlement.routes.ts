@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import { financialEntitlementService } from '../application/financial-entitlement.service.js';
 import { assertOrgAccess, assertSettlementOrgAccess } from '../../settlement/presentation/unified-settlement.controller.js';
+import { ConflictError } from '../../../shared/errors/app-error.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('financial-entitlement-routes');
@@ -97,7 +98,15 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
       return reply.status(400).send({ error: 'sourceType and non-empty sourceIds[] are required' });
     }
     if (!reason) return reply.status(400).send({ error: 'reason is required' });
-    const held = await financialEntitlementService.holdBySourceIds(sourceType, sourceIds.map(Number), reason);
+    const numericIds = sourceIds.map(Number);
+    // SECURITY: resolve the canonical organisations from the stored rows and
+    // authorise EVERY distinct organisation before mutating. A mixed batch is
+    // rejected entirely (fail closed) — never a partial cross-tenant write.
+    const targets = await financialEntitlementService.getEntitlementsBySourceIds(sourceType, numericIds);
+    for (const orgId of new Set(targets.map((e: any) => Number(e.organisation_id)))) {
+      await assertOrgAccess((request as any).userId, orgId);
+    }
+    const held = await financialEntitlementService.holdBySourceIds(sourceType, numericIds, reason);
     return reply.send({ success: true, held });
   });
 
@@ -109,7 +118,14 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     if (!sourceType || !Array.isArray(sourceIds) || !sourceIds.length) {
       return reply.status(400).send({ error: 'sourceType and non-empty sourceIds[] are required' });
     }
-    const released = await financialEntitlementService.releaseBySourceIds(sourceType, sourceIds.map(Number));
+    const numericIds = sourceIds.map(Number);
+    // SECURITY: authorise every distinct organisation of the stored rows BEFORE
+    // the atomic release. A mixed batch is rejected entirely.
+    const targets = await financialEntitlementService.getEntitlementsBySourceIds(sourceType, numericIds);
+    for (const orgId of new Set(targets.map((e: any) => Number(e.organisation_id)))) {
+      await assertOrgAccess((request as any).userId, orgId);
+    }
+    const released = await financialEntitlementService.releaseBySourceIds(sourceType, numericIds);
     return reply.send({ success: true, released });
   });
 
@@ -122,7 +138,14 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
       return reply.status(400).send({ error: 'sourceType and non-empty sourceIds[] are required' });
     }
     if (!reason) return reply.status(400).send({ error: 'reason is required' });
-    const cancelled = await financialEntitlementService.cancelBySourceIds(sourceType, sourceIds.map(Number), reason);
+    const numericIds = sourceIds.map(Number);
+    // SECURITY: authorise every distinct organisation of the stored rows BEFORE
+    // cancelling. A mixed batch is rejected entirely (fail closed).
+    const targets = await financialEntitlementService.getEntitlementsBySourceIds(sourceType, numericIds);
+    for (const orgId of new Set(targets.map((e: any) => Number(e.organisation_id)))) {
+      await assertOrgAccess((request as any).userId, orgId);
+    }
+    const cancelled = await financialEntitlementService.cancelBySourceIds(sourceType, numericIds, reason);
     return reply.send({ success: true, cancelled });
   });
 
@@ -152,6 +175,11 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     const { id } = request.params as any;
     const { reason } = request.body as any;
     if (!reason) return reply.status(400).send({ error: 'reason is required' });
+    const entitlement = await financialEntitlementService.getEntitlement(Number(id));
+    // Preserve the original 409 CONFLICT contract for a missing entitlement.
+    if (!entitlement) throw new ConflictError('Entitlement not found');
+    // SECURITY: authorise the STORED record's organisation before any mutation.
+    await assertOrgAccess((request as any).userId, Number(entitlement.organisation_id));
     await financialEntitlementService.holdEntitlement(Number(id), reason);
     return reply.send({ success: true });
   });
@@ -161,6 +189,11 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     preHandler: [requirePermission(['financial.entitlements.hold'])],
   }, async (request: any, reply: any) => {
     const { id } = request.params as any;
+    const entitlement = await financialEntitlementService.getEntitlement(Number(id));
+    // Preserve the original 409 CONFLICT contract for a missing entitlement.
+    if (!entitlement) throw new ConflictError('Entitlement not found');
+    // SECURITY: authorise the STORED record's organisation before any mutation.
+    await assertOrgAccess((request as any).userId, Number(entitlement.organisation_id));
     await financialEntitlementService.releaseEntitlement(Number(id));
     return reply.send({ success: true });
   });
@@ -172,6 +205,11 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     const { id } = request.params as any;
     const { reason } = request.body as any;
     if (!reason) return reply.status(400).send({ error: 'reason is required' });
+    const entitlement = await financialEntitlementService.getEntitlement(Number(id));
+    // Preserve the original 409 CONFLICT contract for a missing entitlement.
+    if (!entitlement) throw new ConflictError('Entitlement not found');
+    // SECURITY: authorise the STORED record's organisation before any mutation.
+    await assertOrgAccess((request as any).userId, Number(entitlement.organisation_id));
     await financialEntitlementService.cancelEntitlement(Number(id), reason);
     return reply.send({ success: true });
   });
