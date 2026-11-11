@@ -1,15 +1,29 @@
 import { useState } from 'react';
+import { useCan } from '../../hooks/useCan';
 
 interface ExportButtonProps {
   data: any[];
   filename?: string;
   label?: string;
+  /**
+   * Optional permission key gating the export control.
+   *
+   * When provided the control renders ONLY for a user who holds that permission
+   * (fail-closed: signed-out / unknown permission → nothing renders). When
+   * omitted the component keeps its legacy behaviour (no gate) so unrelated
+   * screens are unaffected.
+   */
+  permission?: string;
 }
 
-export function ExportButton({ data, filename = 'export', label = 'Export' }: ExportButtonProps) {
+export function ExportButton({ data, filename = 'export', label = 'Export', permission }: ExportButtonProps) {
   const [open, setOpen] = useState(false);
+  const { can } = useCan();
+  // Fail-closed: only an explicit grant unlocks the control.
+  const allowed = !permission || can(permission);
 
   const toCSV = () => {
+    if (!allowed) return;
     if (!data.length) return;
     const headers = Object.keys(data[0]);
     const rows = data.map(row => headers.map(h => JSON.stringify(row[h] ?? '')).join(','));
@@ -22,6 +36,7 @@ export function ExportButton({ data, filename = 'export', label = 'Export' }: Ex
   };
 
   const toJSON = () => {
+    if (!allowed) return;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `${filename}.json`; a.click();
@@ -30,6 +45,7 @@ export function ExportButton({ data, filename = 'export', label = 'Export' }: Ex
   };
 
   const print = () => {
+    if (!allowed) return;
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write('<html><head><title>Export</title><style>table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f5f5f5}</style></head><body>');
@@ -45,6 +61,8 @@ export function ExportButton({ data, filename = 'export', label = 'Export' }: Ex
     w.document.close(); w.print();
     setOpen(false);
   };
+
+  if (!allowed) return null;
 
   return (
     <div className="relative">

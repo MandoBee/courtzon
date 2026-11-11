@@ -31,35 +31,46 @@ export default function FinanceDashboardPage() {
   const navigate = useNavigate();
   const { can } = useCan();
   // Derived value, never an early return: hooks must run on every render.
-  const canView = can('financial.view');
+  const canView = can('financial.reports.view');
   const { from, to } = apiDateRange(30);
 
-  const { data: revenue, isLoading } = useQuery({
+  const { data: revenue, isLoading, isError: revenueError } = useQuery({
     queryKey: ['finance', 'revenue', from, to],
     queryFn: () => api.get('/admin/financial/revenue', { params: { from, to } }).then(r => r.data.data),
     enabled: canView,
   });
 
-  const { data: ledger } = useQuery({
+  const { data: ledger, isError: ledgerError } = useQuery({
     queryKey: ['finance', 'ledger', from, to],
     queryFn: () => api.get('/admin/financial/ledger', { params: { from, to } }).then(r => r.data.data),
     enabled: canView,
   });
 
-  const { data: walletSummary } = useQuery({
+  const { data: walletSummary, isError: walletError } = useQuery({
     queryKey: ['finance', 'wallet-summary'],
     queryFn: () => api.get('/admin/financial/wallet-summary').then(r => r.data.data),
     enabled: canView,
   });
 
-  const { data: settlements } = useQuery({
+  const { data: settlements, isError: settlementsError } = useQuery({
     queryKey: ['finance', 'settlements'],
-    queryFn: () => api.get('/settlements').then(r => r.data?.data || r.data),
+    queryFn: () => api.get('/unified-settlements').then(r => r.data?.data || r.data),
     enabled: canView,
   });
 
   // Permission gate AFTER every hook (see P3-03 hook-order remediation).
   if (!canView) return null;
+
+  if (revenueError || ledgerError || walletError || settlementsError) {
+    return (
+      <div className="space-y-2">
+        <h1 className="text-xl font-bold text-[var(--color-text)]">Finance Dashboard</h1>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Financial reports are unavailable. You may not have permission to view this data, or the service failed.
+        </p>
+      </div>
+    );
+  }
 
   if (isLoading) return <div className="space-y-6"><Skeleton width={300} height={28} /><SkeletonRow count={8} /></div>;
 
@@ -85,7 +96,7 @@ export default function FinanceDashboardPage() {
           <button onClick={() => navigate('/admin/finance/ledger')} className="text-xs text-[var(--color-primary)] hover:underline">Ledger</button>
           <button onClick={() => navigate('/admin/finance/reports')} className="text-xs text-[var(--color-primary)] hover:underline">Reports</button>
           <button onClick={() => navigate('/admin/unified-settlements')} className="text-xs text-[var(--color-primary)] hover:underline">Settlements</button>
-          <ExportButton data={Array.isArray(ledger) ? ledger : (summary?.byAccount || [])} filename="finance-export" />
+          <ExportButton data={Array.isArray(ledger) ? ledger : (summary?.byAccount || [])} filename="finance-export" permission="financial.export" />
         </div>
       </div>
 

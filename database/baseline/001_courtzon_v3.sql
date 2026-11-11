@@ -7906,3 +7906,28 @@ CREATE TABLE IF NOT EXISTS `payment_allocations` (
   CONSTRAINT `fk_pa_booking` FOREIGN KEY (`booking_id`)
     REFERENCES `bookings` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- D4 — Financial Reports read gate (idempotent reference data).
+--
+-- Mirrors database/migrations/206_financial_reports_view_permission.sql so a
+-- baseline-restored database carries the same registration as a migrated one.
+-- Rows are resolved by KEY/SLUG (never by invented auto-increment ids) and the
+-- block is safe to replay.
+--
+-- Scope note: `permission_modules` is reference data owned by
+-- database/seeds/001_baseline.sql (the baseline dump itself carries no
+-- permission rows), so on a baseline-only import this block is a no-op by
+-- design — it never creates a partial module/permission catalogue.
+-- ============================================================================
+
+INSERT INTO `permissions` (`module_id`, `permission_key`, `element_type`, `element_label`, `component_path`, `is_ui_element`, `description`)
+SELECT m.`id`, 'financial.reports.view', 'page', 'Financial Reports View', 'pages/admin/finance/ReportCenterPage.tsx', 1, 'View the global finance report center, finance dashboard and ledger viewer (revenue, wallet, ledger and settlement reports)'
+FROM `permission_modules` m WHERE m.`slug` = 'financial'
+ON DUPLICATE KEY UPDATE `element_type` = VALUES(`element_type`), `element_label` = VALUES(`element_label`), `component_path` = VALUES(`component_path`), `is_ui_element` = VALUES(`is_ui_element`), `description` = VALUES(`description`);
+
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id` FROM `roles` r JOIN `permissions` p ON p.`permission_key` = 'financial.reports.view'
+WHERE r.`slug` IN ('super_admin', 'finance-manager')
+  AND r.`organisation_id` IS NULL
+  AND r.`deleted_at` IS NULL;

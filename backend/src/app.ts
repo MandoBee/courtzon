@@ -88,7 +88,7 @@ import { formatZodErrorDetails, isZodError } from "./shared/validation/zod-error
 import { getHealth, healthDatabase, healthRedis, healthStorage } from "./infrastructure/health/health.service.js";
 import { registerMetrics } from "./infrastructure/metrics/metrics.js";
 import { createMaintenanceMiddleware } from "./shared/middleware/maintenance.middleware.js";
-import { authMiddleware, initAuthMiddleware } from "./shared/middleware/auth.middleware.js";
+import { authMiddleware, initAuthMiddleware, evaluateFinancialReportsAccess, type FinancialReportsRoleRow } from "./shared/middleware/auth.middleware.js";
 import { initRouteGuard } from "./shared/middleware/route-guard.js";
 import { appSettingsRepository } from "./modules/app-settings/infrastructure/repositories/app-settings.repository.js";
 import { rbacRepository } from "./modules/rbac/infrastructure/repositories/rbac.repository.js";
@@ -274,6 +274,29 @@ initAuthMiddleware({
     );
     const userPermissions = rows.map((r: any) => r.permission_key);
     return permissions.some((perm) => userPermissions.includes(perm));
+  },
+  checkFinancialReportsAccess: async (userId) => {
+    // Dedicated Financial Reports authorization. Scope is enforced on the role
+    // row itself: only GLOBAL roles (organisation_id IS NULL) qualify, and the
+    // permission must be attached to the SAME global finance-manager role.
+    // A generic checkPermission cannot be used here — it also accepts
+    // permissions granted through organization-scoped role clones.
+    const [rows] = await pool.execute<RowData>(
+      `SELECT
+         r.slug AS role_slug,
+         r.organisation_id AS organisation_id,
+         (r.deleted_at IS NOT NULL) AS role_deleted,
+         (ur.is_active = TRUE) AS assignment_active,
+         (ur.expires_at IS NOT NULL AND ur.expires_at <= NOW()) AS assignment_expired,
+         p.permission_key AS permission_key
+       FROM user_roles ur
+       JOIN roles r ON r.id = ur.role_id
+       LEFT JOIN role_permissions rp ON rp.role_id = r.id
+       LEFT JOIN permissions p ON p.id = rp.permission_id
+       WHERE ur.user_id = ?`,
+      [userId],
+    );
+    return evaluateFinancialReportsAccess(rows as unknown as FinancialReportsRoleRow[]);
   },
   checkOrgApproved: async (userId) => {
     // An organisation of ANY type can be a Marketplace seller — approval is

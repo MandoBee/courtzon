@@ -106,7 +106,7 @@ describe('P3-03 — permission gates run after every hook', () => {
   });
 
   it('FinanceDashboardPage', async () => {
-    await expectHookOrderSafe(FinanceDashboardPage, 'financial.view', 'Finance Dashboard');
+    await expectHookOrderSafe(FinanceDashboardPage, 'financial.reports.view', 'Finance Dashboard');
   });
 
   it('FinancialOpsDashboard', async () => {
@@ -114,10 +114,10 @@ describe('P3-03 — permission gates run after every hook', () => {
   });
 
   it('LedgerViewerPage', async () => {
-    await expectHookOrderSafe(LedgerViewerPage, 'financial.view', 'Ledger Viewer');
+    await expectHookOrderSafe(LedgerViewerPage, 'financial.reports.view', 'Ledger Viewer');
   });
 
   it('ReportCenterPage', async () => {
-    await expectHookOrderSafe(ReportCenterPage, 'reports.view', 'Report Center');
+    await expectHookOrderSafe(ReportCenterPage, 'financial.reports.view', 'Report Center');
   });
 });

@@ -166,7 +166,7 @@ describe('static validation — committed baseline artefacts', () => {
     expect(report.summary.tableCount).toBe(329);
     expect(report.summary.triggerCount).toBe(19);
     expect(report.summary.pinCount).toBe(74);
-    expect(report.summary.migrationCount).toBe(212);
+    expect(report.summary.migrationCount).toBe(213);
     expect(report.summary.objectCount).toBe(348);
     expect(report.hashes.baseline).toMatch(/^[0-9a-f]{64}$/);
   });

@@ -5,6 +5,15 @@ import ReportsPage, { tournamentFinanceCsvRows } from './ReportsPage';
 
 const mockGet = vi.fn();
 
+// D4 — export gating reads permissions from the auth store (via useCan).
+// D4-A1 — the Financial tab is gated by the dedicated `financial.reports.view`.
+const mockAuth: { user: { permissions: string[] } | null } = {
+  user: { permissions: ['reports.view', 'reports.export'] },
+};
+vi.mock('../../../store/auth.store', () => ({
+  useAuthStore: (selector: (s: typeof mockAuth) => unknown) => selector(mockAuth),
+}));
+
 vi.mock('../../../services/api', () => ({
   default: { get: (...a: any[]) => mockGet(...a) },
 }));
@@ -37,17 +46,27 @@ vi.mock('../../../theme/chart-colors', () => ({
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  // A fresh element per render: `rerender()` bails out when handed the exact
+  // same element reference, which would hide permission changes while mounted.
+  const build = () => (
     <QueryClientProvider client={qc}>
       <ReportsPage />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const result = render(build());
+  return { ...result, rerenderPage: () => result.rerender(build()) };
 }
+
+const tabButton = (label: string) =>
+  screen.queryAllByRole('button').find((b) => b.textContent?.trim().endsWith(label));
+
+const FINANCIAL_VIEW = 'financial.reports.view';
 
 describe('F-16 — ReportsPage export CSV no-op removed', () => {
   beforeEach(() => {
     mockGet.mockReset();
     mockGet.mockResolvedValue({ data: { data: [] } });
+    mockAuth.user = { permissions: ['reports.view', 'reports.export'] };
   });
 
   it('does NOT render a misleading "Export CSV" control', () => {
@@ -60,15 +79,16 @@ describe('F-16 — ReportsPage export CSV no-op removed', () => {
     const originalTitle = document.title;
     document.title = 'test-title';
     renderPage();
-    fireEvent.click(screen.getAllByRole('button').find(b => b.textContent?.includes('Financial'))!);
+    // A general tab is used here: the Financial tab is not offered to a
+    // reports.view-only user (D4-A1).
+    fireEvent.click(tabButton('Bookings')!);
     expect(document.title).toBe('test-title');
     document.title = originalTitle;
   });
 
-  it('still renders the Reports header and report tabs', () => {
+  it('still renders the Reports header and the general report tabs', () => {
     renderPage();
     expect(screen.getByText('Reports')).toBeTruthy();
-    expect(screen.getByText('Financial')).toBeTruthy();
     expect(screen.getByText('Bookings')).toBeTruthy();
     expect(screen.getByText('Users')).toBeTruthy();
     expect(screen.getByText('Marketplace')).toBeTruthy();
@@ -78,7 +98,96 @@ describe('F-16 — ReportsPage export CSV no-op removed', () => {
     renderPage();
     fireEvent.click(screen.getByTestId('date-range'));
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
-    expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/financial/'))).toBe(true);
+    // reports.view only → the default tab is a general (non-financial) report.
+    expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/bookings/'))).toBe(true);
+    expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/financial/'))).toBe(false);
+  });
+});
+
+describe('D4-A1 — Financial tab requires financial.reports.view', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+    mockGet.mockResolvedValue({ data: { data: [] } });
+    mockAuth.user = { permissions: ['reports.view'] };
+  });
+
+  it('shows the Financial tab for an authorized user and uses it as the default', async () => {
+    mockAuth.user = { permissions: ['reports.view', FINANCIAL_VIEW] };
+    renderPage();
+
+    expect(screen.getByText('Financial')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('date-range'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+    expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/financial/summary'))).toBe(true);
+  });
+
+  it('hides the Financial tab for a reports.view-only user (accountant profile)', () => {
+    mockAuth.user = { permissions: ['reports.view', 'financial.view', 'settlements.view', 'settlements.export'] };
+    renderPage();
+
+    expect(screen.queryByText('Financial')).toBeNull();
+    expect(tabButton('Bookings')).toBeTruthy();
+  });
+
+  it.each([
+    ['auditor', ['reports.view', 'reports.export', 'financial.view', 'accounting.gl.view', 'settlements.view']],
+    ['master-admin', ['reports.view', 'reports.export', 'financial.view']],
+    ['read-only-admin', ['reports.view', 'financial.view', 'accounting.gl.view', 'settlements.view']],
+    ['accountant', ['reports.view', 'financial.view', 'settlements.view']],
+  ])('hides the Financial tab for %s', (_role, permissions) => {
+    mockAuth.user = { permissions };
+    renderPage();
+    expect(screen.queryByText('Financial')).toBeNull();
+  });
+
+  it('defaults an unauthorized user to an accessible general tab', async () => {
+    renderPage();
+
+    // No financial button exists, and the first general tab is what renders.
+    expect(screen.queryByText('Financial')).toBeNull();
+    fireEvent.click(screen.getByTestId('date-range'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+    const urls = mockGet.mock.calls.map((c: any) => String(c[0]));
+    expect(urls.some((u) => u.startsWith('/reports/bookings/'))).toBe(true);
+    expect(urls.some((u) => u.includes('/reports/financial/'))).toBe(false);
+  });
+
+  it('cannot reveal financial content by selecting every visible tab', async () => {
+    renderPage();
+    const labels = ['Bookings', 'Users', 'Orgs', 'Marketplace', 'Tournaments', 'Ads', 'Audit'];
+    for (const label of labels) {
+      const button = tabButton(label);
+      expect(button, label).toBeTruthy();
+      fireEvent.click(button!);
+    }
+    fireEvent.click(screen.getByTestId('date-range'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+    expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/financial/'))).toBe(false);
+  });
+
+  it('falls back when the permission is revoked while the Financial tab is active', async () => {
+    // Authorized on first render: Financial is the default tab.
+    mockAuth.user = { permissions: ['reports.view', FINANCIAL_VIEW] };
+    const { rerenderPage } = renderPage();
+    expect(screen.getByText('Financial')).toBeTruthy();
+
+    // Permission revoked while mounted: activeTab is still 'financial'.
+    mockAuth.user = { permissions: ['reports.view'] };
+    rerenderPage();
+
+    expect(screen.queryByText('Financial')).toBeNull();
+    expect(tabButton('Bookings')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('date-range'));
+    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+    expect(mockGet.mock.calls.some((c: any) => String(c[0]).includes('/reports/financial/'))).toBe(false);
+  });
+
+  it('keeps every general report available under reports.view', () => {
+    renderPage();
+    for (const label of ['Bookings', 'Users', 'Orgs', 'Marketplace', 'Tournaments', 'Ads', 'Audit']) {
+      expect(tabButton(label), label).toBeTruthy();
+    }
   });
 });
 
@@ -96,6 +205,7 @@ describe('G11.9 — Tournament finance overview block & client-side CSV', () => 
 
   beforeEach(() => {
     mockGet.mockReset();
+    mockAuth.user = { permissions: ['reports.view', 'reports.export'] };
     mockGet.mockImplementation((url: string) => {
       if (String(url).includes('/reports/tournaments/overview')) return Promise.resolve({ data: { data: overview } } as any);
       return Promise.resolve({ data: { data: [] } } as any);
@@ -150,5 +260,18 @@ describe('G11.9 — Tournament finance overview block & client-side CSV', () => 
   it('returns an empty row set for a zero-ledger payload', () => {
     expect(tournamentFinanceCsvRows({ total_tournaments: 2, currencies: {} })).toEqual([]);
     expect(tournamentFinanceCsvRows(null)).toEqual([]);
+  });
+
+  // ── D4 — report export requires reports.export ────────────────────────────
+  it('hides the Export control when the user has reports.view only', async () => {
+    mockAuth.user = { permissions: ['reports.view'] };
+    await openTournamentFinance();
+    expect(screen.queryByText(/^Export/)).toBeNull();
+  });
+
+  it('shows the Export control when the user has reports.view + reports.export', async () => {
+    mockAuth.user = { permissions: ['reports.view', 'reports.export'] };
+    await openTournamentFinance();
+    expect(screen.getByText(/^Export/)).toBeTruthy();
   });
 });

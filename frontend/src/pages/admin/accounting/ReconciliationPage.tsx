@@ -183,6 +183,7 @@ export default function ReconciliationPage() {
             params={{ status: statusFilter === 'drift' ? 'drift' : undefined }}
             filename="reconciliation"
             label={t('accounting.reconciliation.export', 'Export CSV')}
+            permission="accounting.export"
           />
         </div>
 
