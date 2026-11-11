@@ -1,9 +1,27 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import { financialEntitlementService } from '../application/financial-entitlement.service.js';
+import { assertSettlementOrgAccess } from '../../settlement/presentation/unified-settlement.controller.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('financial-entitlement-routes');
+
+/**
+ * Read entitlements linked to a settlement.
+ *
+ * SECURITY: the settlement's owning organisation is resolved from the canonical
+ * settlement record (never from client input) and the actor is authorised
+ * BEFORE any entitlement row is read. Denial uses the same 404/403 policy as
+ * `unified-settlement.controller.ts`, so an unauthorised caller cannot learn
+ * settlement/entitlement data from the response body.
+ */
+export async function getSettlementEntitlementsHandler(request: any, reply: any) {
+  const { settlementId } = request.params as any;
+  const userId = (request as any).userId;
+  await assertSettlementOrgAccess(userId, Number(settlementId));
+  const entitlements = await financialEntitlementService.getSettlementEntitlements(Number(settlementId));
+  return reply.send(entitlements);
+}
 
 export async function financialEntitlementRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -137,11 +155,7 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
   // Get entitlements linked to a settlement
   app.get('/entitlements/settlement/:settlementId', {
     preHandler: [requirePermission(['financial.entitlements.view'])],
-  }, async (request: any, reply: any) => {
-    const { settlementId } = request.params as any;
-    const entitlements = await financialEntitlementService.getSettlementEntitlements(Number(settlementId));
-    return reply.send(entitlements);
-  });
+  }, getSettlementEntitlementsHandler);
 
   log.info('Financial entitlement routes registered');
 }

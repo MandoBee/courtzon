@@ -55,7 +55,7 @@ async function assertOrgAccess(userId: number, orgId: number): Promise<void> {
  * actor is not authorised for its organisation. Must run BEFORE any protected
  * financial operation on the settlement.
  */
-async function assertSettlementOrgAccess(userId: number, settlementId: number): Promise<void> {
+export async function assertSettlementOrgAccess(userId: number, settlementId: number): Promise<void> {
   if (!userId) throw new ForbiddenError('Access to this organisation denied');
   const settlement = await unifiedSettlementRepository.findBySettlementId(settlementId);
   if (!settlement) throw new NotFoundError('Settlement not found');
