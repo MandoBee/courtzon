@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import api from '../../services/api';
 import { useToast } from './Toast';
+import { useCan } from '../../hooks/useCan';
 
 interface ExportCsvButtonProps {
   /** API endpoint that returns a CSV blob (same permission as the host screen). */
@@ -11,6 +12,15 @@ interface ExportCsvButtonProps {
   filename?: string;
   label?: string;
   disabled?: boolean;
+  /**
+   * Optional permission key gating the export control.
+   *
+   * When provided the control renders ONLY for a user who holds that permission
+   * (fail-closed: signed-out / unknown permission → nothing renders). When
+   * omitted the component keeps its legacy behaviour (no gate) so unrelated
+   * screens are unaffected.
+   */
+  permission?: string;
 }
 
 /**
@@ -19,12 +29,22 @@ interface ExportCsvButtonProps {
  * - Shows a toast on failure.
  * - Uses the backend-provided Content-Disposition filename when available.
  */
-export function ExportCsvButton({ endpoint, params, filename = 'export', label = 'Export CSV', disabled }: ExportCsvButtonProps) {
+export function ExportCsvButton({
+  endpoint,
+  params,
+  filename = 'export',
+  label = 'Export CSV',
+  disabled,
+  permission,
+}: ExportCsvButtonProps) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
+  const { can } = useCan();
+  // Fail-closed: only an explicit grant unlocks the control.
+  const allowed = !permission || can(permission);
 
   const handleDownload = async () => {
-    if (loading) return;
+    if (!allowed || loading) return;
     setLoading(true);
     try {
       const response = await api.get(endpoint, {
@@ -53,6 +73,8 @@ export function ExportCsvButton({ endpoint, params, filename = 'export', label =
       setLoading(false);
     }
   };
+
+  if (!allowed) return null;
 
   return (
     <button

@@ -6,6 +6,14 @@ import ReconciliationPage from './ReconciliationPage';
 
 const mockGet = vi.fn();
 
+// D4 — the reconciliation export reads permissions from the auth store.
+const mockAuth: { user: { permissions: string[] } | null } = {
+  user: { permissions: [] },
+};
+vi.mock('../../../store/auth.store', () => ({
+  useAuthStore: (selector: (s: typeof mockAuth) => unknown) => selector(mockAuth),
+}));
+
 vi.mock('../../../services/api', () => ({
   default: { get: (...a: any[]) => mockGet(...a) },
 }));
@@ -64,6 +72,7 @@ function renderPage() {
 describe('ReconciliationPage', () => {
   beforeEach(() => {
     mockGet.mockReset();
+    mockAuth.user = { permissions: [] };
   });
 
   it('renders summary cards correctly', async () => {
@@ -219,5 +228,36 @@ describe('ReconciliationPage', () => {
     for (const pattern of noCalcPatterns) {
       expect(pageSource).not.toContain(pattern);
     }
+  });
+
+  // ── D4 Expanded — the export control requires accounting.export ──────────
+  // `Can` is mocked to render children (above), so these cases isolate the
+  // export control from the page-level accounting.gl.view guard (C4).
+  it('hides the Export CSV control when accounting.export is missing', async () => {
+    mockAuth.user = { permissions: ['accounting.gl.view'] };
+    mockGet.mockResolvedValue({
+      data: { data: { summary: { totalOrgs: 0, reconciled: 0, drifted: 0 }, reports: [] } },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Reconciliation is clean')).toBeTruthy());
+    expect(screen.queryByText('Export CSV')).toBeNull();
+  });
+
+  it('shows the Export CSV control when accounting.export is held', async () => {
+    mockAuth.user = { permissions: ['accounting.gl.view', 'accounting.export'] };
+    mockGet.mockResolvedValue({
+      data: { data: { summary: { totalOrgs: 0, reconciled: 0, drifted: 0 }, reports: [] } },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Export CSV')).toBeTruthy());
+  });
+
+  it('does not accept accounting.gl.view alone as an export grant', async () => {
+    mockAuth.user = { permissions: ['accounting.gl.view'] };
+    mockGet.mockResolvedValue({
+      data: { data: { summary: { totalOrgs: 0, reconciled: 0, drifted: 0 }, reports: [] } },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.queryByText('Export CSV')).toBeNull());
   });
 });

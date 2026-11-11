@@ -34,7 +34,7 @@ export default function WebhooksPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-[var(--color-text)]">Webhooks</h1>
         <div className="flex gap-2">
-          <ExportButton data={list} filename="webhooks" />
+          <ExportButton data={list} filename="webhooks" permission="notifications.webhooks.export" />
           <button onClick={() => setShowForm(!showForm)} className="btn-primary text-sm">{showForm ? 'Cancel' : 'Add Webhook'}</button>
         </div>
       </div>

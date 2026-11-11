@@ -39,7 +39,7 @@ export default function AuditLogPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-[var(--color-text)]">Audit Center</h1>
-        <ExportButton data={logs} filename={`audit-logs-page-${page}`} />
+        <ExportButton data={logs} filename={`audit-logs-page-${page}`} permission="audit.export" />
       </div>
 
       {/* Filters */}

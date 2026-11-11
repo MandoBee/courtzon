@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
+import { authMiddleware, requirePermission, eitherRoleOrPermission } from '../../../shared/middleware/auth.middleware.js';
 import { requireOrgScopedPermission } from '../../../shared/middleware/route-guard.js';
 import * as ctrl from './accounting.controller.js';
 import * as tplCtrl from './template.controller.js';
@@ -96,7 +96,17 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   // Journal Entry
   app.post('/admin/accounting/journal', { preHandler: [requirePermission(['accounting.journal.create'])] }, ctrl.createJournalEntryHandler);
   app.get('/admin/accounting/journal', { preHandler: [requirePermission(['accounting.journal.view'])] }, ctrl.listJournalEntriesHandler);
-  app.get('/admin/accounting/journal/export', { preHandler: [requirePermission(['accounting.journal.view'])] }, ctrl.exportJournalEntriesHandler);
+  // D4 Expanded — export requires BOTH the screen view permission and the
+  // dedicated egress permission. `requirePermission([a, b])` is OR semantics, so
+  // they are registered as two sequential preHandlers (AND). The export guard
+  // keeps an explicit super_admin role bypass so a fresh database without the
+  // new permission rows cannot lock the platform admin out of exports.
+  app.get('/admin/accounting/journal/export', {
+    preHandler: [
+      requirePermission(['accounting.journal.view']),
+      eitherRoleOrPermission(['super_admin', 'super-admin'], ['accounting.export']),
+    ],
+  }, ctrl.exportJournalEntriesHandler);
 
   // Invoices
   app.get('/admin/accounting/invoices', { preHandler: [requirePermission(['accounting.invoices.view'])] }, ctrl.listInvoicesHandler);
@@ -123,6 +133,11 @@ export async function accountingRoutes(app: FastifyInstance): Promise<void> {
   // ── Position Reconciliation (Phase 2 Step 1 — READ-ONLY, admin-only) ──
   // financial_entitlements (single position authority) vs GL control accounts.
   app.get('/admin/accounting/reconciliation', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getPositionReconciliationListHandler);
-  app.get('/admin/accounting/reconciliation/export', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.exportReconciliationHandler);
+  app.get('/admin/accounting/reconciliation/export', {
+    preHandler: [
+      requirePermission(['accounting.gl.view']),
+      eitherRoleOrPermission(['super_admin', 'super-admin'], ['accounting.export']),
+    ],
+  }, ctrl.exportReconciliationHandler);
   app.get('/admin/accounting/reconciliation/organisations/:organisationId', { preHandler: [requirePermission(['accounting.gl.view'])] }, ctrl.getOrgPositionReconciliationHandler);
 }

@@ -7,16 +7,25 @@ import { ExportButton } from '../../../components/ui/ExportButton';
 import { formatPrice } from '../../../utils/currency';
 import DateRangePicker from '../../../components/reports/DateRangePicker';
 import { getChartPalette } from '../../../theme/chart-colors';
+import { useCan } from '../../../hooks/useCan';
 
 type ReportEndpointType = 'kpi' | 'chart' | 'table' | 'bar' | 'pie' | 'tournament-finance';
 type ReportTab = {
   key: string; label: string; icon: string;
+  /**
+   * Permission required to SEE this tab. Omitted = visible to every holder of
+   * `reports.view` (the page-level key). The Financial tab exposes global
+   * financial aggregates, so it requires the dedicated `financial.reports.view`
+   * (D4-A1). Backend authorization is the actual security boundary — this only
+   * controls UI visibility.
+   */
+  permission?: string;
   endpoints: { key: string; label: string; endpoint: string; type: ReportEndpointType }[];
 };
 
 const tabs: ReportTab[] = [
   {
-    key: 'financial', label: 'Financial', icon: '💰',
+    key: 'financial', label: 'Financial', icon: '💰', permission: 'financial.reports.view',
     endpoints: [
       { key: 'summary', label: 'Revenue Summary', endpoint: '/reports/financial/summary', type: 'kpi' },
       { key: 'timeline', label: 'Revenue Timeline', endpoint: '/reports/financial/timeline?groupBy=day', type: 'chart' },
@@ -227,7 +236,7 @@ function TournamentFinanceOverview({ data }: { data: any }) {
     <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="font-medium text-[var(--color-text)]">Tournament Finances (ledger-authoritative)</p>
-        <ExportButton data={csvRows} filename="tournament_finances" label="Export" />
+        <ExportButton data={csvRows} filename="tournament_finances" label="Export" permission="reports.export" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
@@ -272,11 +281,22 @@ function TournamentFinanceOverview({ data }: { data: any }) {
 }
 
 export default function ReportsPage() {
+  const { can } = useCan();
   const [activeTab, setActiveTab] = useState('financial');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const currentTab = tabs.find(t => t.key === activeTab)!;
+  // D4-A1 — the Financial tab is only offered to holders of the dedicated
+  // financial-reports key. `visibleTabs` is the single source of truth for
+  // BOTH the tab strip and the rendered content, so an unauthorized user can
+  // never reach financial content through the default state, a stale
+  // `activeTab` (permission revoked while mounted), or direct selection:
+  // 'financial' is simply not a member of the set.
+  const visibleTabs = tabs.filter(tab => !tab.permission || can(tab.permission));
+  const resolvedTab = visibleTabs.some(tab => tab.key === activeTab)
+    ? activeTab
+    : visibleTabs[0]?.key;
+  const currentTab = visibleTabs.find(tab => tab.key === resolvedTab) ?? visibleTabs[0];
 
   return (
     <div>
@@ -285,10 +305,10 @@ export default function ReportsPage() {
       </div>
 
       <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-2">
-        {tabs.map(tab => (
+        {visibleTabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm rounded-[var(--radius-md)] whitespace-nowrap transition-colors ${
-              activeTab === tab.key ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)]'
+              resolvedTab === tab.key ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)]'
             }`}>
             <span>{tab.icon}</span> {tab.label}
           </button>
@@ -300,7 +320,7 @@ export default function ReportsPage() {
       </div>
 
       <div className="space-y-6">
-        {currentTab.endpoints.map(ep => (
+        {currentTab?.endpoints.map(ep => (
           <ReportEndpointBlock key={ep.key} ep={ep} dateFrom={dateFrom} dateTo={dateTo} />
         ))}
       </div>

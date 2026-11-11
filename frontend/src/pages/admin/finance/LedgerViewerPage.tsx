@@ -17,7 +17,7 @@ import { useCan } from '../../../hooks/useCan';
 export default function LedgerViewerPage() {
   const { can } = useCan();
   // Derived value, never an early return: hooks must run on every render.
-  const canView = can('financial.view');
+  const canView = can('financial.reports.view');
   const dr = apiDateRange(30);
   const [from, setFrom] = useState(dr.from);
   const [to, setTo] = useState(localDaysAgo(-1));
@@ -29,7 +29,7 @@ export default function LedgerViewerPage() {
   if (accountCode) params.accountCode = accountCode;
   if (accountType) params.accountType = accountType;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['finance', 'ledger', from, to, accountCode, accountType],
     queryFn: () => api.get('/admin/financial/ledger', { params }).then(r => r.data.data),
     enabled: canView,
@@ -37,6 +37,17 @@ export default function LedgerViewerPage() {
 
   // Permission gate AFTER every hook (see P3-03 hook-order remediation).
   if (!canView) return null;
+
+  if (isError) {
+    return (
+      <div className="space-y-2">
+        <h1 className="text-xl font-bold text-[var(--color-text)]">Ledger Viewer</h1>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Ledger data is unavailable. You may not have permission to view this data, or the service failed.
+        </p>
+      </div>
+    );
+  }
 
   const entries = Array.isArray(data) ? data : [];
   const filtered = search ? entries.filter((e: any) =>
@@ -55,7 +66,7 @@ export default function LedgerViewerPage() {
           <h1 className="text-xl font-bold text-[var(--color-text)]">Ledger Viewer</h1>
           <p className="text-xs text-[var(--color-text-muted)]">CourtZon General Ledger (canonical accounting book) — general_ledger + chart_of_accounts</p>
         </div>
-        <ExportButton data={filtered} filename={`ledger-${from}-${to}`} />
+        <ExportButton data={filtered} filename={`ledger-${from}-${to}`} permission="financial.export" />
       </div>
 
       {/* Filters */}

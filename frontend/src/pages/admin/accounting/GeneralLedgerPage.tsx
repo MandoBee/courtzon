@@ -165,16 +165,19 @@ export default function GeneralLedgerPage() {
                 className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
               <input type="date" value={filters.date_to} onChange={e => setFilters({ ...filters, date_to: e.target.value })}
                 className="px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
-              <ExportCsvButton
-                endpoint="/admin/accounting/journal/export"
-                params={{
-                  periodId: filters.period_id || undefined,
-                  from: filters.date_from || undefined,
-                  to: filters.date_to || undefined,
-                }}
-                filename="general-ledger"
-                label="Export CSV"
-              />
+              <Can permission="accounting.journal.view">
+                <ExportCsvButton
+                  endpoint="/admin/accounting/journal/export"
+                  params={{
+                    periodId: filters.period_id || undefined,
+                    from: filters.date_from || undefined,
+                    to: filters.date_to || undefined,
+                  }}
+                  filename="general-ledger"
+                  label="Export CSV"
+                  permission="accounting.export"
+                />
+              </Can>
             </div>
 
             <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-x-auto">

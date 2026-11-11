@@ -6,6 +6,7 @@ import { ExportButton } from '../../../components/ui/ExportButton';
 import { ExportCsvButton } from '../../../components/ui/ExportCsvButton';
 import { apiDateRange } from '../../../utils/dateRange';
 import { useCan } from '../../../hooks/useCan';
+import { Can } from '../../../permissions/Can';
 
 type ReportTab = 'revenue' | 'wallet' | 'settlements';
 const RANGE_DAYS: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
@@ -14,40 +15,61 @@ export default function ReportCenterPage() {
   const navigate = useNavigate();
   const { can } = useCan();
   // Derived value, never an early return: hooks must run on every render.
-  const canView = can('reports.view');
+  const canView = can('financial.reports.view');
   const [tab, setTab] = useState<ReportTab>('revenue');
   const [range, setRange] = useState('30d');
 
   const { from, to } = apiDateRange(RANGE_DAYS[range] || 30);
 
-  const { data: revenue } = useQuery({
+  const { data: revenue, isError: revenueError } = useQuery({
     queryKey: ['finance', 'revenue', from, to],
     queryFn: () => api.get('/admin/financial/revenue', { params: { from, to } }).then(r => r.data.data),
     enabled: canView && tab === 'revenue',
   });
 
-  const { data: ledger } = useQuery({
+  const { data: ledger, isError: ledgerError } = useQuery({
     queryKey: ['finance', 'ledger', from, to],
     queryFn: () => api.get('/admin/financial/ledger', { params: { from, to } }).then(r => r.data.data),
     enabled: canView && (tab === 'revenue' || tab === 'wallet'),
   });
 
-  const { data: walletSummary } = useQuery({
+  const { data: walletSummary, isError: walletError } = useQuery({
     queryKey: ['finance', 'wallet-summary'],
     queryFn: () => api.get('/admin/financial/wallet-summary').then(r => r.data.data),
     enabled: canView && tab === 'wallet',
   });
 
-  const { data: settlements } = useQuery({
+  const { data: settlements, isError: settlementsError } = useQuery({
     queryKey: ['finance', 'settlements'],
-    queryFn: () => api.get('/settlements').then(r => r.data?.data || r.data),
+    // Use the same scoped unified-settlement collection that backs the CSV
+    // export; /settlements is the legacy list and filters non-super-admins.
+    queryFn: () => api.get('/unified-settlements').then(r => r.data?.data || r.data),
     enabled: canView && tab === 'settlements',
   });
 
   // Permission gate AFTER every hook (see P3-03 hook-order remediation).
   if (!canView) return null;
 
-  const settlementList = Array.isArray(settlements) ? settlements : [];
+  // Phase 2J.3 — fail closed. React Query retains the last successful `data`
+  // when a refetch fails, so a 401/403 after the initial load could keep cached
+  // financial values on screen. Any error on the four finance queries renders
+  // the unavailable state BEFORE any cached figures/rows are derived, so stale
+  // financial data can never remain visible. Loading, empty and success states
+  // are unchanged (this branch only runs on error).
+  const hasError = revenueError || ledgerError || walletError || settlementsError;
+
+  if (hasError) {
+    return (
+      <div className="space-y-2">
+        <h1 className="text-xl font-bold text-[var(--color-text)]">Report Center</h1>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Financial reports are unavailable. You may not have permission to view this data, or the service failed.
+        </p>
+      </div>
+    );
+  }
+
+  const settlementList = Array.isArray(settlements) ? settlements : (settlements?.data || []);
   const entries = Array.isArray(ledger) ? ledger : [];
   const walletEntries = entries.filter((e: any) => e.account_code === '2100');
   const summary = revenue && typeof revenue === 'object' && !Array.isArray(revenue) ? revenue : null;
@@ -65,11 +87,18 @@ export default function ReportCenterPage() {
             // F-15: settlements export must come from the server-side complete
             // dataset (/unified-settlements/export streams every matching
             // settlement), not the paginated first-page snapshot loaded for the
-            // on-screen table. Same settlements.view permission as the tab.
-            <ExportCsvButton endpoint="/unified-settlements/export" filename="finance-settlements" label="Export CSV" />
+            // on-screen table.
+            // D4 Expanded: settlement exports use the dedicated settlements.export
+            // key (never reports.export). settlements.view is composed too because
+            // the backend export route requires BOTH.
+            <Can permission="settlements.view">
+              <Can permission="settlements.export">
+                <ExportCsvButton endpoint="/unified-settlements/export" filename="finance-settlements" label="Export CSV" />
+              </Can>
+            </Can>
           ) : (
             <ExportButton data={tab === 'revenue' ? (revenueAccounts.length ? revenueAccounts : entries) : [walletSummary || {}]}
-              filename={`finance-${tab}-${from}-${to}`} />
+              filename={`finance-${tab}-${from}-${to}`} permission="reports.export" />
           )}
         </div>
       </div>

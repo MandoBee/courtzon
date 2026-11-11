@@ -99,6 +99,17 @@ function matchesAny(key: string, patterns: RegExp[]): boolean {
   return patterns.some((re) => re.test(key));
 }
 
+/**
+ * D4 Expanded (C6) — true when a permission key represents a data-export action.
+ *
+ * Matches `reports.export`, `accounting.export`, and future nested variants such
+ * as `reports.export.csv`, while leaving unrelated keys (`export.reports`,
+ * `reports.exports`, `reports.myexport`) untouched.
+ */
+function isExportPermission(permissionKey: string): boolean {
+  return /\.export(?:\.|$)/.test(permissionKey);
+}
+
 // P0-1 (upload authorization hardening): which template roles may upload their
 // own content (files.upload) versus which may view/delete arbitrary uploads
 // (files.view / files.delete). Super Admin is handled separately (all).
@@ -168,6 +179,19 @@ function canManageTournaments(templateSlug: string, permissionKey: string): bool
     && (permissionKey === 'tournaments.create' || permissionKey.startsWith('tournaments.create.'));
 }
 
+// ── G11.20 — Competition Category Management ──────────────────────────────
+// `tournament.competition.*` sits inside the ADMIN_ONLY_PREFIXES `tournament.`
+// family, so without an explicit grant NO role would ever receive it and the
+// management routes would 403 for everyone. The grant is deliberately scoped to
+// the same tournament-admin roles that already hold `org.tournaments.manage`
+// (the capability these routes extend) — never opened to players, sellers or
+// operational roles.
+const TOURNAMENT_COMPETITION_MANAGE_ROLES = new Set(['org-admin', 'master-admin']);
+function canManageTournamentCompetitions(templateSlug: string, permissionKey: string): boolean {
+  return TOURNAMENT_COMPETITION_MANAGE_ROLES.has(templateSlug)
+    && permissionKey.startsWith('tournament.competition.');
+}
+
 // ── Group 1C — platform Tournament Admin Workbench (master-admin navigation) ──
 // master-admin is a genuine platform ADMIN; it must be able to REACH the existing
 // Tournament Admin Workbench screens (dashboard / list / bracket-types)
@@ -187,6 +211,14 @@ const TOURNAMENT_WORKBENCH_KEYS = new Set([
   'tournament.view',
   'tournament.dashboard.view',
   'tournament.create',
+  // G11 Phase 3 — a tournament is ALWAYS owned by an organisation (the CourtZon
+  // platform never creates, owns, funds, or recognises one). `tournament.create`
+  // is now purely the UI gate for the Workbench create screen; the screen itself
+  // requires this key to pick the owning organisation and then submits through
+  // the authoritative organisation-scoped route `POST /org/:orgId/tournaments`.
+  // The removed `POST /admin/tournaments` route is what used to make it a
+  // backend capability, so there is no longer a platform-wide create path.
+  'tournament.create.organisation',
   'tournament.update',
   'tournament.publish',
   'tournament.delete',
@@ -195,6 +227,11 @@ const TOURNAMENT_WORKBENCH_KEYS = new Set([
   'tournament.result.manage',
   'tournaments.edit',
   'tournaments.delete',
+  // G11.5 — prize payout management (workbench route guards + actions).
+  'tournaments.awards.view',
+  'tournaments.awards.grant',
+  'tournaments.awards.refund',
+  'tournaments.awards.withdraw',
 ]);
 function canAccessTournamentWorkbench(templateSlug: string, permissionKey: string): boolean {
   return templateSlug === 'master-admin' && TOURNAMENT_WORKBENCH_KEYS.has(permissionKey);
@@ -225,7 +262,7 @@ const PLAYER_PATTERNS = [
   /^profile\./,
   /^bookings\.(view|create|cancel|apply|manage-applicants|matchmaking)$/,
   /^bookings\.create\./,
-  /^marketplace\.(view|cart|order|wishlist|addresses|complaints\.(submit|view))$/,
+  /^marketplace\.(view|cart(\.view)?|order(\.view)?|wishlist(\.view)?|addresses(\.manage)?|complaints\.(submit|view))$/,
   // P1-01: free-selling is a PLAYER capability keyed by the player-specific
   // permissions. `marketplace.sell` belongs to shop/org seller roles and is
   // never granted to players.
@@ -341,7 +378,16 @@ const ORG_ADMIN_EXPLICIT_KEYS = new Set([
   'settlements.request',
   'settlements.pay',
   'settlements.cancel',
+  // D4 Expanded — org admins export their OWN settlements (server-side export
+  // is tenant-scoped by resolveOrgScope).
+  'settlements.export',
+  'org.finance.position.view',
   'academies.enroll',
+  // G11.5 — prize payout management for organisation administrators.
+  'tournaments.awards.view',
+  'tournaments.awards.grant',
+  'tournaments.awards.refund',
+  'tournaments.awards.withdraw',
 ]);
 
 const SHOP_ADMIN_PATTERNS = [
@@ -622,6 +668,10 @@ const AUDITOR_PATTERNS = [
   /^home\./,
   /^sidebar\./,
   /^notifications\.view/,
+  // Read-only Finance navigation (view-only capabilities already granted above).
+  // C10 parity — ported from the .mjs sync template.
+  /^org\.sidebar\.finance/,
+  /^org\.sidebar\.accounting/,
 ];
 
 const READ_ONLY_ADMIN_PATTERNS = [
@@ -632,6 +682,10 @@ const READ_ONLY_ADMIN_PATTERNS = [
   /^home\./,
   /^sidebar\./,
   /^notifications\.view/,
+  // Read-only Finance navigation (view-only capabilities already granted above).
+  // C10 parity — ported from the .mjs sync template.
+  /^org\.sidebar\.finance/,
+  /^org\.sidebar\.accounting/,
 ];
 
 const ACCOUNTANT_PATTERNS = [
@@ -645,6 +699,10 @@ const ACCOUNTANT_PATTERNS = [
   /^coupons\./,
   /^commission-rules\./,
   /^wallet\./,
+  // Organisation-scoped accounting (assigned via org portal) — C10 parity with
+  // the .mjs sync template.
+  /^org\.accounting\./,
+  /^org\.sidebar\.accounting/,
   // AdminLayout finance sidebar (leaf items only; parents render when a child passes)
   /^sidebar\.(dashboard|reports|settlements|admin-bookings|finance-dashboard|finance-ledger|finance-reports|finance-transactions|withdrawal-requests|coupons|marketplace-orders)$/,
 ];
@@ -700,6 +758,7 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     if (canManageAcademy(templateSlug, permissionKey)) return true;
     if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (canManageTournaments(templateSlug, permissionKey)) return true;
+    if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -759,6 +818,11 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   if (templateSlug === 'accountant') {
     if (permissionKey.startsWith('users.delete')) return false;
     if (permissionKey.startsWith('roles.')) return false;
+    // Explicit deny BEFORE the broad `^financial\.` pattern: financial report
+    // viewing/export are reserved for the roles that retain the global
+    // Financial Dashboard (super_admin and finance-manager).
+    if (permissionKey === 'financial.reports.view') return false;
+    if (permissionKey === 'financial.export') return false;
     if (matchesAny(permissionKey, ACCOUNTANT_PATTERNS)) return true;
     return false;
   }
@@ -781,6 +845,9 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     // Group 5B UAT — master-admin is a genuine ADMIN role that manages org
     // tournaments; it receives the shared create-screen field permissions.
     if (canManageTournaments(templateSlug, permissionKey)) return true;
+    // G11.20 — competition category management extends the org.tournaments.manage
+    // capability, so the same tournament-admin roles receive the keys.
+    if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
     // Group 1C — master-admin reaches the existing Tournament Admin Workbench
     // through normal navigation (sidebar keys) and passes its route guards
     // (tournament.* + admin-tournaments.view). Explicit grant BEFORE the
@@ -788,6 +855,26 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     if (canAccessTournamentWorkbench(templateSlug, permissionKey)) return true;
     // Phase A — platform sport configuration (formats + versioned rule sets).
     if (canManageSportConfig(templateSlug, permissionKey)) return true;
+    // D4 — reports.export is the data-egress counterpart of reports.view.
+    // The ADMIN_ONLY `reports.` prefix would otherwise deny the export key, so
+    // it is granted explicitly BEFORE the admin-only block, mirroring the other
+    // platform capabilities above.
+    if (permissionKey === 'reports.export') return true;
+    // D4 Expanded — master-admin must be able to OPEN the report screens its
+    // export grant targets (`/admin/reports`). Only the read gate and its
+    // sidebar entry are added; finance reports (`sidebar.finance-reports` /
+    // financial.reports.view) stay denied.
+    if (permissionKey === 'reports.view') return true;
+    if (permissionKey === 'sidebar.reports') return true;
+    // D4 Expanded — export keys are granted per template, never by broad
+    // prefixes. `financial.export` would otherwise match MASTER_ADMIN_PATTERNS
+    // (`^financial\.`); the finance module stays read-only for this role.
+    if (permissionKey === 'financial.export') return false;
+    // No finance-reports access was approved for master-admin.
+    if (permissionKey === 'financial.reports.view') return false;
+    // settlements.export belongs to the settlements roles (org/finance), not to
+    // the platform admin template.
+    if (permissionKey === 'settlements.export') return false;
     if (permissionKey.startsWith('users.')) return false;
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;
@@ -808,6 +895,10 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   }
 
   if (templateSlug === 'marketplace-manager') {
+    // D4 Expanded — settlements export is a finance/org capability. Explicit
+    // deny keeps the marketplace ops role read-only on settlements even if its
+    // pattern list is later broadened.
+    if (permissionKey === 'settlements.export') return false;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, MARKETPLACE_MANAGER_PATTERNS)) return true;
     return false;
@@ -828,11 +919,19 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   if (templateSlug === 'finance-manager') {
     if (permissionKey.startsWith('users.delete')) return false;
     if (permissionKey.startsWith('roles.')) return false;
+    // Finance reports read gate: approved for finance-manager only (plus the
+    // super_admin short-circuit above). Granted explicitly so the policy is
+    // independent of the broad `^financial\.` pattern.
+    if (permissionKey === 'financial.reports.view') return true;
     if (matchesAny(permissionKey, FINANCE_MANAGER_PATTERNS)) return true;
     return false;
   }
 
   if (templateSlug === 'operations-manager') {
+    // D4 Expanded — operations-manager already holds settlements.view and may
+    // export the same org-scoped rows it can read (server-side export honours
+    // the tenant scope in resolveOrgScope).
+    if (permissionKey === 'settlements.export') return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, OPERATIONS_MANAGER_PATTERNS)) return true;
     return false;
@@ -864,6 +963,10 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   }
 
   if (templateSlug === 'content-manager') {
+    // D4 Expanded — translations export is a platform-admin egress capability;
+    // content-manager keeps translations.view/edit but must not export the whole
+    // catalogue just because its broad `^translations\.` pattern matches.
+    if (permissionKey === 'translations.export') return false;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, CONTENT_MANAGER_PATTERNS)) return true;
     return false;
@@ -878,6 +981,15 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   if (templateSlug === 'auditor') {
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;
+    // D4 — the auditor may export the general Reports dataset only. All other
+    // export families (financial, accounting, settlements, audit, webhook,
+    // translation) remain denied by the export matcher below.
+    if (permissionKey === 'reports.export') return true;
+    // C6 — robust match also covers nested keys (`reports.export.csv`).
+    if (isExportPermission(permissionKey)) return false;
+    // Financial report viewing is not an audit/read-only capability: the generic
+    // `^.+\.view` pattern must not leak it.
+    if (permissionKey === 'financial.reports.view') return false;
     if (matchesAny(permissionKey, AUDITOR_PATTERNS)) return true;
     return false;
   }
@@ -885,6 +997,12 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   if (templateSlug === 'read-only-admin') {
     if (permissionKey.startsWith('roles.')) return false;
     if (permissionKey.startsWith('permissions.')) return false;
+    // D4 — read-only means read-only: no data export of any kind.
+    // C6 — robust match also covers nested keys (`reports.export.csv`).
+    if (isExportPermission(permissionKey)) return false;
+    // Financial report viewing is reserved: the generic `^.+\.view` pattern must
+    // not leak it to the read-only admin template.
+    if (permissionKey === 'financial.reports.view') return false;
     if (permissionKey.includes('.delete')) return false;
     if (permissionKey.includes('.create')) return false;
     if (permissionKey.includes('.edit')) return false;

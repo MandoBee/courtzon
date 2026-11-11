@@ -431,6 +431,7 @@ export const uiRegistry: UIElement[] = [
   // TRANSLATIONS MODULE
   // ==========================================================================
   { permissionKey: 'translations.view', moduleSlug: 'translations', elementType: 'page', elementLabel: 'Translations Page', componentPath: 'pages/admin/translations/TranslationsPage.tsx' },
+  { permissionKey: 'translations.export', moduleSlug: 'translations', elementType: 'action', elementLabel: 'Export Translations', componentPath: 'modules/translations/presentation/translations.routes.ts' },
   { permissionKey: 'translations.create', moduleSlug: 'translations', elementType: 'button', elementLabel: 'Create Translation Key', componentPath: 'pages/admin/translations/TranslationsPage.tsx' },
   { permissionKey: 'translations.sync', moduleSlug: 'translations', elementType: 'button', elementLabel: 'Sync Translation Keys', componentPath: 'pages/admin/translations/TranslationsPage.tsx' },
   { permissionKey: 'translations.edit', moduleSlug: 'translations', elementType: 'button', elementLabel: 'Edit Translation', componentPath: 'pages/admin/translations/TranslationsPage.tsx' },
@@ -733,6 +734,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'financial.reconcile', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Reconcile Payments' },
   { permissionKey: 'financial.process_payouts', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Process Payouts' },
   { permissionKey: 'financial.view', moduleSlug: 'financial', elementType: 'action', elementLabel: 'View Financial Data' },
+  { permissionKey: 'financial.reports.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Financial Reports View', componentPath: 'pages/admin/finance/ReportCenterPage.tsx' },
+  { permissionKey: 'financial.export', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Export Financial Data', componentPath: 'pages/admin/finance/FinanceDashboardPage.tsx' },
   { permissionKey: 'financial.entitlements.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'View Financial Entitlements' },
   { permissionKey: 'financial.entitlements.hold', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Hold/Release Entitlement' },
   { permissionKey: 'financial.entitlements.cancel', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Cancel Entitlement' },
@@ -950,6 +953,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'notifications.cleanup.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification Cleanup Policies', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
   { permissionKey: 'notifications.replay.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification Event Replay', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
   { permissionKey: 'notifications.webhooks.manage', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Manage Notification Webhooks', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
+  { permissionKey: 'notifications.webhooks.export', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'Export Notification Webhooks', componentPath: 'pages/admin/WebhooksPage.tsx' },
   { permissionKey: 'notifications.audit.view', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'View Notification Audit Trail', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
   { permissionKey: 'notifications.presence', moduleSlug: 'notifications', elementType: 'action', elementLabel: 'View Notification Presence', componentPath: 'modules/notifications/presentation/notification.routes.ts' },
   { permissionKey: 'bookings.apply', moduleSlug: 'bookings', elementType: 'button', elementLabel: 'Apply to Match', componentPath: 'pages/booking/MatchListPage.tsx' },
@@ -1029,6 +1033,7 @@ export const uiRegistry: UIElement[] = [
   // SETTLEMENTS MODULE
   // ==========================================================================
   { permissionKey: 'settlements.view', moduleSlug: 'settlements', elementType: 'page', elementLabel: 'View Settlements', componentPath: 'pages/admin/settlements/UnifiedSettlementListPage.tsx' },
+  { permissionKey: 'settlements.export', moduleSlug: 'settlements', elementType: 'action', elementLabel: 'Export Settlements', componentPath: 'pages/admin/settlements/UnifiedSettlementListPage.tsx' },
   { permissionKey: 'settlements.request', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Request Settlement', componentPath: 'pages/admin/settlements/UnifiedSettlementCreatePage.tsx' },
   { permissionKey: 'settlements.approve', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Approve Settlement', componentPath: 'pages/admin/settlements/UnifiedSettlementDetailPage.tsx' },
   { permissionKey: 'settlements.pay', moduleSlug: 'settlements', elementType: 'button', elementLabel: 'Mark Settlement Paid', componentPath: 'pages/admin/settlements/UnifiedSettlementDetailPage.tsx' },
@@ -1120,6 +1125,7 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'accounting.periods.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Accounting Periods View', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
   { permissionKey: 'accounting.periods.manage', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Manage Accounting Periods', componentPath: 'pages/admin/accounting/AccountingPeriodsPage.tsx' },
   { permissionKey: 'accounting.gl.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'General Ledger View', componentPath: 'pages/admin/accounting/GeneralLedgerPage.tsx' },
+  { permissionKey: 'accounting.export', moduleSlug: 'accounting', elementType: 'action', elementLabel: 'Export Accounting Data', componentPath: 'pages/admin/accounting/GeneralLedgerPage.tsx' },
   { permissionKey: 'accounting.journal.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Journal Entries View', componentPath: 'pages/admin/accounting/JournalEntryPage.tsx' },
   { permissionKey: 'accounting.journal.create', moduleSlug: 'accounting', elementType: 'button', elementLabel: 'Create Journal Entry', componentPath: 'pages/admin/accounting/JournalEntryPage.tsx' },
   { permissionKey: 'accounting.invoices.view', moduleSlug: 'accounting', elementType: 'page', elementLabel: 'Invoices View', componentPath: 'pages/admin/accounting/InvoicesPage.tsx' },
