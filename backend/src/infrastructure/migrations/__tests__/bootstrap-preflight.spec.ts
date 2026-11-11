@@ -139,7 +139,7 @@ describe('bootstrap preflight — success path', () => {
     expect(report.stages.static.ok).toBe(true);
     expect(report.stages.static.tableCount).toBe(329);
     expect(report.stages.static.triggerCount).toBe(19);
-    expect(report.stages.static.pinCount).toBe(74);
+    expect(report.stages.static.pinCount).toBe(76);
     expect(report.stages.live.ok).toBe(true);
     expect(report.stages.live.complete).toBe(true);
     expect(report.stages.live.tables).toBe(329);

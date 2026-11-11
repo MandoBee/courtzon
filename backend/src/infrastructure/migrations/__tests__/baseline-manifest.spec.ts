@@ -234,11 +234,11 @@ describe('committed baseline manifest', () => {
   });
 
   it('contains the exact audited schema counts (no loose lower bounds)', () => {
-    expect(real.manifest.schema.schemaHead).toBe('206');
+    expect(real.manifest.schema.schemaHead).toBe('208');
     expect(real.manifest.schema.contentOnly).toEqual(['196', '197', '198', '199', '200', '201', '206']);
     expect(real.manifest.schema.tableCount).toBe(329);
     expect(real.manifest.schema.columnCount).toBe(3668);
-    expect(real.manifest.schema.indexCount).toBe(1297);
+    expect(real.manifest.schema.indexCount).toBe(1298);
     expect(real.manifest.schema.foreignKeyCount).toBe(515);
     expect(real.manifest.schema.checkCount).toBe(54);
     expect(real.manifest.schema.triggerCount).toBe(19);
@@ -508,8 +508,8 @@ ALTER TABLE \`positioning\` MODIFY COLUMN \`a\` bigint NOT NULL;
 describe('migration chain index', () => {
   it('captures every file, prefix, duplicate and missing prefix exactly', () => {
     const migrations = real.manifest.migrations;
-    expect(migrations.count).toBe(213);
-    expect(migrations.distinctPrefixes).toBe(204);
+    expect(migrations.count).toBe(215);
+    expect(migrations.distinctPrefixes).toBe(206);
     expect(migrations.duplicatePrefixes).toEqual([
       {
         prefix: '002',
@@ -547,7 +547,7 @@ describe('migration chain index', () => {
     ]);
     expect(migrations.missingPrefixes).toEqual(['001', '076']);
     expect(migrations.classifications).toEqual({
-      PRODUCTION_SAFE: 213,
+      PRODUCTION_SAFE: 215,
       LOCAL_DOCKER_ONLY: 0,
       INVALID: 0,
     });
@@ -585,7 +585,7 @@ describe('migration chain index', () => {
     ).toBe('LOCAL_DOCKER_ONLY');
   });
 
-  it('verifies schemaHead=206 from content, not from the numeric prefix alone', () => {
+  it('verifies schemaHead=208 from content, not from the numeric prefix alone', () => {
     // 196–201 and 206 are content-only by PARSING; 202–205 mutate schema.
     for (const prefix of ['196', '197', '198', '199', '200', '201', '206']) {
       const file = real.manifest.migrations.files.find((candidate) => candidate.prefix === prefix);
@@ -615,10 +615,12 @@ describe('migration chain index', () => {
     expect(repairs204.map((entry) => `${entry.table}.${entry.index.name}`)).toEqual([
       'organisation_subscriptions.idx_status_enddate',
     ]);
-    // 205 is the last SCHEMA mutation: it adds the tournaments CHECK and
-    // repairs no index. 206 is the content-only (data) head that carries the
-    // D4 financial-reports permission registration.
-    expect(real.manifest.schema.schemaHead).toBe('206');
+    // 207 is the last SCHEMA mutation: it widens settlement_entitlements
+    // uniqueness to (settlement_id, entitlement_id) and drops the legacy
+    // uk_se_entitlement. 208 is the statement-free head (documentation-only
+    // chain anchor), because the additive-head contract cannot host an index
+    // DROP (parse-baseline supports only ADD / MODIFY / CHANGE).
+    expect(real.manifest.schema.schemaHead).toBe('208');
     const sql205 = real.migrationContents['205_tournaments_max_events_check.sql'];
     expect(classifyMigration(sql205).classification).toBe('PRODUCTION_SAFE');
     expect(sql205).toContain('information_schema.table_constraints');
@@ -635,10 +637,28 @@ describe('migration chain index', () => {
     expect(classifyMigration(sql206).classification).toBe('PRODUCTION_SAFE');
     expect(hasSchemaDdl(sql206)).toBe(false);
     expect(sql206).toContain("'financial.reports.view'");
-    // The head is data-only, so it must not claim any index repair.
+    const sql207 = real.migrationContents['207_settlement_entitlements_reuse.sql'];
+    expect(classifyMigration(sql207).classification).toBe('PRODUCTION_SAFE');
+    // 207 is NOT passed to hasSchemaDdl(): the shared parser rejects DROP actions
+    // (the additive-head contract). Its shape is asserted textually instead.
+    expect(sql207).toContain(
+      'ADD UNIQUE KEY `uk_se_settlement_entitlement` (`settlement_id`, `entitlement_id`)',
+    );
+    expect(sql207).toContain('DROP INDEX `uk_se_entitlement`');
+    expect(sql207).not.toMatch(/^\s*(INSERT|UPDATE|DELETE)\s/im);
+    const sql208 = real.migrationContents['208_settlement_entitlements_reuse_head.sql'];
+    expect(classifyMigration(sql208).classification).toBe('PRODUCTION_SAFE');
+    // The head must stay additive and statement-free: comments only.
+    expect(hasSchemaDdl(sql208)).toBe(false);
+    expect(
+      sql208
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0 && !line.trimStart().startsWith('--')),
+    ).toEqual([]);
+    // The head claims no index repair.
     const evidence = parseRequirements(real.requirementsRaw).schemaHeadEvidence;
     expect(evidence).toEqual({
-      head: '206',
+      head: '208',
       repairs: [],
     });
   });
@@ -664,8 +684,8 @@ describe('migration chain index', () => {
 
 describe('requirements resolution', () => {
   it('resolves every curated pin and reports the pin count', () => {
-    expect(real.manifest.requirements.pinCount).toBe(74);
-    expect(real.manifest.requirements.schemaHead).toBe('206');
+    expect(real.manifest.requirements.pinCount).toBe(76);
+    expect(real.manifest.requirements.schemaHead).toBe('208');
     expect(real.manifest.requirements.contentOnly).toEqual([
       '196',
       '197',
@@ -675,7 +695,7 @@ describe('requirements resolution', () => {
       '201',
       '206',
     ]);
-    expect(real.manifest.requirements.indexes).toHaveLength(9);
+    expect(real.manifest.requirements.indexes).toHaveLength(11);
     expect(real.manifest.requirements.foreignKeys).toHaveLength(3);
     expect(real.manifest.requirements.triggers).toHaveLength(19);
   });
@@ -688,10 +708,10 @@ describe('requirements resolution', () => {
     expect(ids).toContain('payment_allocations_docs_column_count');
   });
 
-  it('retains the migration 204 index and pins migration 206 as the content-only head with no index repairs', () => {
-    expect(real.manifest.schema.schemaHead).toBe('206');
-    expect(real.manifest.requirements.schemaHead).toBe('206');
-    expect(real.manifest.migrations.count).toBe(213);
+  it('retains the migration 204 index and pins migration 208 as the statement-free head with no index repairs', () => {
+    expect(real.manifest.schema.schemaHead).toBe('208');
+    expect(real.manifest.requirements.schemaHead).toBe('208');
+    expect(real.manifest.migrations.count).toBe(215);
     const index = real.manifest.schema.tables.organisation_subscriptions.signature.indexes.find(
       (candidate) => candidate.name === 'idx_status_enddate',
     );
@@ -934,7 +954,7 @@ describe('manifest data exposed to the integrity spec', () => {
     // The manifest is a static artefact. Tier B (information_schema parity) is
     // a separate, DB-backed phase; nothing here may be read as hydration proof.
     expect(real.manifest.manifestVersion).toBe(1);
-    expect(real.manifest.schema.schemaHead).toBe('206');
-    expect(real.manifest.requirements.schemaHead).toBe('206');
+    expect(real.manifest.schema.schemaHead).toBe('208');
+    expect(real.manifest.requirements.schemaHead).toBe('208');
   });
 });

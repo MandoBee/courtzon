@@ -266,3 +266,96 @@ describe('P3-7 — settlement:paid emit payload contract', () => {
     expect(p.paidBy).toBe(9);
   });
 });
+
+// ============================================================================
+// Integrity guards: a settlement with no linked entitlements must never be
+// finalized or cancelled. Pre-207 such a settlement could be paid (posting GL
+// from the stored final_amount) or cancelled (releasing nothing) while the
+// reserved entitlements stayed stranded forever.
+// ============================================================================
+describe('Unified Settlement Service — empty composition guards', () => {
+  let conn: any;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(eventBusV2, 'emit').mockResolvedValue(undefined as any);
+    const pool = getPool();
+    vi.spyOn(pool, 'execute').mockResolvedValue([[], []] as any);
+    conn = { beginTransaction: vi.fn(), commit: vi.fn(), rollback: vi.fn(), release: vi.fn() };
+  });
+
+  it('recordPayment refuses a settlement with no linked entitlements and changes nothing', async () => {
+    const { getPool } = await import('../../../database/mysql.js');
+    vi.spyOn(getPool(), 'getConnection').mockResolvedValue(conn);
+    vi.spyOn(unifiedSettlementRepository, 'findBySettlementId').mockResolvedValue({
+      id: 3713,
+      organisation_id: 1,
+      settlement_status: 'requested',
+      aggregate_version: 1,
+      final_amount: 630,
+      settlement_direction: 'courtzon_to_org',
+    });
+    vi.spyOn(unifiedSettlementRepository, 'findEntitlementIds').mockResolvedValue([]);
+    const finalize = vi.spyOn(financialEntitlementService, 'finalizeSettled').mockResolvedValue(undefined);
+    const transition = vi.spyOn(unifiedSettlementRepository, 'persistTransition').mockResolvedValue(undefined);
+
+    await expect(
+      unifiedSettlementService.recordPayment(3713, { paymentMethod: 'bank_transfer', paidBy: 9 }),
+    ).rejects.toThrow(/no linked entitlements/);
+
+    expect(finalize).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(eventBusV2.emit).mock.calls.filter((c: any) => c[0] === 'settlement:paid'),
+    ).toHaveLength(0);
+    expect(conn.commit).not.toHaveBeenCalled();
+    expect(conn.rollback).toHaveBeenCalled();
+  });
+
+  it('cancel refuses a settlement with no linked entitlements and changes nothing', async () => {
+    const { getPool } = await import('../../../database/mysql.js');
+    vi.spyOn(getPool(), 'getConnection').mockResolvedValue(conn);
+    vi.spyOn(unifiedSettlementRepository, 'findBySettlementId').mockResolvedValue({
+      id: 3713,
+      organisation_id: 1,
+      settlement_status: 'requested',
+      aggregate_version: 1,
+    });
+    vi.spyOn(unifiedSettlementRepository, 'findEntitlementIds').mockResolvedValue([]);
+    const release = vi.spyOn(financialEntitlementService, 'releaseFromSettlement').mockResolvedValue(undefined);
+    const transition = vi.spyOn(unifiedSettlementRepository, 'persistTransition').mockResolvedValue(undefined);
+
+    await expect(unifiedSettlementService.cancel(3713, 9, 'no links')).rejects.toThrow(
+      /no linked entitlements/,
+    );
+
+    expect(release).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(eventBusV2.emit).mock.calls.filter((c: any) => c[0] === 'settlement:cancelled'),
+    ).toHaveLength(0);
+    expect(conn.commit).not.toHaveBeenCalled();
+    expect(conn.rollback).toHaveBeenCalled();
+  });
+
+  it('recordPayment still finalizes a normal settlement (guard is not over-broad)', async () => {
+    const { getPool } = await import('../../../database/mysql.js');
+    vi.spyOn(getPool(), 'getConnection').mockResolvedValue(conn);
+    vi.spyOn(unifiedSettlementRepository, 'findBySettlementId').mockResolvedValue({
+      id: 12,
+      organisation_id: 1,
+      settlement_status: 'requested',
+      aggregate_version: 1,
+      final_amount: 630,
+      settlement_direction: 'courtzon_to_org',
+    });
+    vi.spyOn(unifiedSettlementRepository, 'findEntitlementIds').mockResolvedValue([1, 2]);
+    const finalize = vi.spyOn(financialEntitlementService, 'finalizeSettled').mockResolvedValue(undefined);
+    vi.spyOn(unifiedSettlementRepository, 'persistTransition').mockResolvedValue(undefined);
+
+    await unifiedSettlementService.recordPayment(12, { paidBy: 9 });
+
+    expect(finalize).toHaveBeenCalledWith([1, 2], 12, 9, conn);
+    expect(conn.commit).toHaveBeenCalled();
+  });
+});

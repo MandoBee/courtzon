@@ -4,12 +4,12 @@
   "baseline": {
     "path": "database/baseline/001_courtzon_v3.sql",
     "hashKind": "content_sha256_lf",
-    "bytes": 474334,
-    "lines": 7934,
-    "sha256": "91c6a4fb610b847d0c56de38ccc7fa393f3c55eea4ea11f020c7cb66f3ae231a"
+    "bytes": 474584,
+    "lines": 7935,
+    "sha256": "7e6efe9c90687ddfaa522673a659d01e3f40cf3f95240f0bff620ac850f1698e"
   },
   "schema": {
-    "schemaHead": "206",
+    "schemaHead": "208",
     "contentOnly": [
       "196",
       "197",
@@ -21,7 +21,7 @@
     ],
     "tableCount": 329,
     "columnCount": 3668,
-    "indexCount": 1297,
+    "indexCount": 1298,
     "foreignKeyCount": 515,
     "checkCount": 54,
     "triggerCount": 19,
@@ -29,8 +29,8 @@
     "alterStatementCount": 13,
     "dropTableStatementCount": 316,
     "inventorySha256": "73666474eec4c3edf109d09247920d28015acd25ec2d6b8a578fbab02542010e",
-    "objectSha256": "b005082c25bc169f3d465c06831bb348697c0dbc30d4ae26c50669b4470df81f",
-    "schemaSha256": "1cd0de86a9b2c525269aa6367831c334eb459879732bea8b38d93164818a9143",
+    "objectSha256": "536d0009717fd63e61edfe6371bfd5e7ffff9dff86b4c613aa104ac6642833ad",
+    "schemaSha256": "1642bb8bcff44dda9531be2b43693918de6d18af31622abd544765e4f3844e6e",
     "tables": {
       "academies": {
         "signature": {
@@ -53660,6 +53660,18 @@
           ],
           "indexes": [
             {
+              "name": "idx_se_entitlement",
+              "kind": "KEY",
+              "unique": false,
+              "columns": [
+                {
+                  "name": "entitlement_id",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
               "name": "idx_se_settlement",
               "kind": "KEY",
               "unique": false,
@@ -53684,10 +53696,15 @@
               ]
             },
             {
-              "name": "uk_se_entitlement",
+              "name": "uk_se_settlement_entitlement",
               "kind": "UNIQUE",
               "unique": true,
               "columns": [
+                {
+                  "name": "settlement_id",
+                  "desc": false,
+                  "prefixLength": null
+                },
                 {
                   "name": "entitlement_id",
                   "desc": false,
@@ -53724,7 +53741,7 @@
           ],
           "checks": []
         },
-        "objectSha256": "896339bccb6d80638658bd9029387ac47f9d26f536a4e74a0c441ab45aea038b"
+        "objectSha256": "ebbc9037d30ff27e197234f45c5b85e4680a24c6c10c6226b87f0b379ae198ef"
       },
       "settlement_orders": {
         "signature": {
@@ -73037,8 +73054,8 @@
   "migrations": {
     "directory": "database/migrations",
     "hashKind": "content_sha256_lf",
-    "count": 213,
-    "distinctPrefixes": 204,
+    "count": 215,
+    "distinctPrefixes": 206,
     "duplicatePrefixes": [
       {
         "prefix": "002",
@@ -73085,7 +73102,7 @@
       "076"
     ],
     "classifications": {
-      "PRODUCTION_SAFE": 213,
+      "PRODUCTION_SAFE": 215,
       "LOCAL_DOCKER_ONLY": 0,
       "INVALID": 0
     },
@@ -74580,13 +74597,27 @@
         "sha256": "5001cb7785fc657d301c10d596d30aedcc4df9bdfe4c342b2d4d31e281433cef",
         "classification": "PRODUCTION_SAFE",
         "marker": "PRODUCTION_SAFE"
+      },
+      {
+        "file": "207_settlement_entitlements_reuse.sql",
+        "prefix": "207",
+        "sha256": "3784f309691c53bdabfed43d72cb59a284de23bd1d8f8c7890a4e76eb8a8c6c4",
+        "classification": "PRODUCTION_SAFE",
+        "marker": "PRODUCTION_SAFE"
+      },
+      {
+        "file": "208_settlement_entitlements_reuse_head.sql",
+        "prefix": "208",
+        "sha256": "3aadbf697f64ade1aaf9ff53250986d3ea844a07e395b0d3ff68db9ec0eda3bd",
+        "classification": "PRODUCTION_SAFE",
+        "marker": "PRODUCTION_SAFE"
       }
     ],
-    "sha256": "c53b9788bfb312604cb987e06234d06243b635f4e21dc3b1a9519e4772671e88"
+    "sha256": "175f6efb25a9760fffd0e7a5eb26d0924191607fe60cc54bb9dfa5c7ee2bd937"
   },
   "requirements": {
     "version": 1,
-    "pinCount": 74,
+    "pinCount": 76,
     "tables": [
       "users",
       "roles",
@@ -74643,7 +74674,9 @@
       "notifications.idx_notifications_event",
       "organisation_subscriptions.idx_status_enddate",
       "payment_transactions.idx_pt_status_created",
-      "professional_services.idx_ps_pp"
+      "professional_services.idx_ps_pp",
+      "settlement_entitlements.uk_se_settlement_entitlement",
+      "settlement_entitlements.idx_se_entitlement"
     ],
     "foreignKeys": [
       "payment_allocations.fk_pa_payment_transaction",
@@ -74680,8 +74713,8 @@
       "201",
       "206"
     ],
-    "schemaHead": "206",
-    "sha256": "ee190aa4445bc2ba58f88d8786d1060a2fbcd059ffde587f0e12642c46635607"
+    "schemaHead": "208",
+    "sha256": "7ce389a3cc930052e090aac0d933abb1d7bac505b7961d043b78bfeb0bd471b3"
   },
   "knownGaps": [
     {

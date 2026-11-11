@@ -5083,11 +5083,12 @@ CREATE TABLE `settlement_entitlements` (
   `entitlement_id` bigint unsigned NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_se_entitlement` (`entitlement_id`) COMMENT 'One entitlement may belong to at most one settlement',
+  UNIQUE KEY `uk_se_settlement_entitlement` (`settlement_id`,`entitlement_id`) COMMENT 'One entitlement may be linked to the same settlement at most once; historical links from cancelled settlements are retained (migration 207)',
+  KEY `idx_se_entitlement` (`entitlement_id`),
   KEY `idx_se_settlement` (`settlement_id`),
   CONSTRAINT `fk_se_entitlement` FOREIGN KEY (`entitlement_id`) REFERENCES `financial_entitlements` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_se_settlement` FOREIGN KEY (`settlement_id`) REFERENCES `settlements` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2065 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Entitlements included in each unified settlement';
+) ENGINE=InnoDB AUTO_INCREMENT=2065 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Entitlements included in each unified settlement (historical composition; the ACTIVE reservation is financial_entitlements.settlement_id)';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `settlement_orders`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

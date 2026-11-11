@@ -1,0 +1,33 @@
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE
+-- ---------------------------------------------------------------------------
+-- 208_settlement_entitlements_reuse_head.sql
+--
+-- CHAIN ANCHOR — DOCUMENTATION ONLY. This file intentionally contains NO
+-- executable statement: no DDL, no DML, no data change of any kind.
+--
+-- Why it exists
+-- -------------
+-- Migration 207 widens `settlement_entitlements` uniqueness from
+-- `uk_se_entitlement (entitlement_id)` to
+-- `uk_se_settlement_entitlement (settlement_id, entitlement_id)` and therefore
+-- must `DROP INDEX uk_se_entitlement`.
+--
+-- The repository's baseline gate (`backend/src/infrastructure/migrations/
+-- baseline/baseline-manifest.ts`) parses ONLY the content-only migrations and
+-- the highest-prefixed (head) migration, and holds the head to an ADDITIVE
+-- contract (`verifySchemaHeadRepairs` rejects a head that drops schema objects;
+-- `parse-baseline.ts` supports only ADD / MODIFY / CHANGE actions). A migration
+-- that removes the legacy index can therefore never occupy the head slot.
+--
+-- This mirrors the established chain shape: 205 (last schema mutation) followed
+-- by 206 (content-only head carrying the D4 permission registration). Here 207
+-- is the last schema mutation and 208 is the head.
+--
+-- Consequences of the anchor
+-- --------------------------
+-- * The migration runner records 208 in `migration_history` and executes an
+--   empty batch — a true no-op on every environment.
+-- * `schemaHead` in `database/baseline/baseline-requirements.json` is 208, so
+--   the gate parses this file (zero statements, zero repairs) instead of 207.
+-- * Nothing here is applied to any database in this phase.
+-- ---------------------------------------------------------------------------

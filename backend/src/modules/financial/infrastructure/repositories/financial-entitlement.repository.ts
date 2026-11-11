@@ -242,14 +242,21 @@ export const financialEntitlementRepository = {
     return rows.map(mapRow);
   },
 
-  async findBySourceIds(sourceType: SourceType, sourceIds: number[]): Promise<EntitlementRecord[]> {
+  async findBySourceIds(
+    sourceType: SourceType,
+    sourceIds: number[],
+    conn?: mysql.PoolConnection,
+    forUpdate = false,
+  ): Promise<EntitlementRecord[]> {
     if (!sourceIds.length) return [];
-    const pool = getPool();
+    const db = resolvePool(conn);
     const placeholders = sourceIds.map(() => '?').join(',');
-    const [rows] = await pool.execute<RowData>(
+    // Deterministic lock order (`ORDER BY id`) keeps concurrent bulk operations
+    // deadlock-free; `FOR UPDATE` is only valid inside a caller transaction.
+    const [rows] = await db.execute<RowData>(
       `SELECT * FROM financial_entitlements
        WHERE source_type = ? AND source_id IN (${placeholders})
-       ORDER BY id`,
+       ORDER BY id${forUpdate ? ' FOR UPDATE' : ''}`,
       [sourceType, ...sourceIds],
     );
     return rows.map(mapRow);

@@ -9,6 +9,7 @@ import {
   isTerminal,
   planTransition,
   type CreateEntitlementInput,
+  type EntitlementRecord,
   type EntitlementStatus,
 } from '../domain/financial-entitlement-aggregate.js';
 
@@ -93,16 +94,18 @@ export class FinancialEntitlementService {
     const entitlement = await financialEntitlementRepository.findById(id);
     if (!entitlement) throw new ConflictError('Entitlement not found');
     if (entitlement.status !== 'ON_HOLD') throw new ConflictError(`Cannot release entitlement in ${entitlement.status} status`);
+    // LOW-1: a settlement reservation is not a generic hold. Releasing it here
+    // would orphan the settlement — its settlement_entitlements link stays
+    // active while the reservation disappears — and would bypass the settlement
+    // transaction/version guards. The only valid path is settlement cancellation
+    // (releaseFromSettlement), which runs inside that transaction.
+    if (entitlement.settlement_id != null) {
+      throw new ConflictError(
+        `Entitlement ${id} is reserved by settlement ${entitlement.settlement_id}; release it through the settlement cancellation workflow`,
+      );
+    }
 
-    const { newVersion } = planTransition({
-      fromStatus: 'ON_HOLD',
-      toStatus: 'AVAILABLE',
-      currentVersion: entitlement.aggregate_version,
-    });
-
-    await financialEntitlementRepository.persistTransition(id, 'AVAILABLE', entitlement.aggregate_version, {
-      hold_reason: null,
-    });
+    await this.applyRelease(entitlement);
 
     eventBusV2.emit('entitlement:released', {
       entitlementId: id,
@@ -111,6 +114,33 @@ export class FinancialEntitlementService {
     } as any);
 
     log.info({ id }, 'Entitlement released');
+  }
+
+  /**
+   * The pure ON_HOLD -> AVAILABLE write (optimistic version guard), with no
+   * logging or event emission. Callers own the transaction boundary and the
+   * after-commit side effects, so a rolled-back bulk operation can never emit a
+   * release event.
+   */
+  private async applyRelease(entitlement: EntitlementRecord, conn?: mysql.PoolConnection): Promise<void> {
+    planTransition({
+      fromStatus: 'ON_HOLD',
+      toStatus: 'AVAILABLE',
+      currentVersion: entitlement.aggregate_version,
+    });
+
+    await financialEntitlementRepository.persistTransition(
+      entitlement.id,
+      'AVAILABLE',
+      entitlement.aggregate_version,
+      {
+        hold_reason: null,
+        // Defensive: validation proves settlement_id is NULL; keeping the field
+        // explicit preserves the active-reservation invariant.
+        settlement_id: null,
+      },
+      conn,
+    );
   }
 
   // ── Cancel ──
@@ -197,25 +227,73 @@ export class FinancialEntitlementService {
   }
 
   /**
-   * Release all ON_HOLD entitlements for a set of source IDs back to AVAILABLE.
+   * Release ALL ON_HOLD entitlements for a set of source IDs, atomically.
+   *
+   * The previous implementation looped over `releaseEntitlement()` (one implicit
+   * transaction per row), so a later 409 — e.g. a settlement-reserved
+   * entitlement — left earlier releases committed. This version:
+   *   1. opens ONE transaction on the caller-side connection;
+   *   2. locks the whole target set with `SELECT ... FOR UPDATE` (deterministic
+   *      `ORDER BY id`) so no reservation can appear between validate and write;
+   *   3. validates every ON_HOLD target before the first write;
+   *   4. writes every transition with the optimistic version guard on that same
+   *      connection;
+   *   5. commits, and only then emits `entitlement:released`.
+   * Any validation or write error rolls the entire operation back.
+   *
+   * Eligibility is unchanged: only ON_HOLD rows are released; other statuses are
+   * untouched. Settlement reservations are never released through this path.
    */
   async releaseBySourceIds(sourceType: string, sourceIds: number[]): Promise<number> {
-    const entitlements = await financialEntitlementRepository.findBySourceIds(sourceType as any, sourceIds);
-    let released = 0;
-    for (const e of entitlements) {
-      if (e.status !== 'ON_HOLD') continue;
-      try {
-        await this.releaseEntitlement(e.id);
-        released++;
-      } catch (err: any) {
-        if (err?.message?.includes('version conflict')) {
-          log.warn({ entitlementId: e.id, err: err.message }, 'Optimistic lock conflict during releaseBySourceIds — skipping');
-          continue;
+    if (!sourceIds.length) return 0;
+
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const entitlements = await financialEntitlementRepository.findBySourceIds(
+        sourceType as any,
+        sourceIds,
+        conn,
+        true,
+      );
+      const targets = entitlements.filter((e) => e.status === 'ON_HOLD');
+
+      // Validate the complete set BEFORE the first write.
+      for (const e of targets) {
+        if (e.settlement_id != null) {
+          throw new ConflictError(
+            `Entitlement ${e.id} is reserved by settlement ${e.settlement_id}; release it through the settlement cancellation workflow`,
+          );
         }
-        throw err;
       }
+
+      // Every write uses the same transaction connection (optimistic version
+      // guard inside persistTransition).
+      for (const e of targets) {
+        await this.applyRelease(e, conn);
+      }
+
+      await conn.commit();
+
+      // After-commit side effects only: a rolled-back operation emits nothing.
+      for (const e of targets) {
+        eventBusV2.emit('entitlement:released', {
+          entitlementId: e.id,
+          publicId: e.public_id,
+          organisationId: e.organisation_id,
+        } as any);
+        log.info({ id: e.id }, 'Entitlement released');
+      }
+
+      return targets.length;
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
-    return released;
   }
 
   /**

@@ -214,6 +214,17 @@ export const unifiedSettlementService = {
 
       const entitlementIds = await unifiedSettlementRepository.findEntitlementIds(settlementId, conn);
 
+      // FINANCIAL INTEGRITY: a settlement with no linked entitlements must never
+      // be finalized. Payment would post from the stored `final_amount` while
+      // settling nothing, and the settlement would become terminal (`completed`),
+      // leaving the reserved entitlements permanently un-settleable. Fail before
+      // any state change, GL event or audit write.
+      if (entitlementIds.length === 0) {
+        throw new ConflictError(
+          `Settlement ${settlementId} has no linked entitlements — refusing to record payment`,
+        );
+      }
+
       // Finalize entitlements as SETTLED (atomic).
       await financialEntitlementService.finalizeSettled(entitlementIds, settlementId, data.paidBy, conn);
 
@@ -273,6 +284,17 @@ export const unifiedSettlementService = {
       }
 
       const entitlementIds = await unifiedSettlementRepository.findEntitlementIds(settlementId, conn);
+
+      // FINANCIAL INTEGRITY: cancelling a settlement with no linked entitlements
+      // would release nothing yet mark it `cancelled`, stranding the reserved
+      // entitlements (they would stay ON_HOLD with no discovery path). Fail loudly
+      // instead of performing a no-op cancellation.
+      if (entitlementIds.length === 0) {
+        throw new ConflictError(
+          `Settlement ${settlementId} has no linked entitlements — refusing to cancel`,
+        );
+      }
+
       await financialEntitlementService.releaseFromSettlement(entitlementIds, settlementId, conn);
 
       await unifiedSettlementRepository.persistTransition(settlementId, 'cancelled', settlement.aggregate_version, {

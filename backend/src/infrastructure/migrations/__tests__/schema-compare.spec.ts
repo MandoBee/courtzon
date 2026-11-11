@@ -137,11 +137,11 @@ function expectCode(report: SchemaComparisonReport, code: string): void {
 }
 
 describe('schema comparison — full committed fixtures', () => {
-  it('passes Tier A for all 74 requirements pins without requiring non-pinned tables', () => {
+  it('passes Tier A for all 76 requirements pins without requiring non-pinned tables', () => {
     const report = compare('tierA');
     expect(report.status).toBe('ok');
     expect(report.complete).toBe(true);
-    expect(report.summary.pinsChecked).toBe(74);
+    expect(report.summary.pinsChecked).toBe(76);
     expect(report.summary.expectedTables).toBe(329);
     expect(report.summary.liveTables).toBe(329);
     expect(report.summary.expectedTriggers).toBe(19);

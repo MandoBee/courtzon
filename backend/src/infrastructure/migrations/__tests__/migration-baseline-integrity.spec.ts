@@ -135,7 +135,7 @@ describe('baseline sanity bounds', () => {
     expect(manifest.schema.tableCount).toBe(329);
     expect(new Set(names).size).toBe(329);
     expect(baselineModel.triggers).toHaveLength(manifest.schema.triggerCount);
-    expect(manifest.schema.schemaHead).toBe('206');
+    expect(manifest.schema.schemaHead).toBe('208');
   });
 
   it('contains required foundational tables', () => {
@@ -269,7 +269,7 @@ describe('baseline convergence decisions 1B/2A (P8.6.21)', () => {
     expect(check).toBeDefined();
   });
 
-  it('registers migration 205 as the last schema mutation with a guarded CHECK and 206 as the content-only head', () => {
+  it('registers migration 205 with a guarded CHECK, 207 as the last schema mutation and 208 as the statement-free head', () => {
     const path = join(migrationsDir, '205_tournaments_max_events_check.sql');
     const sql = readFileSync(path, 'utf8');
     expect(sql).toMatch(/^--\s*COURTZON_MIGRATION_ENV:\s*PRODUCTION_SAFE\s*$/m);
@@ -283,8 +283,34 @@ describe('baseline convergence decisions 1B/2A (P8.6.21)', () => {
       .filter((line) => !line.trimStart().startsWith('--'))
       .join('\n');
     expect(executable).not.toMatch(/DROP\s+(INDEX|TABLE|COLUMN|CONSTRAINT)/i);
-    expect(manifest.schema.schemaHead).toBe('206');
-    expect(manifest.migrations.count).toBe(213);
+    expect(manifest.schema.schemaHead).toBe('208');
+    expect(manifest.migrations.count).toBe(215);
+
+    // 207 (the last schema mutation) and the baseline must tell the SAME story:
+    // pair-level uniqueness, the FK-supporting index kept, the legacy global
+    // unique key gone.
+    const settlementEntitlements = tableOf('settlement_entitlements');
+    const indexes = new Map(settlementEntitlements.indexes.map((index) => [index.name, index]));
+    expect(indexes.get('uk_se_settlement_entitlement')).toMatchObject({
+      unique: true,
+      columns: [{ name: 'settlement_id' }, { name: 'entitlement_id' }],
+    });
+    expect(
+      indexes.get('idx_se_entitlement')?.columns.map((column) => column.name),
+    ).toEqual(['entitlement_id']);
+    expect(indexes.has('uk_se_entitlement')).toBe(false);
+
+    // 208 is the head and must remain statement-free (comments only).
+    const headSql = readFileSync(
+      join(migrationsDir, '208_settlement_entitlements_reuse_head.sql'),
+      'utf8',
+    );
+    expect(headSql).toMatch(/^--\s*COURTZON_MIGRATION_ENV:\s*PRODUCTION_SAFE\s*$/m);
+    expect(
+      headSql
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0 && !line.trimStart().startsWith('--')),
+    ).toEqual([]);
   });
 
   it('registers the D4 financial-reports gate in migration 206 with global-only grants', () => {
