@@ -41,7 +41,7 @@ export async function createSettlementHandler(request: FastifyRequest, reply: Fa
  * admin or have access to that organisation. Denied before any settlement data
  * is exposed or any settlement action executes.
  */
-async function assertOrgAccess(userId: number, orgId: number): Promise<void> {
+export async function assertOrgAccess(userId: number, orgId: number): Promise<void> {
   if (!userId) throw new ForbiddenError('Access to this organisation denied');
   if (await isPlatformAdmin(userId)) return;
   if (await canAccessOrganisation(userId, orgId)) return;

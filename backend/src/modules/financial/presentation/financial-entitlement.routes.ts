@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
 import { financialEntitlementService } from '../application/financial-entitlement.service.js';
-import { assertSettlementOrgAccess } from '../../settlement/presentation/unified-settlement.controller.js';
+import { assertOrgAccess, assertSettlementOrgAccess } from '../../settlement/presentation/unified-settlement.controller.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 
 const log = createModuleLogger('financial-entitlement-routes');
@@ -34,8 +34,14 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     if (!organisationId) {
       return reply.status(400).send({ error: 'organisationId is required' });
     }
+    const orgId = Number(organisationId);
+    if (!Number.isInteger(orgId) || orgId <= 0) {
+      return reply.status(400).send({ error: 'organisationId must be a positive integer' });
+    }
+    // SECURITY: authorise against the requested organisation BEFORE reading rows.
+    await assertOrgAccess((request as any).userId, orgId);
     const result = await financialEntitlementService.getOrganisationEntitlements(
-      Number(organisationId),
+      orgId,
       { status, entitlementType, page: Number(page), limit: Number(limit) },
     );
     return reply.send(result);
@@ -48,6 +54,8 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     const { id } = request.params as any;
     const entitlement = await financialEntitlementService.getEntitlement(Number(id));
     if (!entitlement) return reply.status(404).send({ error: 'Entitlement not found' });
+    // SECURITY: ownership comes from the stored record, never from the client.
+    await assertOrgAccess((request as any).userId, Number(entitlement.organisation_id));
     return reply.send(entitlement);
   });
 
@@ -58,6 +66,8 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     const { publicId } = request.params as any;
     const entitlement = await financialEntitlementService.getEntitlementByPublicId(publicId);
     if (!entitlement) return reply.status(404).send({ error: 'Entitlement not found' });
+    // SECURITY: the UUID lookup is unchanged; ownership is enforced afterwards.
+    await assertOrgAccess((request as any).userId, Number(entitlement.organisation_id));
     return reply.send(entitlement);
   });
 
@@ -67,6 +77,14 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
   }, async (request: any, reply: any) => {
     const { sourceType, sourceId } = request.params as any;
     const entitlements = await financialEntitlementService.getEntitlementsBySource(sourceType, Number(sourceId));
+    // Preserve the existing empty response.
+    if (!entitlements.length) return reply.send(entitlements);
+    // SECURITY: fail closed if ANY row belongs to an inaccessible organisation —
+    // never return a partial cross-tenant result.
+    const orgIds = [...new Set(entitlements.map((e: any) => Number(e.organisation_id)))];
+    for (const orgId of orgIds) {
+      await assertOrgAccess((request as any).userId, orgId);
+    }
     return reply.send(entitlements);
   });
 
@@ -113,11 +131,17 @@ export async function financialEntitlementRoutes(app: FastifyInstance): Promise<
     preHandler: [requirePermission(['financial.entitlements.view'])],
   }, async (request: any, reply: any) => {
     const { organisationId } = request.params as any;
-    const pending = await financialEntitlementService.getOrganisationBalance(Number(organisationId), 'PENDING');
-    const available = await financialEntitlementService.getOrganisationBalance(Number(organisationId), 'AVAILABLE');
-    const onHold = await financialEntitlementService.getOrganisationBalance(Number(organisationId), 'ON_HOLD');
-    const settled = await financialEntitlementService.getOrganisationBalance(Number(organisationId), 'SETTLED');
-    const cancelled = await financialEntitlementService.getOrganisationBalance(Number(organisationId), 'CANCELLED');
+    const orgId = Number(organisationId);
+    if (!Number.isInteger(orgId) || orgId <= 0) {
+      return reply.status(400).send({ error: 'organisationId must be a positive integer' });
+    }
+    // SECURITY: authorise BEFORE any balance read.
+    await assertOrgAccess((request as any).userId, orgId);
+    const pending = await financialEntitlementService.getOrganisationBalance(orgId, 'PENDING');
+    const available = await financialEntitlementService.getOrganisationBalance(orgId, 'AVAILABLE');
+    const onHold = await financialEntitlementService.getOrganisationBalance(orgId, 'ON_HOLD');
+    const settled = await financialEntitlementService.getOrganisationBalance(orgId, 'SETTLED');
+    const cancelled = await financialEntitlementService.getOrganisationBalance(orgId, 'CANCELLED');
     return reply.send({ pending, available, onHold, settled, cancelled });
   });
 
