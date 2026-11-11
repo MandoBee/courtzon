@@ -67,11 +67,22 @@ describe('AdminLayout — per-section permission and accountant deny-list', () =
     expect(screen.getByText('Access denied')).toBeInTheDocument();
   });
 
-  it('allows the accountant role on a non-denied finance section it is granted', () => {
-    setUser(['financial.view'], ['accountant']);
+  it('allows a global finance role on the finance section it is granted', () => {
+    // D4 — /admin/finance is gated by financial.reports.view (global
+    // super_admin / finance-manager policy), not by the broad financial.view.
+    setUser(['financial.reports.view'], ['finance-manager']);
     renderAt('/admin/finance');
     expect(screen.getByText('finance-page')).toBeInTheDocument();
     expect(screen.queryByText('Access denied')).toBeNull();
+  });
+
+  it('denies the accountant role on /admin/finance even with financial.view', () => {
+    // D4 — accountant keeps organisation-scoped finance but no longer reaches
+    // the global Financial Dashboard.
+    setUser(['financial.view', 'reports.view'], ['accountant']);
+    renderAt('/admin/finance');
+    expect(screen.queryByText('finance-page')).toBeNull();
+    expect(screen.getByText('Access denied')).toBeInTheDocument();
   });
 
   it('keeps the sidebar mounted while a section is denied (navigation stays usable)', () => {

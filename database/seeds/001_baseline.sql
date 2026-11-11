@@ -668,3 +668,40 @@ UNLOCK TABLES;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- Dump completed on 2026-06-25  2:53:08
+
+-- ============================================================================
+-- D4 — Financial Reports read gate (post-dump, idempotent).
+--
+-- Applies AFTER the dumped reference data (permission_modules/permissions/roles
+-- are already populated above), so the rows below resolve by KEY/SLUG instead
+-- of inventing auto-increment ids. The block itself is idempotent and safe to
+-- replay (its INSERTs are ON DUPLICATE KEY / INSERT IGNORE).
+--
+-- Policy (P6-07 D4):
+--   * `financial.reports.view` — GLOBAL super_admin + GLOBAL finance-manager only.
+--     Guards /admin/finance, /admin/finance/ledger and /admin/finance/reports.
+--   * organisation-scoped clones are excluded by `organisation_id IS NULL`.
+--   * `reports.export` — auditor (general reports egress only); every other
+--     export family stays with its own template grant.
+-- ============================================================================
+
+-- 1. Register the dedicated financial-reports read gate.
+INSERT INTO `permissions` (`module_id`, `permission_key`, `element_type`, `element_label`, `component_path`, `is_ui_element`, `description`)
+SELECT m.`id`, 'financial.reports.view', 'page', 'Financial Reports View', 'pages/admin/finance/ReportCenterPage.tsx', 1, 'View the global finance report center, finance dashboard and ledger viewer (revenue, wallet, ledger and settlement reports)'
+FROM `permission_modules` m WHERE m.`slug` = 'financial'
+ON DUPLICATE KEY UPDATE `element_type` = VALUES(`element_type`), `element_label` = VALUES(`element_label`), `component_path` = VALUES(`component_path`), `is_ui_element` = VALUES(`is_ui_element`), `description` = VALUES(`description`);
+
+-- 2. Grant it to the approved GLOBAL roles only.
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id` FROM `roles` r JOIN `permissions` p ON p.`permission_key` = 'financial.reports.view'
+WHERE r.`slug` IN ('super_admin', 'finance-manager')
+  AND r.`organisation_id` IS NULL
+  AND r.`deleted_at` IS NULL;
+
+-- 3. Auditor — general report export only (read-only audit roles keep the
+--    existing view keys; no other export family is granted here).
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id` FROM `roles` r JOIN `permissions` p ON p.`permission_key` = 'reports.export'
+WHERE r.`slug` = 'auditor'
+  AND r.`organisation_id` IS NULL
+  AND r.`deleted_at` IS NULL;

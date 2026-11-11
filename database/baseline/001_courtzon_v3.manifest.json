@@ -4,19 +4,20 @@
   "baseline": {
     "path": "database/baseline/001_courtzon_v3.sql",
     "hashKind": "content_sha256_lf",
-    "bytes": 472581,
-    "lines": 7909,
-    "sha256": "90fc2086de641b93f23f206c2b04085d39b9e95d4dae9743f5397d1da36cdad3"
+    "bytes": 474334,
+    "lines": 7934,
+    "sha256": "91c6a4fb610b847d0c56de38ccc7fa393f3c55eea4ea11f020c7cb66f3ae231a"
   },
   "schema": {
-    "schemaHead": "205",
+    "schemaHead": "206",
     "contentOnly": [
       "196",
       "197",
       "198",
       "199",
       "200",
-      "201"
+      "201",
+      "206"
     ],
     "tableCount": 329,
     "columnCount": 3668,
@@ -24,12 +25,12 @@
     "foreignKeyCount": 515,
     "checkCount": 54,
     "triggerCount": 19,
-    "dataStatementCount": 6,
+    "dataStatementCount": 8,
     "alterStatementCount": 13,
     "dropTableStatementCount": 316,
     "inventorySha256": "73666474eec4c3edf109d09247920d28015acd25ec2d6b8a578fbab02542010e",
     "objectSha256": "b005082c25bc169f3d465c06831bb348697c0dbc30d4ae26c50669b4470df81f",
-    "schemaSha256": "95f58d796f22b64184fafa66322c11029958c599241051949960ef4d49d4abd8",
+    "schemaSha256": "1cd0de86a9b2c525269aa6367831c334eb459879732bea8b38d93164818a9143",
     "tables": {
       "academies": {
         "signature": {
@@ -73020,14 +73021,24 @@
         "kind": "UPDATE",
         "table": "academy_programs",
         "sha256": "7c2bf839a094f1f43789c1eda4c03cf62af67200ed71b15550a4a778d24d1081"
+      },
+      {
+        "kind": "INSERT",
+        "table": "permissions",
+        "sha256": "abd6e8d0bca5fe508e36fc6985e9bbdfc9495dfcda927793619a77ddc7f7ac2f"
+      },
+      {
+        "kind": "INSERT",
+        "table": "role_permissions",
+        "sha256": "10ce8027742176f3d85a874a33f378fff7f8912adbda54e53f4e75198aa69b59"
       }
     ]
   },
   "migrations": {
     "directory": "database/migrations",
     "hashKind": "content_sha256_lf",
-    "count": 212,
-    "distinctPrefixes": 203,
+    "count": 213,
+    "distinctPrefixes": 204,
     "duplicatePrefixes": [
       {
         "prefix": "002",
@@ -73074,7 +73085,7 @@
       "076"
     ],
     "classifications": {
-      "PRODUCTION_SAFE": 212,
+      "PRODUCTION_SAFE": 213,
       "LOCAL_DOCKER_ONLY": 0,
       "INVALID": 0
     },
@@ -74562,9 +74573,16 @@
         "sha256": "4a43188f0b86efc9f84435804ffb9ebee28074f7da201dddacb5a78a876591fa",
         "classification": "PRODUCTION_SAFE",
         "marker": "PRODUCTION_SAFE"
+      },
+      {
+        "file": "206_financial_reports_view_permission.sql",
+        "prefix": "206",
+        "sha256": "5001cb7785fc657d301c10d596d30aedcc4df9bdfe4c342b2d4d31e281433cef",
+        "classification": "PRODUCTION_SAFE",
+        "marker": "PRODUCTION_SAFE"
       }
     ],
-    "sha256": "8a7ac0bad4d4e9ac355b174e5f15d2edfad6d855747b27bff64de3cd1ca41218"
+    "sha256": "c53b9788bfb312604cb987e06234d06243b635f4e21dc3b1a9519e4772671e88"
   },
   "requirements": {
     "version": 1,
@@ -74659,10 +74677,11 @@
       "198",
       "199",
       "200",
-      "201"
+      "201",
+      "206"
     ],
-    "schemaHead": "205",
-    "sha256": "0dad8765d522e755f5eee706ced40252ece6a846c0cdaf90dce95721b3cdc203"
+    "schemaHead": "206",
+    "sha256": "ee190aa4445bc2ba58f88d8786d1060a2fbcd059ffde587f0e12642c46635607"
   },
   "knownGaps": [
     {

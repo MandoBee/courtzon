@@ -212,9 +212,9 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     const nav = resolveAdminNav(enT, allCan, allFlags);
     const finance = nav.find((d) => d.label === 'Finance');
     expect(finance?.children?.map((c) => c.permissionKey)).toEqual([
-      'sidebar.finance-dashboard',
-      'sidebar.finance-ledger',
-      'sidebar.finance-reports',
+      'financial.reports.view',
+      'financial.reports.view',
+      'financial.reports.view',
       'sidebar.banks',
       'sidebar.bank-branches',
       'sidebar.finance-transactions',
@@ -875,6 +875,7 @@ describe('Navigation registry integrity (immutable ids)', () => {
     const shared = [...keyMap.entries()].filter(([, ids]) => ids.length > 1).map(([k]) => k).sort();
     expect(shared).toEqual(
       [
+        'financial.reports.view',
         'sidebar.organisations',
         'sidebar.roles',
         'sidebar.payment-methods',

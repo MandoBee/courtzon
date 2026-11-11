@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware, adminGuard } from '../../../shared/middleware/auth.middleware.js';
+import { authMiddleware, adminGuard, eitherRoleOrPermission } from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './translations.controller.js';
 
 export async function translationsRoutes(app: FastifyInstance): Promise<void> {
@@ -15,7 +15,12 @@ export async function translationsRoutes(app: FastifyInstance): Promise<void> {
   app.post('/translations/locale-pack/sync', { preHandler: [adminGuard] }, ctrl.syncLocalePackHandler);
   app.get('/translations/locale-pack/:locale', { preHandler: [adminGuard] }, ctrl.getLocalePackHandler);
   app.get('/translations', { preHandler: [adminGuard] }, ctrl.listTranslationsHandler);
-  app.get('/translations/export', { preHandler: [adminGuard] }, ctrl.exportTranslationsHandler);
+  // D4 Expanded — the full-catalogue export requires the dedicated
+  // translations.export egress permission. The super_admin role bypass keeps the
+  // endpoint reachable before the permission rows are provisioned in a database.
+  app.get('/translations/export', {
+    preHandler: [eitherRoleOrPermission(['super_admin', 'super-admin'], ['translations.export'])],
+  }, ctrl.exportTranslationsHandler);
   app.get('/translations/locales', { preHandler: [adminGuard] }, ctrl.listLocalesHandler);
   app.get('/translations/keys', { preHandler: [adminGuard] }, ctrl.listKeysHandler);
   app.get('/translations/:id', { preHandler: [adminGuard] }, ctrl.getTranslationHandler);

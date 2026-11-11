@@ -47,7 +47,7 @@ export default function UnifiedSettlementListPage() {
           <h1 className="text-xl font-bold text-[var(--color-text)]">Unified Settlements</h1>
           <p className="text-xs text-[var(--color-text-muted)]">Settle AVAILABLE financial entitlements between CourtZon and an organization</p>
         </div>
-{can('settlements.view') && (
+{can('settlements.export') && (
           <ExportCsvButton
             endpoint="/unified-settlements/export"
             params={{ status: statusFilter || undefined }}

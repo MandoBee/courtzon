@@ -1,32 +1,54 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware, eitherRoleOrPermission } from '../../../shared/middleware/auth.middleware.js';
+import {
+  authMiddleware,
+  eitherRoleOrPermission,
+  requireFinancialReportsAccess,
+} from '../../../shared/middleware/auth.middleware.js';
 import * as ctrl from './reports.controller.js';
 
 /**
- * P1-03 — Reports authorization.
+ * P1-03 + D4-A1 — Reports authorization.
  *
- * Every report read endpoint is permission-driven via `reports.view`, with an
- * explicit Super Admin role bypass (`super_admin` / `super-admin`). Uses the
- * shared `eitherRoleOrPermission` guard so the check fails closed and performs
- * no database access in the presentation layer.
+ * Two distinct policies, because the Financial tab exposes GLOBAL financial
+ * aggregates (revenue, commission, settlements, payment-method mix):
+ *
+ *   • Financial report endpoints (`/reports/financial/*`) use the SAME
+ *     authoritative guard as the Finance module itself
+ *     (`requireFinancialReportsAccess`): global `super_admin`, or a global
+ *     `finance-manager` carrying `financial.reports.view` on that exact role.
+ *     Organisation-scoped clones and every other role are denied, and the
+ *     guard fails closed (401 / 403 / 500).
+ *   • Every other report endpoint stays permission-driven via `reports.view`,
+ *     with an explicit Super Admin role bypass, using the shared
+ *     `eitherRoleOrPermission` guard.
  *
  * There is no backend export endpoint — export is a frontend-only capability
  * (`reports.export` gates the CSV button on the Reports page). No read route is
  * therefore gated on `reports.export`, and no route is left on a role-only guard.
+ *
+ * D4-A1 remediation: the financial endpoints must NOT be satisfied by
+ * `reports.view` alone. Never re-point them at `reportsViewGuard`.
  */
 const reportsViewGuard = eitherRoleOrPermission(['super_admin', 'super-admin'], ['reports.view']);
+
+/**
+ * Reuses the single authoritative financial-reports implementation
+ * (`requireFinancialReportsAccess`) — no second authorization implementation
+ * exists in this module.
+ */
+const financialReportsGuard = requireFinancialReportsAccess();
 
 export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   const g = reportsViewGuard;
 
-  // Financial
-  app.get('/reports/financial/summary', { preHandler: [g] }, ctrl.financialSummary);
-  app.get('/reports/financial/by-source', { preHandler: [g] }, ctrl.revenueBySource);
-  app.get('/reports/financial/timeline', { preHandler: [g] }, ctrl.revenueTimeline);
-  app.get('/reports/financial/payment-methods', { preHandler: [g] }, ctrl.paymentMethods);
-  app.get('/reports/financial/settlements', { preHandler: [g] }, ctrl.settlements);
+  // Financial — strict global policy (D4-A1). Not `g`.
+  app.get('/reports/financial/summary', { preHandler: [financialReportsGuard] }, ctrl.financialSummary);
+  app.get('/reports/financial/by-source', { preHandler: [financialReportsGuard] }, ctrl.revenueBySource);
+  app.get('/reports/financial/timeline', { preHandler: [financialReportsGuard] }, ctrl.revenueTimeline);
+  app.get('/reports/financial/payment-methods', { preHandler: [financialReportsGuard] }, ctrl.paymentMethods);
+  app.get('/reports/financial/settlements', { preHandler: [financialReportsGuard] }, ctrl.settlements);
 
   // Bookings
   app.get('/reports/bookings/volume', { preHandler: [g] }, ctrl.bookingVolume);

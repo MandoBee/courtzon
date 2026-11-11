@@ -135,7 +135,7 @@ describe('baseline sanity bounds', () => {
     expect(manifest.schema.tableCount).toBe(329);
     expect(new Set(names).size).toBe(329);
     expect(baselineModel.triggers).toHaveLength(manifest.schema.triggerCount);
-    expect(manifest.schema.schemaHead).toBe('205');
+    expect(manifest.schema.schemaHead).toBe('206');
   });
 
   it('contains required foundational tables', () => {
@@ -269,7 +269,7 @@ describe('baseline convergence decisions 1B/2A (P8.6.21)', () => {
     expect(check).toBeDefined();
   });
 
-  it('registers migration 205 as the PRODUCTION_SAFE head with a guarded CHECK', () => {
+  it('registers migration 205 as the last schema mutation with a guarded CHECK and 206 as the content-only head', () => {
     const path = join(migrationsDir, '205_tournaments_max_events_check.sql');
     const sql = readFileSync(path, 'utf8');
     expect(sql).toMatch(/^--\s*COURTZON_MIGRATION_ENV:\s*PRODUCTION_SAFE\s*$/m);
@@ -283,8 +283,43 @@ describe('baseline convergence decisions 1B/2A (P8.6.21)', () => {
       .filter((line) => !line.trimStart().startsWith('--'))
       .join('\n');
     expect(executable).not.toMatch(/DROP\s+(INDEX|TABLE|COLUMN|CONSTRAINT)/i);
-    expect(manifest.schema.schemaHead).toBe('205');
-    expect(manifest.migrations.count).toBe(212);
+    expect(manifest.schema.schemaHead).toBe('206');
+    expect(manifest.migrations.count).toBe(213);
+  });
+
+  it('registers the D4 financial-reports gate in migration 206 with global-only grants', () => {
+    const sql = readFileSync(
+      join(migrationsDir, '206_financial_reports_view_permission.sql'),
+      'utf8',
+    );
+    // Production-safe, data-only, additive.
+    expect(sql).toMatch(/^--\s*COURTZON_MIGRATION_ENV:\s*PRODUCTION_SAFE\s*$/m);
+    const executable = sql
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(executable).not.toMatch(/^\s*(CREATE|ALTER|DROP|TRUNCATE)\s/im);
+    expect(executable).not.toMatch(/DELETE\s+FROM/i);
+
+    // Registers exactly the one approved key.
+    expect(executable).toContain("'financial.reports.view'");
+    for (const key of [
+      'financial.export',
+      'accounting.export',
+      'settlements.export',
+      'notifications.webhooks.export',
+      'translations.export',
+    ]) {
+      expect(executable).not.toContain(`'${key}'`);
+    }
+
+    // Grants only the two approved GLOBAL roles and enforces the tenant boundary.
+    expect(executable).toContain("r.slug IN ('super_admin', 'finance-manager')");
+    expect(executable).toContain('r.organisation_id IS NULL');
+    expect(executable).toContain('r.deleted_at IS NULL');
+    for (const slug of ['accountant', 'auditor', 'master-admin', 'read-only-admin']) {
+      expect(executable).not.toContain(`'${slug}'`);
+    }
   });
 });
 
@@ -334,5 +369,109 @@ describe('migration 204 restores the missing convergence index (roll-forward)', 
       'end_date',
     ]);
     expect(index?.unique).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D4 — the permission registration must tell the SAME story in the migration,
+// the fresh-database seed and the baseline (static; no DB is touched).
+// ---------------------------------------------------------------------------
+describe('D4 permission registration — migration, seed and baseline agree', () => {
+  const migrationSql = readFileSync(
+    join(migrationsDir, '206_financial_reports_view_permission.sql'),
+    'utf8',
+  );
+  const seedSql = readFileSync(resolve(projectRoot, 'database/seeds/001_baseline.sql'), 'utf8');
+  // Read the baseline directly: `beforeAll` assignments are not available while
+  // the describe body is collected.
+  const baselineSql = readFileSync(baselinePath, 'utf8');
+
+  const executableSql = (sql: string): string =>
+    sql
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+
+  const artifacts: Array<[string, string]> = [
+    ['migration 206', migrationSql],
+    ['seed 001', seedSql],
+    ['baseline', baselineSql],
+  ];
+
+  const UNAPPROVED_EXPORT_KEYS = [
+    'financial.export',
+    'accounting.export',
+    'settlements.export',
+    'notifications.webhooks.export',
+    'translations.export',
+  ];
+
+  it('registers financial.reports.view in every artefact', () => {
+    for (const [label, sql] of artifacts) {
+      expect(executableSql(sql), label).toContain("'financial.reports.view'");
+    }
+  });
+
+  it('grants it to the two approved GLOBAL roles only', () => {
+    for (const [label, sql] of artifacts) {
+      const executable = executableSql(sql);
+      expect(executable, label).toMatch(
+        /r\.`?slug`? IN \('super_admin', 'finance-manager'\)/,
+      );
+      // Tenant boundary: organisation-scoped clones never receive the key.
+      expect(executable, label).toMatch(/r\.`?organisation_id`? IS NULL/);
+      expect(executable, label).toMatch(/r\.`?deleted_at`? IS NULL/);
+      // No other role may be named in a grant list.
+      for (const slug of [
+        'accountant',
+        'auditor',
+        'master-admin',
+        'read-only-admin',
+        'org-admin',
+        'operations-manager',
+        'marketplace-manager',
+      ]) {
+        expect(executable, `${label} grants ${slug}`).not.toMatch(
+          new RegExp(`r\\.\`?slug\`? IN \\([^)]*'${slug}'`),
+        );
+      }
+    }
+  });
+
+  it('registers no additional export permission in any artefact', () => {
+    for (const [label, sql] of artifacts) {
+      const executable = executableSql(sql);
+      for (const key of UNAPPROVED_EXPORT_KEYS) {
+        expect(executable, `${label} must not register ${key}`).not.toContain(`'${key}'`);
+      }
+    }
+  });
+
+  it('represents the approved auditor reports.export grant in the seed only', () => {
+    const seed = executableSql(seedSql);
+    expect(seed).toMatch(/p\.`permission_key` = 'reports\.export'/);
+    expect(seed).toMatch(/r\.`slug` = 'auditor'/);
+    expect(seed).toMatch(/r\.`organisation_id` IS NULL/);
+    // Auditor export stays scoped to the general reports key.
+    for (const key of UNAPPROVED_EXPORT_KEYS) {
+      expect(seed).not.toContain(`'${key}'`);
+    }
+    // The migration must not grant the auditor anything.
+    expect(executableSql(migrationSql)).not.toContain("'auditor'");
+  });
+
+  it('keeps the templates consistent with the registration (auditor/accountant)', async () => {
+    const { permissionMatchesTemplate } = await import(
+      '../../../modules/rbac/application/role-permission-templates.js'
+    );
+    const mjs = await import('../../../../scripts/role-permission-templates.mjs');
+    for (const match of [permissionMatchesTemplate, mjs.permissionMatchesTemplate]) {
+      expect(match('auditor', 'reports.export')).toBe(true);
+      expect(match('auditor', 'financial.reports.view')).toBe(false);
+      expect(match('auditor', 'financial.export')).toBe(false);
+      expect(match('accountant', 'financial.export')).toBe(false);
+      expect(match('accountant', 'financial.reports.view')).toBe(false);
+      expect(match('finance-manager', 'financial.reports.view')).toBe(true);
+    }
   });
 });

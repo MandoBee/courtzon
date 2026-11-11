@@ -12,6 +12,14 @@ vi.mock('./Toast', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
+// D4 — the shared button reads permissions from the auth store (via useCan).
+const mockAuth: { user: { permissions: string[] } | null } = {
+  user: { permissions: [] },
+};
+vi.mock('../../store/auth.store', () => ({
+  useAuthStore: (selector: (s: typeof mockAuth) => unknown) => selector(mockAuth),
+}));
+
 function renderBtn(props: any = {}) {
   return render(
     <ExportCsvButton
@@ -32,6 +40,7 @@ describe('ExportCsvButton', () => {
   beforeEach(() => {
     mockGet.mockReset();
     document.body.innerHTML = '';
+    mockAuth.user = { permissions: [] };
   });
 
   it('calls the export endpoint with filters and downloads a CSV', async () => {
@@ -81,5 +90,42 @@ describe('ExportCsvButton', () => {
   it('renders a disabled button when disabled prop is set', () => {
     renderBtn({ disabled: true });
     expect(screen.getByText('Export CSV').closest('button')?.disabled).toBe(true);
+  });
+
+  // ── D4 permission prop ────────────────────────────────────────────────────
+  it('keeps the legacy behaviour (renders) when no permission prop is passed', () => {
+    renderBtn();
+    expect(screen.getByText('Export CSV')).toBeInTheDocument();
+  });
+
+  it('renders nothing when a permission is required and missing (fail-closed)', () => {
+    mockAuth.user = { permissions: ['settlements.view'] };
+    renderBtn({ permission: 'reports.export' });
+    expect(screen.queryByText('Export CSV')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('renders nothing when signed out and a permission is required (fail-closed)', () => {
+    mockAuth.user = null;
+    renderBtn({ permission: 'reports.export' });
+    expect(screen.queryByText('Export CSV')).toBeNull();
+  });
+
+  it('renders the button when the required permission is held', () => {
+    mockAuth.user = { permissions: ['reports.export'] };
+    renderBtn({ permission: 'reports.export' });
+    expect(screen.getByText('Export CSV')).toBeInTheDocument();
+  });
+
+  it('renders the button for a wildcard (super admin) permission', () => {
+    mockAuth.user = { permissions: ['*'] };
+    renderBtn({ permission: 'accounting.journal.view' });
+    expect(screen.getByText('Export CSV')).toBeInTheDocument();
+  });
+
+  it('never calls the export endpoint when the required permission is missing', async () => {
+    mockAuth.user = { permissions: ['settlements.view'] };
+    renderBtn({ permission: 'reports.export' });
+    expect(mockGet).not.toHaveBeenCalled();
   });
 });

@@ -27,7 +27,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return { ...actual, useQuery: vi.fn(actual.useQuery) };
 });
 
-let allowed = new Set<string>(['settlements.view', 'settlements.request']);
+let allowed = new Set<string>(['settlements.view', 'settlements.request', 'settlements.export']);
 vi.mock('../../../utils/currency', () => ({
   formatPrice: (n: number, _c?: string) => `${n.toFixed(2)} ${_c || ''}`.trim(),
 }));
@@ -50,8 +50,16 @@ function renderPage() {
 
 describe('UnifiedSettlementListPage — export', () => {
   beforeEach(() => {
-    allowed = new Set(['settlements.view', 'settlements.request']);
+    allowed = new Set(['settlements.view', 'settlements.request', 'settlements.export']);
     mockGet.mockClear();
+  });
+
+  it('hides the export control when only settlements.view is held', async () => {
+    allowed = new Set(['settlements.view', 'settlements.request']);
+    mockGet.mockResolvedValue({ data: { data: [], total: 0, page: 1, limit: 20 } });
+    renderPage();
+    await screen.findByText('Unified Settlements');
+    expect(screen.queryByTestId('export-btn')).toBeNull();
   });
 
   it('renders an Export CSV button wired to the settlements export endpoint', async () => {

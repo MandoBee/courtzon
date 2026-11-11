@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import api from '../../../services/api';
+import { Can } from '../../../permissions/Can';
+import { useCan } from '../../../hooks/useCan';
 
 const REPORT_TYPES = [
   { value: 'revenue', label: 'Revenue' },
@@ -9,12 +11,16 @@ const REPORT_TYPES = [
 ];
 
 export function ExportPanel() {
+  const { can } = useCan();
   const [reportType, setReportType] = useState('revenue');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleDownload = async () => {
+    // Defense in depth: the panel is already wrapped in <Can permission="bi.export">,
+    // but the handler must never fire the export request without the grant.
+    if (!can('bi.export')) return;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -40,51 +46,56 @@ export function ExportPanel() {
     }
   };
 
+  // D4: the panel performs a BI data export (GET /bi/export/:reportType, which
+  // requires `bi.export` on the backend). `bi.dashboard.view` alone must NOT
+  // reveal it, so the whole panel is gated by the export permission.
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4">
-      <h2 className="text-lg font-semibold mb-3">Export Report</h2>
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-sm text-[var(--color-text-muted)] mb-1">Report Type</label>
-          <select
-            value={reportType}
-            onChange={(e) => setReportType(e.target.value)}
-            className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-bg)]"
-          >
-            {REPORT_TYPES.map((rt) => (
-              <option key={rt.value} value={rt.value}>{rt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-[var(--color-text-muted)] mb-1">From</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-bg)]"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-[var(--color-text-muted)] mb-1">To</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-bg)]"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-[var(--color-text-muted)]">CSV</span>
-          <button
-            onClick={handleDownload}
-            disabled={loading}
-            className="px-4 py-1.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            {loading ? 'Downloading...' : 'Download'}
-          </button>
+    <Can permission="bi.export">
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4">
+        <h2 className="text-lg font-semibold mb-3">Export Report</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-sm text-[var(--color-text-muted)] mb-1">Report Type</label>
+            <select
+              value={reportType}
+              onChange={(e) => setReportType(e.target.value)}
+              className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-bg)]"
+            >
+              {REPORT_TYPES.map((rt) => (
+                <option key={rt.value} value={rt.value}>{rt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm text-[var(--color-text-muted)] mb-1">From</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-bg)]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-[var(--color-text-muted)] mb-1">To</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-bg)]"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-[var(--color-text-muted)]">CSV</span>
+            <button
+              onClick={handleDownload}
+              disabled={loading}
+              className="px-4 py-1.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {loading ? 'Downloading...' : 'Download'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Can>
   );
 }
