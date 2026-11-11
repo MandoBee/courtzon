@@ -434,7 +434,7 @@ scenario, and the destructive-SQL sub-item of **P7-02** is resolved.
 | D1 | Player | Fixture booking | Trigger notification, open bell, click deep link | Navigates to the referenced entity | Rows left | `e2e/scenarios/notifications/notification-deeplink.spec.ts:20–73` | W | **PASS (2026-11-06, local)** — `npx playwright test e2e/scenarios/notifications/notification-deeplink.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **1 passed (14.1s)** (test 11.0s), **0 failed / 0 flaky / 0 skipped, 0 retries**, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): cash booking **`59292`** created via the authoritative V2 path (the obsolete `PATCH /bookings/:id/confirm` was removed); the in-app notification was **delivered and marked as read**; the deep link navigated to the exact **`/bookings/59292`**; rows left in place (no cleanup). Evidence: `test-results/e2e/results.json` (`expected=1`, `startTime 2026-11-06T01:02:50.751Z`). |
 | D2 | Admin | Admin fixture | Open admin dashboard | Loads admin-specific elements | None | `admin-dashboard.spec.ts` (rows A3) | W | **PASS (attributed, 2026-11-03)** — covered by the historical **A3** run (§3.1d, **3/3 PASS**): dedicated authenticated `super_admin` fixture; admin dashboard opened at `/admin`; **`System Dashboard`** heading visible; admin sidebar **`aside nav`** and first navigation button visible; `/admin/users` heading and table visible. **No D2-specific rerun was performed.** A3 does **not** assert KPI card values, Action Center, charts, or `/admin/dashboard` API payloads — these are outside D2's written acceptance criteria. **Evidence basis:** the original raw A3 Playwright report is no longer available (the D5 run overwrote the raw report files), so attribution relies on the committed A3 spec and historical documentation, not independently reverified raw results; historical retry, failure, or skipped-test counts are **not** claimed. |
 | D3 | Finance role | Seeded settlements | Open list/detail, pay/cancel where permitted | Correct figures; actions permission-gated | None | — | — | **MISSING** |
-| D4 | Auditor/admin | Seeded data | Run/read reports, export | Correct data; export gated | None | — | — | **MISSING** |
+| D4 | Auditor/admin | Seeded data | Run/read reports, export | Correct data; export gated | None | — | — | **D4-A PASS (2026-11-11, Live, read-only)** — deployed commit `cc716b1791e9bf3b4dccc47edb74baddbf8cdc9d`; six unauthenticated GETs returned **401** `AUTHENTICATION_ERROR` with no financial data and no redirects: `/reports/financial/{summary,by-source,timeline,payment-methods,settlements}` + `/unified-settlements/export`. No sessions created, no database access or writes. **D4 authenticated portion (auditor/admin reports + export gating with live actors): NOT TESTED / BLOCKED** pending separately approved authenticated access. **D4 overall remains OPEN.** |
 | D5 | Player captain + invitee | Free team tournament | Create team, invite, accept/reject, expiry | Non-captain blocked; cross-tournament accept rejected; no financial writes | Rows left (timestamped slugs) | `e2e/scenarios/tournament/tournament-team-invitation.spec.ts:117–262` | W | **PASS (2026-11-05, local)** — `npx playwright test e2e/scenarios/tournament/tournament-team-invitation.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **4 passed (9.5s)**, 0 failed / 0 flaky / 0 skipped, **0 retries**, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): T1 happy path **2161 ms**, T2 cross-user/cross-tournament isolation **2036 ms**, T3 reject + expiry + zero financial mutations **1902 ms**, T4 direct join + full-team capacity **1685 ms**. All writes stayed within the approved **20-table allowlist**; **8** in-app notifications created and **8/8 delivered** (`notification_delivery.status = delivered`, attempts 0); **24** `notification_audit_trail` rows; **8** `notification_analytics` rows; BullMQ completed **20540 → 20548**, failed **11** and delayed **1** unchanged; **0** dead-letter; **no external providers**; **no payment/wallet/booking/accounting writes**; updates limited to run-created rows (**0** pre-existing sessions/invitations/participants/deliveries touched); no destructive SQL. Details: **§3.4a** |
 
 ### 3.4a D5 — local execution (2026-11-05)
@@ -473,7 +473,24 @@ updates), 13 `tournament_participant_members`, 5 `tournament_team_invitations` (
 | Destructive SQL | none (no DELETE/TRUNCATE/DROP/ALTER/migration/seed) |
 | Source/test files | not modified |
 
-**Result: D5 PASS.** P6-07 remains **IN_PROGRESS** (D3–D4 still open).
+**Result: D5 PASS.** P6-07 remains **IN_PROGRESS** (D3–D4 still open; **D4-A PASS (2026-11-11, Live)**, D4 authenticated portion NOT TESTED/BLOCKED).
+
+### 3.4b D4-A — unauthenticated fail-closed (Live, 2026-11-11)
+
+**Deployment:** `https://api.courtzon.cloud`, commit `cc716b1791e9bf3b4dccc47edb74baddbf8cdc9d` (`/health/version`: `gitCommitConsistent: true`, `expectedMigration: 206_financial_reports_view_permission`).
+
+**Command (read-only, no cookies/headers):** six `curl -s` GET requests.
+
+| # | Endpoint | Status | Body | Financial data | Redirect |
+|---|---|---:|---|---|---|
+| 1 | `GET /reports/financial/summary` | **401** | `{"error":"AUTHENTICATION_ERROR","message":"Missing or invalid token"}` | No | No |
+| 2 | `GET /reports/financial/by-source` | **401** | same | No | No |
+| 3 | `GET /reports/financial/timeline` | **401** | same | No | No |
+| 4 | `GET /reports/financial/payment-methods` | **401** | same | No | No |
+| 5 | `GET /reports/financial/settlements` | **401** | same | No | No |
+| 6 | `GET /unified-settlements/export` | **401** | same | No | No |
+
+**Result: D4-A PASS.** Zero sessions, zero database writes, zero redirects. **D4 authenticated remains NOT TESTED / BLOCKED** (requires authenticated actors and a separately approved session write).
 
 ### 3.5 P6-08 — Responsive and accessibility
 
