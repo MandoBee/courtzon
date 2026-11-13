@@ -309,6 +309,21 @@ describe('M3 POST /entitlements/:id/cancel', () => {
     expect(canAccessOrganisation).not.toHaveBeenCalled();
     expect(svc.cancel).toHaveBeenCalled();
   });
+
+  it('propagates the 409 settlement-reservation conflict from the service (no silent success)', async () => {
+    const { ConflictError } = await import('../../../shared/errors/app-error.js');
+    svc.get.mockResolvedValue({ id: 57, organisation_id: 7 } as any);
+    vi.mocked(canAccessOrganisation).mockResolvedValue(true);
+    svc.cancel.mockRejectedValueOnce(
+      new ConflictError('Entitlement 57 is reserved by settlement 77; cancel the settlement through the settlement cancellation workflow'),
+    );
+
+    await expect(call(1, '57')).rejects.toMatchObject({
+      statusCode: 409,
+      errorCode: 'CONFLICT',
+      message: expect.stringContaining('reserved by settlement 77'),
+    });
+  });
 });
 
 // ── Batch routes (M4–M6) ────────────────────────────────────────────────────
@@ -427,6 +442,20 @@ for (const spec of batchSpecs) {
 
       expect(canAccessOrganisation).not.toHaveBeenCalled();
       expect(reply.sent).toEqual({ success: true, [spec.responseKey]: 1 });
+    });
+
+    it('propagates the 409 settlement-reservation conflict from the batch service', async () => {
+      const { ConflictError } = await import('../../../shared/errors/app-error.js');
+      svc.bySourceIds.mockResolvedValue([{ id: 1, organisation_id: 7 }] as any);
+      vi.mocked(canAccessOrganisation).mockResolvedValue(true);
+      (svc[spec.mutation] as any).mockRejectedValueOnce(
+        new ConflictError('Refund/cancellation blocked: entitlement 1 is reserved by settlement 91'),
+      );
+
+      await expect(invoke(1, [10])).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'CONFLICT',
+      });
     });
   });
 }

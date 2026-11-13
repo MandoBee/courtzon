@@ -1,9 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod';
 import type mysql from 'mysql2/promise';
 import { rbacService } from '../application/rbac.service.js';
 import { getUserCountryScope } from '../application/user-country-scope.js';
 import { getPool } from '../../../database/mysql.js';
-import { CreateRoleSchema, UpdateRoleSchema, AssignRoleSchema, CreatePermissionSchema } from './rbac.dto.js';
+import { CreateRoleSchema, UpdateRoleSchema, AssignRoleSchema, CreatePermissionSchema, SetRolePermissionsSchema } from './rbac.dto.js';
 import { recordAudit } from '../../audit-log/index.js';
 
 type RowData = mysql.RowDataPacket[];
@@ -93,12 +94,10 @@ export async function restoreRoleHandler(request: FastifyRequest, reply: Fastify
 }
 
 export async function setRolePermissionsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { id } = request.params as any;
-  const { permissionIds } = request.body as any;
-  if (!Array.isArray(permissionIds)) {
-    return reply.status(400).send({ error: 'VALIDATION_ERROR', message: 'permissionIds must be an array' });
-  }
-  const role = await rbacService.setRolePermissions(Number(id), permissionIds);
+  const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(request.params);
+  const { permissionIds } = SetRolePermissionsSchema.parse(request.body);
+  const actorId = (request as any).userId;
+  const role = await rbacService.setRolePermissions(id, permissionIds, actorId);
   return reply.send(role);
 }
 

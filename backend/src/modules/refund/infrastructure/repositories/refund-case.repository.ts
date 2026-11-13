@@ -270,6 +270,23 @@ export const refundCaseRepository = {
     return rows.length ? payoutRow(rows[0]) : null;
   },
 
+  /**
+   * Look up a payout by its idempotency key. The unique index is the
+   * concurrency arbiter: two inserts with the same key cannot both succeed, and
+   * the losing request recovers the winner's row via the duplicate-key path.
+   */
+  async findPayoutByIdempotencyKey(
+    key: string,
+    conn?: mysql.PoolConnection,
+  ): Promise<RefundPayoutRecord | null> {
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? getPool();
+    const [rows] = await db.execute<RowData>(
+      'SELECT * FROM refund_case_payouts WHERE idempotency_key = ? LIMIT 1',
+      [key],
+    );
+    return rows.length ? payoutRow(rows[0]) : null;
+  },
+
   async updatePayout(
     id: number,
     fields: { status?: string; executed_by?: number | null; executed_at?: Date | null },

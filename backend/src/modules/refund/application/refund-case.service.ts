@@ -42,6 +42,12 @@ export interface CreateRefundCaseInput {
 
 const toPublic = (record: RefundCaseRecord | null) => record;
 
+const isDuplicateKeyError = (err: any): boolean =>
+  err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062;
+
+const IDEMPOTENCY_KEY_OTHER_CASE =
+  'This idempotency key is already used by a payout on another refund case';
+
 export const refundCaseService = {
   async requestCase(input: CreateRefundCaseInput): Promise<RefundCaseRecord> {
     if (!input.reason || !input.reason.trim()) throw new ValidationError('A refund reason is required');
@@ -329,66 +335,127 @@ export const refundCaseService = {
       evidenceUrl?: string | null;
       idempotencyKey: string;
     },
-  ): Promise<{ case: RefundCaseRecord; payoutId: number }> {
+  ): Promise<{ case: RefundCaseRecord; payoutId: number; replayed: boolean }> {
     if (!['cash', 'bank_transfer'].includes(input.method)) throw new ValidationError('Payout method must be cash or bank_transfer');
     if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new ValidationError('Payout amount must be positive cents');
     if (!input.idempotencyKey) throw new ValidationError('idempotencyKey is required');
 
-    return withTransaction(async (conn) => {
-      const record = await refundCaseRepository.lockById(caseId, conn);
-      if (!record) throw new NotFoundError('Refund case');
-      if (record.operational_status !== 'COMPLETED') {
-        throw new ConflictError('Payout cannot start before all operational cancellations are complete');
-      }
-      if (record.status === 'REJECTED') throw new ConflictError('Rejected refund cases cannot be paid');
-      const remaining = record.approved_refund_cents - record.paid_cents;
-      if (remaining <= 0) throw new ConflictError('Refund case is already fully paid');
-      if (input.amountCents > remaining) {
-        throw new ValidationError(`Payout exceeds the remaining approved amount (${remaining}¢)`);
-      }
+    let result: { case: RefundCaseRecord; payoutId: number; replayed: boolean };
+    try {
+      result = await withTransaction(async (conn) => {
+        const record = await refundCaseRepository.lockById(caseId, conn);
+        if (!record) throw new NotFoundError('Refund case');
 
-      const payoutId = await refundCaseRepository.insertPayout(
-        {
+        // Idempotent replay: the unique key is global in the schema. A replay is
+        // only legitimate for the SAME refund case; a key reused by another case
+        // is a client error, never a silent success.
+        const existing = await refundCaseRepository.findPayoutByIdempotencyKey(
+          input.idempotencyKey,
+          conn,
+        );
+        if (existing) {
+          if (Number(existing.case_id) !== Number(caseId)) {
+            throw new ConflictError(IDEMPOTENCY_KEY_OTHER_CASE);
+          }
+          return { case: record, payoutId: existing.id, replayed: true };
+        }
+
+        if (record.operational_status !== 'COMPLETED') {
+          throw new ConflictError('Payout cannot start before all operational cancellations are complete');
+        }
+        if (record.status === 'REJECTED') throw new ConflictError('Rejected refund cases cannot be paid');
+        const remaining = record.approved_refund_cents - record.paid_cents;
+        if (remaining <= 0) throw new ConflictError('Refund case is already fully paid');
+        if (input.amountCents > remaining) {
+          throw new ValidationError(`Payout exceeds the remaining approved amount (${remaining}¢)`);
+        }
+        // Maker-checker (1/3): the approver may not execute the payout.
+        if (record.approved_by != null && Number(record.approved_by) === Number(actorId)) {
+          throw new ConflictError('Approval and payout execution must be performed by different users');
+        }
+
+        const payoutId = await refundCaseRepository.insertPayout(
+          {
+            caseId,
+            method: input.method,
+            amountCents: input.amountCents,
+            reference: input.reference ?? null,
+            evidenceUrl: input.evidenceUrl ?? null,
+            executedBy: actorId,
+            idempotencyKey: input.idempotencyKey,
+          },
+          conn,
+        );
+
+        const payoutStatus = 'PROCESSING' as const;
+        await refundCaseRepository.updateCase(
           caseId,
-          method: input.method,
-          amountCents: input.amountCents,
-          reference: input.reference ?? null,
-          evidenceUrl: input.evidenceUrl ?? null,
-          executedBy: actorId,
-          idempotencyKey: input.idempotencyKey,
-        },
-        conn,
-      );
+          record.aggregate_version,
+          { payout_status: payoutStatus, status: 'PAYOUT_PENDING' },
+          conn,
+        );
 
-      const payoutStatus = 'PROCESSING' as const;
-      await refundCaseRepository.updateCase(
-        caseId,
-        record.aggregate_version,
-        { payout_status: payoutStatus, status: 'PAYOUT_PENDING' },
-        conn,
-      );
+        await eventBusV2.emit(
+          'refund:payout-recorded',
+          {
+            caseId,
+            payoutId,
+            publicId: record.public_id,
+            organisationId: record.organisation_id,
+            method: input.method,
+            amountCents: input.amountCents,
+            currency: record.currency,
+            executedBy: actorId,
+          },
+          { aggregateType: 'refund_case', aggregateId: String(caseId), aggregateVersion: record.aggregate_version + 1 },
+          conn,
+        );
 
-      await eventBusV2.emit(
-        'refund:payout-recorded',
-        {
-          caseId,
+        return {
+          case: (await refundCaseRepository.lockById(caseId, conn)) as RefundCaseRecord,
           payoutId,
-          publicId: record.public_id,
-          organisationId: record.organisation_id,
+          replayed: false,
+        };
+      });
+    } catch (err) {
+      // Concurrent duplicate: the OTHER transaction won the unique-key race.
+      // Only ER_DUP_ENTRY is interpreted, and only when the existing payout is
+      // verifiably the same case; every other error is re-thrown unchanged.
+      if (!isDuplicateKeyError(err)) throw err;
+      const existing = await refundCaseRepository.findPayoutByIdempotencyKey(input.idempotencyKey);
+      if (!existing) throw err;
+      if (Number(existing.case_id) !== Number(caseId)) {
+        throw new ConflictError(IDEMPOTENCY_KEY_OTHER_CASE);
+      }
+      const caseRecord = await refundCaseRepository.findById(caseId);
+      if (!caseRecord) throw new NotFoundError('Refund case');
+      return { case: caseRecord, payoutId: existing.id, replayed: true };
+    }
+
+    // Audit only after the transaction committed, and only for a first-time
+    // registration. Replays must not create a second audit record.
+    if (!result.replayed) {
+      await recordAudit({
+        actorId,
+        action: 'REFUND.PAYOUT_RECORDED',
+        entityType: 'refund_case',
+        entityId: caseId,
+        afterState: {
+          payoutId: result.payoutId,
+          caseId,
+          organisationId: result.case.organisation_id,
+          approvedBy: result.case.approved_by,
+          executedBy: actorId,
           method: input.method,
           amountCents: input.amountCents,
-          currency: record.currency,
-          executedBy: actorId,
+          currency: result.case.currency,
+          reference: input.reference ?? null,
+          status: 'PROCESSING',
         },
-        { aggregateType: 'refund_case', aggregateId: String(caseId), aggregateVersion: record.aggregate_version + 1 },
-        conn,
-      );
+      });
+    }
 
-      return {
-        case: (await refundCaseRepository.lockById(caseId, conn)) as RefundCaseRecord,
-        payoutId,
-      };
-    });
+    return result;
   },
 
   async confirmPayout(
@@ -399,17 +466,28 @@ export const refundCaseService = {
     const result = await withTransaction(async (conn) => {
       const record = await refundCaseRepository.lockById(caseId, conn);
       if (!record) throw new NotFoundError('Refund case');
+      const payout = await refundCaseRepository.lockPayout(payoutId, conn);
+      if (!payout || payout.case_id !== caseId) throw new NotFoundError('Refund payout');
+      // Idempotent replay: a payout that is already complete returns the current
+      // case without re-validating the actor and WITHOUT a second audit/event.
+      if (payout.status === 'COMPLETED') return { record, transitioned: false };
+      if (payout.status !== 'PROCESSING') throw new ConflictError(`Cannot confirm a payout in status ${payout.status}`);
+
+      // Maker-checker (2/3 + 3/3): the approver and the payout executor must both
+      // differ from the confirmer. `payout.executed_by` is the actor who recorded
+      // the payout and is never overwritten on confirmation.
       if (record.approved_by != null && Number(record.approved_by) === Number(actorId)) {
         throw new ConflictError('Approval and payout confirmation must be performed by different users');
       }
-      const payout = await refundCaseRepository.lockPayout(payoutId, conn);
-      if (!payout || payout.case_id !== caseId) throw new NotFoundError('Refund payout');
-      if (payout.status === 'COMPLETED') return record;
-      if (payout.status !== 'PROCESSING') throw new ConflictError(`Cannot confirm a payout in status ${payout.status}`);
+      if (payout.executed_by != null && Number(payout.executed_by) === Number(actorId)) {
+        throw new ConflictError('Payout execution and confirmation must be performed by different users');
+      }
 
+      // Keep executed_by as the payout executor; only the completion timestamp
+      // is written on confirmation.
       await refundCaseRepository.updatePayout(
         payoutId,
-        { status: 'COMPLETED', executed_by: actorId, executed_at: new Date() },
+        { status: 'COMPLETED', executed_at: new Date() },
         conn,
       );
 
@@ -446,17 +524,21 @@ export const refundCaseService = {
         conn,
       );
 
-      return (await refundCaseRepository.lockById(caseId, conn)) as RefundCaseRecord;
+      const updated = (await refundCaseRepository.lockById(caseId, conn)) as RefundCaseRecord;
+      return { record: updated, transitioned: true };
     });
 
-    recordAudit({
-      actorId,
-      action: 'REFUND.PAYOUT_CONFIRMED',
-      entityType: 'refund_case',
-      entityId: caseId,
-      afterState: { payoutId, paidCents: result.paid_cents, status: result.status },
-    });
-    return result;
+    if (result.transitioned) {
+      await recordAudit({
+        actorId,
+        action: 'REFUND.PAYOUT_CONFIRMED',
+        entityType: 'refund_case',
+        entityId: caseId,
+        afterState: { payoutId, paidCents: result.record.paid_cents, status: result.record.status },
+      });
+    }
+
+    return result.record;
   },
 
   async failPayout(caseId: number, payoutId: number, actorId: number, reason: string): Promise<RefundCaseRecord> {

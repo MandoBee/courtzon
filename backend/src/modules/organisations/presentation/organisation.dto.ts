@@ -340,6 +340,29 @@ export const ListBranchesQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+/**
+ * P0 RBAC hardening — organization staff permission update.
+ *
+ * `permissionIds` must be a non-empty array of positive integers with no
+ * duplicates. Empty arrays are rejected because this endpoint replaces the
+ * role's permission set; clearing it is not an approved operation. Validation
+ * happens before the service layer, and the service repeats it defence-in-depth.
+ */
+export const UpdateStaffPermissionsSchema = z.object({
+  permissionIds: z
+    .array(z.number().int().positive())
+    .min(1)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'permissionIds must not contain duplicate ids',
+    }),
+});
+
+/** Route params for `/org/:orgId/staff/:userId/permissions`. */
+export const OrgStaffParamsSchema = z.object({
+  orgId: z.coerce.number().int().positive(),
+  userId: z.coerce.number().int().positive(),
+});
+
 export type CreateOrganisationInput = z.infer<typeof CreateOrganisationSchema>;
 export type UpdateOrganisationInput = z.infer<typeof UpdateOrganisationSchema>;
 export type CreateBranchInput = z.infer<typeof CreateBranchSchema>;

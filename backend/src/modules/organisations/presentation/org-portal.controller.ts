@@ -4,7 +4,7 @@ import * as service from '../application/org-portal.service.js';
 import * as orgRepo from '../infrastructure/repositories/org-portal.repository.js';
 import { organisationService } from '../application/organisation.service.js';
 import { resolveBranchAccessPolicy } from '../domain/organisation-access-model.js';
-import { BranchFinancialDetailsSchema, CreateBranchSchema, CreateResourceSchema, OrganisationAccessModelSchema } from './organisation.dto.js';
+import { BranchFinancialDetailsSchema, CreateBranchSchema, CreateResourceSchema, OrganisationAccessModelSchema, OrgStaffParamsSchema, UpdateStaffPermissionsSchema } from './organisation.dto.js';
 import { auditOrganisationMutation } from './organisation-audit.js';
 import { cancellationPolicyRepository } from '../infrastructure/repositories/cancellation-policy.repository.js';
 import { branchFinancialRepository } from '../infrastructure/repositories/branch-financial.repository.js';
@@ -309,12 +309,11 @@ export async function getStaffPermissionsHandler(request: FastifyRequest, reply:
 }
 
 export async function updateStaffPermissionsHandler(request: FastifyRequest, reply: FastifyReply) {
-  const { orgId, userId } = request.params as { orgId: string; userId: string };
-  const oid = parseInt(orgId, 10);
-  const targetUserId = parseInt(userId, 10);
-  const { permissionIds } = request.body as { permissionIds: number[] };
-  const result = await service.updateStaffPermissions(oid, targetUserId, permissionIds);
-  auditOrganisationMutation(request, 'ORG_STAFF.UPDATE_PERMISSIONS', 'organisation', oid, { staffUserId: targetUserId, permissionIds });
+  const { orgId, userId } = OrgStaffParamsSchema.parse(request.params);
+  const { permissionIds } = UpdateStaffPermissionsSchema.parse(request.body);
+  const actorId = (request as any).userId;
+  const result = await service.updateStaffPermissions(orgId, userId, permissionIds, actorId);
+  auditOrganisationMutation(request, 'ORG_STAFF.UPDATE_PERMISSIONS', 'organisation', orgId, { staffUserId: userId, permissionIds });
   return reply.send(result);
 }
 

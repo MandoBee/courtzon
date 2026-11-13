@@ -1,7 +1,9 @@
 import * as repo from '../infrastructure/repositories/org-portal.repository.js';
 import { branchRepository } from '../infrastructure/repositories/branch.repository.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
-import { ValidationError, NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { rbacService } from '../../rbac/application/rbac.service.js';
+import { ValidationError, NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { canOrgRoleReceivePermission } from '../../rbac/domain/org-permission-policy.js';
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { getPlanNumericLimit } from './plan-limits.util.js';
 import { eventBusV2 } from '../../../shared/event-bus/index.js';
@@ -12,6 +14,85 @@ export function getOrgInfo(orgId: number) {
 }
 
 // ── Org staff management (D5) ──
+
+/**
+ * Normalise an untrusted permission-id payload.
+ *
+ * Validation is STRICT and fail-closed: non-arrays, non-numbers, non-integers,
+ * zero/negative values and duplicates are rejected explicitly — never silently
+ * filtered. An empty array is rejected unless the caller explicitly allows it
+ * (the "add staff" optional override), because an empty list on the update path
+ * would otherwise mean "delete every permission".
+ */
+function normalisePermissionIds(permissionIds: unknown, opts: { allowEmpty: boolean }): number[] {
+  if (permissionIds === undefined) {
+    if (opts.allowEmpty) return [];
+    throw new ValidationError('permissionIds is required and must be an array');
+  }
+  if (!Array.isArray(permissionIds)) {
+    throw new ValidationError('permissionIds must be an array');
+  }
+  if (permissionIds.length === 0) {
+    if (opts.allowEmpty) return [];
+    throw new ValidationError('permissionIds must contain at least one permission id');
+  }
+
+  const ids: number[] = [];
+  for (const [index, value] of permissionIds.entries()) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+      throw new ValidationError(`permissionIds[${index}] must be a positive integer`);
+    }
+    ids.push(value);
+  }
+
+  if (new Set(ids).size !== ids.length) {
+    throw new ValidationError('permissionIds must not contain duplicate ids');
+  }
+
+  return ids;
+}
+
+/**
+ * Validate organisation-staff permission grants (R4-B).
+ *
+ * The ids come from the organisation admin, so they are resolved against the
+ * canonical `permissions` table and every resolved key must be allowed for the
+ * TARGET organisation role. Unknown ids and platform-only keys reject the WHOLE
+ * request (no silent filtering) — an organisation can never grant itself
+ * `financial.*` (e.g. `financial.reconcile` / `financial.payment.refund`),
+ * `users.*`, `roles.*`, or any other platform capability.
+ *
+ * `refunds.export` is additionally restricted to organization admin and
+ * accountant roles by the role-aware policy.
+ */
+async function assertOrgAssignablePermissionIds(
+  permissionIds: unknown,
+  roleSlug: string,
+  opts: { allowEmpty: boolean } = { allowEmpty: false },
+): Promise<number[]> {
+  const requested = normalisePermissionIds(permissionIds, opts);
+  if (!requested.length) return [];
+
+  const records = await rbacRepository.getPermissionsByIds(requested);
+  const known = new Map(records.map((r) => [Number(r.id), r.permission_key]));
+
+  const unknown = requested.filter((id) => !known.has(id));
+  if (unknown.length) {
+    throw new ValidationError(`Unknown permission id(s): ${unknown.join(', ')}`);
+  }
+
+  const forbidden = records
+    .filter((r) => !canOrgRoleReceivePermission(roleSlug, r.permission_key))
+    .map((r) => r.permission_key);
+  if (forbidden.length) {
+    throw new ForbiddenError(
+      `Permission(s) cannot be granted to organisation role "${roleSlug}": ${forbidden.join(', ')}`,
+    );
+  }
+
+  return records.map((r) => Number(r.id));
+}
+
 export function listOrgStaff(orgId: number) {
   return repo.listOrgStaff(orgId);
 }
@@ -19,6 +100,19 @@ export function listOrgStaff(orgId: number) {
 export async function addOrgStaff(orgId: number, email: string, roleSlug: string, assignedBy: number, branchIds?: number[], resourceIds?: number[], permissionIds?: number[]) {
   const role = await repo.getAssignableOrgRole(roleSlug);
   if (!role) throw new ValidationError(`Role "${roleSlug}" cannot be assigned to org staff`);
+  // Defence in depth: only a GLOBAL template may be cloned into an organisation.
+  if (role.organisation_id != null) {
+    throw new ValidationError(`Role "${roleSlug}" is not a global template role`);
+  }
+
+  // Validate the requested permission override BEFORE cloning/creating the
+  // organisation role: an invalid, platform-only or role-restricted grant must
+  // never have a side effect. (R4-B)
+  const validatedPermissionIds = await assertOrgAssignablePermissionIds(
+    permissionIds,
+    role.slug,
+    { allowEmpty: true },
+  );
 
   if (branchIds && branchIds.length > 0) {
     for (const bid of branchIds) {
@@ -53,9 +147,15 @@ export async function addOrgStaff(orgId: number, email: string, roleSlug: string
   // Clone the template role to the org (or reuse existing org-scoped clone)
   const orgRoleId = await rbacRepository.cloneRoleForOrg(role.id, orgId);
 
-  // If specific permissions were provided, override the cloned role's permissions
-  if (permissionIds && permissionIds.length > 0) {
-    await rbacRepository.setRolePermissions(orgRoleId, permissionIds);
+  // If specific permissions were provided, override the cloned role's
+  // permissions through the atomic, policy-enforcing service path (R4-B).
+  if (validatedPermissionIds.length > 0) {
+    await rbacService.setOrganisationRolePermissions(
+      orgId,
+      orgRoleId,
+      validatedPermissionIds,
+      assignedBy,
+    );
   }
 
   await repo.addStaffScope(user.id, orgRoleId, orgId, assignedBy, branchIds, resourceIds);
@@ -65,6 +165,17 @@ export async function addOrgStaff(orgId: number, email: string, roleSlug: string
 export async function changeOrgStaffRole(orgId: number, userId: number, roleSlug: string, assignedBy: number, branchIds?: number[], resourceIds?: number[]) {
   const role = await repo.getAssignableOrgRole(roleSlug);
   if (!role) throw new ValidationError(`Role "${roleSlug}" cannot be assigned to org staff`);
+  // Defence in depth: only a GLOBAL template may be cloned into an organisation.
+  if (role.organisation_id != null) {
+    throw new ValidationError(`Role "${roleSlug}" is not a global template role`);
+  }
+
+  // The target MUST already be a staff member of THIS organisation. This blocks
+  // assigning roles to an arbitrary user id or to another organisation's staff.
+  const currentStaff = await repo.listOrgStaff(orgId);
+  if (!currentStaff.some((member: any) => Number(member.user_id) === Number(userId))) {
+    throw new NotFoundError('Staff member not found in this organisation');
+  }
 
   if (branchIds && branchIds.length > 0) {
     for (const bid of branchIds) {
@@ -114,7 +225,7 @@ export async function getStaffPermissions(orgId: number, userId: number) {
   return { userId, roleId, roleName: role, roleSlug: member.role_slug, permissions, templatePermissions };
 }
 
-export async function updateStaffPermissions(orgId: number, userId: number, permissionIds: number[]) {
+export async function updateStaffPermissions(orgId: number, userId: number, permissionIds: number[], actorId?: number) {
   const staff = await repo.listOrgStaff(orgId);
   const member = staff.find((s: any) => s.user_id === userId);
   if (!member) throw new NotFoundError('Staff member not found in this organisation');
@@ -122,9 +233,23 @@ export async function updateStaffPermissions(orgId: number, userId: number, perm
   const roleId = member.role_id;
   if (!roleId) throw new ValidationError('Staff member has no role assigned');
 
-  // Verify the role belongs to this org (or is a global template — safety check)
-  await rbacRepository.setRolePermissions(roleId, permissionIds);
-  return { success: true, roleId, permissionCount: permissionIds.length };
+  // The edited role MUST be the organisation-scoped clone. Editing the shared
+  // global template from an organisation endpoint would change permissions for
+  // every organisation (and could inject/remove platform capabilities).
+  const role = await rbacRepository.getRoleById(roleId);
+  if (!role || Number(role.organisation_id) !== Number(orgId)) {
+    throw new ValidationError('Staff role is not organisation-scoped');
+  }
+
+  // Never trust client-supplied permission ids: resolve them against the
+  // canonical permission records and reject platform-only or role-restricted
+  // keys for the TARGET role (R4-B). `refunds.export` is limited to
+  // organization admin and accountant. The atomic replacement re-validates and
+  // re-checks ownership under the role row lock.
+  const roleSlug = String(role.slug || member.role_slug || '');
+  const validated = await assertOrgAssignablePermissionIds(permissionIds, roleSlug);
+  await rbacService.setOrganisationRolePermissions(orgId, roleId, validated, actorId);
+  return { success: true, roleId, permissionCount: validated.length };
 }
 
 

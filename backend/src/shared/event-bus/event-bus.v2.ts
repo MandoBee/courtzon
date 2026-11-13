@@ -138,21 +138,31 @@ class EventBusV2 {
           }
         }
 
+        for (const handler of handlers) {
+          try {
+            const result = (handler as any)(envelope.payload);
+            if (result && typeof result.catch === 'function') {
+              result.catch((err: unknown) =>
+                log.error({ err, eventName }, 'event.in_memory_handler_failed'),
+              );
+            }
+          } catch (err) {
+            log.error({ err, eventName }, 'event.in_memory_handler_failed');
+          }
+        }
+      });
+    } else {
+      for (const handler of handlers) {
         try {
-          for (const handler of handlers) {
-            handler(envelope.payload);
+          const result = (handler as any)(envelope.payload);
+          if (result && typeof result.catch === 'function') {
+            result.catch((err: unknown) =>
+              log.error({ err, eventName }, 'event.in_memory_handler_failed'),
+            );
           }
         } catch (err) {
           log.error({ err, eventName }, 'event.in_memory_handler_failed');
         }
-      });
-    } else {
-      try {
-        for (const handler of handlers) {
-          handler(envelope.payload);
-        }
-      } catch (err) {
-        log.error({ err, eventName }, 'event.in_memory_handler_failed');
       }
 
       if (subs.length > 0) {

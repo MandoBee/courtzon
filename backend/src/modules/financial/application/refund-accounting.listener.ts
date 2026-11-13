@@ -23,10 +23,10 @@ export function registerRefundAccountingListeners(): void {
   registered = true;
 
   eventBusV2.on('refund:case-approved', async (data: any) => {
+    const organisationId = Number(data?.organisationId);
+    const amount = toMajor(data?.amountCents);
+    if (!organisationId || amount <= 0) return;
     try {
-      const organisationId = Number(data?.organisationId);
-      const amount = toMajor(data?.amountCents);
-      if (!organisationId || amount <= 0) return;
       await postAccountingEvent(
         'refund_case_approved',
         'refund',
@@ -39,28 +39,35 @@ export function registerRefundAccountingListeners(): void {
         { refund_expense: organisationId, refund_payable: organisationId },
       );
     } catch (err) {
+      // Re-throw so the durable accounting-replay subscriber retries. The
+      // in-memory EventBus catches/logs the rejection on the normal path.
       log.error({ err, caseId: data?.caseId }, 'Refund approval accounting failed');
+      throw err;
     }
   });
 
   eventBusV2.on('refund:payout-confirmed', async (data: any) => {
+    const organisationId = Number(data?.organisationId);
+    const payoutId = Number(data?.payoutId);
+    const amount = toMajor(data?.amountCents);
+    if (!organisationId || !payoutId || amount <= 0) return;
     try {
-      const organisationId = Number(data?.organisationId);
-      const amount = toMajor(data?.amountCents);
-      if (!organisationId || amount <= 0) return;
       await postAccountingEvent(
+        // The posting identity is the PAYOUT, not the case: partial payouts on
+        // the same case must each post their own 2101/1120 entry exactly once.
         'refund_case_payout',
         'refund',
-        Number(data.caseId),
+        payoutId,
         organisationId,
         { refund_payable: amount, cash_bank: amount },
         String(data.currency || 'EGP'),
-        `Refund case ${data.publicId ?? data.caseId} payout (${data.method ?? 'payout'})`,
+        `Refund case ${data.publicId ?? data.caseId} payout ${payoutId} (${data.method ?? 'payout'})`,
         undefined,
         { refund_payable: organisationId, cash_bank: organisationId },
       );
     } catch (err) {
-      log.error({ err, caseId: data?.caseId }, 'Refund payout accounting failed');
+      log.error({ err, caseId: data?.caseId, payoutId }, 'Refund payout accounting failed');
+      throw err;
     }
   });
 

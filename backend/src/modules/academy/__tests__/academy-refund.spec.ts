@@ -33,7 +33,10 @@ vi.mock('../../payment/application/payment.service.js', () => ({
 }));
 
 vi.mock('../../financial/application/financial-entitlement.service.js', () => ({
-  financialEntitlementService: { cancelBySourceIds: vi.fn(async () => 2) },
+  financialEntitlementService: {
+    cancelBySourceIds: vi.fn(async () => 2),
+    assertNoActiveSettlementReservation: vi.fn(async () => undefined),
+  },
 }));
 
 const emit = vi.hoisted(() => vi.fn(async () => undefined));
@@ -46,7 +49,7 @@ import { paymentRepository } from '../../payment/infrastructure/repositories/pay
 import { paymentService } from '../../payment/application/payment.service.js';
 import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
 import { assertCanManageAcademy } from '../application/academy-scope.js';
-import { NotFoundError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
 
 const ENROLLMENT = { id: 11, player_id: 200, program_id: 1, group_id: 2, status: 'confirmed' };
 const SNAPSHOT = { id: 7001, enrollment_id: 11, payment_transaction_id: 5001, gross_amount: 200, currency: 'EGP', commission_amount: 20, organization_earning_amount: 180, court_rental_amount: 60, organisation_id: 7, branch_id: 5, payment_method: 'cash' };
@@ -129,5 +132,46 @@ describe('G5-A — academy refund orchestration', () => {
     financialEntitlementService.cancelBySourceIds.mockRejectedValueOnce(new Error('boom'));
     const result = await academyRefundService.refund(11, 9);
     expect(result.success).toBe(true);
+  });
+
+  // ── LAYER B — settlement-reservation preflight ────────────────────────────
+  it('LAYER B: blocks a CARD refund before the gateway call when an entitlement is settlement-reserved', async () => {
+    paymentRepository.findById.mockResolvedValue({ ...PAID_PAYMENT, payment_method: 'card' });
+    financialEntitlementService.assertNoActiveSettlementReservation.mockRejectedValueOnce(
+      new ConflictError('Refund blocked: entitlement 1 is reserved by settlement 77'),
+    );
+
+    await expect(academyRefundService.refund(11, 9, 'withdrawal')).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(financialEntitlementService.assertNoActiveSettlementReservation).toHaveBeenCalledWith('academy', [11]);
+    expect(paymentService.refund).not.toHaveBeenCalled();
+    expect(financialEntitlementService.cancelBySourceIds).not.toHaveBeenCalled();
+  });
+
+  it('LAYER B: blocks a CASH refund before the offline flip/event when an entitlement is settlement-reserved', async () => {
+    financialEntitlementService.assertNoActiveSettlementReservation.mockRejectedValueOnce(
+      new ConflictError('Refund blocked: entitlement 1 is reserved by settlement 77'),
+    );
+
+    await expect(academyRefundService.refund(11, 9)).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(academyPaymentRepository.markRefundedIfPaid).not.toHaveBeenCalled();
+    expect(emit.mock.calls.filter((c: any) => c[0] === 'payment:refunded').length).toBe(0);
+    expect(financialEntitlementService.cancelBySourceIds).not.toHaveBeenCalled();
+  });
+
+  it('LAYER B: reservation preflight runs before any refund side effect', async () => {
+    paymentRepository.findById.mockResolvedValue({ ...PAID_PAYMENT, payment_method: 'card' });
+    const order: string[] = [];
+    financialEntitlementService.assertNoActiveSettlementReservation.mockImplementationOnce(async () => {
+      order.push('preflight');
+    });
+    paymentService.refund.mockImplementationOnce(async () => {
+      order.push('refund');
+      return { success: true };
+    });
+
+    await academyRefundService.refund(11, 9);
+    expect(order).toEqual(['preflight', 'refund']);
   });
 });

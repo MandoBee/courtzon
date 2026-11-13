@@ -2777,6 +2777,9 @@ export function registerAccountingEventListeners(): void {
 
   eventBusV2.on('marketplace:order-refunded', async (data: any) => {
     try {
+      // Refund Engine operational cancellation never reverses the original
+      // marketplace accounting/commission (institution-funded model).
+      if (data?.operationalOnly === true) return;
       const orderId = data.orderId || data.id;
       const currency = data.currency || 'EGP';
       if (!orderId) return;
@@ -2794,6 +2797,9 @@ export function registerAccountingEventListeners(): void {
 
   eventBusV2.on('marketplace:order-cancelled', async (data: any) => {
     try {
+      // Refund Engine operational cancellation never reverses the original
+      // marketplace accounting/commission (institution-funded model).
+      if (data?.operationalOnly === true) return;
       const orderId = data.orderId || data.id;
       const currency = data.currency || 'EGP';
       if (!orderId) return;
@@ -3068,6 +3074,9 @@ const ACCOUNTING_REPLAY_EVENTS = [
   'payment:allocation-refunded',
 'payment:gateway-settled',
   'payment:gateway-settlement-reversed',
+  // Refund Engine — institution-funded approval liability + payout settlement.
+  'refund:case-approved',
+  'refund:payout-confirmed',
   'marketplace:order-processing',
   'marketplace:order-delivered',
   'marketplace:order-refunded',

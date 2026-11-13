@@ -1,4 +1,5 @@
 import type { RefundCaseRecord, RefundCaseLineRecord } from '../domain/refund-case.aggregate.js';
+import { ConflictError } from '../../../shared/errors/app-error.js';
 
 /**
  * Cancellation-only contracts for the five service domains.
@@ -44,7 +45,18 @@ export async function cancelServiceLine(
 
     case 'marketplace': {
       const { marketplaceService } = await import('../../marketplace/application/marketplace.service.js');
-      await marketplaceService.cancelOrderForRefund(Number(caseRecord.source_id), actor, reason);
+      const result = await marketplaceService.cancelOrderForRefund(
+        Number(caseRecord.source_id),
+        actor,
+        reason,
+      );
+      if (!result.complete) {
+        throw new ConflictError(
+          `Marketplace operational cancellation incomplete: mainCancelled=${result.mainCancelled}; ` +
+            `uncancelled sibling(s): ${result.skippedSiblingIds.join(', ') || 'none'}. ` +
+            'Grant the required organization-scoped refund authorization and retry.',
+        );
+      }
       return `marketplace_order:${caseRecord.source_id}`;
     }
 

@@ -23,6 +23,21 @@ export const SetPermissionSchema = z.object({
   permissionId: z.number().int().positive(),
 });
 
+/**
+ * P0 RBAC hardening — platform role permission replacement.
+ *
+ * `permissionIds` may be an explicit empty array (Super Admin clearing a role),
+ * but every non-empty payload must contain unique positive integers. Invalid
+ * values are rejected before the service layer and before any DB write.
+ */
+export const SetRolePermissionsSchema = z.object({
+  permissionIds: z
+    .array(z.number().int().positive())
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'permissionIds must not contain duplicate ids',
+    }),
+});
+
 export const CreatePermissionSchema = z.object({
   moduleId: z.number().int().positive(),
   permissionKey: z.string().min(1).max(100),

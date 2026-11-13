@@ -3,9 +3,15 @@ import { paymentService } from '../application/payment.service.js';
 import { reconciliationService } from '../application/reconciliation.service.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { ChargeSchema, RefundPaymentSchema, ConfirmPaymentSchema } from './payment.dto.js';
-import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ForbiddenError, ValidationError, ConflictError } from '../../../shared/errors/app-error.js';
 import { getAppVersion, getExpectedMigration, getGitCommit } from '../../../shared/utils/build-info.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
+import { paymentRepository } from '../infrastructure/repositories/payment.repository.js';
+import { resolvePaymentRefundScope } from '../application/payment-refund-scope.js';
+import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
+import { assertOrgAccess } from '../../settlement/presentation/unified-settlement.controller.js';
+import { getUserCountryScope } from '../../rbac/application/user-country-scope.js';
+import { getPool } from '../../../database/mysql.js';
 
 
 const log = createModuleLogger('payment-controller');
@@ -65,16 +71,120 @@ export async function getPaymentStatusHandler(request: FastifyRequest, reply: Fa
   return reply.send(result);
 }
 
+const roundMoney = (value: unknown): number => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+/**
+ * Country scope for restricted (non-super-admin) master-admin accounts.
+ *
+ * `assertOrgAccess` already enforces organisation ownership/role-scope for
+ * everyone who is not `super_admin`. A GLOBAL `master-admin` additionally must
+ * not operate outside the country assigned to their user account — the same
+ * rule the organisation/RBAC admin screens apply via `getUserCountryScope`.
+ * Failure to resolve an organisation's country fails closed.
+ */
+async function assertRestrictedMasterAdminCountryScope(
+  userId: number,
+  organisationIds: number[],
+): Promise<void> {
+  if (!userId || !organisationIds.length) return;
+
+  const scope = await getUserCountryScope(userId);
+  if (scope.isSystem || scope.countryId == null) return; // super_admin / unrestricted
+
+  const pool = getPool();
+  const [roleRows] = await pool.execute<any[]>(
+    `SELECT 1 FROM user_roles ur
+       JOIN roles r ON r.id = ur.role_id
+      WHERE ur.user_id = ? AND r.slug = 'master-admin' AND r.organisation_id IS NULL
+        AND ur.is_active = TRUE AND r.deleted_at IS NULL
+        AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+      LIMIT 1`,
+    [userId],
+  );
+  if (!(roleRows as any[]).length) return; // not a global master-admin
+
+  const placeholders = organisationIds.map(() => '?').join(',');
+  const [orgRows] = await pool.execute<any[]>(
+    `SELECT id, country_id FROM organisations WHERE id IN (${placeholders})`,
+    organisationIds,
+  );
+  const countryByOrg = new Map<number, number>(
+    (orgRows as any[]).map((row) => [Number(row.id), Number(row.country_id)]),
+  );
+
+  for (const orgId of organisationIds) {
+    const countryId = countryByOrg.get(Number(orgId));
+    if (countryId == null || countryId !== Number(scope.countryId)) {
+      throw new ForbiddenError(`Payment organisation ${orgId} is outside your country scope`);
+    }
+  }
+}
+
 export async function refundHandler(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as any;
   const body = RefundPaymentSchema.parse(request.body);
-  const result = await paymentService.refund(Number(id), body.amount, body.reason);
+  const userId = (request as any).userId;
+
+  const paymentId = Number(id);
+  if (!Number.isInteger(paymentId) || paymentId <= 0) {
+    throw new ValidationError('Invalid payment id');
+  }
+
+  // R1-A — the canonical resource is the PATH id. The body field is retained
+  // for backward compatibility but must identify the same payment.
+  const payment = await paymentRepository.findById(paymentId);
+  if (!payment) throw new NotFoundError('Payment transaction');
+
+  if (Number(body.transactionId) !== paymentId) {
+    throw new ValidationError('Body transactionId must match the payment id in the path');
+  }
+
+  // R1-E — this endpoint has no cumulative-partial model: `_finalizeCardRefund`
+  // closes the payment as `refunded` and emits `payment:refunded` for the
+  // requested amount, with no remaining-refundable ledger. Allowing a partial
+  // amount here would close the payment while the unrefunded balance can never
+  // be returned (and the entitlement/GL stay mismatched). Only an exact full
+  // refund is accepted; partial refunds belong to the source-specific flows.
+  if (String((payment as any).payment_status) === 'paid') {
+    const payable = roundMoney((payment as any).amount);
+    const requested = roundMoney(body.amount);
+    if (Math.abs(payable - requested) > 0.005) {
+      throw new ConflictError(
+        `Payment ${paymentId} can only be refunded in full (${payable}); partial refunds are not supported by this endpoint — use the source-specific refund flow`,
+      );
+    }
+  }
+
+  // R1-B — canonical source, organisations and entitlement scopes.
+  const scope = await resolvePaymentRefundScope(payment as any);
+
+  // R1-C — every organisation involved must be authorised. Multi-organisation
+  // (checkout-group) payments are authorised in full before any money moves.
+  for (const orgId of scope.organisationIds) {
+    await assertOrgAccess(userId, orgId);
+  }
+  await assertRestrictedMasterAdminCountryScope(userId, scope.organisationIds);
+
+  // R1-D — no active settlement reservation on any entitlement of the source.
+  for (const entitlement of scope.entitlementScopes) {
+    await financialEntitlementService.assertNoActiveSettlementReservation(
+      entitlement.sourceType,
+      entitlement.sourceIds,
+    );
+  }
+
+  const result = await paymentService.refund(paymentId, body.amount, body.reason);
   recordAudit({
     actorId: (request as any).userId ?? null,
     action: 'PAYMENT.REFUND',
     entityType: 'payment',
-    entityId: Number(id),
-    afterState: { amount: body.amount },
+    entityId: paymentId,
+    afterState: {
+      amount: body.amount,
+      referenceType: scope.referenceType,
+      organisationIds: scope.organisationIds,
+      entitlementScopes: scope.entitlementScopes.length,
+    },
     reason: body.reason,
     ipAddress: request.ip,
     userAgent: request.headers['user-agent'],

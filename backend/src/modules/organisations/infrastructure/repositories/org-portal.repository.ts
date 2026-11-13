@@ -212,7 +212,12 @@ export async function getAssignableOrgRole(slug: string) {
   if (!ASSIGNABLE_ORG_ROLE_SLUGS.includes(slug as any)) return null;
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT id, slug, name FROM roles WHERE slug = ? LIMIT 1`,
+    `SELECT id, slug, name, organisation_id
+       FROM roles
+      WHERE organisation_id IS NULL
+        AND slug = ?
+        AND deleted_at IS NULL
+      LIMIT 1`,
     [slug]
   );
   return rows[0] || null;

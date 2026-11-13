@@ -26,9 +26,11 @@ const state = {
   /** event types actually written (one entry per successful createEntries call). */
   writes: [] as string[],
   emitted: [] as string[],
+  subscriptions: [] as string[],
   commits: 0,
   rollbacks: 0,
   hasPostingCalls: [] as Array<[string, number, string]>,
+  organisationIds: [] as Array<Record<string, number | null> | undefined>,
   failNextWith: null as Error | null,
 };
 
@@ -57,6 +59,8 @@ vi.mock('../../../database/mysql.js', () => {
 vi.mock('../../../shared/event-bus/event-bus.v2.js', () => ({
   eventBusV2: {
     on: (name: string, handler: Handler) => { state.handlers[name] = handler; },
+    subscribe: (registration: any) => { state.subscriptions.push(registration.eventName); },
+    getInMemoryHandlers: () => [],
     emit: (name: string) => { state.emitted.push(name); },
   },
 }));
@@ -114,7 +118,8 @@ vi.mock('../application/accounting-engine.service.js', () => ({
       { concept: 'merchant_payable', accountId: 202 },
     ]),
     validateAccounts: vi.fn(async () => undefined),
-    buildLedgerLines: vi.fn((_eventType: string, _mapping: unknown, amounts: Record<string, number>) => {
+    buildLedgerLines: vi.fn((_eventType: string, _mapping: unknown, amounts: Record<string, number>, conceptOrganisations?: Record<string, number | null>) => {
+      state.organisationIds.push(conceptOrganisations);
       const total = Object.values(amounts).reduce((s, n) => s + Number(n || 0), 0);
       const amount = total > 0 ? total : 1;
       return [
@@ -126,7 +131,8 @@ vi.mock('../application/accounting-engine.service.js', () => ({
   },
 }));
 
-import { postAccountingEvent, registerAccountingEventListeners } from '../application/accounting-event.listener.js';
+import { postAccountingEvent, registerAccountingEventListeners, registerAccountingReplaySubscribers } from '../application/accounting-event.listener.js';
+import { registerRefundAccountingListeners } from '../application/refund-accounting.listener.js';
 import { glProjectionService } from '../application/gl-projection.service.js';
 
 const BASE_ARGS = [
@@ -146,6 +152,7 @@ function reset(clearHandlers = false) {
   state.commits = 0;
   state.rollbacks = 0;
   state.hasPostingCalls.length = 0;
+  state.organisationIds.length = 0;
   state.failNextWith = null;
   if (clearHandlers) state.handlers = {};
   vi.clearAllMocks();
@@ -290,6 +297,7 @@ describe('P5-07 retry semantics after failure', () => {
 describe('P5-07 duplicate domain-event delivery', () => {
   beforeAll(() => {
     registerAccountingEventListeners();
+    registerRefundAccountingListeners();
   });
 
   // NOTE: handlers must survive the per-test reset (registration is one-shot).
@@ -358,5 +366,86 @@ describe('P5-07 duplicate domain-event delivery', () => {
 
     expect(state.writes).toHaveLength(0);
     expect(state.hasPostingCalls).toHaveLength(0);
+  });
+});
+
+describe('Refund Engine accounting replay — institution-scoped liability/payout', () => {
+  beforeEach(() => reset());
+
+  const approval = (overrides: Record<string, unknown> = {}) => ({
+    caseId: 77,
+    publicId: 'refund-77',
+    organisationId: 7,
+    amountCents: 6000,
+    currency: 'EGP',
+    ...overrides,
+  });
+
+  const payout = (overrides: Record<string, unknown> = {}) => ({
+    caseId: 77,
+    payoutId: 55,
+    publicId: 'refund-77',
+    organisationId: 7,
+    amountCents: 2000,
+    currency: 'EGP',
+    method: 'bank_transfer',
+    ...overrides,
+  });
+
+  it('re-throws a transient approval failure so the durable replay can retry', async () => {
+    const handler = state.handlers['refund:case-approved'];
+    state.failNextWith = new Error('transient accounting outage');
+
+    await expect(handler(approval())).rejects.toThrow('transient accounting outage');
+    expect(state.writes).toHaveLength(0);
+
+    await handler(approval());
+    expect(state.writes).toEqual(['refund_case_approved']);
+    expect(state.organisationIds[0]).toEqual({ refund_expense: 7, refund_payable: 7 });
+  });
+
+  it('replays the same approval idempotently with no duplicate journal', async () => {
+    const handler = state.handlers['refund:case-approved'];
+
+    await handler(approval());
+    await handler(approval());
+
+    expect(state.writes).toEqual(['refund_case_approved']);
+    expect(state.emitted).toHaveLength(1);
+  });
+
+  it('posts one payout journal per payout id (partial payouts are not collapsed)', async () => {
+    const handler = state.handlers['refund:payout-confirmed'];
+
+    await handler(payout({ payoutId: 55, amountCents: 2000 }));
+    await handler(payout({ payoutId: 56, amountCents: 4000 }));
+
+    expect(state.writes).toEqual(['refund_case_payout', 'refund_case_payout']);
+    expect(state.organisationIds).toEqual([
+      { refund_payable: 7, cash_bank: 7 },
+      { refund_payable: 7, cash_bank: 7 },
+    ]);
+  });
+
+  it('keeps each organisation on its own ledger and replay is safe across orgs', async () => {
+    const handler = state.handlers['refund:case-approved'];
+
+    await handler(approval({ caseId: 77, organisationId: 7 }));
+    await handler(approval({ caseId: 88, organisationId: 8 }));
+    await handler(approval({ caseId: 77, organisationId: 7 }));
+
+    expect(state.writes).toEqual(['refund_case_approved', 'refund_case_approved']);
+    expect(state.organisationIds).toEqual([
+      { refund_expense: 7, refund_payable: 7 },
+      { refund_expense: 8, refund_payable: 8 },
+    ]);
+  });
+
+  it('registers both refund events on the durable accounting-replay subscriber', () => {
+    state.subscriptions.length = 0;
+    registerAccountingReplaySubscribers();
+
+    expect(state.subscriptions).toContain('refund:case-approved');
+    expect(state.subscriptions).toContain('refund:payout-confirmed');
   });
 });

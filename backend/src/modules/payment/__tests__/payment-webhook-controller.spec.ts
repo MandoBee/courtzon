@@ -1,5 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// The controller module now also pulls the refund guard chain (financial
+// entitlement service / org access / config), so provide the unit-test env.
+process.env.DB_HOST = 'localhost';
+process.env.DB_PORT = '3307';
+process.env.DB_USER = 'root';
+process.env.DB_PASSWORD = 'x';
+process.env.DB_NAME = 'courtzon_v3';
+process.env.REDIS_HOST = 'localhost';
+process.env.REDIS_PORT = '6379';
+
 /**
  * P5-02 — webhook controller signature handling.
  *
@@ -25,7 +35,7 @@ vi.mock('../../audit-log/index.js', () => ({
   recordAudit: mocks.recordAudit,
 }));
 
-import * as ctrl from '../presentation/payment.controller.js';
+const ctrl = await import('../presentation/payment.controller.js');
 
 function makeReply() {
   const reply: any = {

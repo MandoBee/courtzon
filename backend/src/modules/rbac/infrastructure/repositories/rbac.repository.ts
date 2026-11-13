@@ -1,5 +1,6 @@
 import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
+import { canOrgRoleReceivePermission } from '../../domain/org-permission-policy.js';
 
 type RowData = mysql.RowDataPacket[];
 
@@ -28,6 +29,26 @@ export class RBACRepository {
     sql += ` ORDER BY pm.sort_order, p.permission_key`;
     const [rows] = await this.pool.execute<RowData>(sql, params);
     return rows;
+  }
+
+  /**
+   * Canonical permission records for a set of ids. Organization staff
+   * permission grants are validated against these records — never against
+   * client-supplied keys or scopes.
+   */
+  async getPermissionsByIds(
+    permissionIds: number[],
+    conn?: mysql.PoolConnection,
+  ): Promise<{ id: number; permission_key: string }[]> {
+    const ids = [...new Set((permissionIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+    if (!ids.length) return [];
+    const placeholders = ids.map(() => '?').join(',');
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? this.pool;
+    const [rows] = await db.execute<RowData>(
+      `SELECT id, permission_key FROM permissions WHERE id IN (${placeholders})`,
+      ids,
+    );
+    return (rows as any[]).map((r) => ({ id: Number(r.id), permission_key: String(r.permission_key) }));
   }
 
   async createPermission(data: { moduleId: number; permissionKey: string; description?: string }): Promise<number> {
@@ -100,6 +121,21 @@ export class RBACRepository {
     return rows.length ? rows[0] : null;
   }
 
+  /**
+   * Row-lock a role for the duration of a permission update. Serializes
+   * concurrent permission replacements and keeps the ownership/slug policy
+   * check consistent with the DELETE + INSERT that follows in the same
+   * transaction.
+   */
+  async lockRoleById(id: number, conn: mysql.PoolConnection): Promise<any | null> {
+    const [rows] = await conn.execute<RowData>(
+      `SELECT id, organisation_id, slug, name, is_system, is_active, deleted_at
+         FROM roles WHERE id = ? FOR UPDATE`,
+      [id],
+    );
+    return rows.length ? rows[0] : null;
+  }
+
   async createRole(data: { organisationId?: number | null; name: string; slug: string; description?: string }): Promise<number> {
     const [result] = await this.pool.execute<mysql.ResultSetHeader & RowData>(
       `INSERT INTO roles (organisation_id, name, slug, description) VALUES (?, ?, ?, ?)`,
@@ -144,8 +180,9 @@ export class RBACRepository {
     return rows.length ? rows[0] : null;
   }
 
-  async getRolePermissions(roleId: number): Promise<number[]> {
-    const [rows] = await this.pool.execute<RowData>(
+  async getRolePermissions(roleId: number, conn?: mysql.PoolConnection): Promise<number[]> {
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? this.pool;
+    const [rows] = await db.execute<RowData>(
       `SELECT permission_id FROM role_permissions WHERE role_id = ?`, [roleId]
     );
     return rows.map(r => r.permission_id);
@@ -165,6 +202,11 @@ export class RBACRepository {
   async cloneRoleForOrg(templateRoleId: number, orgId: number): Promise<number> {
     const template = await this.getRoleById(templateRoleId);
     if (!template) throw new Error('Template role not found');
+    // A source role belonging to another organisation must never be cloned.
+    // Only the GLOBAL template (organisation_id IS NULL) is a valid source.
+    if (template.organisation_id != null) {
+      throw new Error('Only global template roles can be cloned into an organisation');
+    }
 
     await this.pool.execute(
       'INSERT IGNORE INTO roles (organisation_id, name, slug, description) VALUES (?, ?, ?, ?)',
@@ -178,15 +220,27 @@ export class RBACRepository {
     if (!rows.length) throw new Error('Failed to create or find org role');
     const roleId = (rows[0] as any).id;
 
-    // Copy permissions if not already done
+    // Copy permissions if not already done — org clones may NEVER receive
+    // platform-only capabilities (financial.*, users.*, admin.*, ...). The
+    // accountant template is organisation-assignable, so an unfiltered copy
+    // would hand `financial.reconcile` to organisation staff.
     const [perms] = await this.pool.execute<RowData>(
-      'SELECT permission_id FROM role_permissions WHERE role_id = ?', [templateRoleId]
+      `SELECT rp.permission_id, p.permission_key
+         FROM role_permissions rp
+         JOIN permissions p ON p.id = rp.permission_id
+        WHERE rp.role_id = ?`,
+      [templateRoleId]
     );
     if ((perms as any[]).length) {
-      const values = (perms as any[]).map((p: any) => `(${roleId}, ${p.permission_id})`).join(',');
-      await this.pool.execute(
-        `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ${values}`
-      );
+      const allowedIds = (perms as any[])
+        .filter((p) => canOrgRoleReceivePermission(String(template.slug), String(p.permission_key)))
+        .map((p) => Number(p.permission_id));
+      if (allowedIds.length) {
+        const values = allowedIds.map((pid) => `(${roleId}, ${pid})`).join(',');
+        await this.pool.execute(
+          `INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ${values}`
+        );
+      }
     }
 
     return roleId;
@@ -446,6 +500,44 @@ export class RBACRepository {
       [userId]
     );
     return rows.map((r: any) => r.permission_key);
+  }
+
+  /**
+   * True only when the SAME active role assignment grants `permissionKey` AND
+   * has an organisation scope on `orgId`. This is deliberately stricter than
+   * `getUserPermissionKeys()` (which unions permissions across every role and
+   * organisation) and is the authoritative check for organisation-scoped
+   * refund authorization.
+   *
+   * No owner/super-admin role bypass is applied here: the permission must be
+   * granted by a role that is scoped to the owning organisation.
+   */
+  async hasOrganisationPermission(
+    userId: number,
+    orgId: number,
+    permissionKey: string,
+    conn?: mysql.PoolConnection,
+  ): Promise<boolean> {
+    if (!userId || !orgId || !permissionKey) return false;
+    const db: mysql.Pool | mysql.PoolConnection = conn ?? this.pool;
+    const [rows] = await db.execute<RowData>(
+      `SELECT 1
+         FROM user_role_scopes urs
+         JOIN user_roles ur ON ur.id = urs.user_role_id
+         JOIN role_permissions rp ON rp.role_id = ur.role_id
+         JOIN permissions p ON p.id = rp.permission_id
+         JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+          AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.deleted_at IS NULL
+          AND urs.scope_type = 'organisation'
+          AND urs.scope_id = ?
+          AND p.permission_key = ?
+        LIMIT 1`,
+      [userId, orgId, permissionKey],
+    );
+    return rows.length > 0;
   }
 
   async upsertUIPermission(data: {

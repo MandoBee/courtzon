@@ -52,7 +52,7 @@ const ROUTES = [
   { method: 'POST' as const, url: '/payments/charge', permission: 'financial.payment.charge' },
   { method: 'POST' as const, url: '/payments/confirm', permission: 'financial.payment.confirm' },
   { method: 'GET' as const, url: '/payments/status/9', permission: 'financial.payment.view' },
-  { method: 'POST' as const, url: '/payments/9/refund', permission: 'financial.reconcile' },
+  { method: 'POST' as const, url: '/payments/9/refund', permission: 'financial.payment.refund' },
   { method: 'GET' as const, url: '/payments/transactions', permission: 'financial.wallet.view' },
   { method: 'POST' as const, url: '/payments/sync', permission: 'financial.reconcile' },
   { method: 'POST' as const, url: '/payments/expire', permission: 'financial.reconcile' },
@@ -118,5 +118,36 @@ describe('P5-03 payment route authorization', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
+  });
+
+  // R3 — the generic refund is an irreversible money movement and has its OWN
+  // permission; reconciliation authority alone must never authorise a refund.
+  it('denies POST /payments/:id/refund for a user holding only financial.reconcile', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/payments/9/refund',
+      headers: headers(1, 'financial.reconcile'),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('allows POST /payments/:id/refund for a user holding financial.payment.refund', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/payments/9/refund',
+      headers: headers(1, 'financial.payment.refund'),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('keeps financial.reconcile for the reconciliation operations', async () => {
+    for (const url of ['/payments/sync', '/payments/expire', '/payments/health']) {
+      const res = await app.inject({
+        method: url === '/payments/health' ? 'GET' : 'POST',
+        url,
+        headers: headers(1, 'financial.reconcile'),
+      });
+      expect(res.statusCode, url).toBe(200);
+    }
   });
 });

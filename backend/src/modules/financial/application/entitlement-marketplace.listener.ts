@@ -212,6 +212,9 @@ async function handleMarketplaceOrderCancelled(envelope: EventEnvelope): Promise
 async function cancelEntitlementsForOrder(envelope: EventEnvelope, action: 'refunded' | 'cancelled'): Promise<void> {
   const data = envelope.payload as any;
   if (!data?.orderId) return;
+  // Refund Engine operational cancellation must not cancel original financial
+  // entitlements/settlement sources; the institution bears the refund cost.
+  if (data.operationalOnly === true) return;
 
   const rows = await marketplaceRepository.findOrderById(data.orderId);
   const itemIds = (rows as any[] || [])

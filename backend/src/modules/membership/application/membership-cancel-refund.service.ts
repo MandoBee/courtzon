@@ -3,6 +3,7 @@ import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { paymentService } from '../../payment/application/payment.service.js';
 import { membershipP1Repository } from '../infrastructure/repositories/membership-p1.repository.js';
 import { membershipP2Repository } from '../infrastructure/repositories/membership-p2.repository.js';
+import { financialEntitlementService } from '../../financial/application/financial-entitlement.service.js';
 import {
   normalizeCancellationRefundPolicy, round2, todayISO,
   isRefundableBeforeStart,
@@ -122,6 +123,18 @@ export const membershipCancelRefundService = {
       return true; // 'full' | 'proportional'
     });
     if (!candidates.length) throw conflictError('No paid installments qualify for a refund under the configured policy');
+
+    // LAYER B — validate the WHOLE refund scope BEFORE the first gateway/cash
+    // movement. Any installment whose entitlement is reserved by an active
+    // settlement blocks the entire operation (no partial refunds); the official
+    // sequence is: cancel the settlement (releaseFromSettlement) → retry.
+    // BOTH membership entitlement scopes are included: INSTALLMENT-scoped rows
+    // (source_id = installment.id) and the FULL-PAYMENT subscription-scoped row
+    // (source_id = subscription.id — see entitlement-membership.listener).
+    await financialEntitlementService.assertNoActiveSettlementReservation(
+      'membership',
+      [...candidates.map((i) => Number(i.id)), subscriptionId],
+    );
 
     let refunded = 0;
     let refundedAmount = 0;

@@ -39,6 +39,31 @@ describe('AssignRolePermissions command', () => {
     await expect(assignRolePermissionsHandler.validate(makeCommand({ permissionIds: 'not-array' }))).rejects.toThrow('permissionIds must be an array');
   });
 
+  it.each([
+    ['zero', [0]],
+    ['negative', [-1]],
+    ['decimal', [1.5]],
+    ['string', ['1']],
+    ['duplicate', [1, 1]],
+  ])('rejects %s permission ids', async (_label, ids) => {
+    await expect(
+      assignRolePermissionsHandler.validate(makeCommand({ permissionIds: ids })),
+    ).rejects.toThrow(/positive integer|duplicate/);
+  });
+
+  it('fails closed for an organization-owned role', async () => {
+    vi.mocked(rbacRepository.getRoleById).mockResolvedValue({
+      ...mockRole,
+      organisation_id: 7,
+      slug: 'accountant',
+    });
+
+    await expect(
+      assignRolePermissionsHandler.execute(makeCommand(), {} as any),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(rbacRepository.setRolePermissions).not.toHaveBeenCalled();
+  });
+
   it('assigns permissions to role', async () => {
     vi.mocked(rbacRepository.getRoleById).mockResolvedValue(mockRole);
 

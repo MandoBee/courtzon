@@ -150,6 +150,18 @@ export class FinancialEntitlementService {
     if (!entitlement) throw new ConflictError('Entitlement not found');
     if (isTerminal(entitlement.status)) throw new ConflictError(`Cannot cancel entitlement in ${entitlement.status} status`);
 
+    // ALWAYS-BLOCK: a settlement reservation is not a generic hold. Cancelling
+    // it would strand the settlement — finalizeSettled() and
+    // releaseFromSettlement() both require ON_HOLD + settlement_id — leaving the
+    // settlement unpayable and uncancellable. The ONLY approved release path is
+    // official settlement cancellation (releaseFromSettlement).
+    if (entitlement.settlement_id != null) {
+      throw new ConflictError(
+        `Entitlement ${id} is reserved by settlement ${entitlement.settlement_id}; ` +
+          `cancel the settlement through the settlement cancellation workflow before cancelling the entitlement`,
+      );
+    }
+
     const { newVersion } = planTransition({
       fromStatus: entitlement.status,
       toStatus: 'CANCELLED',
@@ -186,6 +198,22 @@ export class FinancialEntitlementService {
    */
   async cancelBySourceIds(sourceType: string, sourceIds: number[], reason: string): Promise<number> {
     const entitlements = await financialEntitlementRepository.findBySourceIds(sourceType as any, sourceIds);
+
+    // Batch preflight: fail the WHOLE batch BEFORE the first mutation when any
+    // non-terminal target is settlement-reserved. The loop below is intentionally
+    // per-record (autocommit) — it is NOT made atomic here — so a mid-loop throw
+    // would leave earlier rows cancelled. Validating up-front keeps the existing
+    // transaction semantics while guaranteeing no partial cross-state write.
+    const reserved = entitlements.filter((e) => !isTerminal(e.status) && e.settlement_id != null);
+    if (reserved.length) {
+      const settlementIds = [...new Set(reserved.map((e) => Number(e.settlement_id)))].sort((a, b) => a - b);
+      throw new ConflictError(
+        `Refund/cancellation blocked: entitlement(s) ${reserved.map((e) => e.id).join(', ')} of ${sourceType} source(s) ` +
+          `${sourceIds.join(', ')} are reserved by settlement(s) ${settlementIds.join(', ')}. ` +
+          'Cancel the settlement through the settlement cancellation workflow so its reservations are released, then retry.',
+      );
+    }
+
     let cancelled = 0;
     for (const e of entitlements) {
       if (isTerminal(e.status)) continue;

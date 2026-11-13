@@ -16,6 +16,7 @@ import { eventBusV2 } from '../../../shared/event-bus/index.js';
 import { toMySqlDateTime } from '../../../shared/utils/mysql-date.js';
 import { financialEntitlementRepository } from '../../financial/infrastructure/repositories/financial-entitlement.repository.js';
 import { gatewaySettlementService } from '../../settlement/application/gateway-settlement.service.js';
+import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
 
 const log = createModuleLogger('marketplace');
 
@@ -1125,12 +1126,66 @@ export const marketplaceService = {
    * transition, but performs NO money movement (no wallet credit, no gateway
    * refund). The Refund Engine records the institution-funded payout separately.
    */
+  /**
+   * Distinct seller organisations that own the order's items. Marketplace
+   * orders are per-seller rows, but a malformed/mixed checkout fails closed.
+   */
+  async _orderSellerOrganisationIds(order: any): Promise<number[]> {
+    const ids = new Set<number>();
+    for (const item of order?.items ?? []) {
+      const sellerId = Number(item?.sellerId);
+      if (Number.isInteger(sellerId) && sellerId > 0) ids.add(sellerId);
+    }
+    return [...ids];
+  },
+
+  /**
+   * Refund Engine operational cancellation authorization.
+   *
+   * The actor must hold the EXISTING `refunds.approve` permission (the approval
+   * route that triggers this work) and have organisation access to EVERY seller
+   * organisation in the order. No role slug is trusted by name, and no
+   * platform-wide bypass is granted.
+   */
+  async _canOperationallyCancelOrder(actorId: number, order: any): Promise<boolean> {
+    if (!Number.isInteger(actorId) || actorId <= 0) return false;
+
+    const organisationIds = await this._orderSellerOrganisationIds(order);
+    if (!organisationIds.length) return false;
+
+    for (const organisationId of organisationIds) {
+      const allowed = await rbacRepository.hasOrganisationPermission(
+        actorId,
+        organisationId,
+        'refunds.approve',
+      );
+      if (!allowed) return false;
+    }
+    return true;
+  },
+
   async cancelOrderForRefund(orderId: number, actorId: number, reason: string) {
     const order = await this.getOrder(orderId);
-    if (order.status === 'cancelled' || order.status === 'refunded') return;
+    const mainAlreadyTerminal = order.status === 'cancelled' || order.status === 'refunded';
 
-    await this.updateOrderStatus(orderId, actorId, { status: 'cancelled', note: reason }, { skipPayout: true });
+    if (!mainAlreadyTerminal) {
+      if (!(await this._canOperationallyCancelOrder(actorId, order))) {
+        throw new ForbiddenError('Not authorized to cancel this order for refund');
+      }
 
+      // Operational-only: status/stock/notifications, but NO legacy refund
+      // movement, NO financial reversal and NO commission reset. The Refund
+      // Engine owns the institution-funded payout separately.
+      await this.updateOrderStatus(
+        orderId,
+        actorId,
+        { status: 'cancelled', note: reason },
+        { skipPayout: true, operationalOnly: true, refundAuthorized: true },
+      );
+    }
+
+    const cancelledSiblingIds: number[] = [];
+    const skippedSiblingIds: number[] = [];
     const checkoutGroupId = order.checkout_group_id;
     if (checkoutGroupId) {
       const siblingIds = await repo.findOrderIdsByCheckoutGroup(checkoutGroupId);
@@ -1138,20 +1193,71 @@ export const marketplaceService = {
         if (siblingId === orderId) continue;
         const siblingRows = await repo.findOrderById(siblingId);
         const siblingOrder = siblingRows?.length ? this._formatOrder(siblingRows) : null;
-        if (siblingOrder && siblingOrder.status !== 'cancelled') {
-          try {
-            await this.updateOrderStatus(siblingId, actorId, { status: 'cancelled', note: reason }, { skipPayout: true });
-          } catch (_e) { /* seller already progressed — operational retry will surface it */ }
+        if (!siblingOrder) {
+          skippedSiblingIds.push(siblingId);
+          continue;
+        }
+        if (siblingOrder.status === 'cancelled' || siblingOrder.status === 'refunded') continue;
+
+        // Independent tenant authorization for EVERY sibling: the main order's
+        // seller role is never reused as proof of access to another order.
+        if (!(await this._canOperationallyCancelOrder(actorId, siblingOrder))) {
+          skippedSiblingIds.push(siblingId);
+          log.warn(
+            { orderId, siblingId, actorId },
+            'Refund operational cancellation skipped unauthorized sibling',
+          );
+          continue;
+        }
+
+        try {
+          await this.updateOrderStatus(
+            siblingId,
+            actorId,
+            { status: 'cancelled', note: reason },
+            { skipPayout: true, operationalOnly: true, refundAuthorized: true },
+          );
+          cancelledSiblingIds.push(siblingId);
+        } catch (err) {
+          skippedSiblingIds.push(siblingId);
+          log.error({ err, orderId, siblingId }, 'Refund operational sibling cancellation failed');
         }
       }
     }
+
+    return {
+      mainCancelled: !mainAlreadyTerminal,
+      cancelledSiblingIds,
+      skippedSiblingIds,
+      complete: skippedSiblingIds.length === 0,
+    };
   },
 
-  async updateOrderStatus(orderId: number, userId: number, data: any, options?: { skipPayout?: boolean }) {    const order = await this.getOrder(orderId);
-    const userRole = await this._getUserRoleInOrder(userId, order);
-    if (!userRole) throw new NotFoundError('Order not found');
+  async updateOrderStatus(
+    orderId: number,
+    userId: number,
+    data: any,
+    options?: { skipPayout?: boolean; operationalOnly?: boolean; refundAuthorized?: boolean },
+  ) {
+    const order = await this.getOrder(orderId);
+    const operationalAuthorized =
+      options?.operationalOnly === true && options?.refundAuthorized === true;
 
-    this._validateStatusTransition(order.status, data.status, userRole);
+    let userRole: 'buyer' | 'seller' | 'admin';
+    if (operationalAuthorized) {
+      // The caller already proved `refunds.approve` + organisation access for
+      // this order. Do NOT apply the seller/buyer transition matrix here, but
+      // only the cancellation transition is permitted.
+      if (data.status !== 'cancelled') {
+        throw new ForbiddenError('Refund operational cancellation only supports cancelled status');
+      }
+      userRole = 'admin';
+    } else {
+      const resolvedRole = await this._getUserRoleInOrder(userId, order);
+      if (!resolvedRole) throw new NotFoundError('Order not found');
+      userRole = resolvedRole;
+      this._validateStatusTransition(order.status, data.status, userRole);
+    }
 
     const isRefundOrCancel = data.status === 'cancelled' || data.status === 'refunded';
     const refundReason = data.note || (data.status === 'cancelled' ? 'Order cancelled' : 'Order refunded');
@@ -1190,8 +1296,10 @@ export const marketplaceService = {
     } else if (data.status === 'delivered') {
       await this._recordDeliveryFinancials(orderId);
     } else if (isRefundOrCancel) {
-      await this._recordReversalFinancials(orderId, data.status, data.note);
-      // Restore stock for cancelled/refunded orders
+      if (!options?.operationalOnly) {
+        await this._recordReversalFinancials(orderId, data.status, data.note);
+      }
+      // Restore stock for cancelled/refunded orders (operational in both modes)
       const orderRows = await repo.findOrderById(orderId);
       if (orderRows?.length) {
         for (const row of orderRows as any[]) {
@@ -1202,7 +1310,7 @@ export const marketplaceService = {
     }
 
     // Multi-seller: when cancelling/refunding, also cancel all sibling orders in the checkout group
-    if (isRefundOrCancel && order.checkout_group_id) {
+    if (isRefundOrCancel && order.checkout_group_id && !options?.operationalOnly) {
       const siblingIds = await repo.findOrderIdsByCheckoutGroup(order.checkout_group_id);
       for (const siblingId of siblingIds) {
         if (siblingId === orderId) continue;
@@ -1211,7 +1319,9 @@ export const marketplaceService = {
         if (siblingOrder && siblingOrder.status !== 'cancelled' && siblingOrder.status !== 'refunded') {
           try {
             await this._validateStatusTransition(siblingOrder.status, data.status, userRole);
-            await this._processOrderRefund(siblingOrder, siblingId, data.note || `Checkout group ${data.status}`);
+            if (!options?.skipPayout) {
+              await this._processOrderRefund(siblingOrder, siblingId, data.note || `Checkout group ${data.status}`);
+            }
             const siblingClaimed = await repo.updateOrderStatus(siblingId, data.status, data.note || `Checkout group ${data.status}`);
             // Another concurrent transition already cancelled this sibling — do not restore twice.
             if (siblingClaimed === false) continue;
@@ -1257,10 +1367,12 @@ export const marketplaceService = {
     } else if (data.status === 'cancelled') {
       eventBusV2.emit('marketplace:order-cancelled', {
         orderId, userId, sellerId, reason: data.note,
+        ...(options?.operationalOnly ? { operationalOnly: true } : {}),
       });
     } else if (data.status === 'refunded') {
       eventBusV2.emit('marketplace:order-refunded', {
         orderId, userId, sellerId, reason: data.note,
+        ...(options?.operationalOnly ? { operationalOnly: true } : {}),
       });
     }
 

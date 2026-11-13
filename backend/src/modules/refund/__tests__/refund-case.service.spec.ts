@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   findByPublicId: vi.fn(),
   lockById: vi.fn(),
   lockPayout: vi.fn(),
+  findPayoutByIdempotencyKey: vi.fn(),
   listLines: vi.fn(),
   listPayouts: vi.fn(),
   list: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock('../infrastructure/repositories/refund-case.repository.js', () => ({
     findByPublicId: mocks.findByPublicId,
     lockById: mocks.lockById,
     lockPayout: mocks.lockPayout,
+    findPayoutByIdempotencyKey: mocks.findPayoutByIdempotencyKey,
     listLines: mocks.listLines,
     listPayouts: mocks.listPayouts,
     list: mocks.list,
@@ -124,6 +126,7 @@ beforeEach(() => {
   ]);
   mocks.listPayouts.mockResolvedValue([]);
   mocks.insertPayout.mockResolvedValue(55);
+  mocks.findPayoutByIdempotencyKey.mockResolvedValue(null);
   mocks.sumActiveApprovedForLine.mockResolvedValue(0);
   mocks.cancelServiceLine.mockResolvedValue('booking:42');
 });
@@ -158,6 +161,22 @@ describe('recordPayout — operational cancellation must finish first', () => {
     expect(mocks.insertPayout).not.toHaveBeenCalled();
   });
 
+  it('rejects a payout recorded by the approver (maker-checker 1/3)', async () => {
+    mocks.lockById.mockResolvedValue(baseCase({ approved_by: 13 }));
+
+    await expect(
+      refundCaseService.recordPayout(7, 13, {
+        method: 'bank_transfer',
+        amountCents: 6_000,
+        idempotencyKey: 'payout-approver-1234',
+      }),
+    ).rejects.toThrow(/Approval and payout execution must be performed by different users/);
+
+    expect(mocks.insertPayout).not.toHaveBeenCalled();
+    expect(mocks.updateCase).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+  });
+
   it('records an independent cash/bank payout and emits payout-recorded only', async () => {
     await refundCaseService.recordPayout(7, 13, {
       method: 'bank_transfer',
@@ -183,37 +202,190 @@ describe('recordPayout — operational cancellation must finish first', () => {
   });
 });
 
-describe('confirmPayout — separation of duties and full-amount completion', () => {
-  it('forbids the approver from confirming the payout', async () => {
-    mocks.lockById.mockResolvedValue(baseCase({ approved_by: 13 }));
+describe('recordPayout — idempotency, concurrency and audit', () => {
+  const existingPayout = (overrides: Record<string, unknown> = {}) => ({
+    id: 55,
+    case_id: 7,
+    method: 'bank_transfer',
+    amount_cents: 6_000,
+    status: 'PROCESSING',
+    reference: 'TRX-99881',
+    evidence_url: null,
+    executed_by: 13,
+    executed_at: null,
+    idempotency_key: 'payout-12345678',
+    created_at: '',
+    updated_at: '',
+    ...overrides,
+  });
 
-    await expect(refundCaseService.confirmPayout(7, 55, 13)).rejects.toThrow(
-      /must be performed by different users/,
+  const payoutInput = {
+    method: 'bank_transfer' as const,
+    amountCents: 6_000,
+    reference: 'TRX-99881',
+    idempotencyKey: 'payout-12345678',
+  };
+
+  it('returns the original payout for a legitimate same-case replay', async () => {
+    mocks.findPayoutByIdempotencyKey.mockResolvedValueOnce(existingPayout());
+
+    const result = await refundCaseService.recordPayout(7, 13, payoutInput);
+
+    expect(result).toMatchObject({ payoutId: 55, replayed: true });
+    expect(mocks.insertPayout).not.toHaveBeenCalled();
+    expect(mocks.updateCase).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('rejects a key already used by a payout on another refund case', async () => {
+    mocks.findPayoutByIdempotencyKey.mockResolvedValueOnce(existingPayout({ case_id: 999 }));
+
+    await expect(refundCaseService.recordPayout(7, 13, payoutInput)).rejects.toThrow(
+      /already used by a payout on another refund case/,
     );
 
-    expect(mocks.updatePayout).not.toHaveBeenCalled();
+    expect(mocks.insertPayout).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('handles a concurrent duplicate (unique-key race) as a same-case replay', async () => {
+    mocks.findPayoutByIdempotencyKey
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existingPayout());
+    mocks.insertPayout.mockRejectedValueOnce({ code: 'ER_DUP_ENTRY', errno: 1062 });
+
+    const result = await refundCaseService.recordPayout(7, 13, payoutInput);
+
+    expect(result).toMatchObject({ payoutId: 55, replayed: true });
+    expect(mocks.insertPayout).toHaveBeenCalledTimes(1);
+    expect(mocks.emit).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('re-throws a duplicate error when no matching payout can be found', async () => {
+    mocks.findPayoutByIdempotencyKey.mockResolvedValue(null);
+    mocks.insertPayout.mockRejectedValueOnce({ code: 'ER_DUP_ENTRY', errno: 1062 });
+
+    await expect(refundCaseService.recordPayout(7, 13, payoutInput)).rejects.toMatchObject({
+      code: 'ER_DUP_ENTRY',
+    });
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('re-throws unrelated database errors unchanged', async () => {
+    mocks.insertPayout.mockRejectedValueOnce({ code: 'ER_NO_REFERENCED_ROW_2', errno: 1452 });
+
+    await expect(refundCaseService.recordPayout(7, 13, payoutInput)).rejects.toMatchObject({
+      code: 'ER_NO_REFERENCED_ROW_2',
+    });
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
     expect(mocks.emit).not.toHaveBeenCalled();
   });
 
-  it('confirms a partial payout without completing the case', async () => {
-    mocks.lockPayout.mockResolvedValue({
-      id: 55,
-      case_id: 7,
-      method: 'bank_transfer',
-      amount_cents: 2_000,
-      status: 'PROCESSING',
-      reference: null,
-      evidence_url: null,
-      executed_by: 13,
-      executed_at: null,
-      idempotency_key: 'payout-12345678',
-      created_at: '',
-      updated_at: '',
+  it('creates exactly one audit record for a successful first registration', async () => {
+    await refundCaseService.recordPayout(7, 13, payoutInput);
+
+    expect(mocks.recordAudit).toHaveBeenCalledTimes(1);
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 13,
+        action: 'REFUND.PAYOUT_RECORDED',
+        entityType: 'refund_case',
+        entityId: 7,
+        afterState: expect.objectContaining({
+          payoutId: 55,
+          caseId: 7,
+          amountCents: 6_000,
+          currency: 'EGP',
+          method: 'bank_transfer',
+          reference: 'TRX-99881',
+          executedBy: 13,
+          status: 'PROCESSING',
+        }),
+      }),
+    );
+    expect(mocks.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not audit or emit when the insert fails', async () => {
+    mocks.insertPayout.mockRejectedValueOnce(new Error('insert failed'));
+
+    await expect(refundCaseService.recordPayout(7, 13, payoutInput)).rejects.toThrow('insert failed');
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+    expect(mocks.updateCase).not.toHaveBeenCalled();
+  });
+
+  it('creates independent payouts for different idempotency keys', async () => {
+    mocks.insertPayout.mockResolvedValueOnce(56);
+
+    const result = await refundCaseService.recordPayout(7, 13, {
+      ...payoutInput,
+      idempotencyKey: 'payout-independent-1',
     });
 
-    await refundCaseService.confirmPayout(7, 55, 13);
+    expect(result).toMatchObject({ payoutId: 56, replayed: false });
+    expect(mocks.insertPayout).toHaveBeenCalledTimes(1);
+    expect(mocks.recordAudit).toHaveBeenCalledTimes(1);
+  });
+});
 
-    expect(mocks.updateCase).toHaveBeenCalledWith(
+describe('confirmPayout — three-person separation of duties', () => {
+  const processingPayout = (overrides: Record<string, unknown> = {}) => ({
+    id: 55,
+    case_id: 7,
+    method: 'bank_transfer',
+    amount_cents: 2_000,
+    status: 'PROCESSING',
+    reference: null,
+    evidence_url: null,
+    executed_by: 13,
+    executed_at: null,
+    idempotency_key: 'payout-12345678',
+    created_at: '',
+    updated_at: '',
+    ...overrides,
+  });
+
+  it('forbids the approver from confirming the payout (2/3)', async () => {
+    mocks.lockPayout.mockResolvedValue(processingPayout({ executed_by: 14 }));
+
+    await expect(refundCaseService.confirmPayout(7, 55, 12)).rejects.toThrow(
+      /Approval and payout confirmation must be performed by different users/,
+    );
+
+    expect(mocks.updatePayout).not.toHaveBeenCalled();
+    expect(mocks.updateCase).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+  });
+
+  it('forbids the payout executor from confirming the same payout (3/3)', async () => {
+    mocks.lockPayout.mockResolvedValue(processingPayout({ executed_by: 13 }));
+
+    await expect(refundCaseService.confirmPayout(7, 55, 13)).rejects.toThrow(
+      /Payout execution and confirmation must be performed by different users/,
+    );
+
+    expect(mocks.updatePayout).not.toHaveBeenCalled();
+    expect(mocks.updateCase).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+  });
+
+  it('confirms a partial payout by a distinct third actor without overwriting the executor', async () => {
+    mocks.lockPayout.mockResolvedValue(processingPayout({ executed_by: 13 }));
+    mocks.lockById
+      .mockResolvedValueOnce(baseCase())
+      .mockResolvedValueOnce(baseCase({ paid_cents: 2_000, status: 'PARTIALLY_COMPLETED', payout_status: 'PARTIALLY_COMPLETED' }));
+
+    await refundCaseService.confirmPayout(7, 55, 14);
+
+    expect(mocks.updatePayout).toHaveBeenCalledWith(
+      55,
+      { status: 'COMPLETED', executed_at: expect.any(Date) },
+      expect.anything(),
+    );    expect(mocks.updateCase).toHaveBeenCalledWith(
       7,
       4,
       expect.objectContaining({
@@ -224,7 +396,44 @@ describe('confirmPayout — separation of duties and full-amount completion', ()
       expect.anything(),
     );
     const confirmed = mocks.emit.mock.calls.find((call) => call[0] === 'refund:payout-confirmed');
-    expect(confirmed?.[1]).toMatchObject({ caseId: 7, payoutId: 55, amountCents: 2_000 });
+    expect(confirmed?.[1]).toMatchObject({ caseId: 7, payoutId: 55, amountCents: 2_000, executedBy: 14 });
+    expect(mocks.recordAudit).toHaveBeenCalledTimes(1);
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'REFUND.PAYOUT_CONFIRMED',
+        entityId: 7,
+        afterState: expect.objectContaining({ payoutId: 55, status: 'PARTIALLY_COMPLETED' }),
+      }),
+    );
+  });
+
+  it('completes the case when the distinct third actor confirms the full payout', async () => {
+    mocks.lockPayout.mockResolvedValue(processingPayout({ amount_cents: 6_000, executed_by: 13 }));
+
+    await refundCaseService.confirmPayout(7, 55, 14);
+
+    expect(mocks.updateCase).toHaveBeenCalledWith(
+      7,
+      4,
+      expect.objectContaining({
+        paid_cents: 6_000,
+        payout_status: 'COMPLETED',
+        status: 'COMPLETED',
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('returns the current case idempotently when the payout is already COMPLETED', async () => {
+    mocks.lockPayout.mockResolvedValue(processingPayout({ status: 'COMPLETED', executed_by: 13 }));
+
+    const result = await refundCaseService.confirmPayout(7, 55, 12);
+
+    expect(result).toMatchObject({ id: 7 });
+    expect(mocks.updatePayout).not.toHaveBeenCalled();
+    expect(mocks.updateCase).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
   });
 });
 
@@ -261,6 +470,51 @@ describe('failPayout — a failed payout never posts a payout entry', () => {
     expect(mocks.emit).not.toHaveBeenCalled();
     // Cancellation is never reversed by a payout failure.
     expect(mocks.cancelServiceLine).not.toHaveBeenCalled();
+  });
+});
+
+describe('processOperational — partial marketplace cancellation never completes the line', () => {
+  it('marks the line FAILED when the cancellation contract rejects skipped siblings', async () => {
+    const { ConflictError } = await import('../../../shared/errors/app-error.js');
+    const line = {
+      id: 1,
+      case_id: 7,
+      line_no: 1,
+      line_type: 'order',
+      source_id: 101,
+      canceled_value_cents: 10_000,
+      approved_cents: 6_000,
+      operational_status: 'PENDING',
+      cancellation_ref: null,
+      created_at: '',
+      updated_at: '',
+    };
+    mocks.findById.mockResolvedValue(
+      baseCase({ domain: 'marketplace', status: 'OPERATIONAL_PROCESSING', operational_status: 'PROCESSING' }),
+    );
+    mocks.listLines
+      .mockResolvedValueOnce([line])
+      .mockResolvedValueOnce([{ ...line, operational_status: 'FAILED' }]);
+    mocks.cancelServiceLine.mockRejectedValueOnce(
+      new ConflictError('Marketplace operational cancellation incomplete; skipped sibling 102'),
+    );
+
+    await refundCaseService.processOperational(7);
+
+    expect(mocks.updateLine).toHaveBeenCalledWith(
+      1,
+      { operational_status: 'FAILED' },
+      expect.anything(),
+    );
+    expect(mocks.updateCase).toHaveBeenCalledWith(
+      7,
+      expect.anything(),
+      expect.objectContaining({ operational_status: 'FAILED', status: 'FAILED' }),
+      expect.anything(),
+    );
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REFUND.OPERATIONAL_CANCELLATION_FAILED' }),
+    );
   });
 });
 

@@ -434,7 +434,7 @@ scenario, and the destructive-SQL sub-item of **P7-02** is resolved.
 | D1 | Player | Fixture booking | Trigger notification, open bell, click deep link | Navigates to the referenced entity | Rows left | `e2e/scenarios/notifications/notification-deeplink.spec.ts:20–73` | W | **PASS (2026-11-06, local)** — `npx playwright test e2e/scenarios/notifications/notification-deeplink.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **1 passed (14.1s)** (test 11.0s), **0 failed / 0 flaky / 0 skipped, 0 retries**, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): cash booking **`59292`** created via the authoritative V2 path (the obsolete `PATCH /bookings/:id/confirm` was removed); the in-app notification was **delivered and marked as read**; the deep link navigated to the exact **`/bookings/59292`**; rows left in place (no cleanup). Evidence: `test-results/e2e/results.json` (`expected=1`, `startTime 2026-11-06T01:02:50.751Z`). |
 | D2 | Admin | Admin fixture | Open admin dashboard | Loads admin-specific elements | None | `admin-dashboard.spec.ts` (rows A3) | W | **PASS (attributed, 2026-11-03)** — covered by the historical **A3** run (§3.1d, **3/3 PASS**): dedicated authenticated `super_admin` fixture; admin dashboard opened at `/admin`; **`System Dashboard`** heading visible; admin sidebar **`aside nav`** and first navigation button visible; `/admin/users` heading and table visible. **No D2-specific rerun was performed.** A3 does **not** assert KPI card values, Action Center, charts, or `/admin/dashboard` API payloads — these are outside D2's written acceptance criteria. **Evidence basis:** the original raw A3 Playwright report is no longer available (the D5 run overwrote the raw report files), so attribution relies on the committed A3 spec and historical documentation, not independently reverified raw results; historical retry, failure, or skipped-test counts are **not** claimed. |
 | D3 | Finance role | Seeded settlements | Open list/detail, pay/cancel where permitted | Correct figures; actions permission-gated | None | — | — | **MISSING** |
-| D4 | Auditor/admin | Seeded data | Run/read reports, export | Correct data; export gated | None | — | — | **D4-A PASS (2026-11-11, Live, read-only)** — deployed commit `cc716b1791e9bf3b4dccc47edb74baddbf8cdc9d`; six unauthenticated GETs returned **401** `AUTHENTICATION_ERROR` with no financial data and no redirects: `/reports/financial/{summary,by-source,timeline,payment-methods,settlements}` + `/unified-settlements/export`. No sessions created, no database access or writes. **D4 authenticated portion (auditor/admin reports + export gating with live actors): NOT TESTED / BLOCKED** pending separately approved authenticated access. **D4 overall remains OPEN.** |
+| D4 | Auditor/admin | Seeded data | Run/read reports, export | Correct data; export gated | None | — | — | **D4-A PASS (2026-11-11, Live, read-only)** — deployed commit `cc716b1791e9bf3b4dccc47edb74baddbf8cdc9d`; six unauthenticated GETs returned **401** `AUTHENTICATION_ERROR` with no financial data and no redirects: `/reports/financial/{summary,by-source,timeline,payment-methods,settlements}` + `/unified-settlements/export`. No sessions created, no database access or writes. **D4 authenticated (2026-11-11, Live) — PASS for access control:** Super Admin 200 on all five JSON reports + 200 `text/csv` export; QA Finance Manager 200 on five reports and 403 on export; QA Accountant, Auditor, Master Admin and Read Only Admin 403 on all six. Five global role grants verified, `player` retained, and **no financial/accounting writes**. Details in §3.4c. **Accuracy:** aggregation consistency PASS (C1–C4), payment-methods PARTIALLY PROVEN, settlements NOT TESTED (table empty). **Isolation:** global-vs-organisation access gate PASS; data-level isolation NOT TESTED. **D4 overall remains OPEN.** |
 | D5 | Player captain + invitee | Free team tournament | Create team, invite, accept/reject, expiry | Non-captain blocked; cross-tournament accept rejected; no financial writes | Rows left (timestamped slugs) | `e2e/scenarios/tournament/tournament-team-invitation.spec.ts:117–262` | W | **PASS (2026-11-05, local)** — `npx playwright test e2e/scenarios/tournament/tournament-team-invitation.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **4 passed (9.5s)**, 0 failed / 0 flaky / 0 skipped, **0 retries**, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): T1 happy path **2161 ms**, T2 cross-user/cross-tournament isolation **2036 ms**, T3 reject + expiry + zero financial mutations **1902 ms**, T4 direct join + full-team capacity **1685 ms**. All writes stayed within the approved **20-table allowlist**; **8** in-app notifications created and **8/8 delivered** (`notification_delivery.status = delivered`, attempts 0); **24** `notification_audit_trail` rows; **8** `notification_analytics` rows; BullMQ completed **20540 → 20548**, failed **11** and delayed **1** unchanged; **0** dead-letter; **no external providers**; **no payment/wallet/booking/accounting writes**; updates limited to run-created rows (**0** pre-existing sessions/invitations/participants/deliveries touched); no destructive SQL. Details: **§3.4a** |
 
 ### 3.4a D5 — local execution (2026-11-05)
@@ -473,7 +473,7 @@ updates), 13 `tournament_participant_members`, 5 `tournament_team_invitations` (
 | Destructive SQL | none (no DELETE/TRUNCATE/DROP/ALTER/migration/seed) |
 | Source/test files | not modified |
 
-**Result: D5 PASS.** P6-07 remains **IN_PROGRESS** (D3–D4 still open; **D4-A PASS (2026-11-11, Live)**, D4 authenticated portion NOT TESTED/BLOCKED).
+**Result: D5 PASS.** P6-07 remains **IN_PROGRESS** (D3–D4 still open; **D4-A PASS (2026-11-11, Live)**, D4 authenticated access **PASS**; D4 remains OPEN because settlement accuracy and data-level isolation are NOT TESTED).
 
 ### 3.4b D4-A — unauthenticated fail-closed (Live, 2026-11-11)
 
@@ -490,7 +490,47 @@ updates), 13 `tournament_participant_members`, 5 `tournament_team_invitations` (
 | 5 | `GET /reports/financial/settlements` | **401** | same | No | No |
 | 6 | `GET /unified-settlements/export` | **401** | same | No | No |
 
-**Result: D4-A PASS.** Zero sessions, zero database writes, zero redirects. **D4 authenticated remains NOT TESTED / BLOCKED** (requires authenticated actors and a separately approved session write).
+**Result: D4-A PASS.** Zero sessions, zero database writes, zero redirects. **D4 authenticated authorization was later executed on Live (2026-11-11) — see §3.4c; D4 remains OPEN.**
+
+### 3.4c D4 authenticated — Live execution (2026-11-11)
+
+**Deployment:** `fb45f29e6fea95bcaf2d4911b0df665d3df58a96` (`/health/version`; `expectedMigration=206_financial_reports_view_permission`). Requests were executed same-origin at `https://www.courtzon.cloud` because the session cookie is host-only for `www` (nginx proxies to the same backend).
+
+**Accounts tested:** **6 Live actors / 36 requests** — the existing `super_admin` plus five dedicated QA accounts created 2026-11-11 (`finance-manager`, `accountant`, `auditor`, `master-admin`, `read-only-admin`). The earlier finance-manager authorization run (Phase 2I.1, 2026-11-10) was **local, not Live**, so it is not counted as a seventh Live account.
+
+| Account | Roles | summary | by-source | timeline | payment-methods | settlements | export |
+|---|---|---|---|---|---|---|---|
+| super_admin | super_admin | 200 json | 200 json | 200 json | 200 json | 200 json | 200 text/csv |
+| QA Finance Manager | player, finance-manager | 200 json | 200 json | 200 json | 200 json | 200 json | **403 FORBIDDEN** |
+| QA Accountant | player, accountant | 403 | 403 | 403 | 403 | 403 | 403 |
+| QA Auditor | player, auditor | 403 | 403 | 403 | 403 | 403 | 403 |
+| QA Master Admin | player, master-admin | 403 | 403 | 403 | 403 | 403 | 403 |
+| QA Read Only | player, read-only-admin | 403 | 403 | 403 | 403 | 403 | 403 |
+
+- **Role grants:** 5 × `POST /user-roles` → 201; each verified via `/users/:id/roles`; the existing `player` role remained in all five.
+- `finance-manager` holds `financial.reports.view` (`true`); `accountant` does not (`false`).
+- **Export gating:** `super_admin` passes via the role bypass; Finance Manager is denied because `settlements.export` does not exist in the Live permission catalogue (documented policy state, not a regression).
+- Denied roles receive `403 FORBIDDEN` before any handler executes.
+
+**Financial consistency (read-only cross-checks):**
+
+| # | Check | Result |
+|---|---|---|
+| C1 | summary revenue = by-source `payment` | **PASS** |
+| C2 | summary commission = by-source `commission` | **PASS** |
+| C3 | timeline total = revenue + commission | **PASS** |
+| C4 | timeline transactions = by-source counts | **PASS** |
+| C5 | payment-methods structure (1 method group, positive total) | **PARTIALLY PROVEN** — no independent source |
+| C6–C9 | settlements report vs `/unified-settlements` | **NOT TESTED** — `settlements` has 0 rows; 0=0 is vacuous |
+
+D4 reports read `wallet_transactions`, `payment_transactions` and `settlements` (operational cash-flow view); the accounting statements read `general_ledger` (accrual view). This is an intentional architectural distinction (`reports.repository.ts:22-36`), **not a defect**; GL reconciliation is therefore not an applicable accuracy test.
+
+**Organisation isolation:**
+- **Global-vs-organisation access gate: PASS** — `evaluateFinancialReportsAccess` accepts only rows with `roles.organisation_id IS NULL`; organisation-scoped clones are denied (code + runtime 403 for every non-global role).
+- **Data-level cross-organisation isolation: NOT TESTED** — no organisation-scoped actor holds `settlements.export`, and `settlements` is empty; creating that state is outside this scope.
+- Super Admin's platform-wide visibility is intentional.
+
+**Writes:** 5 `user_roles` inserts; 5 login sessions (+`last_login_at`); **no financial or accounting writes**. **Result: authenticated access control PASS; D4 remains OPEN.**
 
 ### 3.5 P6-08 — Responsive and accessibility
 

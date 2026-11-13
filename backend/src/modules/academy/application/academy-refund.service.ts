@@ -80,6 +80,12 @@ class AcademyRefundService {
       throw new ConflictError('Wallet payments cannot be refunded (Academy wallet is disabled)', ErrorCodes.ACADEMY_PAYMENT_NOT_ELIGIBLE);
     }
 
+    // LAYER B — settlement-reservation preflight: reject BEFORE any refund side
+    // effect (gateway call, offline cash flip, payment:refunded emission) when an
+    // entitlement for this enrollment is still reserved by an active settlement.
+    // Official sequence: cancel the settlement (releaseFromSettlement) → retry.
+    await financialEntitlementService.assertNoActiveSettlementReservation('academy', [enrollmentId]);
+
     if (method === 'cash') {
       await this.offlineCashRefund(enrollment, snapshot, paymentId, amount, currency, reason);
     } else {

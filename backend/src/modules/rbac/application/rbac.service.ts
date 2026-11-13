@@ -3,7 +3,10 @@ import type mysql from 'mysql2/promise';
 import { rbacRepository } from '../infrastructure/repositories/rbac.repository.js';
 import { permissionMatchesTemplate, TEMPLATE_SLUGS } from './role-permission-templates.js';
 import { ratingService } from '../../match-result/application/rating/rating.service.js';
-import { NotFoundError, ConflictError } from '../../../shared/errors/app-error.js';
+import { NotFoundError, ConflictError, ValidationError, ForbiddenError } from '../../../shared/errors/app-error.js';
+import { canOrgRoleReceivePermission } from '../domain/org-permission-policy.js';
+import { withTransaction } from '../../../database/database.transaction.js';
+import { recordAudit } from '../../audit-log/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
@@ -33,6 +36,38 @@ function withEventFields(data: Record<string, unknown>): Record<string, unknown>
 }
 
 type RowData = mysql.RowDataPacket[];
+
+/**
+ * Strict permission-id normalisation for the platform role editor.
+ *
+ * Super Admin may clear a role by sending an explicit empty array, but every
+ * non-empty payload must contain unique positive integers. Invalid values are
+ * rejected, never filtered.
+ */
+function normalisePermissionIds(
+  permissionIds: unknown,
+  opts: { allowEmpty: boolean } = { allowEmpty: true },
+): number[] {
+  if (!Array.isArray(permissionIds)) {
+    throw new ValidationError('permissionIds must be an array');
+  }
+  if (permissionIds.length === 0) {
+    if (opts.allowEmpty) return [];
+    throw new ValidationError('permissionIds must contain at least one permission id');
+  }
+
+  const ids: number[] = [];
+  for (const [index, value] of permissionIds.entries()) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+      throw new ValidationError(`permissionIds[${index}] must be a positive integer`);
+    }
+    ids.push(value);
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new ValidationError('permissionIds must not contain duplicate ids');
+  }
+  return ids;
+}
 
 export class RBACService {
   async getModules() {
@@ -110,14 +145,132 @@ export class RBACService {
     }
   }
 
-  async setRolePermissions(roleId: number, permissionIds: number[]) {
-    const role = await rbacRepository.getRole(roleId);
-    if (!role) throw new NotFoundError('Role');
-    try {
-      await rbacRepository.setRolePermissions(roleId, permissionIds);
-    } catch (err: any) {
-      throw new Error(`Failed to set permissions: ${err.message || err}`);
+  /**
+   * Shared, transaction-scoped permission replacement.
+   *
+   * Runs entirely on the caller's transaction connection: permission resolution,
+   * organisation policy, before-state read and the DELETE + INSERT. It never
+   * writes until every check has passed.
+   */
+  private async replaceRolePermissionsInTransaction(
+    conn: mysql.PoolConnection,
+    role: { id: number; organisation_id: number | null; slug: string },
+    ids: number[],
+  ): Promise<{ before: number[]; records: { id: number; permission_key: string }[] }> {
+    const records = ids.length ? await rbacRepository.getPermissionsByIds(ids, conn) : [];
+    if (records.length !== ids.length) {
+      const known = new Set(records.map((record) => Number(record.id)));
+      const unknown = ids.filter((id) => !known.has(id));
+      throw new ValidationError(`Unknown permission id(s): ${unknown.join(', ')}`);
     }
+
+    if (role.organisation_id != null) {
+      const forbidden = records
+        .filter((record) => !canOrgRoleReceivePermission(String(role.slug), record.permission_key))
+        .map((record) => record.permission_key);
+      if (forbidden.length) {
+        throw new ForbiddenError(
+          `Permission(s) cannot be granted to organisation role "${role.slug}": ${forbidden.join(', ')}`,
+        );
+      }
+    }
+
+    const before = await rbacRepository.getRolePermissions(Number(role.id), conn);
+    await rbacRepository.setRolePermissions(Number(role.id), ids, conn);
+    return { before, records };
+  }
+
+  async setRolePermissions(roleId: number, permissionIds: number[], actorId?: number) {
+    if (!Number.isInteger(roleId) || roleId <= 0) {
+      throw new ValidationError('roleId must be a positive integer');
+    }
+    const ids = normalisePermissionIds(permissionIds, { allowEmpty: true });
+
+    const result = await withTransaction(async (conn) => {
+      const role = await rbacRepository.lockRoleById(roleId, conn);
+      if (!role || role.deleted_at != null) throw new NotFoundError('Role');
+
+      // Approved policy: organisation-owned roles cannot be cleared through the
+      // platform endpoint. Global roles keep the explicit empty-array behavior.
+      if (role.organisation_id != null && ids.length === 0) {
+        throw new ValidationError('Organisation role permissions cannot be cleared to an empty list');
+      }
+
+      const { before, records } = await this.replaceRolePermissionsInTransaction(conn, role, ids);
+      return { role, before, records };
+    });
+
+    await recordAudit({
+      actorId: actorId ?? null,
+      action: 'RBAC.ROLE_PERMISSIONS_UPDATED',
+      entityType: 'role',
+      entityId: roleId,
+      beforeState: {
+        permissionIds: result.before,
+        organisationId: result.role.organisation_id,
+      },
+      afterState: {
+        permissionIds: ids,
+        permissionKeys: result.records.map((record) => record.permission_key),
+        organisationId: result.role.organisation_id,
+      },
+    });
+
+    return this.getRole(roleId);
+  }
+
+  /**
+   * Organisation-safe permission replacement used by `addOrgStaff` and
+   * `updateStaffPermissions`.
+   *
+   * - rejects empty arrays for organisation roles,
+   * - locks the role row and verifies `organisation_id` inside the transaction,
+   * - resolves IDs and enforces `canOrgRoleReceivePermission` on the same
+   *   connection before DELETE,
+   * - performs DELETE + INSERT atomically on that connection,
+   * - audits only after commit.
+   */
+  async setOrganisationRolePermissions(
+    organisationId: number,
+    roleId: number,
+    permissionIds: number[],
+    actorId?: number,
+  ) {
+    if (!Number.isInteger(organisationId) || organisationId <= 0) {
+      throw new ValidationError('organisationId must be a positive integer');
+    }
+    if (!Number.isInteger(roleId) || roleId <= 0) {
+      throw new ValidationError('roleId must be a positive integer');
+    }
+    const ids = normalisePermissionIds(permissionIds, { allowEmpty: false });
+
+    const result = await withTransaction(async (conn) => {
+      const role = await rbacRepository.lockRoleById(roleId, conn);
+      if (!role || role.deleted_at != null) throw new NotFoundError('Role');
+      if (role.organisation_id == null || Number(role.organisation_id) !== Number(organisationId)) {
+        throw new ForbiddenError('Role does not belong to this organisation');
+      }
+
+      const { before, records } = await this.replaceRolePermissionsInTransaction(conn, role, ids);
+      return { role, before, records };
+    });
+
+    await recordAudit({
+      actorId: actorId ?? null,
+      action: 'RBAC.ORGANISATION_ROLE_PERMISSIONS_UPDATED',
+      entityType: 'role',
+      entityId: roleId,
+      beforeState: {
+        permissionIds: result.before,
+        organisationId: result.role.organisation_id,
+      },
+      afterState: {
+        permissionIds: ids,
+        permissionKeys: result.records.map((record) => record.permission_key),
+        organisationId: result.role.organisation_id,
+      },
+    });
+
     return this.getRole(roleId);
   }
 
@@ -508,7 +661,7 @@ export class RBACService {
 
     const [roles] = await pool.execute<RowData>(
       `SELECT id, slug, name, organisation_id, is_system
-       FROM roles WHERE deleted_at IS NULL ORDER BY id`,
+       FROM roles WHERE organisation_id IS NULL AND deleted_at IS NULL ORDER BY id`,
     );
 
     let totalGranted = 0;
@@ -516,6 +669,9 @@ export class RBACService {
     const summary: { slug: string; organisationId: number | null; target: number; granted: number; pruned: number }[] = [];
 
     for (const role of roles as any[]) {
+      // Defence in depth: platform templates must never touch organisation-owned
+      // roles (their permissions are managed through the organisation policy).
+      if (role.organisation_id != null) continue;
       const templateSlug: string = role.slug as string;
       const isSuperAdmin = templateSlug === 'super_admin';
 
@@ -573,7 +729,10 @@ export class RBACService {
     const platformAdminId = permByKey.get('platform.admin');
     if (platformAdminId) {
       const [superRoles] = await pool.execute<RowData>(
-        `SELECT id FROM roles WHERE slug IN ('super_admin', 'super-admin') AND deleted_at IS NULL`,
+        `SELECT id FROM roles
+          WHERE slug IN ('super_admin', 'super-admin')
+            AND organisation_id IS NULL
+            AND deleted_at IS NULL`,
       );
       for (const r of superRoles as any[]) {
         await pool.execute(

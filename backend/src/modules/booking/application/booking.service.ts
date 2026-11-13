@@ -14,6 +14,7 @@ import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '.
 import { ErrorCodes } from '../../../shared/errors/error-codes.js';
 import { BookingWindowPolicy } from '../domain/booking-window.policy.js';
 import { rbacRepository } from '../../rbac/infrastructure/repositories/rbac.repository.js';
+import { canAccessBranch } from '../../../shared/middleware/org-access.js';
 import { bookingSeriesRepository, weekdayNumbersToSet, weekdaySetToNumbers } from '../infrastructure/repositories/booking-series.repository.js';
 import { createModuleLogger } from '../../../shared/utils/logger.js';
 import { generateUUID } from '../../../shared/utils/token.js';
@@ -1077,9 +1078,22 @@ export class BookingService {
     }
 
     if (booking.user_id !== userId) {
-      const isResponsible = await this.canBypassPlayerBookingWindow(userId);
-      if (!isResponsible || !booking.series_id) {
+      // Operational cancellation by authorised staff is separate from player
+      // self-service rules: it needs the cancellation permission, organisation
+      // OR branch scope, and must work for a single (non-series) booking.
+      const isStaff = await this.canBypassPlayerBookingWindow(userId);
+      if (!isStaff) {
         throw new ForbiddenError('You can only cancel your own bookings');
+      }
+      const hasOrganisationScope = await bookingRepository.canAccessOrganisation(
+        userId,
+        booking.organisation_id,
+      );
+      const hasBranchScope = booking.branch_id != null
+        ? await canAccessBranch(userId, booking.branch_id)
+        : false;
+      if (!hasOrganisationScope && !hasBranchScope) {
+        throw new ForbiddenError('You can only cancel bookings for your organisation');
       }
     } else {
       // The player cancellation window is a player-facing rule. An approved
