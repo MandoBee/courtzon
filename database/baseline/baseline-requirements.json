@@ -2,10 +2,10 @@
   "$comment": "Tier A required-object pins for the CourtZon baseline manifest. Curated by hand; the generator fails closed when any pin is not satisfied. Tier B (full inventory) is generated into 001_courtzon_v3.manifest.json and is for CI drift detection only — it is NOT evidence of a hydrated database.",
   "version": 1,
   "baselinePath": "database/baseline/001_courtzon_v3.sql",
-  "schemaHead": "208",
+  "schemaHead": "210",
   "contentOnly": ["196", "197", "198", "199", "200", "201", "206"],
   "schemaHeadEvidence": {
-    "head": "208",
+    "head": "210",
     "repairs": []
   },
   "requiredTables": [
@@ -38,6 +38,73 @@
         "refunded_amount",
         "status",
         "payment_method",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "refund_cases",
+      "columnCount": 26,
+      "columns": [
+        "id",
+        "public_id",
+        "domain",
+        "source_type",
+        "source_id",
+        "original_payment_id",
+        "organisation_id",
+        "requested_by",
+        "reason",
+        "policy_snapshot",
+        "canceled_value_cents",
+        "approved_refund_cents",
+        "fee_cents",
+        "discount_cents",
+        "paid_cents",
+        "currency",
+        "status",
+        "operational_status",
+        "payout_status",
+        "approved_by",
+        "approved_at",
+        "rejected_reason",
+        "aggregate_version",
+        "idempotency_key",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "refund_case_lines",
+      "columnCount": 11,
+      "columns": [
+        "id",
+        "case_id",
+        "line_no",
+        "line_type",
+        "source_id",
+        "canceled_value_cents",
+        "approved_cents",
+        "operational_status",
+        "cancellation_ref",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "refund_case_payouts",
+      "columnCount": 12,
+      "columns": [
+        "id",
+        "case_id",
+        "method",
+        "amount_cents",
+        "status",
+        "reference",
+        "evidence_url",
+        "executed_by",
+        "executed_at",
+        "idempotency_key",
         "created_at",
         "updated_at"
       ]

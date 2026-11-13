@@ -94,6 +94,22 @@ function canManageAcademy(templateSlug, permissionKey) {
     && (permissionKey.startsWith('academy.') || permissionKey.startsWith('sidebar.academy'));
 }
 
+// Refund Engine — the owning organisation bears the refund cost, so its finance
+// roles also operate refund cases. Keys are explicit (never inherited through a
+// broad financial prefix) and separation of duties (approver != payout
+// confirmer) is enforced per user in the refund service.
+const REFUND_ENGINE_ROLES = new Set(['org-admin', 'accountant', 'finance-manager', 'master-admin']);
+const REFUND_ENGINE_KEYS = new Set([
+  'refunds.view',
+  'refunds.request',
+  'refunds.approve',
+  'refunds.reject',
+  'refunds.payout',
+  'refunds.payout.confirm',
+  'refunds.retry',
+  'refunds.export',
+]);
+
 function matchesAny(key, patterns) {
   return patterns.some((re) => re.test(key));
 }
@@ -723,6 +739,20 @@ const READ_ONLY_ADMIN_PATTERNS = [
 
 export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'super_admin') return true;
+
+  // R3 — dedicated irreversible payment-refund capability. It must never be
+  // inherited through the broad `^financial\.` patterns (that would hand every
+  // platform finance role an over-broad, irreversible money-movement power):
+  // only the platform finance-manager and master-admin templates hold it.
+  if (permissionKey === 'financial.payment.refund') {
+    return templateSlug === 'finance-manager' || templateSlug === 'master-admin';
+  }
+
+  // Refund Engine — explicit grant only. Never inherited through broad
+  // financial prefixes and never granted to player/coach/auditor templates.
+  if (permissionKey.startsWith('refunds.')) {
+    return REFUND_ENGINE_ROLES.has(templateSlug) && REFUND_ENGINE_KEYS.has(permissionKey);
+  }
 
   // P0-1 (upload authorization hardening): server-side file permissions.
   //   files.upload  â†’ roles that legitimately upload their own content

@@ -234,18 +234,18 @@ describe('committed baseline manifest', () => {
   });
 
   it('contains the exact audited schema counts (no loose lower bounds)', () => {
-    expect(real.manifest.schema.schemaHead).toBe('208');
+    expect(real.manifest.schema.schemaHead).toBe('210');
     expect(real.manifest.schema.contentOnly).toEqual(['196', '197', '198', '199', '200', '201', '206']);
-    expect(real.manifest.schema.tableCount).toBe(329);
-    expect(real.manifest.schema.columnCount).toBe(3668);
-    expect(real.manifest.schema.indexCount).toBe(1298);
-    expect(real.manifest.schema.foreignKeyCount).toBe(515);
-    expect(real.manifest.schema.checkCount).toBe(54);
+    expect(real.manifest.schema.tableCount).toBe(332);
+    expect(real.manifest.schema.columnCount).toBe(3717);
+    expect(real.manifest.schema.indexCount).toBe(1309);
+    expect(real.manifest.schema.foreignKeyCount).toBe(517);
+    expect(real.manifest.schema.checkCount).toBe(58);
     expect(real.manifest.schema.triggerCount).toBe(19);
     expect(real.manifest.schema.dataStatementCount).toBe(8);
     expect(real.manifest.schema.alterStatementCount).toBe(13);
-    expect(real.manifest.schema.dropTableStatementCount).toBe(316);
-    expect(Object.keys(real.manifest.schema.tables)).toHaveLength(329);
+    expect(real.manifest.schema.dropTableStatementCount).toBe(319);
+    expect(Object.keys(real.manifest.schema.tables)).toHaveLength(332);
     expect(Object.keys(real.manifest.schema.triggers)).toHaveLength(19);
     // Manifest-derived counts must equal the parser's live model.
     expect(real.parsed.tables).toHaveLength(real.manifest.schema.tableCount);
@@ -302,11 +302,11 @@ describe('committed baseline manifest', () => {
 
 describe('baseline schema semantics', () => {
   it('tokenizes the dump completely (tables, triggers, DELIMITER, ALTERs)', () => {
-    expect(real.parsed.tables).toHaveLength(329);
+    expect(real.parsed.tables).toHaveLength(332);
     expect(real.parsed.triggers).toHaveLength(19);
     expect(real.parsed.dataStatements).toHaveLength(8);
     expect(real.parsed.alters).toHaveLength(13);
-    expect(real.parsed.droppedTables).toHaveLength(316);
+    expect(real.parsed.droppedTables).toHaveLength(319);
     expect(real.parsed.delimiterDirectives).toHaveLength(24);
     // Dynamic comments really are executable: every trigger survives.
     for (const trigger of real.parsed.triggers) {
@@ -508,8 +508,8 @@ ALTER TABLE \`positioning\` MODIFY COLUMN \`a\` bigint NOT NULL;
 describe('migration chain index', () => {
   it('captures every file, prefix, duplicate and missing prefix exactly', () => {
     const migrations = real.manifest.migrations;
-    expect(migrations.count).toBe(215);
-    expect(migrations.distinctPrefixes).toBe(206);
+    expect(migrations.count).toBe(217);
+    expect(migrations.distinctPrefixes).toBe(208);
     expect(migrations.duplicatePrefixes).toEqual([
       {
         prefix: '002',
@@ -547,7 +547,7 @@ describe('migration chain index', () => {
     ]);
     expect(migrations.missingPrefixes).toEqual(['001', '076']);
     expect(migrations.classifications).toEqual({
-      PRODUCTION_SAFE: 215,
+      PRODUCTION_SAFE: 217,
       LOCAL_DOCKER_ONLY: 0,
       INVALID: 0,
     });
@@ -585,7 +585,7 @@ describe('migration chain index', () => {
     ).toBe('LOCAL_DOCKER_ONLY');
   });
 
-  it('verifies schemaHead=208 from content, not from the numeric prefix alone', () => {
+  it('verifies schemaHead=210 from content, not from the numeric prefix alone', () => {
     // 196–201 and 206 are content-only by PARSING; 202–205 mutate schema.
     for (const prefix of ['196', '197', '198', '199', '200', '201', '206']) {
       const file = real.manifest.migrations.files.find((candidate) => candidate.prefix === prefix);
@@ -615,12 +615,13 @@ describe('migration chain index', () => {
     expect(repairs204.map((entry) => `${entry.table}.${entry.index.name}`)).toEqual([
       'organisation_subscriptions.idx_status_enddate',
     ]);
-    // 207 is the last SCHEMA mutation: it widens settlement_entitlements
-    // uniqueness to (settlement_id, entitlement_id) and drops the legacy
-    // uk_se_entitlement. 208 is the statement-free head (documentation-only
-    // chain anchor), because the additive-head contract cannot host an index
-    // DROP (parse-baseline supports only ADD / MODIFY / CHANGE).
-    expect(real.manifest.schema.schemaHead).toBe('208');
+    // 207 is the last settlement SCHEMA mutation: it widens
+    // settlement_entitlements uniqueness to (settlement_id, entitlement_id) and
+    // drops the legacy uk_se_entitlement. 209 then adds the three additive
+    // Refund Engine tables, and 210 is the statement-free head (documentation
+    // only) because the additive-head contract cannot host an index DROP
+    // (parse-baseline supports only ADD / MODIFY / CHANGE).
+    expect(real.manifest.schema.schemaHead).toBe('210');
     const sql205 = real.migrationContents['205_tournaments_max_events_check.sql'];
     expect(classifyMigration(sql205).classification).toBe('PRODUCTION_SAFE');
     expect(sql205).toContain('information_schema.table_constraints');
@@ -655,10 +656,29 @@ describe('migration chain index', () => {
         .split(/\r?\n/)
         .filter((line) => line.trim().length > 0 && !line.trimStart().startsWith('--')),
     ).toEqual([]);
+    // 209 is the last SCHEMA mutation of the chain: three additive refund tables.
+    const sql209 = real.migrationContents['209_refund_engine.sql'];
+    expect(classifyMigration(sql209).classification).toBe('PRODUCTION_SAFE');
+    expect(hasSchemaDdl(sql209)).toBe(true);
+    for (const table of ['refund_cases', 'refund_case_lines', 'refund_case_payouts']) {
+      expect(sql209).toContain(`CREATE TABLE IF NOT EXISTS \`${table}\``);
+    }
+    expect(real.manifest.schema.tables.refund_cases).toBeDefined();
+    expect(real.manifest.schema.tables.refund_case_lines).toBeDefined();
+    expect(real.manifest.schema.tables.refund_case_payouts).toBeDefined();
+    // 210 is the statement-free head.
+    const sql210 = real.migrationContents['210_refund_engine_head.sql'];
+    expect(classifyMigration(sql210).classification).toBe('PRODUCTION_SAFE');
+    expect(hasSchemaDdl(sql210)).toBe(false);
+    expect(
+      sql210
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0 && !line.trimStart().startsWith('--')),
+    ).toEqual([]);
     // The head claims no index repair.
     const evidence = parseRequirements(real.requirementsRaw).schemaHeadEvidence;
     expect(evidence).toEqual({
-      head: '208',
+      head: '210',
       repairs: [],
     });
   });
@@ -684,8 +704,8 @@ describe('migration chain index', () => {
 
 describe('requirements resolution', () => {
   it('resolves every curated pin and reports the pin count', () => {
-    expect(real.manifest.requirements.pinCount).toBe(76);
-    expect(real.manifest.requirements.schemaHead).toBe('208');
+    expect(real.manifest.requirements.pinCount).toBe(79);
+    expect(real.manifest.requirements.schemaHead).toBe('210');
     expect(real.manifest.requirements.contentOnly).toEqual([
       '196',
       '197',
@@ -708,10 +728,10 @@ describe('requirements resolution', () => {
     expect(ids).toContain('payment_allocations_docs_column_count');
   });
 
-  it('retains the migration 204 index and pins migration 208 as the statement-free head with no index repairs', () => {
-    expect(real.manifest.schema.schemaHead).toBe('208');
-    expect(real.manifest.requirements.schemaHead).toBe('208');
-    expect(real.manifest.migrations.count).toBe(215);
+  it('retains the migration 204 index and pins migration 210 as the statement-free head with no index repairs', () => {
+    expect(real.manifest.schema.schemaHead).toBe('210');
+    expect(real.manifest.requirements.schemaHead).toBe('210');
+    expect(real.manifest.migrations.count).toBe(217);
     const index = real.manifest.schema.tables.organisation_subscriptions.signature.indexes.find(
       (candidate) => candidate.name === 'idx_status_enddate',
     );
@@ -954,7 +974,7 @@ describe('manifest data exposed to the integrity spec', () => {
     // The manifest is a static artefact. Tier B (information_schema parity) is
     // a separate, DB-backed phase; nothing here may be read as hydration proof.
     expect(real.manifest.manifestVersion).toBe(1);
-    expect(real.manifest.schema.schemaHead).toBe('208');
-    expect(real.manifest.requirements.schemaHead).toBe('208');
+    expect(real.manifest.schema.schemaHead).toBe('210');
+    expect(real.manifest.requirements.schemaHead).toBe('210');
   });
 });

@@ -95,6 +95,18 @@ function canManageAcademy(templateSlug: string, permissionKey: string): boolean 
     && (permissionKey.startsWith('academy.') || permissionKey.startsWith('sidebar.academy'));
 }
 
+const REFUND_ENGINE_ROLES = new Set(['org-admin', 'accountant', 'finance-manager', 'master-admin']);
+const REFUND_ENGINE_KEYS = new Set([
+  'refunds.view',
+  'refunds.request',
+  'refunds.approve',
+  'refunds.reject',
+  'refunds.payout',
+  'refunds.payout.confirm',
+  'refunds.retry',
+  'refunds.export',
+]);
+
 function matchesAny(key: string, patterns: RegExp[]): boolean {
   return patterns.some((re) => re.test(key));
 }
@@ -730,6 +742,20 @@ const RESOURCE_MGR_PATTERNS = [
 
 export function permissionMatchesTemplate(templateSlug: string, permissionKey: string): boolean {
   if (templateSlug === 'super_admin') return true;
+
+  // R3 — dedicated irreversible payment-refund capability. It must never be
+  // inherited through the broad `^financial\.` patterns (that would hand every
+  // platform finance role an over-broad, irreversible money-movement power):
+  // only the platform finance-manager and master-admin templates hold it.
+  if (permissionKey === 'financial.payment.refund') {
+    return templateSlug === 'finance-manager' || templateSlug === 'master-admin';
+  }
+
+  // Refund Engine — explicit grant only. Never inherited through broad
+  // financial prefixes and never granted to player/coach/auditor templates.
+  if (permissionKey.startsWith('refunds.')) {
+    return REFUND_ENGINE_ROLES.has(templateSlug) && REFUND_ENGINE_KEYS.has(permissionKey);
+  }
 
   // P0-1 (upload authorization hardening): server-side file permissions.
   //   files.upload  → roles that legitimately upload their own content

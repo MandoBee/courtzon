@@ -72,6 +72,7 @@ import { adminRoutes, publicAdminRoutes } from "./modules/admin/presentation/adm
 import { inventoryRoutes } from "./modules/marketplace/presentation/inventory.routes.js";
 import { marketplaceComplaintRoutes } from "./modules/marketplace/presentation/marketplace-complaint.routes.js";
 import { unifiedSettlementRoutes } from "./modules/settlement/presentation/unified-settlement.routes.js";
+import { refundRoutes } from "./modules/refund/presentation/refund.routes.js";
 import { gatewaySettlementRoutes } from "./modules/settlement/presentation/gateway-settlement.routes.js";
 import { accountingRoutes } from "./modules/accounting/presentation/accounting.routes.js";
 import { crmRoutes } from "./modules/crm/index.js";
@@ -606,6 +607,7 @@ app.register(adminTagRoutes);
   app.register(marketplaceComplaintRoutes);
   app.register(unifiedSettlementRoutes);
   app.register(gatewaySettlementRoutes);
+  app.register(refundRoutes);
 app.register(accountingRoutes);
 app.register(crmRoutes);
 app.register(hrRoutes);

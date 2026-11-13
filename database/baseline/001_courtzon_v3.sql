@@ -7932,3 +7932,103 @@ SELECT r.`id`, p.`id` FROM `roles` r JOIN `permissions` p ON p.`permission_key` 
 WHERE r.`slug` IN ('super_admin', 'finance-manager')
   AND r.`organisation_id` IS NULL
   AND r.`deleted_at` IS NULL;
+
+-- ============================================================================
+-- Refund Engine (migration 209) - institution-funded refund cases.
+--
+-- Mirrors database/migrations/209_refund_engine.sql so a baseline-restored
+-- database carries the same schema as a migrated one. Additive only: no
+-- existing table, payment, settlement, entitlement or journal entry is
+-- altered, and historical refunds are untouched.
+-- ============================================================================
+
+DROP TABLE IF EXISTS `refund_case_payouts`;
+DROP TABLE IF EXISTS `refund_case_lines`;
+DROP TABLE IF EXISTS `refund_cases`;
+
+CREATE TABLE `refund_cases` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `public_id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `domain` enum('booking','tournament','academy','marketplace','membership') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `source_type` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `source_id` bigint unsigned NOT NULL,
+  `original_payment_id` bigint unsigned DEFAULT NULL,
+  `organisation_id` int unsigned NOT NULL,
+  `requested_by` bigint unsigned NOT NULL,
+  `reason` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `policy_snapshot` json DEFAULT NULL,
+  `canceled_value_cents` bigint unsigned NOT NULL DEFAULT '0',
+  `approved_refund_cents` bigint unsigned NOT NULL DEFAULT '0',
+  `fee_cents` bigint unsigned NOT NULL DEFAULT '0',
+  `discount_cents` bigint unsigned NOT NULL DEFAULT '0',
+  `paid_cents` bigint unsigned NOT NULL DEFAULT '0',
+  `currency` char(3) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'EGP',
+  `status` enum('REQUESTED','UNDER_REVIEW','APPROVED','REJECTED','OPERATIONAL_PROCESSING','PAYOUT_PENDING','PARTIALLY_COMPLETED','COMPLETED','FAILED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'REQUESTED',
+  `operational_status` enum('PENDING','PROCESSING','COMPLETED','PARTIALLY_COMPLETED','FAILED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING',
+  `payout_status` enum('PENDING','PROCESSING','COMPLETED','PARTIALLY_COMPLETED','FAILED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING',
+  `approved_by` bigint unsigned DEFAULT NULL,
+  `approved_at` timestamp NULL DEFAULT NULL,
+  `rejected_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `aggregate_version` int unsigned NOT NULL DEFAULT '1',
+  `idempotency_key` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_refund_cases_public_id` (`public_id`),
+  UNIQUE KEY `uk_refund_cases_idempotency` (`idempotency_key`),
+  KEY `idx_refund_cases_org_status` (`organisation_id`,`status`),
+  KEY `idx_refund_cases_source` (`domain`,`source_type`,`source_id`),
+  CONSTRAINT `chk_refund_cases_amounts` CHECK (
+    `approved_refund_cents` >= 0
+    AND `canceled_value_cents` >= 0
+    AND `fee_cents` >= 0
+    AND `discount_cents` >= 0
+    AND `paid_cents` >= 0
+    AND `paid_cents` <= `approved_refund_cents`
+    AND `approved_refund_cents` <= `canceled_value_cents`
+  ),
+  CONSTRAINT `chk_refund_cases_policy_json` CHECK (`policy_snapshot` IS NULL OR json_valid(`policy_snapshot`))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `refund_case_lines` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `case_id` bigint unsigned NOT NULL,
+  `line_no` int unsigned NOT NULL,
+  `line_type` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `source_id` bigint unsigned NOT NULL,
+  `canceled_value_cents` bigint unsigned NOT NULL DEFAULT '0',
+  `approved_cents` bigint unsigned NOT NULL DEFAULT '0',
+  `operational_status` enum('PENDING','PROCESSING','COMPLETED','FAILED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING',
+  `cancellation_ref` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_refund_case_lines_no` (`case_id`,`line_no`),
+  KEY `idx_refund_case_lines_source` (`line_type`,`source_id`),
+  CONSTRAINT `fk_refund_case_lines_case` FOREIGN KEY (`case_id`) REFERENCES `refund_cases` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_refund_case_lines_amounts` CHECK (
+    `canceled_value_cents` >= 0
+    AND `approved_cents` >= 0
+    AND `approved_cents` <= `canceled_value_cents`
+  )
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `refund_case_payouts` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `case_id` bigint unsigned NOT NULL,
+  `method` enum('cash','bank_transfer') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `amount_cents` bigint unsigned NOT NULL,
+  `status` enum('PENDING','PROCESSING','COMPLETED','FAILED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING',
+  `reference` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `evidence_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `executed_by` bigint unsigned DEFAULT NULL,
+  `executed_at` timestamp NULL DEFAULT NULL,
+  `idempotency_key` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_refund_case_payouts_idempotency` (`idempotency_key`),
+  KEY `idx_refund_case_payouts_case` (`case_id`,`status`),
+  CONSTRAINT `fk_refund_case_payouts_case` FOREIGN KEY (`case_id`) REFERENCES `refund_cases` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_refund_case_payouts_amount` CHECK (`amount_cents` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

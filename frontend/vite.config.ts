@@ -154,6 +154,7 @@ export default defineConfig(({ command }) => ({
       '/wallets': backend,
       '/payments': backend,
       '/settlements': backend,
+  '/refunds': backend,
       '/rbac': backend,
       '/roles': backend,
       '/permissions': backend,

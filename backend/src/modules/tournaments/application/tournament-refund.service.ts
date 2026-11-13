@@ -83,6 +83,62 @@ interface ApprovalOutcome {
 
 class TournamentRefundService {
   /**
+   * Refund Engine — cancellation-only contract.
+   *
+   * Withdraws the registration/participant and emits the operational event, but
+   * deliberately does NOT detach a gateway settlement, change the original
+   * payment status, or call the Paymob refund API. The Refund Engine records the
+   * institution-funded payout separately.
+   */
+  async withdrawForRefund(
+    tournamentId: number,
+    registrationId: number,
+    actorId: number,
+    reason: string,
+  ): Promise<void> {
+    const tournament = await tournamentRepository.findById(tournamentId);
+    if (!tournament) throw new NotFoundError('Tournament', ErrorCodes.TOURNAMENT_NOT_FOUND);
+    const registration = await tournamentRepository.getRegistrationById(registrationId);
+    if (!registration) throw new NotFoundError('Tournament registration', ErrorCodes.TOURNAMENT_REGISTRATION_NOT_FOUND);
+    if (String((registration as any).status) === 'withdrawn') return; // idempotent
+
+    await withTransaction(async (conn) => {
+      await assertDrawNotLockedAtExecution(tournamentId, conn);
+      await tournamentRepository.updateRegistrationStatus(registrationId, 'withdrawn', undefined, conn);
+    });
+
+    const participant = await tournamentRepository.findParticipantByRegistration(registrationId);
+    if (participant && String((participant as any).status) === 'active') {
+      const { participantDrawService } = await import('./participant-draw.service.js');
+      await participantDrawService.withdrawParticipant(
+        tournamentId,
+        Number((participant as any).id),
+        actorId,
+        'refund_operational_cancellation',
+      );
+    }
+
+    recordAudit({
+      actorId,
+      action: 'TOURNAMENT.REFUND_OPERATIONAL_CANCELLED',
+      entityType: 'tournament_registration',
+      entityId: registrationId,
+      afterState: { tournamentId, reason, paymentStatusUnchanged: true },
+    });
+
+    emitTournamentScoped(
+      'tournament:registration-refunded',
+      {
+        tournamentId,
+        registrationId,
+        userId: (registration as any).player_id ?? null,
+        status: 'operational_cancelled',
+      } as Record<string, unknown>,
+      tournament as any,
+    );
+  }
+
+  /**
    * Shared financial execution core (G11.3 + G11.8). Runs INSIDE the caller's
    * open transaction (serialization via the draw row FOR UPDATE and the payment
    * row FOR UPDATE). Performs draw-lock check, registration+payment resolution,
@@ -106,6 +162,13 @@ class TournamentRefundService {
 
     const registration = await tournamentRepository.getRegistrationById(registrationId);
     if (!registration) throw new NotFoundError('Tournament registration', ErrorCodes.TOURNAMENT_REGISTRATION_NOT_FOUND);
+
+    // LAYER B — settlement-reservation preflight. Reject BEFORE the gateway
+    // dismantle/refund while an entitlement of this registration is reserved by
+    // an active settlement; the settlement must be officially cancelled (its
+    // reservations released) before the refund may proceed.
+    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+    await financialEntitlementService.assertNoActiveSettlementReservation('tournament', [registrationId]);
 
     const payment = await tournamentRepository.findPaymentByRegistration(registrationId, conn);
     if (!payment) throw new ConflictError('No tournament payment found for this registration');

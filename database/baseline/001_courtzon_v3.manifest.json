@@ -4,12 +4,12 @@
   "baseline": {
     "path": "database/baseline/001_courtzon_v3.sql",
     "hashKind": "content_sha256_lf",
-    "bytes": 474584,
-    "lines": 7935,
-    "sha256": "7e6efe9c90687ddfaa522673a659d01e3f40cf3f95240f0bff620ac850f1698e"
+    "bytes": 480339,
+    "lines": 8035,
+    "sha256": "d40e142c062a4b576f587f5db9ef2f30ea691cae75142057e9623d420cf44b11"
   },
   "schema": {
-    "schemaHead": "208",
+    "schemaHead": "210",
     "contentOnly": [
       "196",
       "197",
@@ -19,18 +19,18 @@
       "201",
       "206"
     ],
-    "tableCount": 329,
-    "columnCount": 3668,
-    "indexCount": 1298,
-    "foreignKeyCount": 515,
-    "checkCount": 54,
+    "tableCount": 332,
+    "columnCount": 3717,
+    "indexCount": 1309,
+    "foreignKeyCount": 517,
+    "checkCount": 58,
     "triggerCount": 19,
     "dataStatementCount": 8,
     "alterStatementCount": 13,
-    "dropTableStatementCount": 316,
-    "inventorySha256": "73666474eec4c3edf109d09247920d28015acd25ec2d6b8a578fbab02542010e",
-    "objectSha256": "536d0009717fd63e61edfe6371bfd5e7ffff9dff86b4c613aa104ac6642833ad",
-    "schemaSha256": "1642bb8bcff44dda9531be2b43693918de6d18af31622abd544765e4f3844e6e",
+    "dropTableStatementCount": 319,
+    "inventorySha256": "a253a471accad35177cd1e4d553d194672bd2092df0d72d07f36bdeeeb28acec",
+    "objectSha256": "965b171cc58f32a009631e609588101b28d9086d060b70e1d3ed10f8af8df872",
+    "schemaSha256": "d300bafd50a5cbb1de6b2736df64ffa6f71b2e5186ce3be7d2e80a9273688d27",
     "tables": {
       "academies": {
         "signature": {
@@ -50570,6 +50570,846 @@
         },
         "objectSha256": "3b31ffdec7b9172ba0740dcb8212425fb64bf01da4fea8fe0024d6272b41e59f"
       },
+      "refund_case_lines": {
+        "signature": {
+          "name": "refund_case_lines",
+          "engine": "innodb",
+          "characterSet": "utf8mb4",
+          "collation": "utf8mb4_unicode_ci",
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": true,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "case_id",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "line_no",
+              "type": "int unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "line_type",
+              "type": "varchar(30)",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "source_id",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "canceled_value_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": "'0'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "approved_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": "'0'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "operational_status",
+              "type": "enum('PENDING','PROCESSING','COMPLETED','FAILED')",
+              "nullable": false,
+              "default": "'PENDING'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "cancellation_ref",
+              "type": "varchar(100)",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": false,
+              "default": "current_timestamp",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": false,
+              "default": "current_timestamp",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": "current_timestamp",
+              "characterSet": null,
+              "collation": null
+            }
+          ],
+          "indexes": [
+            {
+              "name": "idx_refund_case_lines_source",
+              "kind": "KEY",
+              "unique": false,
+              "columns": [
+                {
+                  "name": "line_type",
+                  "desc": false,
+                  "prefixLength": null
+                },
+                {
+                  "name": "source_id",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "primary",
+              "kind": "PRIMARY",
+              "unique": true,
+              "columns": [
+                {
+                  "name": "id",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "uk_refund_case_lines_no",
+              "kind": "UNIQUE",
+              "unique": true,
+              "columns": [
+                {
+                  "name": "case_id",
+                  "desc": false,
+                  "prefixLength": null
+                },
+                {
+                  "name": "line_no",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            }
+          ],
+          "foreignKeys": [
+            {
+              "name": "fk_refund_case_lines_case",
+              "columns": [
+                "case_id"
+              ],
+              "referencedTable": "refund_cases",
+              "referencedColumns": [
+                "id"
+              ],
+              "onDelete": "CASCADE",
+              "onUpdate": null
+            }
+          ],
+          "checks": [
+            {
+              "name": "chk_refund_case_lines_amounts",
+              "expression": "canceled_value_cents >= 0 and approved_cents >= 0 and approved_cents <= canceled_value_cents"
+            }
+          ]
+        },
+        "objectSha256": "f6a97cf720b0f0cde08e024628a50971a20822efe3d5e2291ac39a82c0572442"
+      },
+      "refund_case_payouts": {
+        "signature": {
+          "name": "refund_case_payouts",
+          "engine": "innodb",
+          "characterSet": "utf8mb4",
+          "collation": "utf8mb4_unicode_ci",
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": true,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "case_id",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "method",
+              "type": "enum('cash','bank_transfer')",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "amount_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "status",
+              "type": "enum('PENDING','PROCESSING','COMPLETED','FAILED')",
+              "nullable": false,
+              "default": "'PENDING'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "reference",
+              "type": "varchar(255)",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "evidence_url",
+              "type": "varchar(500)",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "executed_by",
+              "type": "bigint unsigned",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "executed_at",
+              "type": "timestamp",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "idempotency_key",
+              "type": "varchar(100)",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": false,
+              "default": "current_timestamp",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": false,
+              "default": "current_timestamp",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": "current_timestamp",
+              "characterSet": null,
+              "collation": null
+            }
+          ],
+          "indexes": [
+            {
+              "name": "idx_refund_case_payouts_case",
+              "kind": "KEY",
+              "unique": false,
+              "columns": [
+                {
+                  "name": "case_id",
+                  "desc": false,
+                  "prefixLength": null
+                },
+                {
+                  "name": "status",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "primary",
+              "kind": "PRIMARY",
+              "unique": true,
+              "columns": [
+                {
+                  "name": "id",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "uk_refund_case_payouts_idempotency",
+              "kind": "UNIQUE",
+              "unique": true,
+              "columns": [
+                {
+                  "name": "idempotency_key",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            }
+          ],
+          "foreignKeys": [
+            {
+              "name": "fk_refund_case_payouts_case",
+              "columns": [
+                "case_id"
+              ],
+              "referencedTable": "refund_cases",
+              "referencedColumns": [
+                "id"
+              ],
+              "onDelete": "CASCADE",
+              "onUpdate": null
+            }
+          ],
+          "checks": [
+            {
+              "name": "chk_refund_case_payouts_amount",
+              "expression": "amount_cents > 0"
+            }
+          ]
+        },
+        "objectSha256": "c8b803eefe6ab04f98ec8c44c7252d34e0c20bcb7e88d4a8c44ce45c02aa46cd"
+      },
+      "refund_cases": {
+        "signature": {
+          "name": "refund_cases",
+          "engine": "innodb",
+          "characterSet": "utf8mb4",
+          "collation": "utf8mb4_unicode_ci",
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": true,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "public_id",
+              "type": "char(36)",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "domain",
+              "type": "enum('booking','tournament','academy','marketplace','membership')",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "source_type",
+              "type": "varchar(50)",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "source_id",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "original_payment_id",
+              "type": "bigint unsigned",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "organisation_id",
+              "type": "int unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "requested_by",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "reason",
+              "type": "varchar(500)",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "policy_snapshot",
+              "type": "json",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "canceled_value_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": "'0'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "approved_refund_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": "'0'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "fee_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": "'0'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "discount_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": "'0'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "paid_cents",
+              "type": "bigint unsigned",
+              "nullable": false,
+              "default": "'0'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "currency",
+              "type": "char(3)",
+              "nullable": false,
+              "default": "'EGP'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "status",
+              "type": "enum('REQUESTED','UNDER_REVIEW','APPROVED','REJECTED','OPERATIONAL_PROCESSING','PAYOUT_PENDING','PARTIALLY_COMPLETED','COMPLETED','FAILED')",
+              "nullable": false,
+              "default": "'REQUESTED'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "operational_status",
+              "type": "enum('PENDING','PROCESSING','COMPLETED','PARTIALLY_COMPLETED','FAILED')",
+              "nullable": false,
+              "default": "'PENDING'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "payout_status",
+              "type": "enum('PENDING','PROCESSING','COMPLETED','PARTIALLY_COMPLETED','FAILED')",
+              "nullable": false,
+              "default": "'PENDING'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "approved_by",
+              "type": "bigint unsigned",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "approved_at",
+              "type": "timestamp",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "rejected_reason",
+              "type": "varchar(500)",
+              "nullable": true,
+              "default": "null",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "aggregate_version",
+              "type": "int unsigned",
+              "nullable": false,
+              "default": "'1'",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "idempotency_key",
+              "type": "varchar(100)",
+              "nullable": false,
+              "default": null,
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": "utf8mb4",
+              "collation": "utf8mb4_unicode_ci"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": false,
+              "default": "current_timestamp",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": null,
+              "characterSet": null,
+              "collation": null
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": false,
+              "default": "current_timestamp",
+              "autoIncrement": false,
+              "generated": null,
+              "generatedStorage": null,
+              "onUpdate": "current_timestamp",
+              "characterSet": null,
+              "collation": null
+            }
+          ],
+          "indexes": [
+            {
+              "name": "idx_refund_cases_org_status",
+              "kind": "KEY",
+              "unique": false,
+              "columns": [
+                {
+                  "name": "organisation_id",
+                  "desc": false,
+                  "prefixLength": null
+                },
+                {
+                  "name": "status",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "idx_refund_cases_source",
+              "kind": "KEY",
+              "unique": false,
+              "columns": [
+                {
+                  "name": "domain",
+                  "desc": false,
+                  "prefixLength": null
+                },
+                {
+                  "name": "source_type",
+                  "desc": false,
+                  "prefixLength": null
+                },
+                {
+                  "name": "source_id",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "primary",
+              "kind": "PRIMARY",
+              "unique": true,
+              "columns": [
+                {
+                  "name": "id",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "uk_refund_cases_idempotency",
+              "kind": "UNIQUE",
+              "unique": true,
+              "columns": [
+                {
+                  "name": "idempotency_key",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            },
+            {
+              "name": "uk_refund_cases_public_id",
+              "kind": "UNIQUE",
+              "unique": true,
+              "columns": [
+                {
+                  "name": "public_id",
+                  "desc": false,
+                  "prefixLength": null
+                }
+              ]
+            }
+          ],
+          "foreignKeys": [],
+          "checks": [
+            {
+              "name": "chk_refund_cases_amounts",
+              "expression": "approved_refund_cents >= 0 and canceled_value_cents >= 0 and fee_cents >= 0 and discount_cents >= 0 and paid_cents >= 0 and paid_cents <= approved_refund_cents and approved_refund_cents <= canceled_value_cents"
+            },
+            {
+              "name": "chk_refund_cases_policy_json",
+              "expression": "policy_snapshot is null or json_valid(policy_snapshot)"
+            }
+          ]
+        },
+        "objectSha256": "828502ca740130ea39d10bfcb112e8dc153670d57cbf3020d4f83537934402bf"
+      },
       "related_products": {
         "signature": {
           "name": "related_products",
@@ -73054,8 +73894,8 @@
   "migrations": {
     "directory": "database/migrations",
     "hashKind": "content_sha256_lf",
-    "count": 215,
-    "distinctPrefixes": 206,
+    "count": 217,
+    "distinctPrefixes": 208,
     "duplicatePrefixes": [
       {
         "prefix": "002",
@@ -73102,7 +73942,7 @@
       "076"
     ],
     "classifications": {
-      "PRODUCTION_SAFE": 215,
+      "PRODUCTION_SAFE": 217,
       "LOCAL_DOCKER_ONLY": 0,
       "INVALID": 0
     },
@@ -74611,13 +75451,27 @@
         "sha256": "3aadbf697f64ade1aaf9ff53250986d3ea844a07e395b0d3ff68db9ec0eda3bd",
         "classification": "PRODUCTION_SAFE",
         "marker": "PRODUCTION_SAFE"
+      },
+      {
+        "file": "209_refund_engine.sql",
+        "prefix": "209",
+        "sha256": "b9829a839f3b853a6f4cdc94483f4d768d0994b273a0307579be701db7b5af9e",
+        "classification": "PRODUCTION_SAFE",
+        "marker": "PRODUCTION_SAFE"
+      },
+      {
+        "file": "210_refund_engine_head.sql",
+        "prefix": "210",
+        "sha256": "3399dbfc6ac6734ea76d81f85500463c8dfda7826c69931fe934f601f2c4217f",
+        "classification": "PRODUCTION_SAFE",
+        "marker": "PRODUCTION_SAFE"
       }
     ],
-    "sha256": "175f6efb25a9760fffd0e7a5eb26d0924191607fe60cc54bb9dfa5c7ee2bd937"
+    "sha256": "beb193eea0eef6cd07ee52ecc60a45690d1730ef3d9acc93bfcbcacee3b1652a"
   },
   "requirements": {
     "version": 1,
-    "pinCount": 76,
+    "pinCount": 79,
     "tables": [
       "users",
       "roles",
@@ -74632,6 +75486,9 @@
       "booking_series",
       "payment_transactions",
       "payment_allocations",
+      "refund_cases",
+      "refund_case_lines",
+      "refund_case_payouts",
       "user_wallets",
       "wallet_transactions",
       "financial_journal_entries",
@@ -74713,8 +75570,8 @@
       "201",
       "206"
     ],
-    "schemaHead": "208",
-    "sha256": "7ce389a3cc930052e090aac0d933abb1d7bac505b7961d043b78bfeb0bd471b3"
+    "schemaHead": "210",
+    "sha256": "f4f4ec196debaacbdab8ed30fa5937c0eba5c58f123f54b74c337f5b269606ea"
   },
   "knownGaps": [
     {

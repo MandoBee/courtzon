@@ -256,6 +256,17 @@ export const uiRegistry: UIElement[] = [
   // ==========================================================================
   { permissionKey: 'financial.wallet.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Wallet Page', componentPath: 'pages/player/WalletPage.tsx' },
   { permissionKey: 'financial.settlements.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Settlements Page', componentPath: 'pages/admin/settlements/UnifiedSettlementListPage.tsx' },
+  // ==========================================================================
+  // REFUND ENGINE (institution-funded; the owning organisation bears the cost)
+  // ==========================================================================
+  { permissionKey: 'refunds.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Refund Cases Page', componentPath: 'pages/admin/refunds/RefundListPage.tsx' },
+  { permissionKey: 'refunds.request', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Request Refund', componentPath: 'pages/admin/refunds/RefundListPage.tsx' },
+  { permissionKey: 'refunds.approve', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Approve Refund', componentPath: 'pages/admin/refunds/RefundDetailPage.tsx' },
+  { permissionKey: 'refunds.reject', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Reject Refund', componentPath: 'pages/admin/refunds/RefundDetailPage.tsx' },
+  { permissionKey: 'refunds.payout', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Record Refund Payout', componentPath: 'pages/admin/refunds/RefundDetailPage.tsx' },
+  { permissionKey: 'refunds.payout.confirm', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Confirm Refund Payout', componentPath: 'pages/admin/refunds/RefundDetailPage.tsx' },
+  { permissionKey: 'refunds.retry', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Retry Refund Cancellation', componentPath: 'pages/admin/refunds/RefundDetailPage.tsx' },
+  { permissionKey: 'refunds.export', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Export Refunds', componentPath: 'pages/admin/refunds/RefundListPage.tsx' },
   { permissionKey: 'financial.payment-methods.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'Payment Methods Page', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
   { permissionKey: 'payment-methods.create', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Create Payment Method', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
   { permissionKey: 'payment-methods.edit', moduleSlug: 'financial', elementType: 'button', elementLabel: 'Update Payment Method', componentPath: 'pages/admin/payment-methods/PaymentMethodsPage.tsx' },
@@ -731,6 +742,8 @@ export const uiRegistry: UIElement[] = [
   { permissionKey: 'financial.payment.charge', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Charge Payment' },
   { permissionKey: 'financial.payment.confirm', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Confirm Payment' },
   { permissionKey: 'financial.payment.view', moduleSlug: 'financial', elementType: 'page', elementLabel: 'View Payment Status' },
+  // R3 - dedicated irreversible payment-refund capability (never financial.reconcile).
+  { permissionKey: 'financial.payment.refund', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Refund Payment' },
   { permissionKey: 'financial.reconcile', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Reconcile Payments' },
   { permissionKey: 'financial.process_payouts', moduleSlug: 'financial', elementType: 'action', elementLabel: 'Process Payouts' },
   { permissionKey: 'financial.view', moduleSlug: 'financial', elementType: 'action', elementLabel: 'View Financial Data' },

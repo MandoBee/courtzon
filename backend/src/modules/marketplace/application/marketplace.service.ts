@@ -1119,8 +1119,35 @@ export const marketplaceService = {
     }
   },
 
-  async updateOrderStatus(orderId: number, userId: number, data: any) {
+  /**
+   * Refund Engine — cancellation-only contract. Cancels the order (and its
+   * checkout-group siblings) and restores stock through the existing status
+   * transition, but performs NO money movement (no wallet credit, no gateway
+   * refund). The Refund Engine records the institution-funded payout separately.
+   */
+  async cancelOrderForRefund(orderId: number, actorId: number, reason: string) {
     const order = await this.getOrder(orderId);
+    if (order.status === 'cancelled' || order.status === 'refunded') return;
+
+    await this.updateOrderStatus(orderId, actorId, { status: 'cancelled', note: reason }, { skipPayout: true });
+
+    const checkoutGroupId = order.checkout_group_id;
+    if (checkoutGroupId) {
+      const siblingIds = await repo.findOrderIdsByCheckoutGroup(checkoutGroupId);
+      for (const siblingId of siblingIds) {
+        if (siblingId === orderId) continue;
+        const siblingRows = await repo.findOrderById(siblingId);
+        const siblingOrder = siblingRows?.length ? this._formatOrder(siblingRows) : null;
+        if (siblingOrder && siblingOrder.status !== 'cancelled') {
+          try {
+            await this.updateOrderStatus(siblingId, actorId, { status: 'cancelled', note: reason }, { skipPayout: true });
+          } catch (_e) { /* seller already progressed — operational retry will surface it */ }
+        }
+      }
+    }
+  },
+
+  async updateOrderStatus(orderId: number, userId: number, data: any, options?: { skipPayout?: boolean }) {    const order = await this.getOrder(orderId);
     const userRole = await this._getUserRoleInOrder(userId, order);
     if (!userRole) throw new NotFoundError('Order not found');
 
@@ -1137,7 +1164,7 @@ export const marketplaceService = {
     // with funds still captured (W4/R2). Idempotent: wallet orders are guarded
     // by the unique order_refund transaction; direct card orders by the
     // paid-only payment lookup.
-    if (isRefundOrCancel && order.payment_status === 'paid') {
+    if (isRefundOrCancel && order.payment_status === 'paid' && !options?.skipPayout) {
       await this._processOrderRefund(order, orderId, refundReason);
     }
 
@@ -1540,6 +1567,20 @@ export const marketplaceService = {
     if (amount <= 0) {
       log.warn({ orderId, amount }, 'Order refund: zero/negative amount — skipping');
       return;
+    }
+
+    // LAYER B — settlement-reservation preflight. Runs BEFORE the wallet credit
+    // and BEFORE the gateway refund: an order whose entitlements are reserved by
+    // an active settlement must go through official settlement cancellation
+    // (which releases the reservation) before it can be refunded.
+    // The financial service is imported lazily so refund paths stay decoupled
+    // from its config/env chain; an order without item ids needs no check.
+    const orderItemIds = (order.items || [])
+      .map((i: any) => Number(i.itemId))
+      .filter((n: number) => Number.isInteger(n) && n > 0);
+    if (orderItemIds.length) {
+      const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+      await financialEntitlementService.assertNoActiveSettlementReservation('marketplace', orderItemIds);
     }
 
     if (method === 'wallet') {

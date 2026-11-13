@@ -18,7 +18,7 @@ const STATIC_OK: StaticValidationReport = {
   summary: {
     baselineSha256: '0'.repeat(64),
     schemaHead: '205',
-    tableCount: 329,
+    tableCount: 332,
     triggerCount: 19,
     pinCount: 74,
     migrationCount: 212,
@@ -137,24 +137,24 @@ function expectCode(report: SchemaComparisonReport, code: string): void {
 }
 
 describe('schema comparison — full committed fixtures', () => {
-  it('passes Tier A for all 76 requirements pins without requiring non-pinned tables', () => {
+  it('passes Tier A for all 79 requirements pins without requiring non-pinned tables', () => {
     const report = compare('tierA');
     expect(report.status).toBe('ok');
     expect(report.complete).toBe(true);
-    expect(report.summary.pinsChecked).toBe(76);
-    expect(report.summary.expectedTables).toBe(329);
-    expect(report.summary.liveTables).toBe(329);
+    expect(report.summary.pinsChecked).toBe(79);
+    expect(report.summary.expectedTables).toBe(332);
+    expect(report.summary.liveTables).toBe(332);
     expect(report.summary.expectedTriggers).toBe(19);
     expect(report.summary.liveTriggers).toBe(19);
     expect(report.findings.filter((finding) => finding.severity === 'error')).toEqual([]);
   });
 
-  it('passes Tier B for the complete 329-table / 19-trigger inventory', () => {
+  it('passes Tier B for the complete 332-table / 19-trigger inventory', () => {
     const report = compare('tierB');
     expect(report.status).toBe('ok');
     expect(report.complete).toBe(true);
-    expect(report.summary.expectedTables).toBe(329);
-    expect(report.summary.liveTables).toBe(329);
+    expect(report.summary.expectedTables).toBe(332);
+    expect(report.summary.liveTables).toBe(332);
     expect(report.summary.expectedTriggers).toBe(19);
     expect(report.summary.liveTriggers).toBe(19);
     expect(report.findings.filter((finding) => finding.severity === 'error')).toEqual([]);

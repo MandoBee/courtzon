@@ -35,6 +35,11 @@ export interface ResolvedConcept {
  * exist globally (no COA/schema/migration change).
  */
 export const CONCEPT_ACCOUNT_CODE_DEFAULTS: Record<string, Record<string, string>> = {
+  // Refund Engine (institution-funded). Existing COA accounts only; no DB
+  // mapping/seed row is required. The ledger lines carry organisation_id = the
+  // owning organisation, so the expense/payable/bank stay in the org book.
+  refund_case_approved: { refund_expense: '5220', refund_payable: '2101' },
+  refund_case_payout: { refund_payable: '2101', cash_bank: '1120' },
   marketplace_card_payment: { shipping: '2400' },
   marketplace_wallet_payment: { shipping: '2400' },
   marketplace_merchant_refund: { shipping: '2400' },

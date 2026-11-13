@@ -1,0 +1,11 @@
+-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE
+-- ---------------------------------------------------------------------------
+-- 210_refund_engine_head.sql
+--
+-- CHAIN ANCHOR - DOCUMENTATION ONLY. No executable statement.
+--
+-- 209 is the last schema mutation of the Refund Engine chain (three additive
+-- tables). This statement-free head keeps the additive-head contract used by
+-- the baseline manifest gate (parse-baseline supports only ADD/MODIFY/CHANGE,
+-- and the head must not drop any schema object).
+-- ---------------------------------------------------------------------------

@@ -231,6 +231,7 @@ export const ADMIN_NAV: NavDefinition[] = [
       { id: 'nav.admin.finance-dashboard', label: LIT('Finance Dashboard'), path: '/admin/finance', permissionKey: 'financial.reports.view' },
       { id: 'nav.admin.finance-ledger', label: T('admin.sidebar.ledger'), path: '/admin/finance/ledger', permissionKey: 'financial.reports.view' },
       { id: 'nav.admin.finance-reports', label: LIT('Reports'), path: '/admin/finance/reports', permissionKey: 'financial.reports.view' },
+      { id: 'nav.admin.refunds', label: LIT('Refund Cases'), path: '/admin/refunds', permissionKey: 'refunds.view' },
       { id: 'nav.admin.banks', label: T('admin.sidebar.banks'), path: '/admin/banks', permissionKey: 'sidebar.banks' },
       { id: 'nav.admin.bank-branches', label: LIT('Bank Branches'), path: '/admin/bank-branches', permissionKey: 'sidebar.bank-branches' },
       { id: 'nav.admin.finance-transactions', label: LIT('Finance (Legacy)'), path: '/admin/financial-ops', permissionKey: 'sidebar.finance-transactions' },

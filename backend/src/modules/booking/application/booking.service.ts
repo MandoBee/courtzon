@@ -1023,6 +1023,13 @@ export class BookingService {
     const isCOD = booking.payment_method === 'cash' || booking.payment_method === 'cod';
     const { feeAmount, refundAmount } = await this._calculateCancellationFee(booking);
 
+    // LAYER B — settlement-reservation preflight: a refund/reversal must be
+    // rejected BEFORE the booking is cancelled or any money moves, while an
+    // entitlement of this booking is still reserved by an active settlement.
+    if (refundAmount > 0) {
+      await this._assertNoReservedEntitlementsForRefund(booking.id);
+    }
+
     // Wrap the DB writes (status + cancellation record) in a transaction
     const pool = getPool();
     const conn = await pool.getConnection();
@@ -1052,6 +1059,48 @@ export class BookingService {
     }
 
     return this.getBooking(id);
+  }
+
+  /**
+   * Refund Engine — cancellation-only contract.
+   *
+   * Performs exactly the operational cancellation (status + cancellation record)
+   * and deliberately does NOT call the payment gateway, wallet, COD settlement,
+   * or emit `booking:refunded`. The Refund Engine owns the financial operation
+   * and records payout separately.
+   */
+  async cancelForRefund(id: number, userId: number, reason: string): Promise<void> {
+    const booking = await bookingRepository.findById(id);
+    if (!booking) throw new NotFoundError('Booking');
+    if (booking.booking_status === 'cancelled' || booking.booking_status === 'cancelled_with_fee') {
+      return; // idempotent operational cancellation
+    }
+
+    if (booking.user_id !== userId) {
+      const isResponsible = await this.canBypassPlayerBookingWindow(userId);
+      if (!isResponsible || !booking.series_id) {
+        throw new ForbiddenError('You can only cancel your own bookings');
+      }
+    } else {
+      // The player cancellation window is a player-facing rule. An approved
+      // institution-funded refund is executed by staff, so it must not be
+      // blocked by the player's own window.
+      const canCancel = await this._canUserCancel(booking);
+      if (!canCancel) {
+        throw new ConflictError('Cancellation window has passed. Please contact support.');
+      }
+    }
+
+    await this._assertNoReservedEntitlementsForRefund(booking.id);
+
+    // The canonical CancelBooking command owns its transaction (command
+    // pipeline), idempotency and event emission.
+    await executeBookingCommand(
+      'CancelBooking',
+      cancelBookingHandler,
+      { bookingId: id, reason, actorId: userId },
+      String(id),
+    );
   }
 
   /**
@@ -1128,6 +1177,11 @@ export class BookingService {
    * accounting entries directly.
    */
   private async _cancelAndFullRefund(booking: any, reason: string, actorId: number): Promise<{ cancelled: boolean; refunded: boolean; refundAmount: number }> {
+    // LAYER B — provider/saga full refunds must not run while the booking's
+    // entitlements are reserved by an active settlement (COD always reverses the
+    // recognised economics, so the guard applies before the cancel transition).
+    await this._assertNoReservedEntitlementsForRefund(booking.id);
+
     // 1. Cancel the booking (canonical state transition).
     await executeBookingCommand(
       'CancelBooking', cancelBookingHandler,
@@ -2506,6 +2560,12 @@ export class BookingService {
       const reason = CancellationReason.ADMIN_CANCELLED;
       const resolvedUserId = actorId ?? booking.user_id;
 
+      // LAYER B — settlement-reservation preflight before the cancel transition
+      // and before any refund/reversal side effect.
+      if (refundAmount > 0) {
+        await this._assertNoReservedEntitlementsForRefund(booking.id);
+      }
+
       if (isCOD) {
         // The V2 cancel path must run the SAME canonical financial lifecycle as
         // legacy: the cancel transition first, then the COD REFUND/PENALTY or
@@ -2740,6 +2800,22 @@ export class BookingService {
       [booking.id],
     );
     return Number((rows[0] as any)?.paid ?? 0);
+  }
+
+  /**
+   * LAYER B — settlement-reservation preflight shared by every booking refund
+   * entry point (player cancel, admin cancel, provider/saga full refund).
+   *
+   * A booking whose financial entitlements are still reserved by an active
+   * settlement must NOT be refunded: cancelling the reserved entitlements would
+   * strand the settlement (`finalizeSettled` / `releaseFromSettlement` require
+   * ON_HOLD + settlement_id). The approved sequence is: cancel the settlement
+   * through the official settlement workflow (which releases every reservation),
+   * then retry the refund. Needs no HTTP context, so internal callers work.
+   */
+  private async _assertNoReservedEntitlementsForRefund(bookingId: number): Promise<void> {
+    const { financialEntitlementService } = await import('../../financial/application/financial-entitlement.service.js');
+    await financialEntitlementService.assertNoActiveSettlementReservation('booking', [bookingId]);
   }
 
   private async _processGatewayRefund(booking: any, refundAmount: number): Promise<void> {

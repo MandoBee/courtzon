@@ -163,11 +163,11 @@ describe('static validation — committed baseline artefacts', () => {
     const report = validateStaticManifest(realInput);
     expect(report.findings).toEqual([]);
     expect(report.ok).toBe(true);
-    expect(report.summary.tableCount).toBe(329);
+    expect(report.summary.tableCount).toBe(332);
     expect(report.summary.triggerCount).toBe(19);
-    expect(report.summary.pinCount).toBe(76);
-    expect(report.summary.migrationCount).toBe(215);
-    expect(report.summary.objectCount).toBe(348);
+    expect(report.summary.pinCount).toBe(79);
+    expect(report.summary.migrationCount).toBe(217);
+    expect(report.summary.objectCount).toBe(351);
     expect(report.hashes.baseline).toMatch(/^[0-9a-f]{64}$/);
   });
 

@@ -34,6 +34,17 @@ export const EVENT_CONCEPTS: Record<string, { debit: string[]; credit: string[] 
     debit: ['revenue_contra'],
     credit: ['payment_clearing'],
   },
+  // Refund Engine (institution-funded). The owning organisation bears the cost;
+  // original payment/settlement postings are never reversed. The accounting
+  // listener posts these with organisation_id = owning organisation.
+  refund_case_approved: {
+    debit: ['refund_expense'],
+    credit: ['refund_payable'],
+  },
+  refund_case_payout: {
+    debit: ['refund_payable'],
+    credit: ['cash_bank'],
+  },
   wallet_refund: {
     debit: ['revenue_contra'],
     credit: ['wallet_liability'],
