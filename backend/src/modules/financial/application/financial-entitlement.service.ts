@@ -423,6 +423,44 @@ export class FinancialEntitlementService {
   }
 
   /**
+   * Settlement-reservation preflight shared by every refund entry point
+   * (Layer B of the settlement-cancellation integrity remediation).
+   *
+   * A refund MUST NOT run while an entitlement of the refunded source is still
+   * reserved by an ACTIVE settlement: the reservation is `settlement_id` on a
+   * non-terminal row (`reserveForSettlement`), and mutating it outside the
+   * settlement workflow strands `finalizeSettled` / `releaseFromSettlement`.
+   * The approved business sequence is: cancel the settlement through the
+   * official settlement cancellation workflow (which releases the reservation),
+   * then retry the refund.
+   *
+   * "Active reservation" = non-terminal row with a non-null `settlement_id`.
+   * SETTLED rows intentionally KEEP `settlement_id` (finalizeSettled writes it)
+   * and are NOT reservations — blocking them would forbid every legitimate
+   * post-settlement refund. CANCELLED rows are terminal and never mutated by the
+   * cancel paths anyway.
+   *
+   * Call this BEFORE any irreversible financial side effect (gateway refund,
+   * wallet credit, payment refund, COD/detach reversal). Safe for internal
+   * callers: it needs no HTTP context.
+   */
+  async assertNoActiveSettlementReservation(sourceType: string, sourceIds: number[]): Promise<void> {
+    const ids = [...new Set((sourceIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+    if (!ids.length) return;
+
+    const entitlements = await financialEntitlementRepository.findBySourceIds(sourceType as any, ids);
+    const reserved = entitlements.filter((e) => e.settlement_id != null && !isTerminal(e.status));
+    if (!reserved.length) return;
+
+    const settlementIds = [...new Set(reserved.map((e) => Number(e.settlement_id)))].sort((a, b) => a - b);
+    throw new ConflictError(
+      `Refund blocked: entitlement(s) ${reserved.map((e) => e.id).join(', ')} of ${sourceType} source(s) ` +
+        `${ids.join(', ')} are reserved by settlement(s) ${settlementIds.join(', ')}. ` +
+        'Cancel the settlement through the settlement cancellation workflow so its reservations are released, then retry the refund.',
+    );
+  }
+
+  /**
    * Reserve AVAILABLE entitlements for a settlement: transition to ON_HOLD and
    * attach settlement_id, so they cannot enter another settlement. Runs on the
    * caller's transaction connector (atomic with settlement creation).
