@@ -5,7 +5,7 @@
 | Document | `docs/release/COURTZON_RELEASE_PROGRESS.md` |
 | Plan | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
 | Document role | **Status authority** — the single source of status, percentages, blockers, evidence and audit trail (plan §1.1) |
-| Last updated | 2026-11-06 (F1 Realtime Docker shipment VERIFIED by read-only container inspection — §8/§15; D5 executed locally 2026-11-05 — PASS; B6 remains PASS; current HEAD `bee586a8`; two documentation files currently contain local uncommitted changes) |
+| Last updated | 2026-11-13 (Refund Engine hardening B1-A/B2-A committed and pushed as `136318d8`; Docker backend/frontend rebuilt and backend restarted healthy; local migrations 209/210 applied through the canonical runner — §31, §32. Phase dashboard and percentages intentionally unchanged) |
 | Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 OPEN/DEFERRED)** + **Phase 6 IN_PROGRESS (5/10)** under recorded deviation **D-01** (§25) |
 | Overall completion | **56 %** (56 / 100 DONE items) |
 
@@ -4651,3 +4651,67 @@ original payments, settlements, entitlements and journal entries untouched).
 - Organisation-scoped role clones are skipped by `sync-role-permissions.mjs`; existing organisations receive refund
   permissions when their role clones are next provisioned. Global templates (org-admin, accountant, finance-manager,
   master-admin, super_admin) already hold the keys.
+
+---
+
+## 32. Refund Engine hardening - organisation-scoped cancellation and retry-safe partial checkout groups (2026-11-13)
+
+**Trigger:** an independent read-only audit of §31 returned two blockers (cross-tenant permission leakage and an
+operationally incomplete refund line). Both were fixed, tested, committed and pushed; no schema change was required.
+
+| # | Defect (audit finding) | Fix | Evidence |
+|---|---|---|---|
+| B1-A | `getUserPermissionKeys()` returns a global union of permissions across every active role. Combining it with `canAccessOrganisation()` allowed a cross-tenant bypass: a user holding `refunds.approve` in organisation A and any unrelated scope in organisation B could cancel B's order. | New `rbacRepository.hasOrganisationPermission(userId, orgId, permissionKey)`: the SAME active `user_roles` row must both grant the permission through `role_permissions` and own `user_role_scopes(scope_type='organisation', scope_id=orgId)`. No owner/super-admin role-slug bypass. `_canOperationallyCancelOrder()` checks `refunds.approve` per seller organisation for the main order and independently for every checkout-group sibling. | `backend/src/modules/rbac/infrastructure/repositories/rbac.repository.ts` (hasOrganisationPermission), `backend/src/modules/marketplace/application/marketplace.service.ts` (_canOperationallyCancelOrder, cancelOrderForRefund) |
+| B2-A | `cancelServiceLine()` discarded the marketplace result, so a refund service line could be marked `COMPLETED` while a required checkout-group sibling remained uncancelled. The main-order early return also prevented any retry of remaining siblings. | `cancelOrderForRefund()` now returns `{ mainCancelled, cancelledSiblingIds, skippedSiblingIds, complete }`, skips already-terminal siblings, and still processes remaining siblings when the main order is already `cancelled/refunded`. `cancelServiceLine()` inspects `complete` and throws `ConflictError` otherwise, so the line becomes `FAILED`, the case becomes `FAILED`, and `REFUND.OPERATIONAL_CANCELLATION_FAILED` is audited (retry re-enters the remaining siblings after authorization is corrected). | `backend/src/modules/refund/application/refund-cancellation.contracts.ts`, `backend/src/modules/refund/application/refund-case.service.ts`, `backend/src/modules/marketplace/application/marketplace.service.ts` |
+
+### 32.1 Verification (executed)
+
+| Check | Result | Status |
+|---|---|---|
+| Backend full suite (`npm test`) | **5591 passed / 0 failed / 396 files** | PASS |
+| Focused Marketplace + Refund + RBAC | **181 passed / 0 failed / 8 files** | PASS |
+| `marketplace-operational-cancel.spec.ts` (incl. the exact cross-org exploit, retry, no-duplicate-work) | 11 passed | PASS |
+| `refund-cancellation.marketplace.spec.ts` (partial throws, retry completes) | 3 passed | PASS |
+| `refund-case.service.spec.ts` (partial line becomes FAILED + audit) | 21 passed | PASS |
+| Backend `npx tsc --noEmit -p tsconfig.json` | exit 0 | PASS |
+| `git diff --check` | exit 0 | PASS |
+| CI validator (`node scripts/ci-validate.js`) | 216 errors / 1 warning - pre-existing baseline categories (185 SQL outside repository, 29 presentation-layer DB access, 2 guard-key false positives); not introduced by this change | CARRY-OVER |
+| Real-MySQL concurrency test for the sibling retry path | not written | NOT RUN |
+
+### 32.2 Delivery state
+
+| Item | Value |
+|---|---|
+| Commit | `136318d8de9610f06d470ccda90fe38606f07078` - `fix(refunds): harden org-scoped marketplace cancellation` (55 files: 31 modified + 24 new) |
+| Branch | `fix/courtzon-live-phase1`, pushed to `origin` and synchronized |
+| Worktree after commit | clean (0 entries) |
+| Docker images | `courtzon-backend:latest` = `5d92d6472641` (bakes `SOURCE_COMMIT=136318d8`; `/health/version` reports `gitCommitSource=image`, `gitCommitConsistent=true`); `courtzon-frontend:latest` rebuilt cache-identical (no frontend file in this commit) |
+| Containers | `courtzon-backend` recreated, then restarted after migrations; `courtzon-frontend`, `courtzon-mysql`, `courtzon-redis` untouched (mysql/redis container IDs unchanged) |
+| Local database | `courtzon_v3` on `courtzon-mysql` (127.0.0.1:3307): migrations **209** and **210** applied through the canonical runner inside the container (`node /app/scripts/migrate.js`), with `attempt_started` + `up` history rows; startup validator now reports `Last applied migration: 210_refund_engine_head.sql` |
+| Health after restart | `/health` ok, `/health/ready` 200, `/health/database` ok (333 tables), no level 50/60 events, no missing-table errors |
+| Production / Live | not deployed; no production migration executed |
+
+### 32.3 Open items and residual risks
+
+- **§31.1 first bullet is resolved:** migrations no longer depend on a host `bash`. The container runner executed
+  209/210 and recorded them; the previously hand-created tables (identical DDL, zero rows) are now covered by history.
+- **§31.1 second bullet unchanged:** organisation-scoped role clones still receive refund permissions only when the
+  clone is next provisioned.
+- Platform actors without an organisation scope are denied operational refund cancellation by design (fail-closed).
+- The accounting replay cursor limitation for historical refund events and the permission-key TOCTOU window remain
+  accepted risks recorded in §14.
+- Local `.env` sets `COURTZON_SKIP_STARTUP_DB_SYNC=1`, so startup migrations/role sync were intentionally skipped;
+  this is local-only configuration and must not be carried to production.
+- Pre-existing local startup warnings remain (non-critical tables `courts`, `payments` absent; notification-engine
+  no-op events `system:digest`, `setting:profile-applied`); unrelated to this change.
+
+### 32.4 Percentage impact
+
+**None.** No checklist item was added, removed or re-statused by this section. Phase 5 remains *acceptance NOT MET*
+(P5-05 OPEN/DEFERRED) and Phase 6 remains IN_PROGRESS (5/10); overall completion stays at **56 %**.
+
+### 32.5 Next task
+
+Draft the approved **testing constitution** (coverage scope, methodology, role/organisation/branch scenario matrix,
+defect management, and Live-data protection rules) for owner approval. **No test execution and no write operation
+may start before that plan is approved.**
