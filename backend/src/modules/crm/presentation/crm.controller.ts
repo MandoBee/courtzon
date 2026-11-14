@@ -15,11 +15,11 @@ export async function listCustomersHandler(request: FastifyRequest, reply: Fasti
   const offset = (page - 1) * limit;
   const search = query.search ? `%${query.search}%` : null;
 
-  let where = '';
+  let where = 'WHERE u.deleted_at IS NULL';
   const params: any[] = [];
   if (search) {
-    where = 'WHERE (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)';
-    params.push(search, search, search, search);
+    where += ' AND (u.full_name LIKE ? OR u.email LIKE ? OR u.phone_number LIKE ?)';
+    params.push(search, search, search);
   }
 
   const [countRows] = await pool.execute<RowData>(
@@ -29,14 +29,14 @@ export async function listCustomersHandler(request: FastifyRequest, reply: Fasti
   const total = countRows[0].total;
 
   const [rows] = await pool.query<RowData>(
-    `SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.is_active, u.created_at,
+    `SELECT u.id, u.full_name, u.email, u.phone_number AS phone, (u.account_status = 'active') AS is_active, u.created_at,
             (SELECT COUNT(*) FROM bookings b WHERE b.user_id = u.id) AS total_bookings,
-            (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS total_orders,
+            (SELECT COUNT(*) FROM orders o WHERE o.buyer_id = u.id) AS total_orders,
             (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.player_id = u.id) AS total_enrollments,
             (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.player_id = u.id) AS total_tournaments,
             (SELECT MAX(greatest(
               COALESCE((SELECT MAX(b.created_at) FROM bookings b WHERE b.user_id = u.id), '1970-01-01'),
-              COALESCE((SELECT MAX(o.created_at) FROM orders o WHERE o.user_id = u.id), '1970-01-01'),
+              COALESCE((SELECT MAX(o.created_at) FROM orders o WHERE o.buyer_id = u.id), '1970-01-01'),
               COALESCE((SELECT MAX(ae.created_at) FROM academy_enrollments ae WHERE ae.player_id = u.id), '1970-01-01')
             ))) AS last_activity
      FROM users u
@@ -54,24 +54,33 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
   const { id } = request.params as any;
   const userId = Number(id);
 
-  const [users] = await pool.execute<RowData>(`SELECT * FROM users WHERE id = ?`, [userId]);
+  const [users] = await pool.execute<RowData>(
+    `SELECT id, public_id, full_name, email, phone_number AS phone, avatar_url, country_id, gender,
+            account_status, is_phone_verified, is_email_verified, has_activated_selling, last_login_at,
+            created_at, updated_at
+     FROM users WHERE id = ? AND deleted_at IS NULL`,
+    [userId]
+  );
   if (!users.length) throw new NotFoundError('User', ErrorCodes.USER_NOT_FOUND);
 
   const [bookings] = await pool.execute<RowData>(
-    `SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
-            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
+    `SELECT COUNT(*) AS total, SUM(CASE WHEN booking_status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+            SUM(CASE WHEN booking_status = 'completed' THEN 1 ELSE 0 END) AS completed
      FROM bookings WHERE user_id = ?`, [userId]
   );
 
   const [orders] = await pool.execute<RowData>(
-    `SELECT COUNT(*) AS total, COALESCE(SUM(total_amount), 0) AS total_spent
-     FROM orders WHERE user_id = ?`, [userId]
+    `SELECT COUNT(*) AS total, COALESCE(SUM(total), 0) AS total_spent
+     FROM orders WHERE buyer_id = ?`, [userId]
   );
 
   const [wallet] = await pool.execute<RowData>(
     `SELECT COALESCE(SUM(CASE WHEN wt.direction = 'credit' THEN wt.amount ELSE 0 END), 0) AS total_deposits,
-            COALESCE(SUM(CASE WHEN wt.direction = 'debit' THEN wt.amount ELSE 0 END), 0) AS total_withdrawn
-     FROM wallet_transactions wt JOIN user_wallets uw ON uw.id = wt.wallet_id WHERE uw.user_id = ?`, [userId]
+            COALESCE(SUM(CASE WHEN wt.direction = 'debit' THEN wt.amount ELSE 0 END), 0) AS total_withdrawn,
+            COALESCE(MAX(uw.balance), 0) AS wallet_balance
+     FROM user_wallets uw
+     LEFT JOIN wallet_transactions wt ON wt.wallet_id = uw.id
+     WHERE uw.user_id = ?`, [userId]
   );
 
   const [enrollments] = await pool.execute<RowData>(
@@ -83,13 +92,15 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
   );
 
   const [leagueTeams] = await pool.execute<RowData>(
-    `SELECT COUNT(*) AS total FROM league_teams WHERE user_id = ?`, [userId]
+    `SELECT COUNT(*) AS total FROM league_teams
+     WHERE captain_id = ? OR JSON_CONTAINS(player_ids, CAST(? AS JSON), '$')`,
+    [userId, JSON.stringify(userId)]
   );
 
   const [lastActivity] = await pool.execute<RowData>(
     `SELECT MAX(greatest(
       COALESCE((SELECT MAX(created_at) FROM bookings WHERE user_id = ?), '1970-01-01'),
-      COALESCE((SELECT MAX(created_at) FROM orders WHERE user_id = ?), '1970-01-01'),
+      COALESCE((SELECT MAX(created_at) FROM orders WHERE buyer_id = ?), '1970-01-01'),
       COALESCE((SELECT MAX(created_at) FROM academy_enrollments WHERE player_id = ?), '1970-01-01'),
       COALESCE((SELECT MAX(registered_at) FROM tournament_registrations WHERE player_id = ?), '1970-01-01')
     )) AS last_activity`, [userId, userId, userId, userId]
@@ -98,6 +109,10 @@ export async function getCustomerHandler(request: FastifyRequest, reply: Fastify
   return reply.send({
     data: {
       ...users[0],
+      total_bookings: bookings[0].total,
+      total_orders: orders[0].total,
+      wallet_balance: wallet[0].wallet_balance,
+      total_enrollments: enrollments[0].total,
       bookings: bookings[0],
       orders: orders[0],
       wallet: wallet[0],
@@ -117,9 +132,9 @@ export async function getCustomerTimelineHandler(request: FastifyRequest, reply:
   const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
 
   const [rows] = await pool.query<RowData>(
-    `SELECT created_at, 'booking' AS type, id AS ref_id, status AS ref_status, NULL AS ref_amount FROM bookings WHERE user_id = ?
+    `SELECT created_at, 'booking' AS type, id AS ref_id, booking_status AS ref_status, NULL AS ref_amount FROM bookings WHERE user_id = ?
      UNION ALL
-     SELECT created_at, 'order', id, status, total_amount FROM orders WHERE user_id = ?
+     SELECT created_at, 'order', id, status, total FROM orders WHERE buyer_id = ?
      UNION ALL
      SELECT created_at, 'enrollment', id, status, NULL FROM academy_enrollments WHERE player_id = ?
      UNION ALL
@@ -127,7 +142,7 @@ export async function getCustomerTimelineHandler(request: FastifyRequest, reply:
      UNION ALL
      SELECT wt.created_at, 'wallet_transaction', wt.id, wt.transaction_type, wt.amount FROM wallet_transactions wt JOIN user_wallets uw ON uw.id = wt.wallet_id WHERE uw.user_id = ?
      UNION ALL
-     SELECT created_at, 'activity_log', id, action, NULL FROM activity_logs WHERE user_id = ?
+     SELECT created_at, 'activity_log', id, activity_type, NULL FROM activity_logs WHERE user_id = ?
      ORDER BY created_at DESC
      LIMIT ?`,
     [userId, userId, userId, userId, userId, userId, limit]
@@ -139,7 +154,7 @@ export async function getCustomerTimelineHandler(request: FastifyRequest, reply:
 export async function listSegmentsHandler(_request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
-    `SELECT cs.*, u.first_name AS creator_first_name, u.last_name AS creator_last_name
+    `SELECT cs.*, u.full_name AS creator_full_name
      FROM customer_segments cs
      LEFT JOIN users u ON u.id = cs.created_by
      ORDER BY cs.created_at DESC`
@@ -219,11 +234,11 @@ export async function refreshSegmentHandler(request: FastifyRequest, reply: Fast
 
     for (const c of conditions) {
       if (c.field === 'has_booking') { wheres.push('EXISTS (SELECT 1 FROM bookings WHERE user_id = u.id)'); }
-      else if (c.field === 'has_order') { wheres.push('EXISTS (SELECT 1 FROM orders WHERE user_id = u.id)'); }
+      else if (c.field === 'has_order') { wheres.push('EXISTS (SELECT 1 FROM orders WHERE buyer_id = u.id)'); }
       else if (c.field === 'has_enrollment') { wheres.push('EXISTS (SELECT 1 FROM academy_enrollments WHERE player_id = u.id)'); }
       else if (c.field === 'created_after') { wheres.push('u.created_at >= ?'); params.push(c.value); }
       else if (c.field === 'created_before') { wheres.push('u.created_at <= ?'); params.push(c.value); }
-      else if (c.field === 'is_active') { wheres.push('u.is_active = ?'); params.push(c.value ? 1 : 0); }
+      else if (c.field === 'is_active') { wheres.push(c.value ? "u.account_status = 'active'" : "u.account_status <> 'active'"); }
     }
 
     if (wheres.length) {
@@ -305,8 +320,7 @@ export async function listLeadsHandler(request: FastifyRequest, reply: FastifyRe
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT l.*, a.first_name AS assigned_first_name, a.last_name AS assigned_last_name,
-            c.first_name AS creator_first_name, c.last_name AS creator_last_name
+    `SELECT l.*, a.full_name AS assigned_full_name, c.full_name AS creator_full_name
      FROM leads l
      LEFT JOIN users a ON a.id = l.assigned_to
      LEFT JOIN users c ON c.id = l.created_by
@@ -428,7 +442,7 @@ export async function listCampaignsHandler(request: FastifyRequest, reply: Fasti
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT mc.*, u.first_name AS creator_first_name, u.last_name AS creator_last_name,
+    `SELECT mc.*, u.full_name AS creator_full_name,
             cs.name AS segment_name
      FROM marketing_campaigns mc
      LEFT JOIN users u ON u.id = mc.created_by
@@ -606,7 +620,7 @@ export async function listCommunicationsHandler(request: FastifyRequest, reply: 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
   const [rows] = await pool.execute<RowData>(
-    `SELECT cl.*, u.first_name, u.last_name, u.email
+    `SELECT cl.*, u.full_name AS user_name, u.email AS user_email
      FROM communication_log cl
      LEFT JOIN users u ON u.id = cl.user_id
      ${where}
@@ -630,14 +644,24 @@ export async function getCRMDashboardHandler(_request: FastifyRequest, reply: Fa
     `SELECT COUNT(*) AS total FROM customer_segments WHERE is_active = 1`
   );
   const [recentLeads] = await pool.execute<RowData>(
-    `SELECT l.*, a.first_name AS assigned_first_name, a.last_name AS assigned_last_name
+    `SELECT l.*, a.full_name AS assigned_full_name
      FROM leads l LEFT JOIN users a ON a.id = l.assigned_to
      ORDER BY l.created_at DESC LIMIT 10`
   );
 
+  const leadsByStatus: Record<'new' | 'qualified' | 'converted' | 'lost', number> = {
+    new: 0, qualified: 0, converted: 0, lost: 0,
+  };
+  for (const row of leadStats as Array<{ status: string; count: number }>) {
+    if (row.status === 'new' || row.status === 'qualified' || row.status === 'converted' || row.status === 'lost') {
+      leadsByStatus[row.status] = Number(row.count);
+    }
+  }
+
   return reply.send({
     data: {
       totalCustomers: customerCount[0].total,
+      leadsByStatus,
       leadStats: leadStats,
       activeCampaigns: activeCampaigns[0].total,
       activeSegments: segmentCount[0].total,
