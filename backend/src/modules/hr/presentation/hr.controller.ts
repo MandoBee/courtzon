@@ -264,33 +264,47 @@ export async function listEmployeesHandler(request: FastifyRequest, reply: Fasti
   const query = request.query as any;
   const params: any[] = [];
   const conditions: string[] = [];
+  const page = Math.max(1, Number(query.page) || 1);
+  const limit = Math.min(200, Math.max(1, Number(query.limit) || 20));
+  const offset = (page - 1) * limit;
 
   if (query.organisationId) { conditions.push('e.organisation_id = ?'); params.push(Number(query.organisationId)); }
-  if (query.departmentId) { conditions.push('e.department_id = ?'); params.push(Number(query.departmentId)); }
+  // Frontend sends department_id; keep departmentId for backward compatibility.
+  const departmentId = query.department_id ?? query.departmentId;
+  if (departmentId) { conditions.push('e.department_id = ?'); params.push(Number(departmentId)); }
   if (query.positionId) { conditions.push('e.position_id = ?'); params.push(Number(query.positionId)); }
   if (query.status) { conditions.push('e.employment_status = ?'); params.push(query.status); }
-  if (query.search) { conditions.push('(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR e.employee_code LIKE ?)'); params.push(`%${query.search}%`, `%${query.search}%`, `%${query.search}%`, `%${query.search}%`); }
+  if (query.search) { conditions.push('(u.full_name LIKE ? OR u.email LIKE ? OR e.employee_code LIKE ?)'); params.push(`%${query.search}%`, `%${query.search}%`, `%${query.search}%`); }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
-  const [rows] = await pool.execute<RowData>(
-    `SELECT e.*, u.first_name, u.last_name, u.email, u.phone, d.name AS department_name, p.title AS position_title, r.employee_code AS reports_to_code
+  const [countRows] = await pool.execute<RowData>(
+    `SELECT COUNT(*) AS total FROM employees e JOIN users u ON u.id = e.user_id ${where}`,
+    params
+  );
+  const total = Number(countRows[0]?.total ?? 0);
+
+  const [rows] = await pool.query<RowData>(
+    `SELECT e.*, u.full_name, u.email, u.phone_number AS phone, d.name AS department_name,
+            p.title AS position_title, p.title AS position, r.employee_code AS reports_to_code
      FROM employees e
      JOIN users u ON u.id = e.user_id
      LEFT JOIN departments d ON d.id = e.department_id
      LEFT JOIN positions p ON p.id = e.position_id
      LEFT JOIN employees r ON r.id = e.reports_to
      ${where}
-     ORDER BY u.last_name, u.first_name`,
-    params
+     ORDER BY u.full_name, e.id
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
   );
-  return reply.send({ data: rows });
+  return reply.send({ data: rows, total, page, limit });
 }
 
 export async function getEmployeeHandler(request: FastifyRequest, reply: FastifyReply) {
   const pool = getPool();
   const { id } = request.params as any;
   const [rows] = await pool.execute<RowData>(
-    `SELECT e.*, u.first_name, u.last_name, u.email, u.phone, d.name AS department_name, p.title AS position_title, r.employee_code AS reports_to_code
+    `SELECT e.*, u.full_name, u.email, u.phone_number AS phone, d.name AS department_name,
+            p.title AS position_title, p.title AS position, r.employee_code AS reports_to_code
      FROM employees e
      JOIN users u ON u.id = e.user_id
      LEFT JOIN departments d ON d.id = e.department_id
@@ -414,12 +428,13 @@ export async function listContractsHandler(request: FastifyRequest, reply: Fasti
   const params: any[] = [];
   const conditions: string[] = [];
 
-  if (query.employeeId) { conditions.push('c.employee_id = ?'); params.push(Number(query.employeeId)); }
+  const employeeId = query.employeeId ?? (request.params as any).id;
+  if (employeeId) { conditions.push('c.employee_id = ?'); params.push(Number(employeeId)); }
   if (query.status) { conditions.push('c.status = ?'); params.push(query.status); }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const [rows] = await pool.execute<RowData>(
-    `SELECT c.*, e.employee_code, u.first_name, u.last_name
+    `SELECT c.*, e.employee_code, u.full_name AS employee_name
      FROM employment_contracts c
      JOIN employees e ON e.id = c.employee_id
      JOIN users u ON u.id = e.user_id
@@ -434,7 +449,7 @@ export async function getContractHandler(request: FastifyRequest, reply: Fastify
   const pool = getPool();
   const { id } = request.params as any;
   const [rows] = await pool.execute<RowData>(
-    `SELECT c.*, e.employee_code, u.first_name, u.last_name
+    `SELECT c.*, e.employee_code, u.full_name AS employee_name
      FROM employment_contracts c
      JOIN employees e ON e.id = c.employee_id
      JOIN users u ON u.id = e.user_id
@@ -644,7 +659,8 @@ export async function listLeaveRequestsHandler(request: FastifyRequest, reply: F
   const params: any[] = [];
   const conditions: string[] = [];
 
-  if (query.employeeId) { conditions.push('lr.employee_id = ?'); params.push(Number(query.employeeId)); }
+  const employeeId = query.employeeId ?? (request.params as any).id;
+  if (employeeId) { conditions.push('lr.employee_id = ?'); params.push(Number(employeeId)); }
   if (query.status) { conditions.push('lr.status = ?'); params.push(query.status); }
   if (query.organisationId) {
     conditions.push('e.organisation_id = ?');
@@ -654,8 +670,8 @@ export async function listLeaveRequestsHandler(request: FastifyRequest, reply: F
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const [rows] = await pool.execute<RowData>(
     `SELECT lr.*, lt.name AS leave_type_name, lt.is_paid,
-            u.first_name, u.last_name, e.employee_code,
-            au.first_name AS approver_first_name, au.last_name AS approver_last_name
+            u.full_name AS employee_name, e.employee_code,
+            au.full_name AS approver_name, lr.duration_days AS days
      FROM leave_requests lr
      JOIN leave_types lt ON lt.id = lr.leave_type_id
      JOIN employees e ON e.id = lr.employee_id
@@ -673,7 +689,7 @@ export async function getLeaveRequestHandler(request: FastifyRequest, reply: Fas
   const { id } = request.params as any;
   const [rows] = await pool.execute<RowData>(
     `SELECT lr.*, lt.name AS leave_type_name, lt.is_paid,
-            u.first_name, u.last_name, e.employee_code
+            u.full_name AS employee_name, e.employee_code, lr.duration_days AS days
      FROM leave_requests lr
      JOIN leave_types lt ON lt.id = lr.leave_type_id
      JOIN employees e ON e.id = lr.employee_id
@@ -1064,23 +1080,37 @@ export async function listAttendanceHandler(request: FastifyRequest, reply: Fast
   const query = request.query as any;
   const params: any[] = [];
   const conditions: string[] = [];
+  const page = Math.max(1, Number(query.page) || 1);
+  const limit = Math.min(200, Math.max(1, Number(query.limit) || 20));
+  const offset = (page - 1) * limit;
 
-  if (query.employeeId) { conditions.push('sa.employee_id = ?'); params.push(Number(query.employeeId)); }
-  if (query.from) { conditions.push('sa.attendance_date >= ?'); params.push(query.from); }
-  if (query.to) { conditions.push('sa.attendance_date <= ?'); params.push(query.to); }
+  // Frontend sends employee_id/date_from/date_to; keep camelCase variants for backward compatibility.
+  const employeeId = query.employee_id ?? query.employeeId ?? (request.params as any).id;
+  const from = query.date_from ?? query.from;
+  const to = query.date_to ?? query.to;
+  if (employeeId) { conditions.push('sa.employee_id = ?'); params.push(Number(employeeId)); }
+  if (from) { conditions.push('sa.attendance_date >= ?'); params.push(from); }
+  if (to) { conditions.push('sa.attendance_date <= ?'); params.push(to); }
   if (query.status) { conditions.push('sa.status = ?'); params.push(query.status); }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
-  const [rows] = await pool.execute<RowData>(
-    `SELECT sa.*, e.employee_code, u.first_name, u.last_name
+  const [countRows] = await pool.execute<RowData>(
+    `SELECT COUNT(*) AS total FROM staff_attendance sa JOIN employees e ON e.id = sa.employee_id ${where}`,
+    params
+  );
+  const total = Number(countRows[0]?.total ?? 0);
+
+  const [rows] = await pool.query<RowData>(
+    `SELECT sa.*, sa.attendance_date AS date, e.employee_code, u.full_name AS employee_name
      FROM staff_attendance sa
      JOIN employees e ON e.id = sa.employee_id
      JOIN users u ON u.id = e.user_id
      ${where}
-     ORDER BY sa.attendance_date DESC, sa.clock_in`,
-    params
+     ORDER BY sa.attendance_date DESC, sa.clock_in
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
   );
-  return reply.send({ data: rows });
+  return reply.send({ data: rows, total, page, limit });
 }
 
 // ─── Payroll Components ──────────────────────────────────────────────────────
@@ -1196,7 +1226,7 @@ export async function listPayrollRunsHandler(request: FastifyRequest, reply: Fas
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const [rows] = await pool.execute<RowData>(
-    `SELECT pr.*, u.first_name, u.last_name AS created_by_name
+    `SELECT pr.*, u.full_name AS created_by_name
      FROM payroll_runs pr
      JOIN users u ON u.id = pr.created_by
      ${where}
@@ -1211,7 +1241,7 @@ export async function getPayrollRunHandler(request: FastifyRequest, reply: Fasti
   const { id } = request.params as any;
 
   const [runs] = await pool.execute<RowData>(
-    `SELECT pr.*, u.first_name, u.last_name AS created_by_name
+    `SELECT pr.*, u.full_name AS created_by_name
      FROM payroll_runs pr
      JOIN users u ON u.id = pr.created_by
      WHERE pr.id = ?`,
@@ -1220,7 +1250,7 @@ export async function getPayrollRunHandler(request: FastifyRequest, reply: Fasti
   if (!runs.length) throw new NotFoundError('Payroll run', ErrorCodes.PAYROLL_RUN_NOT_FOUND);
 
   const [entries] = await pool.execute<RowData>(
-    `SELECT pe.*, e.employee_code, u.first_name, u.last_name
+    `SELECT pe.*, e.employee_code, u.full_name AS employee_name
      FROM payroll_entries pe
      JOIN employees e ON e.id = pe.employee_id
      JOIN users u ON u.id = e.user_id
@@ -1634,37 +1664,52 @@ export async function hrDashboardHandler(request: FastifyRequest, reply: Fastify
   const pool = getPool();
   const query = request.query as any;
   const orgId = query.organisationId ? Number(query.organisationId) : null;
-
-  const orgClause = orgId ? 'WHERE organisation_id = ?' : '';
+  const orgFilter = orgId ? ' AND organisation_id = ?' : '';
+  const orgWhere = orgId ? ' WHERE organisation_id = ?' : '';
   const params = orgId ? [orgId] : [];
 
   const [employeeCount] = await pool.execute<RowData>(
-    `SELECT employment_status, COUNT(*) AS count FROM employees ${orgClause} GROUP BY employment_status`,
+    `SELECT employment_status, COUNT(*) AS count FROM employees${orgWhere} GROUP BY employment_status`,
+    params
+  );
+  const [totalEmployees] = await pool.execute<RowData>(
+    `SELECT COUNT(*) AS count FROM employees${orgWhere}`,
+    params
+  );
+  const [activeEmployees] = await pool.execute<RowData>(
+    `SELECT COUNT(*) AS count FROM employees WHERE employment_status = 'active'${orgFilter}`,
     params
   );
   const [departmentCount] = await pool.execute<RowData>(
-    `SELECT COUNT(*) AS count FROM departments ${orgClause} AND is_active = 1`,
-    orgId ? [orgId] : []
+    `SELECT COUNT(*) AS count FROM departments WHERE is_active = 1${orgFilter}`,
+    params
   );
   const [pendingLeaves] = await pool.execute<RowData>(
     `SELECT COUNT(*) AS count FROM leave_requests lr
      JOIN employees e ON e.id = lr.employee_id
      WHERE lr.status = 'submitted'${orgId ? ' AND e.organisation_id = ?' : ''}`,
-    orgId ? [orgId] : []
+    params
   );
   const [activePayroll] = await pool.execute<RowData>(
-    `SELECT COUNT(*) AS count FROM payroll_runs ${orgClause} AND status IN ('draft','calculated','approved')`,
+    `SELECT COUNT(*) AS count FROM payroll_runs WHERE status IN ('draft','calculated','approved')${orgFilter}`,
     params
   );
   const [attendanceToday] = await pool.execute<RowData>(
     `SELECT COUNT(*) AS count FROM staff_attendance sa
      JOIN employees e ON e.id = sa.employee_id
      WHERE sa.attendance_date = CURDATE() AND sa.clock_in IS NOT NULL${orgId ? ' AND e.organisation_id = ?' : ''}`,
-    orgId ? [orgId] : []
+    params
   );
 
   return reply.send({
     data: {
+      // Frontend (HRDashboardPage) contract
+      totalEmployees: totalEmployees[0]?.count || 0,
+      activeEmployees: activeEmployees[0]?.count || 0,
+      pendingLeave: pendingLeaves[0]?.count || 0,
+      departments: departmentCount[0]?.count || 0,
+      openPayroll: activePayroll[0]?.count || 0,
+      // Preserved existing fields (backward compatibility)
       employeesByStatus: employeeCount,
       totalDepartments: departmentCount[0]?.count || 0,
       pendingLeaveRequests: pendingLeaves[0]?.count || 0,
@@ -1672,4 +1717,44 @@ export async function hrDashboardHandler(request: FastifyRequest, reply: Fastify
       attendanceToday: attendanceToday[0]?.count || 0,
     },
   });
+}
+
+// ─── Frontend-compatibility adapters ─────────────────────────────────────────
+// These adapters map the admin SPA's nested paths/payloads onto the existing
+// canonical handlers. They introduce no new business rules: lifecycle actions
+// reuse the existing status-transition handler, sub-resources delegate to the
+// existing list handlers, and clock-in/out delegate to the existing handlers.
+
+const EMPLOYEE_ACTION_STATUS: Record<string, string> = {
+  activate: 'active',
+  suspend: 'suspended',
+  terminate: 'terminated',
+  archive: 'archived',
+};
+
+export async function changeEmployeeStatusByActionHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { action } = request.params as any;
+  const status = EMPLOYEE_ACTION_STATUS[action];
+  if (!status) {
+    throw new AppError(`Unsupported employee action '${action}'`, 400, 'VALIDATION_ERROR');
+  }
+  (request as any).body = { ...((request as any).body || {}), status };
+  return changeEmployeeStatusHandler(request, reply);
+}
+
+export async function clockByTypeHandler(request: FastifyRequest, reply: FastifyReply) {
+  const body = (request.body as any) || {};
+  const employeeId = body.employee_id ?? body.employeeId;
+  if (!employeeId) {
+    throw new AppError('employee_id is required', 400, 'VALIDATION_ERROR');
+  }
+  if (body.type === 'in') {
+    (request as any).body = { employeeId: Number(employeeId), notes: body.notes };
+    return clockInHandler(request, reply);
+  }
+  if (body.type === 'out') {
+    (request as any).body = { employeeId: Number(employeeId) };
+    return clockOutHandler(request, reply);
+  }
+  throw new AppError(`Unsupported clock type '${body.type}'`, 400, 'VALIDATION_ERROR');
 }

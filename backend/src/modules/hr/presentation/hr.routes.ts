@@ -78,4 +78,51 @@ export async function hrRoutes(app: FastifyInstance): Promise<void> {
 
   // ── HR Dashboard ───────────────────────────────────────────────────────────
   app.get('/hr/dashboard', { preHandler: [requirePermission(['hr.dashboard.view'])] }, ctrl.hrDashboardHandler);
+
+  // ── Frontend-compatible path aliases ────────────────────────────────────────
+  // These use the frontend's nested shapes. Because hrRoutes is registered both
+  // bare (/hr/...) and with the /admin prefix (/admin/hr/...), every alias below
+  // is available to the admin SPA while the canonical /hr/* routes stay intact.
+
+  // Leave requests and types (frontend: /admin/hr/leave/...)
+  app.get('/hr/leave/requests', { preHandler: [requirePermission(['hr.leaves.requests.view'])] }, ctrl.listLeaveRequestsHandler);
+  app.get('/hr/leave/requests/:id', { preHandler: [requirePermission(['hr.leaves.requests.view'])] }, ctrl.getLeaveRequestHandler);
+  app.post('/hr/leave/requests', { preHandler: [requirePermission(['hr.leaves.requests.manage'])] }, ctrl.createLeaveRequestHandler);
+  app.put('/hr/leave/requests/:id', { preHandler: [requirePermission(['hr.leaves.requests.manage'])] }, ctrl.updateLeaveRequestHandler);
+  app.post('/hr/leave/requests/:id/submit', { preHandler: [requirePermission(['hr.leaves.requests.manage'])] }, ctrl.submitLeaveRequestHandler);
+  app.post('/hr/leave/requests/:id/approve', { preHandler: [requirePermission(['hr.leaves.requests.approve'])] }, ctrl.approveLeaveRequestHandler);
+  app.post('/hr/leave/requests/:id/reject', { preHandler: [requirePermission(['hr.leaves.requests.approve'])] }, ctrl.rejectLeaveRequestHandler);
+  app.post('/hr/leave/requests/:id/cancel', { preHandler: [requirePermission(['hr.leaves.requests.manage'])] }, ctrl.cancelLeaveRequestHandler);
+
+  app.get('/hr/leave/types', { preHandler: [requirePermission(['hr.leaves.types.view'])] }, ctrl.listLeaveTypesHandler);
+  app.get('/hr/leave/types/:id', { preHandler: [requirePermission(['hr.leaves.types.view'])] }, ctrl.getLeaveTypeHandler);
+  app.post('/hr/leave/types', { preHandler: [requirePermission(['hr.leaves.types.manage'])] }, ctrl.createLeaveTypeHandler);
+  app.put('/hr/leave/types/:id', { preHandler: [requirePermission(['hr.leaves.types.manage'])] }, ctrl.updateLeaveTypeHandler);
+  app.delete('/hr/leave/types/:id', { preHandler: [requirePermission(['hr.leaves.types.manage'])] }, ctrl.deleteLeaveTypeHandler);
+
+  // Payroll runs and components (frontend: /admin/hr/payroll/...)
+  app.get('/hr/payroll/runs', { preHandler: [requirePermission(['hr.payroll.runs.view'])] }, ctrl.listPayrollRunsHandler);
+  app.get('/hr/payroll/runs/:id', { preHandler: [requirePermission(['hr.payroll.runs.view'])] }, ctrl.getPayrollRunHandler);
+  app.post('/hr/payroll/runs', { preHandler: [requirePermission(['hr.payroll.runs.manage'])] }, ctrl.createPayrollRunHandler);
+  app.post('/hr/payroll/runs/:id/calculate', { preHandler: [requirePermission(['hr.payroll.runs.calculate'])] }, ctrl.calculatePayrollRunHandler);
+  app.post('/hr/payroll/runs/:id/approve', { preHandler: [requirePermission(['hr.payroll.runs.approve'])] }, ctrl.approvePayrollRunHandler);
+  app.post('/hr/payroll/runs/:id/post', { preHandler: [requirePermission(['hr.payroll.runs.post'])] }, ctrl.postPayrollRunHandler);
+  app.post('/hr/payroll/runs/:id/mark-paid', { preHandler: [requirePermission(['hr.payroll.runs.manage'])] }, ctrl.markPayrollPaidHandler);
+  app.post('/hr/payroll/runs/:id/close', { preHandler: [requirePermission(['hr.payroll.runs.manage'])] }, ctrl.closePayrollRunHandler);
+
+  app.get('/hr/payroll/components', { preHandler: [requirePermission(['hr.payroll.components.view'])] }, ctrl.listPayrollComponentsHandler);
+  app.post('/hr/payroll/components', { preHandler: [requirePermission(['hr.payroll.components.manage'])] }, ctrl.createPayrollComponentHandler);
+  app.put('/hr/payroll/components/:id', { preHandler: [requirePermission(['hr.payroll.components.manage'])] }, ctrl.updatePayrollComponentHandler);
+  app.delete('/hr/payroll/components/:id', { preHandler: [requirePermission(['hr.payroll.components.manage'])] }, ctrl.deletePayrollComponentHandler);
+
+  // Attendance clock (frontend: POST /admin/hr/attendance/clock { employee_id, type, timestamp })
+  app.post('/hr/attendance/clock', { preHandler: [requirePermission(['hr.attendance.manage'])] }, ctrl.clockByTypeHandler);
+
+  // Employee sub-resources (frontend: /admin/hr/employees/:id/{contracts,leave,attendance})
+  app.get('/hr/employees/:id/contracts', { preHandler: [requirePermission(['hr.contracts.view'])] }, ctrl.listContractsHandler);
+  app.get('/hr/employees/:id/leave', { preHandler: [requirePermission(['hr.leaves.requests.view'])] }, ctrl.listLeaveRequestsHandler);
+  app.get('/hr/employees/:id/attendance', { preHandler: [requirePermission(['hr.attendance.view'])] }, ctrl.listAttendanceHandler);
+
+  // Employee lifecycle actions (frontend: POST /admin/hr/employees/:id/{activate|suspend|terminate|archive})
+  app.post('/hr/employees/:id/:action', { preHandler: [requirePermission(['hr.employees.manage'])] }, ctrl.changeEmployeeStatusByActionHandler);
 }

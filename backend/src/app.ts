@@ -611,6 +611,7 @@ app.register(adminTagRoutes);
 app.register(accountingRoutes);
 app.register(crmRoutes);
 app.register(hrRoutes);
+app.register(hrRoutes, { prefix: '/admin' });
 app.register(biRoutes);
 app.register(sportsEngineRoutes);
 app.register(apiGatewayRoutes);
