@@ -34,11 +34,11 @@ export async function listCustomersHandler(request: FastifyRequest, reply: Fasti
             (SELECT COUNT(*) FROM orders o WHERE o.buyer_id = u.id) AS total_orders,
             (SELECT COUNT(*) FROM academy_enrollments ae WHERE ae.player_id = u.id) AS total_enrollments,
             (SELECT COUNT(*) FROM tournament_registrations tr WHERE tr.player_id = u.id) AS total_tournaments,
-            (SELECT MAX(greatest(
+            greatest(
               COALESCE((SELECT MAX(b.created_at) FROM bookings b WHERE b.user_id = u.id), '1970-01-01'),
               COALESCE((SELECT MAX(o.created_at) FROM orders o WHERE o.buyer_id = u.id), '1970-01-01'),
               COALESCE((SELECT MAX(ae.created_at) FROM academy_enrollments ae WHERE ae.player_id = u.id), '1970-01-01')
-            ))) AS last_activity
+            ) AS last_activity
      FROM users u
      ${where}
      ORDER BY u.created_at DESC

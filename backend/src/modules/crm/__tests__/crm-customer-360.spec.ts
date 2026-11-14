@@ -247,6 +247,32 @@ describe('GET /admin/crm/customers (listCustomersHandler)', () => {
     expect(row.total_bookings).toBe(3);
     expect(row.total_orders).toBe(2);
   });
+
+  it('keeps the customer-list SQL ONLY_FULL_GROUP_BY safe (no outer MAX aggregate)', async () => {
+    await listCustomersHandler({ query: {} } as any, makeReply());
+
+    // Identify the main list query without relying on mock call ordering.
+    const mainCall = pool.query.mock.calls.find(([sql]) => {
+      const text = String(sql);
+      return text.includes('FROM users u') && text.includes('LIMIT ? OFFSET ?');
+    });
+    expect(mainCall).toBeDefined();
+    const mainSql = String(mainCall![0]);
+
+    // last_activity uses a scalar GREATEST, not the redundant outer MAX aggregate.
+    expect(mainSql).toContain('greatest(');
+    expect(mainSql).not.toContain('MAX(greatest(');
+
+    // Correlated COUNT/MAX subqueries must remain intact.
+    expect(mainSql).toContain('(SELECT COUNT(*) FROM bookings b WHERE b.user_id = u.id)');
+    expect(mainSql).toContain('(SELECT COUNT(*) FROM orders o WHERE o.buyer_id = u.id)');
+    expect(mainSql).toContain('(SELECT MAX(b.created_at) FROM bookings b WHERE b.user_id = u.id)');
+    expect(mainSql).toContain('(SELECT MAX(o.created_at) FROM orders o WHERE o.buyer_id = u.id)');
+
+    // Pagination and sorting clauses are preserved.
+    expect(mainSql).toContain('ORDER BY u.created_at DESC');
+    expect(mainSql).toContain('LIMIT ? OFFSET ?');
+  });
 });
 
 describe('GET /admin/crm/customers/:id (getCustomerHandler)', () => {
