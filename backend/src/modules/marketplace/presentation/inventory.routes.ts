@@ -1,9 +1,29 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware, requirePermission } from '../../../shared/middleware/auth.middleware.js';
+import {
+  authMiddleware,
+  requirePermission,
+  requirePlatformAdmin,
+} from '../../../shared/middleware/auth.middleware.js';
+import {
+  requireOrgInventoryAccess,
+  requireOrgInventoryPermission,
+} from '../application/inventory-access.js';
 import * as ctrl from './inventory.controller.js';
 
 export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
+
+  const platformAdminGuard = requirePlatformAdmin();
+  // Legacy `/admin/*` Inventory is a platform-administration surface. It must
+  // never be reachable with an organisation-bound Inventory permission, so the
+  // platform-admin guard runs before the granular `requirePermission(...)`
+  // checks below. Organisation users must use `/org/:orgId/inventory/*`.
+  app.addHook('preHandler', async (request, reply) => {
+    const path = request.url.split('?')[0];
+    if (path === '/admin' || path.startsWith('/admin/')) {
+      return platformAdminGuard(request, reply);
+    }
+  });
 
   // Warehouses
   app.get('/admin/warehouses', { preHandler: [requirePermission(['inventory.warehouses.view'])] }, ctrl.listWarehousesHandler);
@@ -86,4 +106,127 @@ export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/inventory/purchase-orders', { preHandler: [requirePermission(['inventory.purchase-orders.manage'])] }, ctrl.createPurchaseOrderHandler);
   app.get('/admin/inventory/purchase-orders/:id', { preHandler: [requirePermission(['inventory.purchase-orders.view'])] }, ctrl.getPurchaseOrderHandler);
   app.put('/admin/inventory/purchase-orders/:id/status', { preHandler: [requirePermission(['inventory.purchase-orders.manage'])] }, ctrl.updatePurchaseOrderStatusHandler);
+
+  // ── Organisation workspace (/org/:orgId/inventory/*) ───────────────────────
+  // Same handlers, same tenant checks, but the organisation comes from the
+  // route and the permission must be granted by a role bound to THAT
+  // organisation. Platform administrators keep their platform-wide access.
+  // The legacy `/admin/*` route definitions stay the same; they are now
+  // restricted to platform administrators by the hook above.
+
+  const orgBase = '/org/:orgId/inventory';
+
+  // Effective capabilities for the route organisation (page/tab/button gating).
+  app.get(`${orgBase}/access`, { preHandler: [requireOrgInventoryAccess()] }, ctrl.getOrgInventoryAccessHandler);
+
+  // Stock levels, variant search, adjustment, transfer and logs.
+  app.get(`${orgBase}/stock`, { preHandler: [requireOrgInventoryPermission(['inventory.stock.view'])] }, ctrl.listStockLevelsHandler);
+  app.get(
+    `${orgBase}/variants/search`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.stock.view'])] },
+    ctrl.searchInventoryVariantsHandler,
+  );
+  app.post(
+    `${orgBase}/stock/adjust`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.stock.adjust', 'inventory.stock.manage'])] },
+    ctrl.adjustStockFromFrontendHandler,
+  );
+  app.post(
+    `${orgBase}/stock/transfer`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.transfers.create', 'inventory.stock.manage'])] },
+    ctrl.createStockTransferFromFrontendHandler,
+  );
+  app.get(
+    `${orgBase}/stock/logs`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.logs.view'])] },
+    ctrl.getInventoryLogsHandler,
+  );
+
+  // Stock transfers (list / complete / cancel).
+  app.get(
+    `${orgBase}/stock-transfers`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.transfers.view', 'inventory.stock.view'])] },
+    ctrl.listStockTransfersHandler,
+  );
+  app.post(
+    `${orgBase}/stock-transfers/:id/complete`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.transfers.complete', 'inventory.stock.manage'])] },
+    ctrl.completeStockTransferHandler,
+  );
+  app.post(
+    `${orgBase}/stock-transfers/:id/cancel`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.transfers.cancel', 'inventory.stock.manage'])] },
+    ctrl.cancelStockTransferHandler,
+  );
+
+  // Warehouses.
+  app.get(
+    `${orgBase}/warehouses`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.warehouses.view'])] },
+    ctrl.listWarehousesHandler,
+  );
+  app.post(
+    `${orgBase}/warehouses`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.warehouses.manage'])] },
+    ctrl.createWarehouseHandler,
+  );
+  app.put(
+    `${orgBase}/warehouses/:id`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.warehouses.manage'])] },
+    ctrl.updateWarehouseHandler,
+  );
+  app.delete(
+    `${orgBase}/warehouses/:id`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.warehouses.manage'])] },
+    ctrl.deleteWarehouseHandler,
+  );
+
+  // Suppliers.
+  app.get(
+    `${orgBase}/suppliers`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.suppliers.view'])] },
+    ctrl.listSuppliersHandler,
+  );
+  app.post(
+    `${orgBase}/suppliers`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.suppliers.manage'])] },
+    ctrl.createSupplierHandler,
+  );
+  app.put(
+    `${orgBase}/suppliers/:id`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.suppliers.manage'])] },
+    ctrl.updateSupplierHandler,
+  );
+  app.delete(
+    `${orgBase}/suppliers/:id`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.suppliers.manage'])] },
+    ctrl.deleteSupplierHandler,
+  );
+
+  // Purchase orders.
+  app.get(
+    `${orgBase}/purchase-orders`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.purchase-orders.view'])] },
+    ctrl.listPurchaseOrdersHandler,
+  );
+  app.post(
+    `${orgBase}/purchase-orders`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.purchase-orders.manage'])] },
+    ctrl.createPurchaseOrderHandler,
+  );
+  app.get(
+    `${orgBase}/purchase-orders/:id`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.purchase-orders.view'])] },
+    ctrl.getPurchaseOrderHandler,
+  );
+  app.put(
+    `${orgBase}/purchase-orders/:id`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.purchase-orders.manage'])] },
+    ctrl.updatePurchaseOrderHandler,
+  );
+  app.put(
+    `${orgBase}/purchase-orders/:id/status`,
+    { preHandler: [requireOrgInventoryPermission(['inventory.purchase-orders.manage'])] },
+    ctrl.updatePurchaseOrderStatusHandler,
+  );
 }

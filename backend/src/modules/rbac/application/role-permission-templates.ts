@@ -6,6 +6,8 @@
  * 26 global template roles (no org clones).
  */
 
+import { canOrgRoleReceiveInventoryPermission } from '../domain/org-permission-policy.js';
+
 const ADMIN_ONLY_PREFIXES = [
   'users.',
   'roles.',
@@ -785,6 +787,9 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (canManageTournaments(templateSlug, permissionKey)) return true;
     if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
+    // P1 — explicit Inventory capability set (granted BEFORE the admin-only
+    // deny; `inventory.` remains platform-only for every other role).
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -844,6 +849,8 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
   if (templateSlug === 'accountant') {
     if (permissionKey.startsWith('users.delete')) return false;
     if (permissionKey.startsWith('roles.')) return false;
+    // P1 — read/analyse Inventory; no stock adjustment or warehouse management.
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     // Explicit deny BEFORE the broad `^financial\.` pattern: financial report
     // viewing/export are reserved for the roles that retain the global
     // Financial Dashboard (super_admin and finance-manager).
@@ -925,12 +932,14 @@ export function permissionMatchesTemplate(templateSlug: string, permissionKey: s
     // deny keeps the marketplace ops role read-only on settlements even if its
     // pattern list is later broadened.
     if (permissionKey === 'settlements.export') return false;
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, MARKETPLACE_MANAGER_PATTERNS)) return true;
     return false;
   }
 
   if (templateSlug === 'receptionist') {
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, RECEPTIONIST_PATTERNS)) return true;
     return false;

@@ -175,6 +175,29 @@ describe('inventory route compatibility', () => {
       ['POST', '/admin/stock-transfers/:id/cancel'],
       ['PUT', '/admin/inventory/variants/:variantId/stock'],
       ['GET', '/admin/inventory/logs'],
+      // Organisation workspace namespace (P1)
+      ['GET', '/org/:orgId/inventory/access'],
+      ['GET', '/org/:orgId/inventory/stock'],
+      ['GET', '/org/:orgId/inventory/variants/search'],
+      ['POST', '/org/:orgId/inventory/stock/adjust'],
+      ['POST', '/org/:orgId/inventory/stock/transfer'],
+      ['GET', '/org/:orgId/inventory/stock/logs'],
+      ['GET', '/org/:orgId/inventory/stock-transfers'],
+      ['POST', '/org/:orgId/inventory/stock-transfers/:id/complete'],
+      ['POST', '/org/:orgId/inventory/stock-transfers/:id/cancel'],
+      ['GET', '/org/:orgId/inventory/warehouses'],
+      ['POST', '/org/:orgId/inventory/warehouses'],
+      ['PUT', '/org/:orgId/inventory/warehouses/:id'],
+      ['DELETE', '/org/:orgId/inventory/warehouses/:id'],
+      ['GET', '/org/:orgId/inventory/suppliers'],
+      ['POST', '/org/:orgId/inventory/suppliers'],
+      ['PUT', '/org/:orgId/inventory/suppliers/:id'],
+      ['DELETE', '/org/:orgId/inventory/suppliers/:id'],
+      ['GET', '/org/:orgId/inventory/purchase-orders'],
+      ['POST', '/org/:orgId/inventory/purchase-orders'],
+      ['GET', '/org/:orgId/inventory/purchase-orders/:id'],
+      ['PUT', '/org/:orgId/inventory/purchase-orders/:id'],
+      ['PUT', '/org/:orgId/inventory/purchase-orders/:id/status'],
     ];
 
     for (const [method, url] of routes) {
@@ -202,7 +225,6 @@ describe('inventory organisation scope endpoint', () => {
     expect(sql).toContain('o.deleted_at IS NULL');
     // Canonical guard does NOT authorise via role clones (`roles.organisation_id`).
     const scopeCall = findCall(callsOf(), 'SELECT DISTINCT o.id, o.name');
-    expect(scopeCall?.sql).not.toContain('roles r');
     expect(scopeCall?.sql).not.toContain('r.organisation_id');
 
     expect(state.body).toEqual({

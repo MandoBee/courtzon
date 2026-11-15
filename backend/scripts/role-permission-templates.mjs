@@ -84,6 +84,61 @@ function isAdminOnlyKey(key) {
   return ADMIN_ONLY_PREFIXES.some((p) => key === p || key.startsWith(p));
 }
 
+// ── Inventory (P1 — organisation-scoped Inventory) ──────────────────────────
+// Mirrors backend/src/modules/rbac/domain/org-permission-policy.ts.
+// `inventory.` stays in ADMIN_ONLY_PREFIXES; only the exact keys below are
+// granted, and only to the listed roles. A future `inventory.*` key remains
+// fail-closed until it is reviewed.
+const INVENTORY_ORG_ASSIGNABLE_KEYS = [
+  'inventory.warehouses.view',
+  'inventory.warehouses.manage',
+  'inventory.suppliers.view',
+  'inventory.suppliers.manage',
+  'inventory.purchase-orders.view',
+  'inventory.purchase-orders.manage',
+  'inventory.stock.view',
+  'inventory.stock.adjust',
+  'inventory.transfers.view',
+  'inventory.transfers.create',
+  'inventory.transfers.complete',
+  'inventory.transfers.cancel',
+  'inventory.logs.view',
+  'inventory.reports.view',
+  'inventory.reports.export',
+];
+
+const INVENTORY_ROLE_GRANTS = {
+  'org-admin': new Set(INVENTORY_ORG_ASSIGNABLE_KEYS),
+  'marketplace-manager': new Set([
+    'inventory.warehouses.view',
+    'inventory.warehouses.manage',
+    'inventory.stock.view',
+    'inventory.stock.adjust',
+    'inventory.transfers.view',
+    'inventory.transfers.create',
+    'inventory.transfers.complete',
+    'inventory.transfers.cancel',
+    'inventory.logs.view',
+  ]),
+  accountant: new Set([
+    'inventory.warehouses.view',
+    'inventory.stock.view',
+    'inventory.transfers.view',
+    'inventory.logs.view',
+    'inventory.reports.view',
+    'inventory.reports.export',
+  ]),
+  receptionist: new Set([
+    'inventory.warehouses.view',
+    'inventory.stock.view',
+    'inventory.transfers.view',
+  ]),
+};
+
+function canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey) {
+  return INVENTORY_ROLE_GRANTS[templateSlug]?.has(permissionKey) ?? false;
+}
+
 // Academy management is an org-scoped admin capability: org admins manage their
 // org/branch academies; master-admin and academy-manager manage platform
 // academies. These roles may hold academy.* admin keys despite the generic
@@ -782,6 +837,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
     if (canManageMatchResults(templateSlug, permissionKey)) return true;
     if (canManageTournaments(templateSlug, permissionKey)) return true;
     if (canManageTournamentCompetitions(templateSlug, permissionKey)) return true;
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (permissionKey.startsWith('marketplace.admin.')) return false;
     if (ORG_SHOP_ADMIN_DENY_KEYS.has(permissionKey)) return false;
@@ -847,6 +903,7 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
   if (templateSlug === 'accountant') {
     if (permissionKey.startsWith('users.delete')) return false;
     if (permissionKey.startsWith('roles.')) return false;
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     // Explicit deny BEFORE the broad `^financial\.` pattern: financial report
     // viewing/export are reserved for the roles that retain the global
     // Financial Dashboard (super_admin and finance-manager).
@@ -922,12 +979,14 @@ export function permissionMatchesTemplate(templateSlug, permissionKey) {
     // deny keeps the marketplace ops role read-only on settlements even if its
     // pattern list is later broadened.
     if (permissionKey === 'settlements.export') return false;
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, MARKETPLACE_MANAGER_PATTERNS)) return true;
     return false;
   }
 
   if (templateSlug === 'receptionist') {
+    if (canOrgRoleReceiveInventoryPermission(templateSlug, permissionKey)) return true;
     if (isAdminOnlyKey(permissionKey)) return false;
     if (matchesAny(permissionKey, RECEPTIONIST_PATTERNS)) return true;
     return false;

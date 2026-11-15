@@ -9,25 +9,15 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../../shared/errors/app-error.js';
+import {
+  expandInventoryPermissionKeys,
+  INVENTORY_PERMISSION_KEYS,
+  parseInventoryOrgId,
+  userCanAccessInventoryOrganisation,
+} from '../application/inventory-access.js';
+import { isPlatformAdmin } from '../../../shared/middleware/org-access.js';
 
 type RowData = mysql.RowDataPacket[];
-
-/**
- * Platform-admin scope: the canonical `super_admin` / `super-admin` role.
- * Mirrors shared/middleware/org-access.ts `isPlatformAdmin` — never inferred
- * from a client-supplied id.
- */
-async function isPlatformAdminUser(userId: number): Promise<boolean> {
-  const pool = getPool();
-  const [rows] = await pool.execute<RowData>(
-    `SELECT 1 FROM user_roles ur
-     JOIN roles r ON r.id = ur.role_id
-     WHERE ur.user_id = ? AND r.slug IN ('super_admin', 'super-admin') AND ur.is_active = TRUE
-     LIMIT 1`,
-    [userId],
-  );
-  return rows.length > 0;
-}
 
 /**
  * Tenant authority for Inventory, composing the established models:
@@ -53,14 +43,22 @@ async function userCanAccessOrganisation(userId: number, orgId: number): Promise
          OR EXISTS (
            SELECT 1 FROM user_role_scopes urs
            JOIN user_roles ur ON ur.id = urs.user_role_id
+           JOIN roles rs ON rs.id = ur.role_id
            WHERE ur.user_id = ? AND urs.scope_type = 'organisation'
              AND urs.scope_id = o.id AND ur.is_active = TRUE
+             AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+             AND rs.is_active = TRUE
+             AND rs.deleted_at IS NULL
          )
          OR EXISTS (
            SELECT 1 FROM user_roles ur2
            JOIN roles r ON r.id = ur2.role_id
            WHERE ur2.user_id = ? AND r.slug IN ('super_admin', 'super-admin')
+             AND r.organisation_id IS NULL
              AND ur2.is_active = TRUE
+             AND (ur2.expires_at IS NULL OR ur2.expires_at > NOW())
+             AND r.is_active = TRUE
+             AND r.deleted_at IS NULL
          )
        )
      LIMIT 1`,
@@ -99,8 +97,12 @@ async function findPermittedOrganisations(userId: number): Promise<PermittedOrga
          OR EXISTS (
            SELECT 1 FROM user_role_scopes urs
            JOIN user_roles ur ON ur.id = urs.user_role_id
+           JOIN roles r ON r.id = ur.role_id
            WHERE ur.user_id = ? AND urs.scope_type = 'organisation'
              AND urs.scope_id = o.id AND ur.is_active = TRUE
+             AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+             AND r.is_active = TRUE
+             AND r.deleted_at IS NULL
          )
        )
      ORDER BY o.name ASC`,
@@ -112,24 +114,48 @@ async function findPermittedOrganisations(userId: number): Promise<PermittedOrga
 /**
  * Resolve the organisation scope of the current request.
  *
- * `?orgId=` is treated as a request for an organisation, never as authority:
- * the actor must pass `userCanAccessOrganisation`. Without `orgId`, the scope
- * is derived from the actor's membership records. Platform administrators have
- * no implicit tenant (their access spans organisations), so they must name one.
+ * Precedence:
+ *   1. The scope already validated by `requireOrgInventoryPermission` /
+ *      `requireOrgInventoryAccess` for `/org/:orgId/inventory/*` (the route
+ *      organisation is authoritative — never a stale `?orgId=` selector).
+ *   2. `params.orgId` (the explicit organisation workspace route). It is
+ *      validated with the organisation-clone-aware Inventory predicate, so an
+ *      organisation staff role can operate even though the legacy admin resolver
+ *      deliberately excludes role clones.
+ *   3. `?orgId=` (legacy `/admin/*` contract) — treated as a request, never as
+ *      authority: the actor must pass `userCanAccessOrganisation`. Without
+ *      `orgId`, the scope is derived from the actor's membership records.
+ *
+ * Platform administrators have no implicit tenant (their access spans
+ * organisations), so they must name one.
  */
 async function resolveOrgId(request: FastifyRequest): Promise<number> {
   const userId = (request as any).userId;
   if (!userId) throw new AuthenticationError();
 
-  const query = request.query as any;
-  const raw = query?.orgId;
-  let requestedOrgId: number | null = null;
-  if (raw !== undefined && raw !== null && raw !== '') {
-    const parsed = Number(raw);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
+  // 1. Organisation workspace guard already resolved and authorised the scope.
+  const scoped = (request as any).orgInventoryScope?.orgId;
+  if (Number.isInteger(scoped) && scoped > 0) return scoped;
+
+  // 2. `/org/:orgId/inventory/*` route parameter.
+  const params = request.params as any;
+  const paramOrgId = parseInventoryOrgId(params?.orgId);
+  if (params?.orgId !== undefined && params?.orgId !== null && params?.orgId !== '') {
+    if (paramOrgId === null) {
       throw new ValidationError('Invalid organisation id');
     }
-    requestedOrgId = parsed;
+    if (!(await userCanAccessInventoryOrganisation(userId, paramOrgId))) {
+      throw new ForbiddenError('You do not have access to this organisation');
+    }
+    return paramOrgId;
+  }
+
+  // 3. Legacy `/admin/*` contract.
+  const query = request.query as any;
+  const rawQueryOrgId = query?.orgId;
+  const requestedOrgId = parseInventoryOrgId(rawQueryOrgId);
+  if (rawQueryOrgId !== undefined && rawQueryOrgId !== null && rawQueryOrgId !== '' && requestedOrgId === null) {
+    throw new ValidationError('Invalid organisation id');
   }
 
   if (requestedOrgId !== null) {
@@ -139,7 +165,7 @@ async function resolveOrgId(request: FastifyRequest): Promise<number> {
     return requestedOrgId;
   }
 
-  if (await isPlatformAdminUser(userId)) {
+  if (await isPlatformAdmin(userId)) {
     throw new ValidationError('organisationId is required for platform administrators');
   }
 
@@ -149,6 +175,34 @@ async function resolveOrgId(request: FastifyRequest): Promise<number> {
     throw new ValidationError('organisationId is required when multiple organisations are accessible');
   }
   return permitted[0].id;
+}
+
+/**
+ * GET /org/:orgId/inventory/access
+ *
+ * Effective Inventory capabilities for the route organisation. The guard has
+ * already validated the organisation and attached the org-bound permission
+ * set; this endpoint only normalises it into the UI capability list. An empty
+ * list means "the organisation is valid but your role has no Inventory access"
+ * — the frontend renders an explicit no-access surface.
+ */
+export async function getOrgInventoryAccessHandler(request: FastifyRequest, reply: FastifyReply) {
+  const scope = (request as any).orgInventoryScope as
+    | { orgId: number; isPlatformAdmin: boolean; permissions: string[] }
+    | undefined;
+  if (!scope) throw new ForbiddenError('Organisation inventory scope was not resolved');
+
+  const permissions = scope.isPlatformAdmin
+    ? [...INVENTORY_PERMISSION_KEYS]
+    : expandInventoryPermissionKeys(scope.permissions);
+
+  return reply.send({
+    data: {
+      orgId: scope.orgId,
+      permissions,
+      isPlatformAdmin: scope.isPlatformAdmin,
+    },
+  });
 }
 
 /** Reject a referenced supplier that is not owned by the resolved organisation. */
@@ -318,7 +372,7 @@ export async function listInventoryOrganisationsHandler(request: FastifyRequest,
   if (!userId) throw new AuthenticationError();
   const pool = getPool();
 
-  if (await isPlatformAdminUser(userId)) {
+  if (await isPlatformAdmin(userId)) {
     const [rows] = await pool.execute<RowData>(
       `SELECT id, name FROM organisations
        WHERE is_active = TRUE AND deleted_at IS NULL

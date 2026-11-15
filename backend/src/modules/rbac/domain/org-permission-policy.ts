@@ -206,6 +206,74 @@ const REFUND_ORG_ASSIGNABLE_KEYS: readonly string[] = [
  */
 const REFUND_EXPORT_ORG_ROLES: ReadonlySet<string> = new Set(['org-admin', 'accountant']);
 
+// ── Inventory (P1 — organisation-scoped Inventory) ──────────────────────────
+//
+// `inventory.` stays in PLATFORM_ONLY_PREFIXES above: the namespace is NOT
+// broadly organisation-assignable. Only the exact keys below may cross the
+// boundary, and only for the roles in INVENTORY_ROLE_GRANTS. An unknown future
+// `inventory.*` key therefore remains fail-closed until it is reviewed.
+
+export const INVENTORY_ORG_ASSIGNABLE_KEYS: readonly string[] = [
+  'inventory.warehouses.view',
+  'inventory.warehouses.manage',
+  'inventory.suppliers.view',
+  'inventory.suppliers.manage',
+  'inventory.purchase-orders.view',
+  'inventory.purchase-orders.manage',
+  'inventory.stock.view',
+  'inventory.stock.adjust',
+  'inventory.transfers.view',
+  'inventory.transfers.create',
+  'inventory.transfers.complete',
+  'inventory.transfers.cancel',
+  'inventory.logs.view',
+  'inventory.reports.view',
+  'inventory.reports.export',
+];
+
+/**
+ * Role-aware Inventory matrix. The organisation role clone slug is the same as
+ * the global template slug (`cloneRoleForOrg`), so this map is shared by role
+ * cloning, organisation staff grants AND the role-template matcher.
+ *
+ * `marketplace-manager` is the closest existing template to the product's
+ * "Inventory Manager" persona; no new database role is invented in P1.
+ */
+export const INVENTORY_ROLE_GRANTS: Readonly<Record<string, ReadonlySet<string>>> = {
+  'org-admin': new Set(INVENTORY_ORG_ASSIGNABLE_KEYS),
+  'marketplace-manager': new Set([
+    'inventory.warehouses.view',
+    'inventory.warehouses.manage',
+    'inventory.stock.view',
+    'inventory.stock.adjust',
+    'inventory.transfers.view',
+    'inventory.transfers.create',
+    'inventory.transfers.complete',
+    'inventory.transfers.cancel',
+    'inventory.logs.view',
+  ]),
+  accountant: new Set([
+    'inventory.warehouses.view',
+    'inventory.stock.view',
+    'inventory.transfers.view',
+    'inventory.logs.view',
+    'inventory.reports.view',
+    'inventory.reports.export',
+  ]),
+  receptionist: new Set([
+    'inventory.warehouses.view',
+    'inventory.stock.view',
+    'inventory.transfers.view',
+  ]),
+};
+
+export function canOrgRoleReceiveInventoryPermission(
+  roleSlug: string,
+  permissionKey: string,
+): boolean {
+  return INVENTORY_ROLE_GRANTS[roleSlug]?.has(permissionKey) ?? false;
+}
+
 /** Explicit organisation capabilities that do not follow a namespace prefix. */
 const ORG_ASSIGNABLE_EXACT: ReadonlySet<string> = new Set([
   'files.upload',
@@ -215,6 +283,7 @@ const ORG_ASSIGNABLE_EXACT: ReadonlySet<string> = new Set([
   'settlements.cancel',
   'settlements.export',
   ...REFUND_ORG_ASSIGNABLE_KEYS,
+  ...INVENTORY_ORG_ASSIGNABLE_KEYS,
 ]);
 
 export function isPlatformOnlyPermission(permissionKey: string): boolean {
@@ -251,6 +320,9 @@ export function isOrgAssignablePermission(permissionKey: string): boolean {
  */
 export function canOrgRoleReceivePermission(roleSlug: string, permissionKey: string): boolean {
   if (!isOrgAssignablePermission(permissionKey)) return false;
+  if (permissionKey.startsWith('inventory.')) {
+    return canOrgRoleReceiveInventoryPermission(roleSlug, permissionKey);
+  }
   if (permissionKey === 'refunds.export') return REFUND_EXPORT_ORG_ROLES.has(roleSlug);
   return true;
 }
