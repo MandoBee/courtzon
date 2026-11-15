@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
-import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -11,6 +10,7 @@ import {
   InventoryErrorState,
   InventoryOrgGate,
   InventoryOrgSelector,
+  useInventoryCan,
   useInventoryOrg,
 } from './InventoryOrgContext';
 
@@ -47,6 +47,9 @@ export default function PurchaseOrdersPage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const org = useInventoryOrg();
+  const canAny = useInventoryCan();
+  const apiBase = org.apiBase ?? '/admin/inventory';
+  const scopeParams = org.scopeParams ?? { orgId: org.orgId };
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showCreate, setShowCreate] = useState(false);
@@ -64,19 +67,19 @@ export default function PurchaseOrdersPage() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'purchase-orders', org.orgId, page, pageSize, search],
-    queryFn: () => api.get('/admin/inventory/purchase-orders', { params: { orgId: org.orgId, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+    queryFn: () => api.get(`${apiBase}/purchase-orders`, { params: { ...scopeParams, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
     enabled: !!org.orgId,
   });
 
   const { data: suppliers } = useQuery({
     queryKey: ['admin', 'suppliers', 'list', org.orgId],
-    queryFn: () => api.get('/admin/inventory/suppliers', { params: { orgId: org.orgId, limit: 500 } }).then((r: any) => r.data.data),
+    queryFn: () => api.get(`${apiBase}/suppliers`, { params: { ...scopeParams, limit: 500 } }).then((r: any) => r.data.data),
     enabled: !!org.orgId,
   });
 
   const { data: warehouses } = useQuery({
     queryKey: ['admin', 'warehouses', 'list', org.orgId],
-    queryFn: () => api.get('/admin/inventory/warehouses', { params: { orgId: org.orgId, limit: 500 } }).then((r: any) => r.data.data),
+    queryFn: () => api.get(`${apiBase}/warehouses`, { params: { ...scopeParams, limit: 500 } }).then((r: any) => r.data.data),
     enabled: !!org.orgId,
   });
 
@@ -84,7 +87,7 @@ export default function PurchaseOrdersPage() {
     setVariantSearch(q);
     if (q.length < 2 || !org.orgId) { setVariantResults([]); return; }
     try {
-      const res = await api.get('/admin/inventory/variants/search', { params: { orgId: org.orgId, q } });
+      const res = await api.get(`${apiBase}/variants/search`, { params: { ...scopeParams, q } });
       setVariantResults(res.data.data || []);
     } catch { setVariantResults([]); }
   };
@@ -111,13 +114,13 @@ export default function PurchaseOrdersPage() {
   const totalCost = lineItems.reduce((sum, li) => sum + li.total_cost, 0);
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/purchase-orders', payload, { params: { orgId: org.orgId } }),
+    mutationFn: (payload: any) => api.post(`${apiBase}/purchase-orders`, payload, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'purchase-orders'] }); setShowCreate(false); resetCreateForm(); showToast(t('inventory.purchase_orders.created')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) => api.put(`/admin/inventory/purchase-orders/${id}/status`, { status }, { params: { orgId: org.orgId } }),
+    mutationFn: ({ id, status }: { id: number; status: string }) => api.put(`${apiBase}/purchase-orders/${id}/status`, { status }, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'purchase-orders'] }); showToast(t('inventory.purchase_orders.status_updated')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -144,9 +147,9 @@ export default function PurchaseOrdersPage() {
         <div className="flex items-center gap-3">
           <InventoryOrgSelector org={org} />
           <input value={search} onChange={(e: any) => { setSearch(e.target.value); setPage(1); }} placeholder={t('common.search')} className="px-3 py-1.5 text-sm border rounded-[var(--radius-md)] bg-[var(--color-bg)]" />
-          <Can permission="inventory.purchase-orders.manage">
+          {canAny('inventory.purchase-orders.manage') && (
             <button onClick={() => { resetCreateForm(); setShowCreate(true); }} className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-[var(--radius-md)] hover:opacity-90">{t('inventory.purchase_orders.new')}</button>
-          </Can>
+          )}
         </div>
       </div>
 
@@ -271,21 +274,25 @@ export default function PurchaseOrdersPage() {
                 <td className="px-4 py-3 text-right font-medium">{Number(o.total_cost).toFixed(2)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-muted)]">{formatDate(o.created_at)}</td>
                 <td className="px-4 py-3 text-right">
-                  <Can permission="inventory.purchase-orders.manage">
+                  {canAny('inventory.purchase-orders.view') && (
                     <button onClick={() => setDetailId(detailId === o.id ? null : o.id)} className="text-xs text-[var(--color-primary)] mr-2 hover:underline">{t('common.view')}</button>
-                    {o.status === 'draft' && (
-                      <button onClick={() => statusMutation.mutate({ id: o.id, status: 'submitted' })} className="text-xs text-blue-600 mr-2 hover:underline">{t('inventory.purchase_orders.submit')}</button>
-                    )}
-                    {o.status === 'submitted' && (
-                      <>
-                        <button onClick={() => statusMutation.mutate({ id: o.id, status: 'approved' })} className="text-xs text-green-600 mr-2 hover:underline">{t('inventory.purchase_orders.approve')}</button>
-                        <button onClick={() => statusMutation.mutate({ id: o.id, status: 'cancelled' })} className="text-xs text-red-500 mr-2 hover:underline">{t('inventory.purchase_orders.cancel')}</button>
-                      </>
-                    )}
-                    {o.status === 'approved' && (
-                      <button onClick={() => statusMutation.mutate({ id: o.id, status: 'received' })} className="text-xs text-teal-600 mr-2 hover:underline">{t('inventory.purchase_orders.receive')}</button>
-                    )}
-                  </Can>
+                  )}
+                  {canAny('inventory.purchase-orders.manage') && (
+                    <>
+                      {o.status === 'draft' && (
+                        <button onClick={() => statusMutation.mutate({ id: o.id, status: 'submitted' })} className="text-xs text-blue-600 mr-2 hover:underline">{t('inventory.purchase_orders.submit')}</button>
+                      )}
+                      {o.status === 'submitted' && (
+                        <>
+                          <button onClick={() => statusMutation.mutate({ id: o.id, status: 'approved' })} className="text-xs text-green-600 mr-2 hover:underline">{t('inventory.purchase_orders.approve')}</button>
+                          <button onClick={() => statusMutation.mutate({ id: o.id, status: 'cancelled' })} className="text-xs text-red-500 mr-2 hover:underline">{t('inventory.purchase_orders.cancel')}</button>
+                        </>
+                      )}
+                      {o.status === 'approved' && (
+                        <button onClick={() => statusMutation.mutate({ id: o.id, status: 'received' })} className="text-xs text-teal-600 mr-2 hover:underline">{t('inventory.purchase_orders.receive')}</button>
+                      )}
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -298,7 +305,7 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {detailId && (
-        <DetailModal orderId={detailId} orgId={org.orgId} onClose={() => setDetailId(null)} t={t} />
+        <DetailModal orderId={detailId} orgId={org.orgId} apiBase={apiBase} scopeParams={scopeParams} onClose={() => setDetailId(null)} t={t} />
       )}
           </>
         )}
@@ -307,10 +314,10 @@ export default function PurchaseOrdersPage() {
   );
 }
 
-function DetailModal({ orderId, orgId, onClose, t }: { orderId: number; orgId: string; onClose: () => void; t: (key: string) => string }) {
+function DetailModal({ orderId, orgId, apiBase, scopeParams, onClose, t }: { orderId: number; orgId: string; apiBase: string; scopeParams: Record<string, string | number>; onClose: () => void; t: (key: string) => string }) {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'purchase-order', orgId, orderId],
-    queryFn: () => api.get(`/admin/inventory/purchase-orders/${orderId}`, { params: { orgId } }).then((r: any) => r.data.data),
+    queryFn: () => api.get(`${apiBase}/purchase-orders/${orderId}`, { params: scopeParams }).then((r: any) => r.data.data),
     enabled: !!orgId,
   });
 

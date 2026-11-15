@@ -19,6 +19,20 @@ export const ORG_NAV: NavDefinition[] = [
     ],
   },
 
+  // ── Inventory (organisation-scoped) ──
+  {
+    id: 'nav.org.domain.inventory',
+    label: LIT('Inventory'),
+    icon: '📦',
+    path: '/org/{orgId}/inventory',
+    children: [
+      { id: 'nav.org.inventory', label: LIT('Stock Levels'), icon: '📦', path: '/org/{orgId}/inventory', permissionKey: 'inventory.stock.view' },
+      { id: 'nav.org.inventory-warehouses', label: LIT('Warehouses'), icon: '🏬', path: '/org/{orgId}/inventory/warehouses', permissionKey: 'inventory.warehouses.view' },
+      { id: 'nav.org.inventory-suppliers', label: LIT('Suppliers'), icon: '🚚', path: '/org/{orgId}/inventory/suppliers', permissionKey: 'inventory.suppliers.view' },
+      { id: 'nav.org.inventory-purchase-orders', label: LIT('Purchase Orders'), icon: '📋', path: '/org/{orgId}/inventory/purchase-orders', permissionKey: 'inventory.purchase-orders.view' },
+    ],
+  },
+
   // ── People ──
   {
     id: 'nav.org.domain.people',

@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
-import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -11,6 +10,7 @@ import {
   InventoryErrorState,
   InventoryOrgGate,
   InventoryOrgSelector,
+  useInventoryCan,
   useInventoryOrg,
 } from './InventoryOrgContext';
 
@@ -36,6 +36,9 @@ export default function WarehousesPage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const org = useInventoryOrg();
+  const canAny = useInventoryCan();
+  const apiBase = org.apiBase ?? '/admin/inventory';
+  const scopeParams = org.scopeParams ?? { orgId: org.orgId };
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showModal, setShowModal] = useState(false);
@@ -47,24 +50,24 @@ export default function WarehousesPage() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'warehouses', org.orgId, page, pageSize, search],
-    queryFn: () => api.get('/admin/inventory/warehouses', { params: { orgId: org.orgId, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+    queryFn: () => api.get(`${apiBase}/warehouses`, { params: { ...scopeParams, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
     enabled: !!org.orgId,
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/warehouses', payload, { params: { orgId: org.orgId } }),
+    mutationFn: (payload: any) => api.post(`${apiBase}/warehouses`, payload, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'warehouses'] }); resetForm(); showToast(t('inventory.warehouses.created')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: any) => api.put(`/admin/inventory/warehouses/${id}`, payload, { params: { orgId: org.orgId } }),
+    mutationFn: ({ id, payload }: any) => api.put(`${apiBase}/warehouses/${id}`, payload, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'warehouses'] }); resetForm(); showToast(t('inventory.warehouses.updated')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const archiveMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/admin/inventory/warehouses/${id}`, { status: 'archived' }, { params: { orgId: org.orgId } }),
+    mutationFn: (id: number) => api.put(`${apiBase}/warehouses/${id}`, { status: 'archived' }, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'warehouses'] }); showToast(t('inventory.warehouses.archived')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -95,9 +98,9 @@ export default function WarehousesPage() {
         <div className="flex items-center gap-3">
           <InventoryOrgSelector org={org} />
           <input value={search} onChange={(e: any) => { setSearch(e.target.value); setPage(1); }} placeholder={t('common.search')} className="px-3 py-1.5 text-sm border rounded-[var(--radius-md)] bg-[var(--color-bg)]" />
-          <Can permission="inventory.warehouses.manage">
+          {canAny('inventory.warehouses.manage') && (
             <button onClick={() => { resetForm(); setShowModal(true); }} className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-[var(--radius-md)] hover:opacity-90">{t('inventory.warehouses.new')}</button>
-          </Can>
+          )}
         </div>
       </div>
 
@@ -118,7 +121,7 @@ export default function WarehousesPage() {
               <label className="block text-xs text-[var(--color-text-muted)] mb-1">{t('inventory.warehouses.location')} *</label>
               <input value={location} onChange={(e: any) => setLocation(e.target.value)} required className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm" />
             </div>
-            <Can permission="inventory.warehouses.manage">
+            {canAny('inventory.warehouses.manage') && (
               <div>
                 <label className="block text-xs text-[var(--color-text-muted)] mb-1">{t('common.status')}</label>
                 <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full px-3 py-2 border rounded-[var(--radius-md)] bg-[var(--color-bg)] text-sm">
@@ -127,7 +130,7 @@ export default function WarehousesPage() {
                   <option value="archived">{t('common.archived')}</option>
                 </select>
               </div>
-            </Can>
+            )}
           </div>
           <div className="flex items-center gap-3 mt-4">
             <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-[var(--radius-md)] hover:opacity-90" disabled={createMutation.isPending || updateMutation.isPending}>
@@ -157,12 +160,14 @@ export default function WarehousesPage() {
                   <span className={`px-2 py-0.5 text-xs rounded-full border ${statusBadge(w.status)}`}>{w.status}</span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Can permission="inventory.warehouses.manage">
-                    <button onClick={() => openEdit(w)} className="text-xs text-[var(--color-primary)] mr-3 hover:underline">{t('common.edit')}</button>
-                    {w.status !== 'archived' && (
-                      <button onClick={() => archiveMutation.mutate(w.id)} className="text-xs text-red-500 hover:underline">{t('common.archive')}</button>
-                    )}
-                  </Can>
+                  {canAny('inventory.warehouses.manage') && (
+                    <>
+                      <button onClick={() => openEdit(w)} className="text-xs text-[var(--color-primary)] mr-3 hover:underline">{t('common.edit')}</button>
+                      {w.status !== 'archived' && (
+                        <button onClick={() => archiveMutation.mutate(w.id)} className="text-xs text-red-500 hover:underline">{t('common.archive')}</button>
+                      )}
+                    </>
+                  )}
                 </td>
               </tr>
             ))}

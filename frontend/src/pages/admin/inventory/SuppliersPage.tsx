@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
-import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -11,6 +10,7 @@ import {
   InventoryErrorState,
   InventoryOrgGate,
   InventoryOrgSelector,
+  useInventoryCan,
   useInventoryOrg,
 } from './InventoryOrgContext';
 
@@ -31,6 +31,9 @@ export default function SuppliersPage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const org = useInventoryOrg();
+  const canAny = useInventoryCan();
+  const apiBase = org.apiBase ?? '/admin/inventory';
+  const scopeParams = org.scopeParams ?? { orgId: org.orgId };
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showModal, setShowModal] = useState(false);
@@ -46,18 +49,18 @@ export default function SuppliersPage() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'suppliers', org.orgId, page, pageSize, search],
-    queryFn: () => api.get('/admin/inventory/suppliers', { params: { orgId: org.orgId, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+    queryFn: () => api.get(`${apiBase}/suppliers`, { params: { ...scopeParams, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
     enabled: !!org.orgId,
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/suppliers', payload, { params: { orgId: org.orgId } }),
+    mutationFn: (payload: any) => api.post(`${apiBase}/suppliers`, payload, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'suppliers'] }); resetForm(); showToast(t('inventory.suppliers.created')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: any) => api.put(`/admin/inventory/suppliers/${id}`, payload, { params: { orgId: org.orgId } }),
+    mutationFn: ({ id, payload }: any) => api.put(`${apiBase}/suppliers/${id}`, payload, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'suppliers'] }); resetForm(); showToast(t('inventory.suppliers.updated')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -90,9 +93,9 @@ export default function SuppliersPage() {
         <div className="flex items-center gap-3">
           <InventoryOrgSelector org={org} />
           <input value={search} onChange={(e: any) => { setSearch(e.target.value); setPage(1); }} placeholder={t('common.search')} className="px-3 py-1.5 text-sm border rounded-[var(--radius-md)] bg-[var(--color-bg)]" />
-          <Can permission="inventory.suppliers.manage">
+          {canAny('inventory.suppliers.manage') && (
             <button onClick={() => { resetForm(); setShowModal(true); }} className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-[var(--radius-md)] hover:opacity-90">{t('inventory.suppliers.new')}</button>
-          </Can>
+          )}
         </div>
       </div>
 
@@ -173,9 +176,9 @@ export default function SuppliersPage() {
                   <span className={`px-2 py-0.5 text-xs rounded-full border ${s.status === 'active' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-gray-100 text-gray-500 border-gray-300'}`}>{s.status}</span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Can permission="inventory.suppliers.manage">
+                  {canAny('inventory.suppliers.manage') && (
                     <button onClick={() => openEdit(s)} className="text-xs text-[var(--color-primary)] hover:underline">{t('common.edit')}</button>
-                  </Can>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1,6 +1,15 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import api from '../../../services/api';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
+import { useCan } from '../../../hooks/useCan';
 
 export interface InventoryOrgOption {
   id: number;
@@ -21,22 +30,121 @@ export interface InventoryOrgState {
   needsSelection: boolean;
   /** True when the actor has no organisation to operate on. */
   hasNoAccess: boolean;
+  /** True when the route organisation id is malformed. */
+  invalidOrg?: boolean;
+  /** `admin` = platform workspace; `org` = fixed route organisation. */
+  mode?: 'admin' | 'org';
+  /** API namespace for the current surface (`/admin/inventory` or `/org/:id/inventory`). */
+  apiBase?: string;
+  /** Stock-transfer namespace (`/admin/stock-transfers` or `/org/:id/inventory/stock-transfers`). */
+  transfersBase?: string;
+  /** Extra query params (`{ orgId }` in admin mode, `{}` in organisation mode). */
+  scopeParams?: Record<string, string | number>;
+  /** Effective capabilities for the current scope (organisation mode only). */
+  permissions?: string[];
+  /**
+   * Capability check bound to the active scope. In organisation mode it uses
+   * ONLY the permissions granted by roles bound to the route organisation, so
+   * a role that manages Organisation A does not unlock buttons for
+   * Organisation B. In admin mode it behaves like `useCan`.
+   */
+  canAny?: (...permissionKeys: string[]) => boolean;
+}
+
+interface InventoryOrgScopeValue {
+  orgId: string;
+  apiBase: string;
+  transfersBase: string;
+  permissions: string[] | null;
+  loading: boolean;
+  error: unknown | null;
+  retry: () => void;
+}
+
+const InventoryOrgScopeContext = createContext<InventoryOrgScopeValue | null>(null);
+
+const NOOP = () => {};
+
+/**
+ * Fixed-organisation scope for the `/org/:orgId/inventory` workspace.
+ *
+ * The route organisation is the ONLY source of scope; there is no selector and
+ * no stale `?orgId=` value. Effective capabilities are fetched from
+ * `GET /org/:orgId/inventory/access`, which resolves the permissions granted by
+ * roles bound to that organisation on the backend.
+ */
+export function InventoryOrgProvider({ orgId, children }: { orgId: string; children: ReactNode }) {
+  const normalized = /^\d+$/.test(String(orgId ?? '')) ? String(orgId) : '';
+  const [permissions, setPermissions] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!normalized) {
+      setPermissions([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setPermissions(null);
+    api
+      .get(`/org/${normalized}/inventory/access`)
+      .then((res: any) => {
+        if (cancelled) return;
+        const list = res.data?.data?.permissions ?? res.data?.permissions ?? [];
+        setPermissions(Array.isArray(list) ? list.map((key: unknown) => String(key)) : []);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setPermissions([]);
+        setError(err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [normalized, reloadKey]);
+
+  const value = useMemo<InventoryOrgScopeValue>(
+    () => ({
+      orgId: normalized,
+      apiBase: `/org/${normalized}/inventory`,
+      transfersBase: `/org/${normalized}/inventory/stock-transfers`,
+      permissions,
+      loading,
+      error,
+      retry: () => setReloadKey((key) => key + 1),
+    }),
+    [normalized, permissions, loading, error],
+  );
+
+  return (
+    <InventoryOrgScopeContext.Provider value={value}>{children}</InventoryOrgScopeContext.Provider>
+  );
 }
 
 /**
- * Organisation scope for the Inventory admin pages.
+ * Organisation scope for the Inventory pages.
  *
- * The list is served by `GET /admin/inventory/organisations`, which applies
- * exactly the same membership predicates as the backend `resolveOrgId`
- * (owner ∪ active organisation role scope ∪ `user_organisations`, or every
- * active organisation for platform admins). This is the single source of
- * truth: the selector cannot offer an organisation the backend would reject,
- * and cannot omit a valid membership. Nothing is read from localStorage.
+ * Admin mode (`/admin/inventory`): the list is served by
+ * `GET /admin/inventory/organisations`, which applies exactly the same
+ * membership predicates as the backend `resolveOrgId`. This is the single
+ * source of truth: the selector cannot offer an organisation the backend would
+ * reject, and cannot omit a valid membership. Nothing is read from localStorage.
  *
- * Single-organisation actors are selected automatically. Multi-organisation
- * actors and platform administrators must choose explicitly.
+ * Organisation mode (`/org/:orgId/inventory`): the organisation is fixed by the
+ * route and the capability list comes from the organisation-scoped backend
+ * endpoint. No selector is shown and no client-supplied scope is trusted.
  */
 export function useInventoryOrg(): InventoryOrgState {
+  const scope = useContext(InventoryOrgScopeContext);
+  const { can } = useCan();
   const [orgs, setOrgs] = useState<InventoryOrgOption[]>([]);
   const [requiresExplicitSelection, setRequiresExplicitSelection] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -45,6 +153,11 @@ export function useInventoryOrg(): InventoryOrgState {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    if (scope) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -74,9 +187,10 @@ export function useInventoryOrg(): InventoryOrgState {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [scope, reloadKey]);
 
   useEffect(() => {
+    if (scope) return;
     if (loading || error) return;
     if (requiresExplicitSelection) {
       // Keep a valid existing choice; otherwise wait for the actor to choose.
@@ -90,7 +204,43 @@ export function useInventoryOrg(): InventoryOrgState {
     } else {
       setOrgId((prev) => (prev && orgs.some((org) => String(org.id) === prev) ? prev : ''));
     }
-  }, [loading, error, requiresExplicitSelection, orgs]);
+  }, [scope, loading, error, requiresExplicitSelection, orgs]);
+
+  const orgPermissions = scope?.permissions ?? [];
+  const permissionSet = useMemo(() => new Set(orgPermissions), [orgPermissions]);
+
+  const canAny = useCallback(
+    (...permissionKeys: string[]) => {
+      if (scope) {
+        return permissionKeys.some(
+          (key) => permissionSet.has('*') || permissionSet.has(key),
+        );
+      }
+      return permissionKeys.some((key) => can(key));
+    },
+    [scope, permissionSet, can],
+  );
+
+  if (scope) {
+    return {
+      orgId: scope.orgId,
+      setOrgId: NOOP,
+      orgs: scope.orgId ? [{ id: Number(scope.orgId), name: 'Organisation' }] : [],
+      loading: scope.loading,
+      error: scope.error,
+      retry: scope.retry,
+      requiresExplicitSelection: false,
+      needsSelection: false,
+      hasNoAccess: !scope.loading && !scope.error && orgPermissions.length === 0,
+      invalidOrg: !scope.orgId,
+      mode: 'org',
+      apiBase: scope.apiBase,
+      transfersBase: scope.transfersBase,
+      scopeParams: {},
+      permissions: orgPermissions,
+      canAny,
+    };
+  }
 
   return {
     orgId,
@@ -102,10 +252,41 @@ export function useInventoryOrg(): InventoryOrgState {
     requiresExplicitSelection,
     needsSelection: !loading && !error && orgId === '' && orgs.length > 0,
     hasNoAccess: !loading && !error && orgs.length === 0,
+    mode: 'admin',
+    apiBase: '/admin/inventory',
+    transfersBase: '/admin/stock-transfers',
+    scopeParams: { orgId },
+    canAny,
   };
 }
 
+/**
+ * Capability check for a shared Inventory page/subcomponent.
+ *
+ * Uses the organisation-scoped capability list when rendered inside
+ * `InventoryOrgProvider`, and the normal global `useCan` behaviour otherwise.
+ */
+export function useInventoryCan(): (...permissionKeys: string[]) => boolean {
+  const scope = useContext(InventoryOrgScopeContext);
+  const { can } = useCan();
+  const orgPermissions = scope?.permissions ?? [];
+  const permissionSet = useMemo(() => new Set(orgPermissions), [orgPermissions]);
+
+  return useCallback(
+    (...permissionKeys: string[]) => {
+      if (scope) {
+        return permissionKeys.some(
+          (key) => permissionSet.has('*') || permissionSet.has(key),
+        );
+      }
+      return permissionKeys.some((key) => can(key));
+    },
+    [scope, permissionSet, can],
+  );
+}
+
 export function InventoryOrgSelector({ org }: { org: InventoryOrgState }) {
+  if (org.mode === 'org') return null;
   if (org.orgs.length === 0) return null;
   if (!org.requiresExplicitSelection && org.orgs.length === 1) return null;
   return (
@@ -148,7 +329,23 @@ export function InventoryOrgGate({ org, children }: { org: InventoryOrgState; ch
       />
     );
   }
+  if (org.invalidOrg) {
+    return (
+      <InventoryNotice
+        title="Invalid organisation"
+        message="The organisation in this address is not valid."
+      />
+    );
+  }
   if (org.hasNoAccess) {
+    if (org.mode === 'org') {
+      return (
+        <InventoryNotice
+          title="No Inventory access"
+          message="Your role does not grant Inventory access for this organisation."
+        />
+      );
+    }
     return (
       <InventoryNotice
         title="No organisation access"

@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { useTranslation } from '../../../i18n';
 import { useToast } from '../../../components/ui/Toast';
-import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -12,6 +11,7 @@ import {
   InventoryErrorState,
   InventoryOrgGate,
   InventoryOrgSelector,
+  useInventoryCan,
   useInventoryOrg,
 } from './InventoryOrgContext';
 
@@ -23,13 +23,27 @@ export default function InventoryPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const org = useInventoryOrg();
+  const canAny = useInventoryCan();
+  const apiBase = org.apiBase ?? '/admin/inventory';
 
-  const tabs: { key: Tab; label: string; permission: string }[] = [
-    { key: 'stock', label: t('inventory.stock.title'), permission: 'inventory.stock.view' },
-    { key: 'adjust', label: t('inventory.stock.adjust'), permission: 'inventory.stock.manage' },
-    { key: 'transfer', label: t('inventory.stock.transfer'), permission: 'inventory.stock.manage' },
-    { key: 'logs', label: t('inventory.stock.logs'), permission: 'inventory.stock.view' },
+  const tabs: { key: Tab; label: string; permissions: string[] }[] = [
+    { key: 'stock', label: t('inventory.stock.title'), permissions: ['inventory.stock.view'] },
+    { key: 'adjust', label: t('inventory.stock.adjust'), permissions: ['inventory.stock.adjust', 'inventory.stock.manage'] },
+    { key: 'transfer', label: t('inventory.stock.transfer'), permissions: ['inventory.transfers.create', 'inventory.stock.manage'] },
+    { key: 'logs', label: t('inventory.stock.logs'), permissions: org.mode === 'org' ? ['inventory.logs.view'] : ['inventory.stock.view'] },
   ];
+
+  const visibleTabs = tabs.filter((tabDef) => canAny(...tabDef.permissions));
+  const effectiveTab = visibleTabs.some((tabDef) => tabDef.key === tab)
+    ? tab
+    : visibleTabs[0]?.key;
+
+  // Never keep a stale tab selected after the organisation or effective
+  // capabilities change (e.g. Organisation A had "adjust", Organisation B does
+  // not). The content below is also re-gated, so a hidden tab can never render.
+  useEffect(() => {
+    if (effectiveTab && effectiveTab !== tab) setTab(effectiveTab);
+  }, [effectiveTab, tab]);
 
   return (
     <div>
@@ -38,29 +52,27 @@ export default function InventoryPage() {
         <InventoryOrgSelector org={org} />
       </div>
       <div className="flex gap-1 mb-6 border-b border-[var(--color-border)]">
-        {tabs.map((t) => (
-          <Can key={t.key} permission={t.permission}>
-            <button onClick={() => { setTab(t.key); setPage(1); }} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t.key ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>{t.label}</button>
-          </Can>
+        {visibleTabs.map((tabDef) => (
+          <button key={tabDef.key} onClick={() => { setTab(tabDef.key); setPage(1); }} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${effectiveTab === tabDef.key ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>{tabDef.label}</button>
         ))}
       </div>
       <InventoryOrgGate org={org}>
-        {tab === 'stock' && <StockLevelsTab orgId={org.orgId} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
-        {tab === 'adjust' && <StockAdjustTab orgId={org.orgId} />}
-        {tab === 'transfer' && <StockTransferTab orgId={org.orgId} />}
-        {tab === 'logs' && <InventoryLogsTab orgId={org.orgId} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
+        {effectiveTab === 'stock' && canAny('inventory.stock.view') && <StockLevelsTab orgId={org.orgId} apiBase={apiBase} scopeParams={org.scopeParams ?? { orgId: org.orgId }} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
+        {effectiveTab === 'adjust' && canAny('inventory.stock.adjust', 'inventory.stock.manage') && <StockAdjustTab orgId={org.orgId} apiBase={apiBase} scopeParams={org.scopeParams ?? { orgId: org.orgId }} />}
+        {effectiveTab === 'transfer' && canAny('inventory.transfers.create', 'inventory.stock.manage') && <StockTransferTab orgId={org.orgId} apiBase={apiBase} transfersBase={org.transfersBase ?? '/admin/stock-transfers'} scopeParams={org.scopeParams ?? { orgId: org.orgId }} />}
+        {effectiveTab === 'logs' && (org.mode === 'org' ? canAny('inventory.logs.view') : canAny('inventory.stock.view')) && <InventoryLogsTab orgId={org.orgId} apiBase={apiBase} scopeParams={org.scopeParams ?? { orgId: org.orgId }} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
       </InventoryOrgGate>
     </div>
   );
 }
 
-function StockLevelsTab({ orgId, page, pageSize, setPage, setPageSize }: { orgId: string; page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
+function StockLevelsTab({ orgId, apiBase, scopeParams, page, pageSize, setPage, setPageSize }: { orgId: string; apiBase: string; scopeParams: Record<string, string | number>; page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'inventory', 'stock', orgId, page, pageSize, search],
-    queryFn: () => api.get('/admin/inventory/stock', { params: { orgId, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+    queryFn: () => api.get(`${apiBase}/stock`, { params: { ...scopeParams, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
     enabled: !!orgId,
   });
 
@@ -115,7 +127,7 @@ function StockLevelsTab({ orgId, page, pageSize, setPage, setPageSize }: { orgId
   );
 }
 
-function StockAdjustTab({ orgId }: { orgId: string }) {
+function StockAdjustTab({ orgId, apiBase, scopeParams }: { orgId: string; apiBase: string; scopeParams: Record<string, string | number> }) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -129,13 +141,13 @@ function StockAdjustTab({ orgId }: { orgId: string }) {
     setVariantSearch(q);
     if (q.length < 2 || !orgId) { setVariantResults([]); return; }
     try {
-      const res = await api.get('/admin/inventory/variants/search', { params: { orgId, q } });
+      const res = await api.get(`${apiBase}/variants/search`, { params: { ...scopeParams, q } });
       setVariantResults(res.data.data || []);
     } catch { setVariantResults([]); }
   };
 
   const adjustMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/stock/adjust', payload, { params: { orgId } }),
+    mutationFn: (payload: any) => api.post(`${apiBase}/stock/adjust`, payload, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] }); setSelectedVariant(null); setVariantSearch(''); setNewQuantity(''); setReason(''); showToast(t('inventory.stock.adjusted')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -180,10 +192,11 @@ function StockAdjustTab({ orgId }: { orgId: string }) {
   );
 }
 
-export function StockTransferTab({ orgId }: { orgId: string }) {
+export function StockTransferTab({ orgId, apiBase, transfersBase, scopeParams }: { orgId: string; apiBase: string; transfersBase: string; scopeParams: Record<string, string | number> }) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const canAny = useInventoryCan();
   const [variantSearch, setVariantSearch] = useState('');
   const [variantResults, setVariantResults] = useState<any[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
@@ -201,12 +214,12 @@ export function StockTransferTab({ orgId }: { orgId: string }) {
     refetch: refetchTransfers,
   } = useQuery({
     queryKey: ['admin', 'stock-transfers', orgId, 'pending'],
-    queryFn: () => api.get('/admin/stock-transfers', { params: { orgId, status: 'pending' } }).then((r: any) => r.data.data || []),
+    queryFn: () => api.get(transfersBase, { params: { ...scopeParams, status: 'pending' } }).then((r: any) => r.data.data || []),
     enabled: !!orgId,
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: number) => api.post(`/admin/stock-transfers/${id}/cancel`, {}, { params: { orgId } }),
+    mutationFn: (id: number) => api.post(`${transfersBase}/${id}/cancel`, {}, { params: scopeParams }),
     onSuccess: (res: any) => {
       const payload = res?.data ?? {};
       const restored = payload.restored === true;
@@ -223,7 +236,7 @@ export function StockTransferTab({ orgId }: { orgId: string }) {
 
   const { data: warehouses } = useQuery({
     queryKey: ['admin', 'warehouses', 'list', orgId],
-    queryFn: () => api.get('/admin/inventory/warehouses', { params: { orgId, limit: 500 } }).then((r: any) => r.data.data),
+    queryFn: () => api.get(`${apiBase}/warehouses`, { params: { ...scopeParams, limit: 500 } }).then((r: any) => r.data.data),
     enabled: !!orgId,
   });
 
@@ -231,13 +244,13 @@ export function StockTransferTab({ orgId }: { orgId: string }) {
     setVariantSearch(q);
     if (q.length < 2 || !orgId) { setVariantResults([]); return; }
     try {
-      const res = await api.get('/admin/inventory/variants/search', { params: { orgId, q } });
+      const res = await api.get(`${apiBase}/variants/search`, { params: { ...scopeParams, q } });
       setVariantResults(res.data.data || []);
     } catch { setVariantResults([]); }
   };
 
   const transferMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/stock/transfer', payload, { params: { orgId } }),
+    mutationFn: (payload: any) => api.post(`${apiBase}/stock/transfer`, payload, { params: scopeParams }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] }); setSelectedVariant(null); setVariantSearch(''); setFromWarehouseId(''); setToWarehouseId(''); setQuantity(''); showToast(t('inventory.stock.transferred')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -339,9 +352,9 @@ export function StockTransferTab({ orgId }: { orgId: string }) {
                     <td className="px-4 py-3 text-center">{tr.quantity}</td>
                     <td className="px-4 py-3 text-[var(--color-text-muted)] whitespace-nowrap">{tr.created_at ? new Date(tr.created_at).toLocaleString() : '—'}</td>
                     <td className="px-4 py-3 text-right">
-                      <Can permission="inventory.stock.manage">
+                      {canAny('inventory.transfers.cancel', 'inventory.stock.manage') && (
                         <button type="button" onClick={() => setCancelTarget(tr)} className="text-xs text-red-600 hover:underline">{t('inventory.stock.cancel_transfer')}</button>
-                      </Can>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -385,12 +398,12 @@ export function StockTransferTab({ orgId }: { orgId: string }) {
   );
 }
 
-function InventoryLogsTab({ orgId, page, pageSize, setPage, setPageSize }: { orgId: string; page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
+function InventoryLogsTab({ orgId, apiBase, scopeParams, page, pageSize, setPage, setPageSize }: { orgId: string; apiBase: string; scopeParams: Record<string, string | number>; page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
   const { t } = useTranslation();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'inventory', 'logs', orgId, page, pageSize],
-    queryFn: () => api.get('/admin/inventory/stock/logs', { params: { orgId, page, limit: pageSize } }).then((r: any) => r.data),
+    queryFn: () => api.get(`${apiBase}/stock/logs`, { params: { ...scopeParams, page, limit: pageSize } }).then((r: any) => r.data),
     enabled: !!orgId,
   });
 

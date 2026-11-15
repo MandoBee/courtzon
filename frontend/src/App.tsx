@@ -239,6 +239,10 @@ const OrgDocumentsPage = lazy(() => import('./pages/org/OrgDocumentsPage'));
 const OrgGalleryPage = lazy(() => import('./pages/org/OrgGalleryPage'));
 const OrgReportsPage = lazy(() => import('./pages/org/OrgReportsPage'));
 const OrgProfilePage = lazy(() => import('./pages/org/OrgProfilePage'));
+const OrgInventoryPage = lazy(() => import('./pages/org/inventory/OrgInventoryPage'));
+const OrgInventoryWarehousesPage = lazy(() => import('./pages/org/inventory/OrgInventoryWarehousesPage'));
+const OrgInventorySuppliersPage = lazy(() => import('./pages/org/inventory/OrgInventorySuppliersPage'));
+const OrgInventoryPurchaseOrdersPage = lazy(() => import('./pages/org/inventory/OrgInventoryPurchaseOrdersPage'));
 const OrgMembershipSettingsPage = lazy(() => import('./pages/org/memberships/OrgMembershipSettingsPage'));
 const OrgMembershipPlansPage = lazy(() => import('./pages/org/memberships/OrgMembershipPlansPage'));
 const OrgMembershipSubscriptionsPage = lazy(() => import('./pages/org/memberships/OrgMembershipSubscriptionsPage'));
@@ -875,6 +879,10 @@ function AppContent() {
             <Route path="marketplace" element={<OrgMarketplacePage />} />
             <Route path="orders" element={<OrgOrdersPage />} />
             <Route path="orders/:id" element={<OrgOrderDetailPage />} />
+            <Route path="inventory" element={<OrgInventoryPage />} />
+            <Route path="inventory/warehouses" element={<OrgInventoryWarehousesPage />} />
+            <Route path="inventory/suppliers" element={<OrgInventorySuppliersPage />} />
+            <Route path="inventory/purchase-orders" element={<OrgInventoryPurchaseOrdersPage />} />
             <Route path="staff" element={<OrgStaffPage />} />
             <Route path="members" element={<OrgMembersPage />} />
             <Route path="coaches" element={<OrgCoachesPage />} />

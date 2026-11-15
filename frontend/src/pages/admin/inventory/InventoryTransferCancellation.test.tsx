@@ -16,6 +16,9 @@ const showToastMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/api', () => ({ default: apiMock }));
 vi.mock('../../../components/ui/Toast', () => ({ useToast: () => ({ showToast: showToastMock }) }));
 vi.mock('../../../permissions/Can', () => ({ Can: ({ children }: any) => children }));
+vi.mock('../../../hooks/useCan', () => ({
+  useCan: () => ({ can: () => true, permissions: ['*'] }),
+}));
 
 const { StockTransferTab } = await import('./InventoryPage');
 
@@ -50,7 +53,12 @@ function renderTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <StockTransferTab orgId="6" />
+      <StockTransferTab
+        orgId="6"
+        apiBase="/admin/inventory"
+        transfersBase="/admin/stock-transfers"
+        scopeParams={{ orgId: '6' }}
+      />
     </QueryClientProvider>,
   );
 }

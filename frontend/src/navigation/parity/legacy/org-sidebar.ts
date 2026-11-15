@@ -24,6 +24,16 @@ export function buildLegacyOrgNavItems(can: (perm: string) => boolean, orgId: st
     },
 
     {
+      label: 'Inventory', icon: '📦', path: p('inventory'),
+      children: [
+        { label: 'Stock Levels', icon: '📦', path: p('inventory'), permissionKey: 'inventory.stock.view' },
+        { label: 'Warehouses', icon: '🏬', path: p('inventory/warehouses'), permissionKey: 'inventory.warehouses.view' },
+        { label: 'Suppliers', icon: '🚚', path: p('inventory/suppliers'), permissionKey: 'inventory.suppliers.view' },
+        { label: 'Purchase Orders', icon: '📋', path: p('inventory/purchase-orders'), permissionKey: 'inventory.purchase-orders.view' },
+      ],
+    },
+
+    {
       label: 'People', icon: '👥', path: p('members'),
       children: [
         { label: 'Members', icon: '🎫', path: p('members'), permissionKey: 'org.sidebar.members' },
