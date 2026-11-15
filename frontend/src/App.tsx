@@ -826,6 +826,9 @@ function AppContent() {
           <Route path="queues" element={<QueueManagementPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
           <Route path="integration/api-keys" element={<APIDashboardPage />} />
+          {/* Legacy/back-compat URL: the Inventory section has no index page of its
+              own. Without this route the URL renders the SPA 404 surface. */}
+          <Route path="inventory" element={<Navigate to="/admin/inventory/stock" replace />} />
           <Route path="inventory/warehouses" element={<WarehousesPage />} />
           <Route path="inventory/suppliers" element={<SuppliersPage />} />
           <Route path="inventory/purchase-orders" element={<PurchaseOrdersPage />} />
