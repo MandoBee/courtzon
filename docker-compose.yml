@@ -98,6 +98,12 @@ services:
       # behaviour, including production. Set to 1 only for verification runs
       # that must not write to the database.
       COURTZON_SKIP_STARTUP_DB_SYNC: ${COURTZON_SKIP_STARTUP_DB_SYNC:-0}
+      # Role-template permission sync is OPT-IN and DISABLED by default. It grants
+      # every permission in the current template set to every global role, so a
+      # routine restart must never apply unreviewed grants. Set to 1 only for an
+      # explicitly approved full sync. Migrations are unaffected (they remain
+      # governed by COURTZON_SKIP_STARTUP_DB_SYNC above).
+      COURTZON_ROLE_PERMISSION_SYNC_ON_STARTUP: ${COURTZON_ROLE_PERMISSION_SYNC_ON_STARTUP:-0}
       # Deployed Git revision, if the platform exposes it at runtime. In the
       # verified Coolify Compose setup SOURCE_COMMIT is supplied at BUILD time
       # only, so this resolves to "unknown" and /health/version reports the

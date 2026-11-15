@@ -142,26 +142,35 @@ else
     node /app/scripts/migrate.js
     echo "Migrations complete."
 
-    # Sync role permissions from the canonical templates on every startup.
-    # Add-only (no --prune): grants missing assignments and never revokes an
-    # existing one, so a restart cannot strip permissions from a live role.
-    # The deployment environment declares its target explicitly; the sync script
-    # fails closed without all three confirmation flags.
-    echo "Syncing role permissions from templates..."
-    DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" DB_NAME="$DB_NAME" \
-      node /app/scripts/sync-role-permissions.mjs \
-        --confirm-host="$DB_HOST" --confirm-port="$DB_PORT" --confirm-db="$DB_NAME" \
-      || {
-        _sync_exit=$?
-        case "$_sync_exit" in
-          2)
-            echo "  ERROR: Permission sync refused the target confirmation (exit 2) — startup continues; permissions may be stale" >&2
-            ;;
-          *)
-            echo "  ERROR: Permission sync failed (exit $_sync_exit) — startup continues; permissions may be stale" >&2
-            ;;
-        esac
-      }
+    # Role-template permission synchronization is OPT-IN and DISABLED by default.
+    # It grants every permission in the current template set to every global role,
+    # so enabling it implicitly would let an ordinary restart apply grants that
+    # were never reviewed (the reason the P1 Inventory matrix was scoped manually).
+    # Enable it only for an explicitly approved full sync:
+    #   COURTZON_ROLE_PERMISSION_SYNC_ON_STARTUP=1
+    # The script itself is add-only (no --prune), never touches organisation-scoped
+    # roles, and fails closed without all three target-confirmation flags.
+    # Migrations above are unaffected: they remain governed solely by
+    # COURTZON_SKIP_STARTUP_DB_SYNC.
+    if [ "${COURTZON_ROLE_PERMISSION_SYNC_ON_STARTUP:-0}" = "1" ]; then
+      echo "Syncing role permissions from templates (opt-in)..."
+      DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" DB_NAME="$DB_NAME" \
+        node /app/scripts/sync-role-permissions.mjs \
+          --confirm-host="$DB_HOST" --confirm-port="$DB_PORT" --confirm-db="$DB_NAME" \
+        || {
+          _sync_exit=$?
+          case "$_sync_exit" in
+            2)
+              echo "  ERROR: Permission sync refused the target confirmation (exit 2) — startup continues; permissions may be stale" >&2
+              ;;
+            *)
+              echo "  ERROR: Permission sync failed (exit $_sync_exit) — startup continues; permissions may be stale" >&2
+              ;;
+          esac
+        }
+    else
+      echo "Role permission sync skipped (opt-in only: set COURTZON_ROLE_PERMISSION_SYNC_ON_STARTUP=1 for an approved full sync)."
+    fi
   fi
 fi
 
