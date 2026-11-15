@@ -4,6 +4,7 @@ import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import {
   AuthenticationError,
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
@@ -204,6 +205,78 @@ function parsePagination(query: any, defaultLimit = 20, maxLimit = 100) {
   return { page, limit, offset: (page - 1) * limit };
 }
 
+/** MySQL INT UNSIGNED upper bound (ids, quantities). */
+const MAX_UINT32 = 4294967295;
+/** MySQL DECIMAL(14,2) upper bound for monetary values. */
+const MAX_DECIMAL_14_2 = 999999999999.99;
+
+/**
+ * Strict integer parsing for ids/quantities. Rejects booleans, objects,
+ * empty/whitespace strings, fractional values, NaN/Infinity and out-of-range
+ * numbers before any database work happens.
+ */
+function parseIntField(raw: unknown, field: string, min: number, max: number): number {
+  if (typeof raw !== 'number' && typeof raw !== 'string') {
+    throw new ValidationError(`${field} must be an integer`);
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      throw new ValidationError(`${field} must be an integer`);
+    }
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new ValidationError(`${field} must be an integer between ${min} and ${max}`);
+  }
+  return value;
+}
+
+/** Strict monetary parsing for DECIMAL(14,2) columns (non-negative, finite). */
+function parseUnitCost(raw: unknown, field: string): number {
+  if (typeof raw !== 'number' && typeof raw !== 'string') {
+    throw new ValidationError(`${field} must be a non-negative number`);
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+      throw new ValidationError(`${field} must be a non-negative number`);
+    }
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || value > MAX_DECIMAL_14_2) {
+    throw new ValidationError(`${field} must be a non-negative number up to ${MAX_DECIMAL_14_2}`);
+  }
+  // Match the canonical DECIMAL(14,2) storage precision.
+  return Math.round(value * 100) / 100;
+}
+
+interface ValidatedPurchaseOrderItem {
+  variantId: number;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  totalCents: number;
+}
+
+/**
+ * Validates every purchase-order line before any header/item mutation and
+ * computes line totals in integer cents so floating-point drift cannot reach
+ * the DECIMAL(14,2) columns.
+ */
+function validatePurchaseOrderItems(items: any[]): ValidatedPurchaseOrderItem[] {
+  return (items ?? []).map((item: any, index: number) => {
+    const variantId = parseIntField(item?.variantId, `items[${index}].variantId`, 1, MAX_UINT32);
+    const quantity = parseIntField(item?.quantity, `items[${index}].quantity`, 1, MAX_UINT32);
+    const unitCost = parseUnitCost(item?.unitCost, `items[${index}].unitCost`);
+    const totalCents = Math.round(unitCost * 100) * quantity;
+    if (!Number.isSafeInteger(totalCents) || totalCents / 100 > MAX_DECIMAL_14_2) {
+      throw new ValidationError(`items[${index}] total exceeds the supported range`);
+    }
+    return { variantId, quantity, unitCost, totalCost: totalCents / 100, totalCents };
+  });
+}
+
 /**
  * Normalise the purchase-order body once at the API boundary so the secured
  * business logic below only ever sees camelCase fields.
@@ -218,7 +291,7 @@ function normalizePurchaseOrderBody(raw: any) {
       ? body.items.map((item: any) => ({
           variantId: item.variantId ?? item.variant_id,
           quantity: item.quantity,
-          unitCost: item.unitCost ?? item.unit_cost ?? 0,
+          unitCost: item.unitCost ?? item.unit_cost,
         }))
       : [],
   };
@@ -354,28 +427,29 @@ export async function adjustStockFromFrontendHandler(request: FastifyRequest, re
  */
 export async function createStockTransferFromFrontendHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = (request.body as any) ?? {};
-  const variantId = Number(body.variant_id ?? body.variantId);
-  const quantity = Number(body.quantity);
-  const fromWarehouseId = body.from_warehouse_id ?? body.fromWarehouseId ?? null;
-  const toWarehouseId = body.to_warehouse_id ?? body.toWarehouseId ?? null;
-
-  if (!Number.isInteger(variantId) || variantId <= 0) {
-    throw new ValidationError('variant_id must be a positive integer');
-  }
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    throw new ValidationError('quantity must be a positive integer');
-  }
-  for (const [label, value] of [['from_warehouse_id', fromWarehouseId], ['to_warehouse_id', toWarehouseId]] as const) {
-    if (value !== null && value !== undefined && (!Number.isInteger(Number(value)) || Number(value) <= 0)) {
-      throw new ValidationError(`${label} must be a positive integer`);
-    }
+  const variantId = parseIntField(body.variant_id ?? body.variantId, 'variant_id', 1, MAX_UINT32);
+  const quantity = parseIntField(body.quantity, 'quantity', 1, MAX_UINT32);
+  const fromWarehouseId = parseIntField(
+    body.from_warehouse_id ?? body.fromWarehouseId,
+    'from_warehouse_id',
+    1,
+    MAX_UINT32,
+  );
+  const toWarehouseId = parseIntField(
+    body.to_warehouse_id ?? body.toWarehouseId,
+    'to_warehouse_id',
+    1,
+    MAX_UINT32,
+  );
+  if (fromWarehouseId === toWarehouseId) {
+    throw new ValidationError('from_warehouse_id and to_warehouse_id must differ');
   }
 
   (request as any).body = {
     variantId,
     quantity,
-    fromWarehouseId: fromWarehouseId === null || fromWarehouseId === undefined ? null : Number(fromWarehouseId),
-    toWarehouseId: toWarehouseId === null || toWarehouseId === undefined ? null : Number(toWarehouseId),
+    fromWarehouseId,
+    toWarehouseId,
   };
   return createStockTransferHandler(request, reply);
 }
@@ -624,6 +698,7 @@ export async function listPurchaseOrdersHandler(request: FastifyRequest, reply: 
 export async function createPurchaseOrderHandler(request: FastifyRequest, reply: FastifyReply) {
   const orgId = await resolveOrgId(request);
   const body = normalizePurchaseOrderBody(request.body);
+  const items = validatePurchaseOrderItems(body.items);
   const userId = (request as any).userId;
   const pool = getPool();
   const conn = await pool.getConnection();
@@ -638,13 +713,12 @@ export async function createPurchaseOrderHandler(request: FastifyRequest, reply:
       ? Number(body.warehouseId)
       : null;
     if (warehouseId !== null) await assertWarehouseOwned(conn, warehouseId, orgId);
-    if (body.items?.length) {
+    if (items.length) {
       const checkedVariants = new Set<number>();
-      for (const item of body.items) {
-        const variantId = Number(item.variantId);
-        if (!checkedVariants.has(variantId)) {
-          await assertVariantOwned(conn, variantId, orgId);
-          checkedVariants.add(variantId);
+      for (const item of items) {
+        if (!checkedVariants.has(item.variantId)) {
+          await assertVariantOwned(conn, item.variantId, orgId);
+          checkedVariants.add(item.variantId);
         }
       }
     }
@@ -655,18 +729,16 @@ export async function createPurchaseOrderHandler(request: FastifyRequest, reply:
       [orgId, body.supplierId, body.warehouseId ?? null, body.notes ?? null, userId],
     );
     const poId = (poResult as any).insertId;
-    let totalCost = 0;
-    if (body.items?.length) {
-      for (const item of body.items) {
-        const total = Number(item.unitCost || 0) * Number(item.quantity || 0);
-        totalCost += total;
-        await conn.execute<RowData>(
-          `INSERT INTO purchase_order_items (purchase_order_id, variant_id, quantity, unit_cost, total_cost)
-           VALUES (?, ?, ?, ?, ?)`,
-          [poId, item.variantId, item.quantity, item.unitCost ?? 0, total],
-        );
-      }
+    let totalCents = 0;
+    for (const item of items) {
+      totalCents += item.totalCents;
+      await conn.execute<RowData>(
+        `INSERT INTO purchase_order_items (purchase_order_id, variant_id, quantity, unit_cost, total_cost)
+         VALUES (?, ?, ?, ?, ?)`,
+        [poId, item.variantId, item.quantity, item.unitCost, item.totalCost],
+      );
     }
+    const totalCost = totalCents / 100;
     await conn.execute<RowData>('UPDATE purchase_orders SET total_cost = ? WHERE id = ?', [totalCost, poId]);
     await conn.commit();
     recordAudit({
@@ -711,6 +783,7 @@ export async function updatePurchaseOrderHandler(request: FastifyRequest, reply:
   const { id } = request.params as any;
   const orgId = await resolveOrgId(request);
   const body = normalizePurchaseOrderBody(request.body);
+  const items = validatePurchaseOrderItems(body.items);
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -728,13 +801,12 @@ export async function updatePurchaseOrderHandler(request: FastifyRequest, reply:
       ? Number(body.warehouseId)
       : null;
     if (updateWarehouseId !== null) await assertWarehouseOwned(conn, updateWarehouseId, orgId);
-    if (body.items?.length) {
+    if (items.length) {
       const checkedVariants = new Set<number>();
-      for (const item of body.items) {
-        const variantId = Number(item.variantId);
-        if (!checkedVariants.has(variantId)) {
-          await assertVariantOwned(conn, variantId, orgId);
-          checkedVariants.add(variantId);
+      for (const item of items) {
+        if (!checkedVariants.has(item.variantId)) {
+          await assertVariantOwned(conn, item.variantId, orgId);
+          checkedVariants.add(item.variantId);
         }
       }
     }
@@ -744,18 +816,16 @@ export async function updatePurchaseOrderHandler(request: FastifyRequest, reply:
       [body.supplierId, body.warehouseId ?? null, body.notes ?? null, Number(id)],
     );
     await conn.execute<RowData>('DELETE FROM purchase_order_items WHERE purchase_order_id = ?', [Number(id)]);
-    let totalCost = 0;
-    if (body.items?.length) {
-      for (const item of body.items) {
-        const total = Number(item.unitCost || 0) * Number(item.quantity || 0);
-        totalCost += total;
-        await conn.execute<RowData>(
-          `INSERT INTO purchase_order_items (purchase_order_id, variant_id, quantity, unit_cost, total_cost)
-           VALUES (?, ?, ?, ?, ?)`,
-          [Number(id), item.variantId, item.quantity, item.unitCost ?? 0, total],
-        );
-      }
+    let totalCents = 0;
+    for (const item of items) {
+      totalCents += item.totalCents;
+      await conn.execute<RowData>(
+        `INSERT INTO purchase_order_items (purchase_order_id, variant_id, quantity, unit_cost, total_cost)
+         VALUES (?, ?, ?, ?, ?)`,
+        [Number(id), item.variantId, item.quantity, item.unitCost, item.totalCost],
+      );
     }
+    const totalCost = totalCents / 100;
     await conn.execute<RowData>('UPDATE purchase_orders SET total_cost = ? WHERE id = ?', [totalCost, Number(id)]);
     await conn.commit();
     recordAudit({
@@ -950,18 +1020,26 @@ export async function createStockTransferHandler(request: FastifyRequest, reply:
   const body = request.body as any;
   const userId = (request as any).userId;
   const orgId = await resolveOrgId(request);
+
+  // R1: the complete transfer shape is validated before any transaction or
+  // stock mutation. A missing source warehouse can never reach the deduction
+  // step, so completion can no longer inflate stock.
+  const variantId = parseIntField(body?.variantId, 'variantId', 1, MAX_UINT32);
+  const qty = parseIntField(body?.quantity, 'quantity', 1, MAX_UINT32);
+  const fromWhId = parseIntField(body?.fromWarehouseId, 'fromWarehouseId', 1, MAX_UINT32);
+  const toWhId = parseIntField(body?.toWarehouseId, 'toWarehouseId', 1, MAX_UINT32);
+  if (fromWhId === toWhId) {
+    throw new ValidationError('Source and destination warehouses must differ');
+  }
+
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const variantId = Number(body.variantId);
-    const qty = Number(body.quantity);
-    const fromWhId = body.fromWarehouseId ? Number(body.fromWarehouseId) : null;
-    const toWhId = body.toWarehouseId ? Number(body.toWarehouseId) : null;
 
     // Referenced warehouses and the variant must belong to the actor's org.
-    if (fromWhId !== null) await assertWarehouseOwned(conn, fromWhId, orgId);
-    if (toWhId !== null) await assertWarehouseOwned(conn, toWhId, orgId);
+    await assertWarehouseOwned(conn, fromWhId, orgId);
+    await assertWarehouseOwned(conn, toWhId, orgId);
 
     const [varRows] = await conn.execute<RowData>(
       `SELECT pv.id, pv.quantity FROM product_variants pv
@@ -972,20 +1050,21 @@ export async function createStockTransferHandler(request: FastifyRequest, reply:
     );
     if (!varRows.length) throw new ValidationError('Invalid variant for this organisation');
     const stockBefore = Number(varRows[0].quantity);
-    if (fromWhId && stockBefore < qty) return reply.status(400).send({ error: 'Insufficient stock' });
+    if (stockBefore < qty) {
+      await conn.rollback();
+      return reply.status(400).send({ error: 'Insufficient stock' });
+    }
     const [result] = await conn.execute<RowData>(
       'INSERT INTO stock_transfers (variant_id, from_warehouse_id, to_warehouse_id, quantity, status, created_by) VALUES (?, ?, ?, ?, ?, ?)',
       [variantId, fromWhId, toWhId, qty, 'pending', userId],
     );
     const transferId = (result as any).insertId;
-    if (fromWhId) {
-      const stockAfter = stockBefore - qty;
-      await conn.execute<RowData>(
-        'INSERT INTO inventory_logs (variant_id, warehouse_id, movement_type, quantity, stock_before, stock_after, reason, reference_type, reference_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [variantId, fromWhId, 'out', -qty, stockBefore, stockAfter, 'Stock transfer out', 'stock_transfer', transferId, userId],
-      );
-      await conn.execute<RowData>('UPDATE product_variants SET quantity = ? WHERE id = ?', [stockAfter, variantId]);
-    }
+    const stockAfter = stockBefore - qty;
+    await conn.execute<RowData>(
+      'INSERT INTO inventory_logs (variant_id, warehouse_id, movement_type, quantity, stock_before, stock_after, reason, reference_type, reference_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [variantId, fromWhId, 'out', -qty, stockBefore, stockAfter, 'Stock transfer out', 'stock_transfer', transferId, userId],
+    );
+    await conn.execute<RowData>('UPDATE product_variants SET quantity = ? WHERE id = ?', [stockAfter, variantId]);
     await conn.commit();
     recordAudit({
       actorId: userId ?? null,
@@ -1086,12 +1165,132 @@ export async function completeStockTransferHandler(request: FastifyRequest, repl
   }
 }
 
+/**
+ * POST /admin/stock-transfers/:id/cancel
+ *
+ * Cancels a pending transfer and restores exactly the quantity deducted at
+ * creation. The transfer row is locked `FOR UPDATE`, which serialises this
+ * operation against completion (also locked), so concurrent attempts cannot
+ * double-restore. The actual deduction is taken from the creation-time
+ * `inventory_logs` row, which also covers legacy transfers whose source
+ * warehouse was later deleted (`from_warehouse_id` set to NULL).
+ *
+ * The existing schema supports the transition (status enum includes
+ * 'cancelled'); no cancellation timestamp column exists, so the time/reason
+ * live in the inventory log + audit trail.
+ */
+export async function cancelStockTransferHandler(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as any;
+  const userId = (request as any).userId;
+  const orgId = await resolveOrgId(request);
+  const transferId = parseIntField(id, 'id', 1, MAX_UINT32);
+  const pool = getPool();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [trRows] = await conn.execute<RowData>(
+      `SELECT st.* FROM stock_transfers st
+       JOIN product_variants pv ON pv.id = st.variant_id
+       JOIN products p ON p.id = pv.product_id
+       WHERE st.id = ? AND p.seller_id = ? AND p.deleted_at IS NULL
+       FOR UPDATE`,
+      [transferId, orgId],
+    );
+    if (!trRows.length) throw new NotFoundError('Stock transfer');
+    const transfer = trRows[0];
+    if (transfer.status !== 'pending') {
+      throw new ConflictError('Only pending stock transfers can be cancelled');
+    }
+    if (transfer.to_warehouse_id !== null && transfer.to_warehouse_id !== undefined) {
+      await assertWarehouseOwned(conn, Number(transfer.to_warehouse_id), orgId);
+    }
+
+    const [outRows] = await conn.execute<RowData>(
+      `SELECT id, warehouse_id, quantity FROM inventory_logs
+       WHERE reference_type = 'stock_transfer' AND reference_id = ?
+         AND movement_type = 'out' AND quantity < 0
+       ORDER BY id ASC
+       LIMIT 1`,
+      [transferId],
+    );
+
+    let restoredQuantity = 0;
+    if (outRows.length) {
+      const deductedQuantity = Math.abs(Number(outRows[0].quantity));
+      if (!Number.isSafeInteger(deductedQuantity) || deductedQuantity <= 0) {
+        throw new ConflictError('Cannot determine the deducted quantity for this transfer');
+      }
+      restoredQuantity = deductedQuantity;
+      const sourceWarehouseId = transfer.from_warehouse_id;
+      const restoreWarehouseId = sourceWarehouseId ?? outRows[0].warehouse_id ?? null;
+      // Verify the live source warehouse when it still exists. If it was
+      // deleted (SET NULL), the creation-time log row is the authority for the
+      // warehouse label; the global stock must still be restored.
+      if (sourceWarehouseId !== null && sourceWarehouseId !== undefined) {
+        await assertWarehouseOwned(conn, Number(sourceWarehouseId), orgId);
+      }
+      const [varRows] = await conn.execute<RowData>(
+        `SELECT pv.id, pv.quantity FROM product_variants pv
+         JOIN products p ON p.id = pv.product_id
+         WHERE pv.id = ? AND p.seller_id = ? AND p.deleted_at IS NULL
+         FOR UPDATE`,
+        [transfer.variant_id, orgId],
+      );
+      if (!varRows.length) throw new NotFoundError('Variant');
+      const stockBefore = Number(varRows[0].quantity);
+      const stockAfter = stockBefore + restoredQuantity;
+      await conn.execute<RowData>(
+        'INSERT INTO inventory_logs (variant_id, warehouse_id, movement_type, quantity, stock_before, stock_after, reason, reference_type, reference_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [transfer.variant_id, restoreWarehouseId, 'return', restoredQuantity, stockBefore, stockAfter,
+         'Stock transfer cancelled', 'stock_transfer', transferId, userId],
+      );
+      await conn.execute<RowData>('UPDATE product_variants SET quantity = ? WHERE id = ?', [stockAfter, transfer.variant_id]);
+    }
+
+    const [updateResult] = await conn.execute<RowData>(
+      "UPDATE stock_transfers SET status = 'cancelled' WHERE id = ? AND status = 'pending'",
+      [transferId],
+    );
+    if (!(updateResult as any).affectedRows) {
+      throw new ConflictError('Stock transfer is no longer pending');
+    }
+
+    await conn.commit();
+    recordAudit({
+      actorId: userId ?? null,
+      action: 'STOCK_TRANSFER.CANCEL',
+      entityType: 'stock_transfer',
+      entityId: transferId,
+      afterState: { status: 'cancelled', restoredQuantity },
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+    return reply.send({ success: true, restored: restoredQuantity > 0, restoredQuantity });
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 // ── Stock Adjustment ──
 export async function adjustStockHandler(request: FastifyRequest, reply: FastifyReply) {
   const { variantId } = request.params as any;
-  const body = request.body as any;
+  const body = (request.body as any) ?? {};
   const userId = (request as any).userId;
   const orgId = await resolveOrgId(request);
+
+  // R7: strict validation before any connection/transaction. The legacy PUT
+  // contract and the frontend POST adapter share this single implementation.
+  const variantIdNum = parseIntField(variantId, 'variantId', 1, MAX_UINT32);
+  const newQuantity = parseIntField(body.quantity, 'quantity', 0, MAX_UINT32);
+  const rawWarehouseId = body.warehouseId;
+  const warehouseId = rawWarehouseId === undefined || rawWarehouseId === null || rawWarehouseId === ''
+    ? null
+    : parseIntField(rawWarehouseId, 'warehouseId', 1, MAX_UINT32);
+
   const pool = getPool();
   const conn = await pool.getConnection();
   try {
@@ -1105,25 +1304,23 @@ export async function adjustStockHandler(request: FastifyRequest, reply: Fastify
        JOIN products p ON p.id = pv.product_id
        WHERE pv.id = ? AND p.seller_id = ? AND p.deleted_at IS NULL
        FOR UPDATE`,
-      [Number(variantId), orgId],
+      [variantIdNum, orgId],
     );
     if (!varRows.length) throw new NotFoundError('Variant');
     const stockBefore = Number(varRows[0].quantity);
-    const newQuantity = Number(body.quantity);
     const delta = newQuantity - stockBefore;
-    const warehouseId = body.warehouseId ? Number(body.warehouseId) : null;
     if (warehouseId !== null) await assertWarehouseOwned(conn, warehouseId, orgId);
     await conn.execute<RowData>(
       'INSERT INTO inventory_logs (variant_id, warehouse_id, movement_type, quantity, stock_before, stock_after, reason, reference_type, reference_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [Number(variantId), warehouseId, 'adjustment', delta, stockBefore, newQuantity, body.reason ?? 'Manual adjustment', 'adjustment', null, userId],
+      [variantIdNum, warehouseId, 'adjustment', delta, stockBefore, newQuantity, body.reason ?? 'Manual adjustment', 'adjustment', null, userId],
     );
-    await conn.execute<RowData>('UPDATE product_variants SET quantity = ? WHERE id = ?', [newQuantity, Number(variantId)]);
+    await conn.execute<RowData>('UPDATE product_variants SET quantity = ? WHERE id = ?', [newQuantity, variantIdNum]);
     await conn.commit();
     recordAudit({
       actorId: userId ?? null,
       action: 'STOCK.ADJUST',
       entityType: 'product_variant',
-      entityId: Number(variantId),
+      entityId: variantIdNum,
       afterState: { quantityBefore: stockBefore, quantityAfter: newQuantity, reason: body.reason },
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],

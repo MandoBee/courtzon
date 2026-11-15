@@ -7,6 +7,7 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
+import { Modal } from '../../../components/ui/Modal';
 import {
   InventoryErrorState,
   InventoryOrgGate,
@@ -179,7 +180,7 @@ function StockAdjustTab({ orgId }: { orgId: string }) {
   );
 }
 
-function StockTransferTab({ orgId }: { orgId: string }) {
+export function StockTransferTab({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -189,6 +190,36 @@ function StockTransferTab({ orgId }: { orgId: string }) {
   const [fromWarehouseId, setFromWarehouseId] = useState('');
   const [toWarehouseId, setToWarehouseId] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [cancelTarget, setCancelTarget] = useState<any | null>(null);
+  const [cancelNotice, setCancelNotice] = useState<{ restored: boolean; restoredQuantity: number } | null>(null);
+
+  const {
+    data: pendingTransfers,
+    isLoading: transfersLoading,
+    isError: transfersIsError,
+    error: transfersError,
+    refetch: refetchTransfers,
+  } = useQuery({
+    queryKey: ['admin', 'stock-transfers', orgId, 'pending'],
+    queryFn: () => api.get('/admin/stock-transfers', { params: { orgId, status: 'pending' } }).then((r: any) => r.data.data || []),
+    enabled: !!orgId,
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/stock-transfers/${id}/cancel`, {}, { params: { orgId } }),
+    onSuccess: (res: any) => {
+      const payload = res?.data ?? {};
+      const restored = payload.restored === true;
+      const restoredQuantity = restored ? Number(payload.restoredQuantity) || 0 : 0;
+      setCancelNotice({ restored, restoredQuantity });
+      setCancelTarget(null);
+      // Refresh pending transfers plus stock levels and movement logs.
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stock-transfers'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] });
+      showToast(t('inventory.stock.transfer_cancelled'), 'success');
+    },
+    onError: (err: any) => showToast(getErrorMessage(err), 'error'),
+  });
 
   const { data: warehouses } = useQuery({
     queryKey: ['admin', 'warehouses', 'list', orgId],
@@ -218,8 +249,11 @@ function StockTransferTab({ orgId }: { orgId: string }) {
     transferMutation.mutate({ variant_id: selectedVariant.id, from_warehouse_id: parseInt(fromWarehouseId), to_warehouse_id: parseInt(toWarehouseId), quantity: parseInt(quantity) });
   };
 
+  const pendingOnly = (pendingTransfers || []).filter((tr: any) => tr.status === 'pending');
+
   return (
-    <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 border max-w-lg">
+    <div className="space-y-6">
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 border max-w-lg">
       <h3 className="font-semibold text-[var(--color-text)] mb-4">{t('inventory.stock.transfer_title')}</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -257,6 +291,96 @@ function StockTransferTab({ orgId }: { orgId: string }) {
           {t('inventory.stock.transfer')}
         </button>
       </form>
+      </div>
+
+      {cancelNotice && (
+        <div className={`rounded-[var(--radius-lg)] border p-4 text-sm ${
+          cancelNotice.restored
+            ? 'border-green-300 bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-300'
+            : 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
+        }`}>
+          <p className="font-medium">
+            {cancelNotice.restored
+              ? t('inventory.stock.cancel_transfer_restored', { count: cancelNotice.restoredQuantity })
+              : t('inventory.stock.cancel_transfer_not_restored')}
+          </p>
+          <button type="button" onClick={() => setCancelNotice(null)} className="mt-2 text-xs underline">{t('common.close')}</button>
+        </div>
+      )}
+
+      <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
+          <h3 className="font-semibold text-[var(--color-text)]">{t('inventory.stock.pending_transfers')}</h3>
+          <button type="button" onClick={() => refetchTransfers()} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">{t('common.refresh')}</button>
+        </div>
+        {transfersIsError ? (
+          <div className="p-4"><InventoryErrorState error={transfersError} onRetry={() => refetchTransfers()} /></div>
+        ) : transfersLoading ? (
+          <div className="p-4"><SkeletonRow count={3} /></div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-[var(--color-bg)]/50">
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">{t('inventory.stock.variant')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">{t('inventory.stock.from_warehouse')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">{t('inventory.stock.to_warehouse')}</th>
+                  <th className="text-center px-4 py-3 font-medium text-[var(--color-text-muted)]">{t('common.quantity')}</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">{t('inventory.stock.date')}</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--color-text-muted)]" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {pendingOnly.map((tr: any) => (
+                  <tr key={tr.id} className="hover:bg-[var(--color-bg)]/30">
+                    <td className="px-4 py-3 font-medium">{tr.variant_name || `#${tr.variant_id}`}{tr.sku ? ` (${tr.sku})` : ''}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{tr.from_warehouse_name || '—'}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{tr.to_warehouse_name || '—'}</td>
+                    <td className="px-4 py-3 text-center">{tr.quantity}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)] whitespace-nowrap">{tr.created_at ? new Date(tr.created_at).toLocaleString() : '—'}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Can permission="inventory.stock.manage">
+                        <button type="button" onClick={() => setCancelTarget(tr)} className="text-xs text-red-600 hover:underline">{t('inventory.stock.cancel_transfer')}</button>
+                      </Can>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {pendingOnly.length === 0 && (
+              <p className="text-center py-6 text-sm text-[var(--color-text-muted)]">{t('inventory.stock.no_pending_transfers')}</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <Modal
+        open={cancelTarget !== null}
+        onClose={() => { if (!cancelMutation.isPending) setCancelTarget(null); }}
+        title={t('inventory.stock.cancel_transfer_title')}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setCancelTarget(null)} disabled={cancelMutation.isPending} className="px-3 py-1.5 text-sm border border-[var(--color-border)] rounded-[var(--radius-md)]">
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => { if (cancelTarget) cancelMutation.mutate(cancelTarget.id); }}
+              disabled={cancelMutation.isPending}
+              className="px-3 py-1.5 text-sm text-white bg-red-600 rounded-[var(--radius-md)] disabled:opacity-60"
+            >
+              {cancelMutation.isPending ? '…' : t('inventory.stock.cancel_transfer')}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm text-[var(--color-text)]">{t('inventory.stock.cancel_transfer_confirm')}</p>
+        {cancelTarget && (
+          <p className="text-xs text-[var(--color-text-muted)] mt-2">
+            {cancelTarget.variant_name || `#${cancelTarget.variant_id}`} · {cancelTarget.quantity}
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

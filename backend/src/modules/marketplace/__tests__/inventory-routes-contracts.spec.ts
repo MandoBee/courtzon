@@ -172,6 +172,7 @@ describe('inventory route compatibility', () => {
       ['POST', '/admin/stock-transfers'],
       ['GET', '/admin/stock-transfers'],
       ['POST', '/admin/stock-transfers/:id/complete'],
+      ['POST', '/admin/stock-transfers/:id/cancel'],
       ['PUT', '/admin/inventory/variants/:variantId/stock'],
       ['GET', '/admin/inventory/logs'],
     ];

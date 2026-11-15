@@ -31,6 +31,7 @@ export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/stock-transfers', { preHandler: [requirePermission(['inventory.stock.manage'])] }, ctrl.createStockTransferHandler);
   app.get('/admin/stock-transfers', { preHandler: [requirePermission(['inventory.stock.view'])] }, ctrl.listStockTransfersHandler);
   app.post('/admin/stock-transfers/:id/complete', { preHandler: [requirePermission(['inventory.stock.manage'])] }, ctrl.completeStockTransferHandler);
+  app.post('/admin/stock-transfers/:id/cancel', { preHandler: [requirePermission(['inventory.stock.manage'])] }, ctrl.cancelStockTransferHandler);
 
   // Stock Adjustment
   app.put('/admin/inventory/variants/:variantId/stock', { preHandler: [requirePermission(['inventory.stock.manage'])] }, ctrl.adjustStockHandler);
