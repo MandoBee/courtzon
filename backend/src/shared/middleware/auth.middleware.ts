@@ -79,6 +79,38 @@ export function eitherRoleOrPermission(roles: string[], permissions: string[]) {
 /** Platform admin routes: super_admin role OR platform.admin permission. */
 export const adminGuard = eitherRoleOrPermission(['super_admin', 'super-admin'], ['platform.admin']);
 
+/**
+ * Strict platform-administration guard.
+ *
+ * Unlike the generic `adminGuard`, the `super_admin` path is resolved through
+ * `isPlatformAdmin()`, which requires an active, unexpired assignment on an
+ * active, non-deleted GLOBAL role. The `platform.admin` permission path remains
+ * for legitimate platform roles; organisation roles cannot receive it
+ * (`platform.` is platform-only in the RBAC policy).
+ *
+ * Used by legacy `/admin/*` Inventory routes so an organisation-bound Inventory
+ * permission can never enter the platform administration surface.
+ */
+export function requirePlatformAdmin() {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = (request as any).userId;
+    if (!userId) {
+      return reply.status(401).send({ error: 'AUTHENTICATION_ERROR', message: 'Not authenticated' });
+    }
+    try {
+      // Dynamic import keeps the auth middleware lightweight for consumers that
+      // only need token/role helpers; the platform-admin database helper is
+      // loaded only when this guard actually runs.
+      const { isPlatformAdmin, hasGlobalPermission } = await import('./org-access.js');
+      if (await isPlatformAdmin(userId)) return;
+      if (await hasGlobalPermission(userId, 'platform.admin')) return;
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Platform administrator access required' });
+    } catch {
+      return reply.status(500).send({ error: 'INTERNAL_ERROR', message: 'Platform admin check failed' });
+    }
+  };
+}
+
 /** Permission that must be granted to the SAME global finance-manager role. */
 export const FINANCIAL_REPORTS_PERMISSION = 'financial.reports.view';
 

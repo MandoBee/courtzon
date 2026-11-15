@@ -328,7 +328,11 @@ export class RBACRepository {
              SELECT urs.scope_id
              FROM user_role_scopes urs
              JOIN user_roles ur ON ur.id = urs.user_role_id
+             JOIN roles r ON r.id = ur.role_id
              WHERE ur.user_id = ? AND ur.is_active = TRUE
+               AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+               AND r.is_active = TRUE
+               AND r.deleted_at IS NULL
                AND urs.scope_type = 'organisation'
            )
            OR o.id IN (
@@ -336,7 +340,10 @@ export class RBACRepository {
              FROM user_roles ur
              JOIN roles r ON r.id = ur.role_id
              WHERE ur.user_id = ? AND ur.is_active = TRUE
-               AND r.organisation_id IS NOT NULL AND r.deleted_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+               AND r.organisation_id IS NOT NULL
+               AND r.is_active = TRUE
+               AND r.deleted_at IS NULL
            )
          )
        ORDER BY o.name`,
@@ -496,6 +503,7 @@ export class RBACRepository {
        JOIN roles r ON r.id = ur.role_id
        WHERE ur.user_id = ? AND ur.is_active = TRUE
          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         AND r.is_active = TRUE
          AND r.deleted_at IS NULL`,
       [userId]
     );
@@ -530,6 +538,7 @@ export class RBACRepository {
         WHERE ur.user_id = ?
           AND ur.is_active = TRUE
           AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.is_active = TRUE
           AND r.deleted_at IS NULL
           AND urs.scope_type = 'organisation'
           AND urs.scope_id = ?

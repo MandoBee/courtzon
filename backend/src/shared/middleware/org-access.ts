@@ -4,14 +4,51 @@ import type mysql from 'mysql2/promise';
 type RowData = mysql.RowDataPacket[];
 
 /**
- * True if the user is a platform administrator (super admin role).
+ * True if the user is a platform administrator: an active, unexpired
+ * `super_admin` assignment on an active, non-deleted role.
  */
 export async function isPlatformAdmin(userId: number): Promise<boolean> {
   const pool = getPool();
   const [rows] = await pool.execute<RowData>(
     `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-     WHERE ur.user_id = ? AND r.slug IN ('super_admin','super-admin') AND ur.is_active = TRUE LIMIT 1`,
+     WHERE ur.user_id = ? AND r.slug IN ('super_admin','super-admin')
+       AND r.organisation_id IS NULL
+       AND ur.is_active = TRUE
+       AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+       AND r.is_active = TRUE
+       AND r.deleted_at IS NULL
+     LIMIT 1`,
     [userId],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * True only when a GLOBAL role (organisation_id IS NULL) grants the permission
+ * through an active, unexpired assignment on an active, non-deleted role.
+ *
+ * Used by the platform-administration guard so an organisation-bound role can
+ * never satisfy the `platform.admin` fallback.
+ */
+export async function hasGlobalPermission(
+  userId: number,
+  permissionKey: string,
+): Promise<boolean> {
+  if (!userId || !permissionKey) return false;
+  const pool = getPool();
+  const [rows] = await pool.execute<RowData>(
+    `SELECT 1 FROM user_roles ur
+     JOIN role_permissions rp ON rp.role_id = ur.role_id
+     JOIN permissions p ON p.id = rp.permission_id
+     JOIN roles r ON r.id = ur.role_id
+     WHERE ur.user_id = ? AND p.permission_key = ?
+       AND ur.is_active = TRUE
+       AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+       AND r.is_active = TRUE
+       AND r.deleted_at IS NULL
+       AND r.organisation_id IS NULL
+     LIMIT 1`,
+    [userId, permissionKey],
   );
   return rows.length > 0;
 }
@@ -30,6 +67,11 @@ export async function canAccessOrganisation(userId: number, orgId: number): Prom
        SELECT user_id FROM user_roles ur
        JOIN roles r ON r.id = ur.role_id
        WHERE ur.user_id = ? AND r.slug IN ('super_admin', 'super-admin')
+         AND r.organisation_id IS NULL
+         AND ur.is_active = TRUE
+         AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         AND r.is_active = TRUE
+         AND r.deleted_at IS NULL
      )) LIMIT 1`,
     [orgId, userId, userId, userId],
   );
@@ -37,7 +79,12 @@ export async function canAccessOrganisation(userId: number, orgId: number): Prom
   const [scopeRows] = await pool.execute<RowData>(
     `SELECT 1 FROM user_role_scopes urs
      JOIN user_roles ur ON ur.id = urs.user_role_id
-     WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND urs.scope_id = ? AND ur.is_active = TRUE
+     JOIN roles r ON r.id = ur.role_id
+     WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND urs.scope_id = ?
+       AND ur.is_active = TRUE
+       AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+       AND r.is_active = TRUE
+       AND r.deleted_at IS NULL
      LIMIT 1`,
     [userId, orgId],
   );
@@ -61,7 +108,12 @@ export async function findAccessibleOrgIds(userId: number): Promise<number[]> {
        UNION
        SELECT urs.scope_id AS org_id FROM user_role_scopes urs
        JOIN user_roles ur ON ur.id = urs.user_role_id
-       WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND ur.is_active = TRUE
+       JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = ? AND urs.scope_type = 'organisation'
+         AND ur.is_active = TRUE
+         AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         AND r.is_active = TRUE
+         AND r.deleted_at IS NULL
      ) t`,
     [userId, userId],
   );
@@ -87,7 +139,12 @@ export async function canAccessBranch(userId: number, branchId: number): Promise
   const [scopeRows] = await pool.execute<RowData>(
     `SELECT 1 FROM user_role_scopes urs
      JOIN user_roles ur ON ur.id = urs.user_role_id
-     WHERE ur.user_id = ? AND urs.scope_type = 'branch' AND urs.scope_id = ? AND ur.is_active = TRUE
+     JOIN roles r ON r.id = ur.role_id
+     WHERE ur.user_id = ? AND urs.scope_type = 'branch' AND urs.scope_id = ?
+       AND ur.is_active = TRUE
+       AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+       AND r.is_active = TRUE
+       AND r.deleted_at IS NULL
      LIMIT 1`,
     [userId, branchId],
   );
@@ -105,7 +162,12 @@ export async function findAccessibleBranchIds(userId: number): Promise<number[]>
   const [rows] = await pool.execute<RowData>(
     `SELECT DISTINCT urs.scope_id AS id FROM user_role_scopes urs
      JOIN user_roles ur ON ur.id = urs.user_role_id
-     WHERE ur.user_id = ? AND urs.scope_type = 'branch' AND ur.is_active = TRUE`,
+     JOIN roles r ON r.id = ur.role_id
+     WHERE ur.user_id = ? AND urs.scope_type = 'branch'
+       AND ur.is_active = TRUE
+       AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+       AND r.is_active = TRUE
+       AND r.deleted_at IS NULL`,
     [userId],
   );
   return rows.map((r: any) => Number(r.id));
