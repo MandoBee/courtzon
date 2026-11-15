@@ -37,4 +37,52 @@ export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
 
   // Inventory Logs
   app.get('/admin/inventory/logs', { preHandler: [requirePermission(['inventory.stock.view'])] }, ctrl.getInventoryLogsHandler);
+
+  // ── Frontend-compatible aliases (/admin/inventory/*) ───────────────────────
+  // The admin SPA calls a nested /admin/inventory/* namespace. These routes
+  // reuse the same handlers (and therefore the same tenant/ownership checks and
+  // permission keys) as the legacy /admin/* endpoints above.
+
+  // Stock levels, variant search, adjustment and transfer
+  app.get(
+    '/admin/inventory/organisations',
+    {
+      preHandler: [requirePermission([
+        'inventory.stock.view',
+        'inventory.stock.manage',
+        'inventory.warehouses.view',
+        'inventory.warehouses.manage',
+        'inventory.suppliers.view',
+        'inventory.suppliers.manage',
+        'inventory.purchase-orders.view',
+        'inventory.purchase-orders.manage',
+      ])],
+    },
+    ctrl.listInventoryOrganisationsHandler,
+  );
+  app.get('/admin/inventory/stock', { preHandler: [requirePermission(['inventory.stock.view'])] }, ctrl.listStockLevelsHandler);
+  app.get(
+    '/admin/inventory/variants/search',
+    { preHandler: [requirePermission(['inventory.stock.view', 'inventory.stock.manage', 'inventory.purchase-orders.manage'])] },
+    ctrl.searchInventoryVariantsHandler,
+  );
+  app.post('/admin/inventory/stock/adjust', { preHandler: [requirePermission(['inventory.stock.manage'])] }, ctrl.adjustStockFromFrontendHandler);
+  app.post('/admin/inventory/stock/transfer', { preHandler: [requirePermission(['inventory.stock.manage'])] }, ctrl.createStockTransferFromFrontendHandler);
+  app.get('/admin/inventory/stock/logs', { preHandler: [requirePermission(['inventory.stock.view'])] }, ctrl.getInventoryLogsHandler);
+
+  // Warehouses
+  app.get('/admin/inventory/warehouses', { preHandler: [requirePermission(['inventory.warehouses.view'])] }, ctrl.listWarehousesHandler);
+  app.post('/admin/inventory/warehouses', { preHandler: [requirePermission(['inventory.warehouses.manage'])] }, ctrl.createWarehouseHandler);
+  app.put('/admin/inventory/warehouses/:id', { preHandler: [requirePermission(['inventory.warehouses.manage'])] }, ctrl.updateWarehouseHandler);
+
+  // Suppliers
+  app.get('/admin/inventory/suppliers', { preHandler: [requirePermission(['inventory.suppliers.view'])] }, ctrl.listSuppliersHandler);
+  app.post('/admin/inventory/suppliers', { preHandler: [requirePermission(['inventory.suppliers.manage'])] }, ctrl.createSupplierHandler);
+  app.put('/admin/inventory/suppliers/:id', { preHandler: [requirePermission(['inventory.suppliers.manage'])] }, ctrl.updateSupplierHandler);
+
+  // Purchase orders
+  app.get('/admin/inventory/purchase-orders', { preHandler: [requirePermission(['inventory.purchase-orders.view'])] }, ctrl.listPurchaseOrdersHandler);
+  app.post('/admin/inventory/purchase-orders', { preHandler: [requirePermission(['inventory.purchase-orders.manage'])] }, ctrl.createPurchaseOrderHandler);
+  app.get('/admin/inventory/purchase-orders/:id', { preHandler: [requirePermission(['inventory.purchase-orders.view'])] }, ctrl.getPurchaseOrderHandler);
+  app.put('/admin/inventory/purchase-orders/:id/status', { preHandler: [requirePermission(['inventory.purchase-orders.manage'])] }, ctrl.updatePurchaseOrderStatusHandler);
 }

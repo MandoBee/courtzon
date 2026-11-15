@@ -7,6 +7,12 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
+import {
+  InventoryErrorState,
+  InventoryOrgGate,
+  InventoryOrgSelector,
+  useInventoryOrg,
+} from './InventoryOrgContext';
 
 interface Warehouse {
   id: number;
@@ -29,6 +35,7 @@ export default function WarehousesPage() {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const org = useInventoryOrg();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showModal, setShowModal] = useState(false);
@@ -38,25 +45,26 @@ export default function WarehousesPage() {
   const [status, setStatus] = useState<'active' | 'inactive' | 'archived'>('active');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'warehouses', page, pageSize, search],
-    queryFn: () => api.get('/admin/inventory/warehouses', { params: { page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['admin', 'warehouses', org.orgId, page, pageSize, search],
+    queryFn: () => api.get('/admin/inventory/warehouses', { params: { orgId: org.orgId, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+    enabled: !!org.orgId,
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/warehouses', payload),
+    mutationFn: (payload: any) => api.post('/admin/inventory/warehouses', payload, { params: { orgId: org.orgId } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'warehouses'] }); resetForm(); showToast(t('inventory.warehouses.created')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: any) => api.put(`/admin/inventory/warehouses/${id}`, payload),
+    mutationFn: ({ id, payload }: any) => api.put(`/admin/inventory/warehouses/${id}`, payload, { params: { orgId: org.orgId } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'warehouses'] }); resetForm(); showToast(t('inventory.warehouses.updated')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const archiveMutation = useMutation({
-    mutationFn: (id: number) => api.put(`/admin/inventory/warehouses/${id}`, { status: 'archived' }),
+    mutationFn: (id: number) => api.put(`/admin/inventory/warehouses/${id}`, { status: 'archived' }, { params: { orgId: org.orgId } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'warehouses'] }); showToast(t('inventory.warehouses.archived')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -77,8 +85,6 @@ export default function WarehousesPage() {
     else createMutation.mutate(payload);
   };
 
-  if (isLoading) return <SkeletonRow count={5} />;
-
   const warehouses: Warehouse[] = data?.data || [];
   const total = data?.total || 0;
 
@@ -87,6 +93,7 @@ export default function WarehousesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('inventory.warehouses.title')}</h1>
         <div className="flex items-center gap-3">
+          <InventoryOrgSelector org={org} />
           <input value={search} onChange={(e: any) => { setSearch(e.target.value); setPage(1); }} placeholder={t('common.search')} className="px-3 py-1.5 text-sm border rounded-[var(--radius-md)] bg-[var(--color-bg)]" />
           <Can permission="inventory.warehouses.manage">
             <button onClick={() => { resetForm(); setShowModal(true); }} className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-[var(--radius-md)] hover:opacity-90">{t('inventory.warehouses.new')}</button>
@@ -94,6 +101,11 @@ export default function WarehousesPage() {
         </div>
       </div>
 
+      <InventoryOrgGate org={org}>
+        {isLoading ? <SkeletonRow count={5} /> : isError ? (
+          <InventoryErrorState error={error} onRetry={() => refetch()} />
+        ) : (
+          <>
       {showModal && (
         <form onSubmit={handleSubmit} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 mb-6 border">
           <h3 className="font-semibold text-[var(--color-text)] mb-4">{editing ? t('inventory.warehouses.edit') : t('inventory.warehouses.new')}</h3>
@@ -161,6 +173,9 @@ export default function WarehousesPage() {
       <div className="mt-4">
         <Pagination total={total} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} />
       </div>
+          </>
+        )}
+      </InventoryOrgGate>
     </div>
   );
 }

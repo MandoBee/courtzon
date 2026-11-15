@@ -7,6 +7,12 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
+import {
+  InventoryErrorState,
+  InventoryOrgGate,
+  InventoryOrgSelector,
+  useInventoryOrg,
+} from './InventoryOrgContext';
 
 interface LineItem {
   variant_id: number;
@@ -40,6 +46,7 @@ export default function PurchaseOrdersPage() {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const org = useInventoryOrg();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showCreate, setShowCreate] = useState(false);
@@ -55,26 +62,29 @@ export default function PurchaseOrdersPage() {
   const [addQty, setAddQty] = useState('1');
   const [addCost, setAddCost] = useState('0');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'purchase-orders', page, pageSize, search],
-    queryFn: () => api.get('/admin/inventory/purchase-orders', { params: { page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['admin', 'purchase-orders', org.orgId, page, pageSize, search],
+    queryFn: () => api.get('/admin/inventory/purchase-orders', { params: { orgId: org.orgId, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+    enabled: !!org.orgId,
   });
 
   const { data: suppliers } = useQuery({
-    queryKey: ['admin', 'suppliers', 'list'],
-    queryFn: () => api.get('/admin/inventory/suppliers', { params: { limit: 500 } }).then((r: any) => r.data.data),
+    queryKey: ['admin', 'suppliers', 'list', org.orgId],
+    queryFn: () => api.get('/admin/inventory/suppliers', { params: { orgId: org.orgId, limit: 500 } }).then((r: any) => r.data.data),
+    enabled: !!org.orgId,
   });
 
   const { data: warehouses } = useQuery({
-    queryKey: ['admin', 'warehouses', 'list'],
-    queryFn: () => api.get('/admin/inventory/warehouses', { params: { limit: 500 } }).then((r: any) => r.data.data),
+    queryKey: ['admin', 'warehouses', 'list', org.orgId],
+    queryFn: () => api.get('/admin/inventory/warehouses', { params: { orgId: org.orgId, limit: 500 } }).then((r: any) => r.data.data),
+    enabled: !!org.orgId,
   });
 
   const searchVariants = async (q: string) => {
     setVariantSearch(q);
-    if (q.length < 2) { setVariantResults([]); return; }
+    if (q.length < 2 || !org.orgId) { setVariantResults([]); return; }
     try {
-      const res = await api.get('/admin/inventory/variants/search', { params: { q } });
+      const res = await api.get('/admin/inventory/variants/search', { params: { orgId: org.orgId, q } });
       setVariantResults(res.data.data || []);
     } catch { setVariantResults([]); }
   };
@@ -101,13 +111,13 @@ export default function PurchaseOrdersPage() {
   const totalCost = lineItems.reduce((sum, li) => sum + li.total_cost, 0);
 
   const createMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/purchase-orders', payload),
+    mutationFn: (payload: any) => api.post('/admin/inventory/purchase-orders', payload, { params: { orgId: org.orgId } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'purchase-orders'] }); setShowCreate(false); resetCreateForm(); showToast(t('inventory.purchase_orders.created')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) => api.put(`/admin/inventory/purchase-orders/${id}/status`, { status }),
+    mutationFn: ({ id, status }: { id: number; status: string }) => api.put(`/admin/inventory/purchase-orders/${id}/status`, { status }, { params: { orgId: org.orgId } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'purchase-orders'] }); showToast(t('inventory.purchase_orders.status_updated')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -122,8 +132,6 @@ export default function PurchaseOrdersPage() {
     createMutation.mutate({ supplier_id: parseInt(supplierId), warehouse_id: parseInt(warehouseId), notes: notes || undefined, items: lineItems.map((li) => ({ variant_id: li.variant_id, quantity: li.quantity, unit_cost: li.unit_cost })) });
   };
 
-  if (isLoading) return <SkeletonRow count={5} />;
-
   const orders: PurchaseOrder[] = data?.data || [];
   const total = data?.total || 0;
 
@@ -134,12 +142,19 @@ export default function PurchaseOrdersPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('inventory.purchase_orders.title')}</h1>
         <div className="flex items-center gap-3">
+          <InventoryOrgSelector org={org} />
           <input value={search} onChange={(e: any) => { setSearch(e.target.value); setPage(1); }} placeholder={t('common.search')} className="px-3 py-1.5 text-sm border rounded-[var(--radius-md)] bg-[var(--color-bg)]" />
           <Can permission="inventory.purchase-orders.manage">
             <button onClick={() => { resetCreateForm(); setShowCreate(true); }} className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-[var(--radius-md)] hover:opacity-90">{t('inventory.purchase_orders.new')}</button>
           </Can>
         </div>
       </div>
+
+      <InventoryOrgGate org={org}>
+        {isLoading ? <SkeletonRow count={5} /> : isError ? (
+          <InventoryErrorState error={error} onRetry={() => refetch()} />
+        ) : (
+          <>
 
       {showCreate && (
         <form onSubmit={handleCreateSubmit} className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 mb-6 border">
@@ -283,19 +298,38 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {detailId && (
-        <DetailModal orderId={detailId} onClose={() => setDetailId(null)} t={t} />
+        <DetailModal orderId={detailId} orgId={org.orgId} onClose={() => setDetailId(null)} t={t} />
       )}
+          </>
+        )}
+      </InventoryOrgGate>
     </div>
   );
 }
 
-function DetailModal({ orderId, onClose, t }: { orderId: number; onClose: () => void; t: (key: string) => string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'purchase-order', orderId],
-    queryFn: () => api.get(`/admin/inventory/purchase-orders/${orderId}`).then((r: any) => r.data.data),
+function DetailModal({ orderId, orgId, onClose, t }: { orderId: number; orgId: string; onClose: () => void; t: (key: string) => string }) {
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['admin', 'purchase-order', orgId, orderId],
+    queryFn: () => api.get(`/admin/inventory/purchase-orders/${orderId}`, { params: { orgId } }).then((r: any) => r.data.data),
+    enabled: !!orgId,
   });
 
   if (isLoading) return <SkeletonRow count={3} />;
+  if (isError) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+        <div
+          className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-xl)] p-6 max-w-2xl w-full mx-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-end mb-2">
+            <button onClick={onClose} className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]">{t('common.close')}</button>
+          </div>
+          <InventoryErrorState error={error} onRetry={() => refetch()} title="We couldn't load this purchase order" />
+        </div>
+      </div>
+    );
+  }
   if (!data) return null;
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString();

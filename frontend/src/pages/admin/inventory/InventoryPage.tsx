@@ -7,6 +7,12 @@ import { Can } from '../../../permissions/Can';
 import { getErrorMessage } from '../../../utils/errors';
 import { SkeletonRow } from '../../../components/ui/Skeleton';
 import { Pagination } from '../../../components/ui/Pagination';
+import {
+  InventoryErrorState,
+  InventoryOrgGate,
+  InventoryOrgSelector,
+  useInventoryOrg,
+} from './InventoryOrgContext';
 
 type Tab = 'stock' | 'adjust' | 'transfer' | 'logs';
 
@@ -15,6 +21,7 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<Tab>('stock');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const org = useInventoryOrg();
 
   const tabs: { key: Tab; label: string; permission: string }[] = [
     { key: 'stock', label: t('inventory.stock.title'), permission: 'inventory.stock.view' },
@@ -25,8 +32,9 @@ export default function InventoryPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('inventory.stock.title')}</h1>
+        <InventoryOrgSelector org={org} />
       </div>
       <div className="flex gap-1 mb-6 border-b border-[var(--color-border)]">
         {tabs.map((t) => (
@@ -35,24 +43,28 @@ export default function InventoryPage() {
           </Can>
         ))}
       </div>
-      {tab === 'stock' && <StockLevelsTab page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
-      {tab === 'adjust' && <StockAdjustTab />}
-      {tab === 'transfer' && <StockTransferTab />}
-      {tab === 'logs' && <InventoryLogsTab page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
+      <InventoryOrgGate org={org}>
+        {tab === 'stock' && <StockLevelsTab orgId={org.orgId} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
+        {tab === 'adjust' && <StockAdjustTab orgId={org.orgId} />}
+        {tab === 'transfer' && <StockTransferTab orgId={org.orgId} />}
+        {tab === 'logs' && <InventoryLogsTab orgId={org.orgId} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
+      </InventoryOrgGate>
     </div>
   );
 }
 
-function StockLevelsTab({ page, pageSize, setPage, setPageSize }: { page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
+function StockLevelsTab({ orgId, page, pageSize, setPage, setPageSize }: { orgId: string; page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'inventory', 'stock', page, pageSize, search],
-    queryFn: () => api.get('/admin/inventory/stock', { params: { page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['admin', 'inventory', 'stock', orgId, page, pageSize, search],
+    queryFn: () => api.get('/admin/inventory/stock', { params: { orgId, page, limit: pageSize, search: search || undefined } }).then((r: any) => r.data),
+    enabled: !!orgId,
   });
 
   if (isLoading) return <SkeletonRow count={5} />;
+  if (isError) return <InventoryErrorState error={error} onRetry={() => refetch()} />;
 
   const items: any[] = data?.data || [];
   const total = data?.total || 0;
@@ -102,7 +114,7 @@ function StockLevelsTab({ page, pageSize, setPage, setPageSize }: { page: number
   );
 }
 
-function StockAdjustTab() {
+function StockAdjustTab({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -114,15 +126,15 @@ function StockAdjustTab() {
 
   const searchVariants = async (q: string) => {
     setVariantSearch(q);
-    if (q.length < 2) { setVariantResults([]); return; }
+    if (q.length < 2 || !orgId) { setVariantResults([]); return; }
     try {
-      const res = await api.get('/admin/inventory/variants/search', { params: { q } });
+      const res = await api.get('/admin/inventory/variants/search', { params: { orgId, q } });
       setVariantResults(res.data.data || []);
     } catch { setVariantResults([]); }
   };
 
   const adjustMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/stock/adjust', payload),
+    mutationFn: (payload: any) => api.post('/admin/inventory/stock/adjust', payload, { params: { orgId } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] }); setSelectedVariant(null); setVariantSearch(''); setNewQuantity(''); setReason(''); showToast(t('inventory.stock.adjusted')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -167,7 +179,7 @@ function StockAdjustTab() {
   );
 }
 
-function StockTransferTab() {
+function StockTransferTab({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -179,21 +191,22 @@ function StockTransferTab() {
   const [quantity, setQuantity] = useState('');
 
   const { data: warehouses } = useQuery({
-    queryKey: ['admin', 'warehouses', 'list'],
-    queryFn: () => api.get('/admin/inventory/warehouses', { params: { limit: 500 } }).then((r: any) => r.data.data),
+    queryKey: ['admin', 'warehouses', 'list', orgId],
+    queryFn: () => api.get('/admin/inventory/warehouses', { params: { orgId, limit: 500 } }).then((r: any) => r.data.data),
+    enabled: !!orgId,
   });
 
   const searchVariants = async (q: string) => {
     setVariantSearch(q);
-    if (q.length < 2) { setVariantResults([]); return; }
+    if (q.length < 2 || !orgId) { setVariantResults([]); return; }
     try {
-      const res = await api.get('/admin/inventory/variants/search', { params: { q } });
+      const res = await api.get('/admin/inventory/variants/search', { params: { orgId, q } });
       setVariantResults(res.data.data || []);
     } catch { setVariantResults([]); }
   };
 
   const transferMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/admin/inventory/stock/transfer', payload),
+    mutationFn: (payload: any) => api.post('/admin/inventory/stock/transfer', payload, { params: { orgId } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] }); setSelectedVariant(null); setVariantSearch(''); setFromWarehouseId(''); setToWarehouseId(''); setQuantity(''); showToast(t('inventory.stock.transferred')); },
     onError: (err: any) => showToast(getErrorMessage(err), 'error'),
   });
@@ -248,15 +261,17 @@ function StockTransferTab() {
   );
 }
 
-function InventoryLogsTab({ page, pageSize, setPage, setPageSize }: { page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
+function InventoryLogsTab({ orgId, page, pageSize, setPage, setPageSize }: { orgId: string; page: number; pageSize: number; setPage: (p: number) => void; setPageSize: (s: number) => void }) {
   const { t } = useTranslation();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'inventory', 'logs', page, pageSize],
-    queryFn: () => api.get('/admin/inventory/stock/logs', { params: { page, limit: pageSize } }).then((r: any) => r.data),
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['admin', 'inventory', 'logs', orgId, page, pageSize],
+    queryFn: () => api.get('/admin/inventory/stock/logs', { params: { orgId, page, limit: pageSize } }).then((r: any) => r.data),
+    enabled: !!orgId,
   });
 
   if (isLoading) return <SkeletonRow count={5} />;
+  if (isError) return <InventoryErrorState error={error} onRetry={() => refetch()} />;
 
   const logs: any[] = data?.data || [];
   const total = data?.total || 0;
@@ -287,10 +302,10 @@ function InventoryLogsTab({ page, pageSize, setPage, setPageSize }: { page: numb
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 text-xs rounded-full border ${
                     log.movement_type === 'adjustment' ? 'bg-amber-100 text-amber-700 border-amber-300' :
-                    log.movement_type === 'transfer_out' ? 'bg-blue-100 text-blue-700 border-blue-300' :
-                    log.movement_type === 'transfer_in' ? 'bg-green-100 text-green-700 border-green-300' :
-                    log.movement_type === 'purchase_received' ? 'bg-teal-100 text-teal-700 border-teal-300' :
-                    log.movement_type === 'sale' ? 'bg-purple-100 text-purple-700 border-purple-300' :
+                    log.movement_type === 'in' ? 'bg-green-100 text-green-700 border-green-300' :
+                    log.movement_type === 'out' ? 'bg-blue-100 text-blue-700 border-blue-300' :
+                    log.movement_type === 'reservation' ? 'bg-purple-100 text-purple-700 border-purple-300' :
+                    log.movement_type === 'return' ? 'bg-teal-100 text-teal-700 border-teal-300' :
                     'bg-gray-100 text-gray-600 border-gray-300'
                   }`}>{log.movement_type}</span>
                 </td>
