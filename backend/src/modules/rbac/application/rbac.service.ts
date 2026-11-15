@@ -10,6 +10,7 @@ import { recordAudit } from '../../audit-log/index.js';
 import { eventBusV2 } from '../../../shared/event-bus/event-bus.v2.js';
 import { hashPassword } from '../../../shared/utils/password.js';
 import { sanitizeUploadUrl } from '../../../shared/utils/upload-url.util.js';
+import { stripCredentialFields } from '../../../shared/utils/credentials.js';
 import { commandPipeline } from '../../../shared/command/command-pipeline.js';
 import { cancelBookingHandler } from '../../booking/commands/cancel-booking.command.js';
 import { CANCELLABLE_BOOKING_STATUSES } from '../../booking/domain/booking-constants.js';
@@ -334,7 +335,9 @@ export class RBACService {
     const user = await rbacRepository.getUserById(userId);
     if (!user) throw new NotFoundError('User');
     const roles = await rbacRepository.getUserRoles(userId);
-    return { ...user, avatar_url: sanitizeUploadUrl(user.avatar_url), roles };
+    // Fail-closed: admin user payloads are returned by GET and PUT /admin/users/:id,
+    // so credential columns must be removed even if a query ever selects them again.
+    return stripCredentialFields({ ...user, avatar_url: sanitizeUploadUrl(user.avatar_url), roles });
   }
 
   async updateUser(userId: number, data: any) {

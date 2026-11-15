@@ -631,8 +631,16 @@ export class RBACRepository {
   }
 
   async getUserById(userId: number): Promise<any | null> {
+    // Explicit column list: `SELECT u.*` used to serialise `users.password_hash`
+    // straight into `GET /admin/users/:id`. Credential columns are never part of
+    // an admin user detail response.
     const [rows] = await this.pool.execute<RowData>(
-      `SELECT u.*, c.name as country_name, c.iso_code as country_iso, l.name as language_name,
+      `SELECT u.id, u.public_id, u.country_id, u.phone_number, u.full_phone, u.email,
+              u.full_name, u.avatar_url, u.gender, u.birth_date, u.language_id,
+              u.timezone, u.dark_mode, u.account_status, u.last_login_at, u.last_login_ip,
+              u.is_phone_verified, u.is_email_verified, u.is_public, u.has_seen_welcome,
+              u.has_activated_selling, u.version, u.deleted_at, u.created_at, u.updated_at,
+              c.name as country_name, c.iso_code as country_iso, l.name as language_name,
               pp.main_sport_id, pp.is_seller, pp.main_level_id, pp.playing_hand, pp.bio,
               pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
               pp.privacy_show_profile, pp.privacy_show_stats, pp.privacy_show_activity,
