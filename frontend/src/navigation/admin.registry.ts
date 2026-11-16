@@ -109,11 +109,16 @@ export const ADMIN_NAV: NavDefinition[] = [
         icon: '📦',
         path: '/admin/inventory/stock',
         permissionKey: 'sidebar.inventory',
+        // Admin Inventory is a platform-administration surface: every
+        // `/admin/inventory/*` endpoint is guarded by `requirePlatformAdmin`.
+        // The nav key only drives layout/policy — the menu must never appear to
+        // a role that cannot use it (A1, Inventory UAT 2026-11-16).
+        requiresPermission: 'platform.admin',
         children: [
-          { id: 'nav.admin.inventory-stock', label: LIT('Stock Levels'), path: '/admin/inventory/stock', permissionKey: 'sidebar.inventory-stock' },
-          { id: 'nav.admin.inventory-warehouses', label: LIT('Warehouses'), path: '/admin/inventory/warehouses', permissionKey: 'sidebar.inventory-warehouses' },
-          { id: 'nav.admin.inventory-suppliers', label: LIT('Suppliers'), path: '/admin/inventory/suppliers', permissionKey: 'sidebar.inventory-suppliers' },
-          { id: 'nav.admin.inventory-purchase-orders', label: LIT('Purchase Orders'), path: '/admin/inventory/purchase-orders', permissionKey: 'sidebar.inventory-purchase-orders' },
+          { id: 'nav.admin.inventory-stock', label: LIT('Stock Levels'), path: '/admin/inventory/stock', permissionKey: 'sidebar.inventory-stock', requiresPermission: 'platform.admin' },
+          { id: 'nav.admin.inventory-warehouses', label: LIT('Warehouses'), path: '/admin/inventory/warehouses', permissionKey: 'sidebar.inventory-warehouses', requiresPermission: 'platform.admin' },
+          { id: 'nav.admin.inventory-suppliers', label: LIT('Suppliers'), path: '/admin/inventory/suppliers', permissionKey: 'sidebar.inventory-suppliers', requiresPermission: 'platform.admin' },
+          { id: 'nav.admin.inventory-purchase-orders', label: LIT('Purchase Orders'), path: '/admin/inventory/purchase-orders', permissionKey: 'sidebar.inventory-purchase-orders', requiresPermission: 'platform.admin' },
         ],
       },
     ],

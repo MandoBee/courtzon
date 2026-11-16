@@ -164,7 +164,9 @@ describe('inventory organisation selector', () => {
 describe('inventory error states', () => {
   it('maps failures to safe, user-facing messages', () => {
     expect(inventoryErrorMessage({ response: { status: 401 } })).toMatch(/session has expired/i);
-    expect(inventoryErrorMessage({ response: { status: 403 } })).toMatch(/do not have access/i);
+    // A 403 without a recognised backend message must fall back to a generic
+    // permission denial — never to an organisation-scope claim (A2).
+    expect(inventoryErrorMessage({ response: { status: 403 } })).toMatch(/don't have permission/i);
     expect(inventoryErrorMessage({ response: { status: 500 } })).toMatch(/server could not complete/i);
     expect(inventoryErrorMessage(new Error('boom'))).toMatch(/check your connection/i);
   });
@@ -172,7 +174,17 @@ describe('inventory error states', () => {
   it('renders an error state (not an empty dataset) with a retry action', () => {
     const retry = vi.fn();
 
-    render(<InventoryErrorState error={{ response: { status: 403 } }} onRetry={retry} />);
+    render(
+      <InventoryErrorState
+        error={{
+          response: {
+            status: 403,
+            data: { error: 'FORBIDDEN', message: 'You do not have access to this organisation' },
+          },
+        }}
+        onRetry={retry}
+      />,
+    );
 
     expect(screen.getByText(/couldn't load inventory data/i)).toBeTruthy();
     expect(screen.getByText(/do not have access/i)).toBeTruthy();
@@ -248,5 +260,106 @@ describe('inventory error states', () => {
 
     expect(screen.getByText(/couldn't load your organisations/i)).toBeTruthy();
     expect(screen.queryByText(/no organisation access/i)).toBeNull();
+  });
+});
+
+// A2 (Inventory UAT 2026-11-16) — a 403 used to be collapsed into
+// "You do not have access to this organisation.", which mislabelled capability
+// denials and platform-admin denials as an organisation-scope problem. The three
+// documented backend messages are now mapped exactly; everything else fails
+// closed to a generic permission denial and is never echoed.
+describe('inventory 403 message allowlist (A2)', () => {
+  const forbidden = (message?: unknown) => ({
+    response: {
+      status: 403,
+      ...(message === undefined ? {} : { data: { error: 'FORBIDDEN', message } }),
+    },
+  });
+
+  it('1. organisation scope denial → scope message', () => {
+    expect(inventoryErrorMessage(forbidden('You do not have access to this organisation'))).toBe(
+      'You do not have access to this organisation.',
+    );
+  });
+
+  it('2. missing Inventory capability → permission message (not the organisation one)', () => {
+    const message = inventoryErrorMessage(
+      forbidden('Insufficient Inventory permissions for this organisation'),
+    );
+
+    expect(message).toBe('Your role does not include this Inventory permission.');
+    expect(message).not.toMatch(/do not have access/i);
+  });
+
+  it('3. platform administrator requirement → platform message', () => {
+    expect(inventoryErrorMessage(forbidden('Platform administrator access required'))).toBe(
+      'Inventory administration requires platform administrator access.',
+    );
+  });
+
+  it('4a. unknown 403 message → generic fallback and the raw text is never exposed', () => {
+    const message = inventoryErrorMessage(forbidden('SELLER_PRIVATE_DEBUG_TOKEN'));
+
+    expect(message).toBe("You don't have permission to perform this action.");
+    expect(message).not.toMatch(/SELLER_PRIVATE_DEBUG_TOKEN/);
+  });
+
+  it('4b. 403 without a body → generic fallback', () => {
+    expect(inventoryErrorMessage(forbidden())).toBe(
+      "You don't have permission to perform this action.",
+    );
+  });
+
+  it('4c. 403 with a non-string message → generic fallback', () => {
+    expect(inventoryErrorMessage(forbidden({ nested: 'text' }))).toBe(
+      "You don't have permission to perform this action.",
+    );
+  });
+
+  it('4d. known message with surrounding whitespace still maps (trimmed match)', () => {
+    expect(
+      inventoryErrorMessage(forbidden('  Insufficient Inventory permissions for this organisation  ')),
+    ).toBe('Your role does not include this Inventory permission.');
+  });
+
+  it('5. 401 regression → session message (body is ignored)', () => {
+    expect(
+      inventoryErrorMessage({
+        response: { status: 401, data: { message: 'Platform administrator access required' } },
+      }),
+    ).toMatch(/session has expired/i);
+  });
+
+  it('6. 400 regression → invalid-organisation message', () => {
+    expect(
+      inventoryErrorMessage({
+        response: { status: 400, data: { message: 'Invalid organisation id' } },
+      }),
+    ).toMatch(/not valid for this account/i);
+  });
+
+  it('7. 500 regression → server message (body is ignored)', () => {
+    expect(
+      inventoryErrorMessage({
+        response: { status: 500, data: { message: 'Insufficient Inventory permissions for this organisation' } },
+      }),
+    ).toMatch(/server could not complete/i);
+  });
+
+  it('8. network/unknown errors keep the connection message', () => {
+    expect(inventoryErrorMessage(new Error('boom'))).toMatch(/check your connection/i);
+    expect(inventoryErrorMessage(undefined)).toMatch(/check your connection/i);
+  });
+
+  it('9. InventoryErrorState renders the mapped text for a capability denial', () => {
+    render(
+      <InventoryErrorState
+        error={forbidden('Insufficient Inventory permissions for this organisation')}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Your role does not include this Inventory permission.')).toBeTruthy();
+    expect(screen.queryByText(/do not have access to this organisation/i)).toBeNull();
   });
 });

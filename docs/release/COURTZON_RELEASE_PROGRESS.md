@@ -5,8 +5,8 @@
 | Document | `docs/release/COURTZON_RELEASE_PROGRESS.md` |
 | Plan | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
 | Document role | **Status authority** — the single source of status, percentages, blockers, evidence and audit trail (plan §1.1) |
-| Last updated | 2026-11-13 (Refund Engine hardening B1-A/B2-A committed and pushed as `136318d8`; Docker backend/frontend rebuilt and backend restarted healthy; local migrations 209/210 applied through the canonical runner — §31, §32. Phase dashboard and percentages intentionally unchanged) |
-| Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 OPEN/DEFERRED)** + **Phase 6 IN_PROGRESS (5/10)** under recorded deviation **D-01** (§25) |
+| Last updated | 2026-11-16 - P1 Inventory implementation, migration 211 and access hardening committed/pushed as `591df819` (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-14 (W1 read-only Live discovery recorded — §33: 119 routes inspected, 90 PASS / 22 hard FAIL / 7 partial FAIL, 8 open S2, 4 newly-discovered open S3 (+1 pre-existing), 3 S4; F-002 QA-account read-only investigation and decision package. Owner decision (2026-11-14): F-002 RETAINED — all 16 QA accounts stay active/unchanged pending the authorization test matrix; exposure documented, F-002 NOT resolved. Documentation only; Phase dashboard and percentages intentionally unchanged. Previous 2026-11-13: Refund Engine hardening B1-A/B2-A committed and pushed as `136318d8`; Docker backend/frontend rebuilt and backend restarted healthy; local migrations 209/210 applied through the canonical runner — §31, §32) |
+| Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 OPEN/DEFERRED)** + **Phase 6 IN_PROGRESS (5/10)** (P6-06 remains TODO - Inventory P1 code/migration complete 2026-11-16, UAT NOT RUN) under recorded deviation **D-01** (§25) |
 | Overall completion | **56 %** (56 / 100 DONE items) |
 
 > Statuses: `TODO` · `IN_PROGRESS` · `BLOCKED` · `DONE` · `ACCEPTED_RISK`.
@@ -30,7 +30,7 @@
 | 3 — Frontend Defect Remediation | 10 / 10 | **100 %** | **DONE** (acceptance met) |
 | 4 — Backend & Business Rules Audit | 10 / 10 | **100 %** | **DONE** (audit acceptance met; **B36/B37** open follow-ups) |
 | 5 — Payments, Accounting & Settlements | 9 / 10 | **90 %** | IN_PROGRESS (P5-05 IN_PROGRESS/DEFERRED; P5-01–P5-04, P5-06–P5-10 DONE; acceptance NOT MET) |
-| 6 — Real UI & E2E Testing | 5 / 10 | **50 %** | IN_PROGRESS (P6-01…P6-05 DONE; P6-06 TODO; P6-07 IN_PROGRESS — D5 PASS 2026-11-05; P6-08 IN_PROGRESS; P6-09 IN_PROGRESS — F1 PASS (2026-11-04; matrix §3.6d), F2 PASS, F3 PASS (evidence limitation); P6-10 TODO) |
+| 6 — Real UI & E2E Testing | 5 / 10 | **50 %** | IN_PROGRESS (P6-01…P6-05 DONE; P6-06 TODO (Inventory P1 code+migration complete 2026-11-16; UAT NOT RUN); P6-07 IN_PROGRESS — D5 PASS 2026-11-05; P6-08 IN_PROGRESS; P6-09 IN_PROGRESS — F1 PASS (2026-11-04; matrix §3.6d), F2 PASS, F3 PASS (evidence limitation); P6-10 TODO) |
 | 7 — Tests, Architecture & CI Security Gates | 1 / 10 | **10 %** | IN_PROGRESS |
 | 8 — Performance, Quality & UX | 1 / 10 | **10 %** | IN_PROGRESS |
 | 9 — Docker Rebuild & Operational Verification | 0 / 10 | **0 %** | TODO (gated) |
@@ -1731,7 +1731,7 @@ provider reproduction.
 | P6-03 | Confirm local development DB target + safety gates | **DONE** | `connect()` target assertion + explicit destructive-cleanup authorization; 14/14 guard tests. Target is the **local development database** `courtzon_v3` @ `127.0.0.1:3307` (persistent Docker volume), **not** an isolated test environment (§22). |
 | P6-04 | Auth/session/role/permission scenarios | **DONE** | **Executed locally 2026-11-03 on the local development DB `courtzon_v3` @ `127.0.0.1:3307` (frontend `:5173`, backend `:3000`), Playwright `--workers=1 --trace=off`: A1 PASS (1/1, real phone+password login reaches `/app` after the seeding-hash fix); A2 PASS (1/1, rendered invalid-credentials error after the locator fix); A3 PASS (3/3, admin lands on `/admin`, `System Dashboard` heading, sidebar `<nav>`, `/admin/users` with table); A4 PASS (G5: 4 protected routes denied); A5 PASS (2/2: `/health` 200 + `#root`); A6 PASS (2/2: player booking 200/201, `/admin/users` + booking-status + refund all 403, UI `Access denied`; admin `GET /admin/users` 200); A7 PASS (4/4: logout-all immediate revocation, single-logout isolation, refresh rotation + old-token rejection, refresh after revocation 401); A8 PASS (1/1: owner A 200 and user B 403 without tenant data on org bookings and org accounting dashboard). **Test-side blockers found and fixed in the working tree and preserved in the pushed E2E commit `29bd7fac`:** `insertUser` now uses the backend `$pbkdf2-` password format; `insertBranch`/`insertResource` aligned to the real schema (`city`/`latitude`/`longitude`/`slug`/`public_id`, `hourly_price`, no `currency_id`); `courts.ts` tennis fixture `sportId` 1 → 22; A2 locator rewritten; A3 retargeted to the real admin workspace. **Historical Live read-only subset (2026-11-02) preserved:** A2/A4/A5 PASS, A6 deny half PASS. **Rows left behind (no cleanup):** users, user_roles, user_sessions, organisations, branches, resources, bookings from the runs. Matrix §3.1/§3.1d. |
 | P6-05 | Clubs/courts/bookings/cancellations | **DONE** | **Live read-only subset (2026-11-02):** B4 **PASS** (list 2 anchors; **both** public tournaments 14 + 10 verified for identity/brackets; invalid id → terminal message; 0 page errors), B7 **PASS** (390×844, both tournaments, no unintended overflow; drawer not exercised — 0 `.cz-match-card` in both). **B1 executed locally (2026-11-04): PASS.** `npx playwright test e2e/scenarios/booking/create-booking.spec.ts --workers=1` → **1 passed (14.6s)** (single run, no retries) on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): the UI flow selected date `2026-11-07` and slot `08:00–09:30`, reached the confirmation page with `bookingId` **`59085`**, and the booking appeared in `/bookings` (confirmation link). Booking `59085` remains **`confirmed`**; all test rows left in place (**no cleanup/deletion**). Details: `E2E_SCENARIO_MATRIX.md` §3.2c. **B2 executed locally (2026-11-04): PASS.** `npx playwright test e2e/scenarios/booking/cancel-booking.spec.ts --workers=1 --reporter=list` → **1 passed (13.2s)**, no errors, no retries (single run) on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): the API-created cash booking was `confirmed`, cancelled through the UI (inline trigger + reason + confirm), and after reload the status badge read **`cancelled`** with the cancel button gone. Booking **`59086`** is the one created and cancelled by the test (refund row `2636`, 50.00, fee 0); **no cleanup** — rows left in place; existing `59081`–`59085` untouched. Matrix B2 row. **B5 executed locally (2026-11-05): PASS.** `npx playwright test e2e/scenarios/booking/slot-conflict.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **1 passed (31.7s)**, single run, no retries, 20:54:23 → 20:54:58 (+02:00) on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): both browser contexts selected the same slot (2026-11-08, 08:00–09:30, resource `10050360`) and submitted concurrently — exactly **1 fulfilled / 1 rejected**; the winner reached `/bookings/59289/confirmation` (booking **`59289`**, `private_match`, `confirmed`, `pending`, 75.00) and the loser stayed on the form with the conflict message; DB check found **exactly 1** active booking for the slot. **B3 executed locally (2026-11-05): PASS.** `npx playwright test e2e/scenarios/match/public-match.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **2 passed (20.6s)**, 20:55:05 → 20:55:29 (+02:00), same target, **no Live**: bookings **`59290`**/**`59291`** created matches **`1616`**/**`1617`** (`open`, `public`); the host saw the match under **Joined**, the second player (`780822526`) joined from **Discover** (`Joined! Awaiting approval.` → **Applied** + **Withdraw**) and the pending request persisted as `join_requests` id **`7`** (`match_id=1617`, `status=submitted`). The requested B3 path (`booking/public-match.spec.ts`) does not exist; the real spec is `e2e/scenarios/match/public-match.spec.ts`. **No cleanup/no deletion** — all rows left in place. Details: `E2E_SCENARIO_MATRIX.md` §3.2d. **B6 executed locally (2026-11-05): PASS.** `npx playwright test e2e/scenarios/tournament/tournament-venue-flow.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **1 passed (3.5s)** (test 1.4s), 0 failed / 0 flaky / 0 skipped, no retries, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**), backend API `http://localhost:3000`: eligible courts returned the org-A court and **not** the org-B court; the forged cross-org schedule was rejected with `code = TOURNAMENT_COURT_NOT_ELIGIBLE`; `resource_id/start_time/end_time` stayed **NULL**; external venue `Garden Arena` + maps URL `30.0444`; override `Teams Court` + `25.1` with inheritance and no leakage. The destructive SQL was removed by the P7-02 spec fix (INSERT-only, run-unique fixtures, explicit reference preflight); **no cleanup/deletion**, no pre-existing row deleted or modified. **Execution prerequisite (operational, not a pass):** the backend image (`buildTime 2026-11-05T04:03:29Z`, `gitCommit=unknown`) predated `b13197fe` (`2026-11-05T04:36:26Z`), so the **Backend service only** was rebuilt/recreated (image created `2026-11-05T20:36:32Z`; `/health` ok, `/health/database` **330 tables**); MySQL/Redis/Frontend were not recreated. Details: `E2E_SCENARIO_MATRIX.md` §3.2e. **All B rows (B1–B7) are now executed and PASS → P6-05 is DONE** — the basis is the scenario matrix, not the P7-02 fix. Matrix §3.2/§3.2b/§3.2d/§3.2e. |
-| P6-06 | Marketplace/payments/subscriptions/accounting | TODO | — |
+| P6-06 | Marketplace/payments/subscriptions/accounting | TODO | **Inventory sub-area code/migration complete (2026-11-16, `591df819`); UAT NOT RUN** - 0 of 5 sub-areas executed; no PASS recorded (see §34). |
 | P6-07 | Notifications/reports/settlements/admin | IN_PROGRESS | **D5 executed locally (2026-11-05): PASS.** `npx playwright test e2e/scenarios/tournament/tournament-team-invitation.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **4 passed (9.5s)**, 0 failed / 0 flaky / 0 skipped, no retries, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): T1 happy path **2161 ms**, T2 cross-user/cross-tournament isolation **2036 ms**, T3 reject + expiry + zero financial mutations **1902 ms**, T4 direct join + full-team capacity **1685 ms**. All writes stayed within the approved **20-table allowlist**; 8 in-app notifications created and **8/8 delivered**; 24 `notification_audit_trail` rows; 8 `notification_analytics` rows; BullMQ completed **20540 → 20548** (failed 11, delayed 1 unchanged); 0 dead-letter; no external providers; no payment/wallet/booking/accounting writes; updates limited to run-created rows (0 pre-existing touched); no destructive SQL. Details: `E2E_SCENARIO_MATRIX.md` §3.4a. **D2 PASS via attribution to the historical A3 run (2026-11-03, 3/3 PASS; matrix §3.1d):** dedicated authenticated `super_admin` fixture; admin dashboard opened at `/admin`; `System Dashboard` heading visible; admin sidebar `aside nav` + first navigation button visible; `/admin/users` heading and table visible. **No D2-specific rerun was performed.** A3 does **not** assert KPI card values, Action Center, charts, or `/admin/dashboard` API payloads — these are outside D2's written acceptance criteria. **Evidence basis:** the raw A3 Playwright artifacts were overwritten by the D5 run, so attribution relies on the committed A3 spec and historical documentation, not independently reverified raw results; historical retry, failure, or skipped-test counts are **not** claimed. **D1 executed locally (2026-11-06): PASS.** `npx playwright test e2e/scenarios/notifications/notification-deeplink.spec.ts --config e2e/playwright.config.ts --project=critical --no-deps --workers=1` → **1 passed (14.1s)** (test 11.0s), **0 failed / 0 flaky / 0 skipped, 0 retries**, on `courtzon_v3` @ `127.0.0.1:3307` only (**no Live**): cash booking **`59292`** created via the authoritative V2 path (the obsolete `PATCH /bookings/:id/confirm` was removed); the in-app notification was **delivered and marked as read**; the deep link targeted the exact **`/bookings/59292`**; rows left in place (no cleanup). Evidence: `test-results/e2e/results.json` (`expected=1`, `startTime 2026-11-06T01:02:50.751Z`). **Remaining (P6-07 not complete):** D3; **D4 OPEN** (D4-A PASS and authenticated access PASS, 2026-11-11 Live; settlement accuracy and data-level isolation NOT TESTED). |
 | P6-08 | Responsive + accessibility checks | IN_PROGRESS | **Live read-only (2026-11-02):** E1 **PASS** (attributed to the B4 run, 1440×900, ids 14+10), E2 **PASS per stated criteria** (attributed to B7, 390×844; **drawer/close-control NOT EXERCISED** — 0 `.cz-match-card`), E4 **PASS** (ids 14+10 at 768×1024 and 1024×768: no h-overflow, 0 off-screen actions, 0 container-clipped elements, 0 page errors). **E3 → PASS after fixes (2026-11-02, local, light + dark).** First run (dark only) was FAIL with 1 critical (`select-name`) + serious `color-contrast`/`link-in-text-block`; A11Y-001…006 were then fixed (`Button.tsx`, `index.css` `--color-primary-text`, `LoginPage`, `ForgotPasswordPage`, `LandingLayout`, `PreRegisterPage`, both public tournament pages) and E3 was re-run: **48/48 scans PASS** (6 pages × 4 viewports × **light + dark**), **0 critical, 0 serious, 1 moderate per scan** (`meta-viewport` = A11Y-007, excluded by decision), **0 BLOCKED**. Tool `@axe-core/playwright` 4.14.0; command `E3_THEME=light|dark npx playwright test --config e2e/playwright.config.ts --project=a11y --workers=2`; target `127.0.0.1:5174` = fresh `npm run build` via `vite preview` + temporary loopback router — **not** Docker (image not rebuilt, `:5173` still pre-fix) and **not** Live. Safety: every non-GET aborted (`unexpectedWrites=[]`, `writesSentToServer=0` in all 48 records); no DB access, no data created. Supporting checks: `npm run build` PASS, focused Vitest 9/9 PASS; ESLint (11 errors) and `ci-validate` (214 errors) remain **pre-existing and unfixed**. **Committed & pushed** (`fc4871bf`…`4568771f`); **no Docker rebuild/deploy.** Evidence `test-results/e2e/a11y/*__{light|dark}.json` (48, gitignored). HEAD `4568771f` (G2). Matrix §3.5/§3.5a/**§3.5b**. **P6-08 stays IN_PROGRESS** (E2 drawer gap open; consumer/admin pages not scanned). |
 | P6-09 | Realtime + simultaneous booking | IN_PROGRESS | **F2 executed locally (2026-11-03): PASS.** `npx playwright test e2e/scenarios/realtime/simultaneous-booking.spec.ts --workers=1` → 1 passed (3.2s): two different users with independent API sessions fired concurrent `POST /bookings` for the same resource/date/slot and received **one 2xx + one 409**, with **no 429** and no retry; the winning booking is **`59073`** (2026-11-06, 08:00–09:30, `confirmed`, cash) and the DB check found **exactly one** active booking for that slot. Rows left in place (no cleanup). **F3 executed locally (2026-11-03): PASS with an evidence limitation.** Command `npx playwright test e2e/scenarios/realtime/reconnect-duplicate-events.spec.ts --workers=1`; the final run started 18:56:39 and ended 18:56:57, and `test-results/.last-run.json` (written by Playwright, gitignored) recorded `{"status":"passed","failedTests":[]}`. The database rows written inside that run match **both phases** of the spec: 1 writer user (`e2e-f3-writer-*`), 1 organisation, 1 branch, **2** resources and **2** `public_match` bookings (`59079`, `59080`; 2026-11-08, 08:00–09:30, `confirmed`, cash, created 18:56:55–18:56:56) — i.e. the offline write and the online write both ran. **Evidence limitation (explicit):** no HTML/JUnit/JSON report exists for this run (the root Playwright config uses the default reporter), so the PASS status plus the two-phase row set are the available evidence; there is **no assertion-by-assertion report**. **Scope limitation (explicit):** the spec does **not** inject synthetic duplicate frames, so it proves a real socket drop/reconnect plus exactly-one rendered row and does **not** prove deduplication of artificially injected duplicate events. **F1 executed locally (2026-11-04): PASS.** `PLAYWRIGHT_BASE_URL=http://localhost:5174 npx playwright test e2e/scenarios/realtime/cross-session-slot-update.spec.ts --workers=1` → **1 passed (8.2s)** (single run, no retries): session A rendered the `08:00–09:30` slot, `booking.created` made it disappear and `booking.cancelled` brought it back, with **0** document reloads/navigations; booking **`59084`** was created then cancelled by the scenario itself and the rows were left in place (no cleanup). Reaching PASS required two source fixes — the numeric slot query key in `BookingFormPage.tsx`, and `normaliseBookingDate()` in `socket-event-mapper.ts` (mysql2 returned `booking_date` as a `Date`, so the socket payload carried an ISO timestamp that never matched the query key). **Both fixes exist in source and in the local `backend/dist`/frontend builds.** At the time of the run the Docker backend image had **not** been rebuilt and no commit, push or deploy was performed. **Update 2026-11-05:** the fixes are committed in **`ebbaad6f`** (`frontend/src/pages/booking/BookingFormPage.tsx` numeric `resource-slots` query key; `backend/src/modules/realtime/application/socket-event-mapper.ts` `normaliseBookingDate()` in `mapBookingEvent`), and `ebbaad6f` is an **ancestor of `b13197fe`**. The **Backend service alone** was rebuilt/recreated for B6 (§30); the **Frontend service was not** rebuilt/recreated. **Docker shipment of the two F1 fixes: VERIFIED by read-only container inspection (2026-11-06).** Backend `courtzon-backend` (image `sha256:4a8af27c…fad6`, running/healthy) contains `/app/dist/modules/realtime/application/socket-event-mapper.js` with `normaliseBookingDate` (L211), `value.toISOString().slice(0, 10)` (L215), the date-part regex/slice (L220), `mapBookingEvent` (L222) and `bookingDate: normaliseBookingDate(p.bookingDate)` (L262), wired through `socket-publisher` → `realtime/index` → `server`/`app`; Frontend `courtzon-frontend` (image `sha256:1f135592…bfd8a`, running/healthy, no mounts shadowing the served files) serves `/usr/share/nginx/html/assets/BookingFormPage-CCu53MYO.js` containing `` queryKey:[`resource-slots`,e?Number(e):null,L] `` — the minified equivalent of `['resource-slots', Number(resourceId), date]` — referenced by the served entry bundle, HTTP 200, 7,896 bytes matching the in-container file. **Scope:** static artifact verification only; **no F1 end-to-end/runtime behavioural test was executed or re-executed**. Details: `E2E_SCENARIO_MATRIX.md` §3.6d. Writes only on `courtzon_v3`; **never on Live**. |
@@ -4715,3 +4715,311 @@ operationally incomplete refund line). Both were fixed, tested, committed and pu
 Draft the approved **testing constitution** (coverage scope, methodology, role/organisation/branch scenario matrix,
 defect management, and Live-data protection rules) for owner approval. **No test execution and no write operation
 may start before that plan is approved.**
+
+---
+
+## 33. W1 read-only Live discovery — consolidated record (2026-11-14)
+
+**Authority:** CourtZon Test Constitution **v0.5** (approved by the Project Owner 2026-11-14, committed `2771cfae…`
+and pushed to `fix/courtzon-live-phase1`). W1 is a **read-only discovery wave**; this section records its output and
+the owner-approved F-002 read-only investigation. **No write-enabled UAT was started. No checklist item was added,
+removed or re-statused.**
+
+**Environment:** Live frontend `https://www.courtzon.cloud`, API `https://api.courtzon.cloud`.
+**Deployed build at measurement:** commit `313664d9b5600434cd8bbdb7a835b8a50a56aa6f`, buildTime `2026-11-13T07:37:19Z`,
+expectedMigration `210_refund_engine_head`, node `v22.23.5`.
+**Session:** authenticated as `super_admin`; all business calls were `GET`; automatic `POST /auth/refresh`
+(session maintenance) only.
+**Detailed report:** [`W1_READONLY_DISCOVERY_REPORT_2026-11-14.md`](./W1_READONLY_DISCOVERY_REPORT_2026-11-14.md).
+
+### 33.1 Coverage
+
+| Metric | Value |
+|---|---:|
+| Distinct admin routes inspected | **119** |
+| PASS (loads cleanly; all page GETs 2xx) | **90** |
+| FAIL — hard (primary data endpoint 404/500) | **22** |
+| FAIL — partial (page loads, ≥1 widget/endpoint fails) | **7** |
+| Groups covered | **9 / 9** (+ footer/profile) |
+
+Inspection method: same-origin navigation per route, accessibility snapshot, console-error capture, and
+per-navigation network classification (2xx vs 4xx/5xx). "Module present in navigation but data endpoint broken"
+is distinguished from "explicit access-denied"; **no explicit 401/403 was observed for `super_admin`** — the
+failures are broken/missing endpoints, not authorization denials.
+
+### 33.2 Findings register
+
+| ID | Severity | Area | Finding (one line) |
+|---|---|---|---|
+| W1-F-001 | S3 *(pre-existing)* | Platform/Security | `GET /metrics` reachable unauthenticated (route templates only; no PII observed); admin System-Health itself calls `/metrics` → 200 |
+| **W1-F-002** | **S2** *(potential S1)* — **OPEN** | People/Auth | **Active QA/test accounts on Live**, incl. platform-privileged roles. **Owner decision 2026-11-14: retain all 16 unchanged/active pending the authorization test matrix; exposure accepted and kept visible; F-002 NOT resolved** — see §33.7 |
+| W1-F-003 | S4 | Platform | `/health/version` over-discloses build metadata |
+| W1-F-004 | S4 | Public/Auth | Raw i18n key `landing.nav.faq` rendered on the login footer instead of "FAQ" |
+| W1-F-005 | **S2** | CRM | Entire CRM module 500: `crm/{dashboard,customers,segments,leads,campaigns,communications}` |
+| W1-F-006 | **S2** | HR | Entire HR module 404: `hr/{dashboard,employees,departments,leave,attendance,payroll}` |
+| W1-F-007 | **S2** | Inventory | Entire Inventory module 404: `inventory/{stock,warehouses,suppliers,purchase-orders}` |
+| W1-F-008 | **S2** | Membership | `membership/campaigns` and `membership/rewards` 404 (only `plans` works) |
+| W1-F-009 | **S2** | Finance | `/admin/withdrawals` list 500 (stats + assignable-admins 200); also breaks the Reception widget |
+| W1-F-010 | **S2** | Notifications | `/admin/templates` 500 (template management unusable) |
+| W1-F-011 | **S2** | BI | `/bi/dashboard` 500 |
+| W1-F-012 | S3 | BI | `/bi/client-errors?limit=60` 500 (web-vitals 200) |
+| W1-F-013 | S3 | Academy | Frontend sends `limit=200/500`; backend caps `limit ≤ 100` → 400 on program/group/session dropdowns |
+| W1-F-014 | S3 | League | Divisions page calls `GET /admin/leagues/NaN/divisions` → 500 when no league is selected |
+| W1-F-015 | S3 | Accounting | Invoices page calls `GET /users?limit=200` → 404 (wrong path; should be `/admin/users`) |
+| W1-O-001 | S4 | Commerce | Brands page loads logos from third-party `placehold.co` (privacy/CSP/availability consideration) |
+
+**Severity totals:** S1 = **0** · S2 = **8** · S3 = **5** (4 newly discovered in this sweep + 1 pre-existing
+`W1-F-001`) · S4 = **3** (2 defects + 1 observation).
+
+**W1 report count reconciliation (verified against the detailed report):** the detailed report tallies
+`S2 = 8 · S3 = 5 · S4 = 3`. The owner-facing summary records **4 open S3 findings** as *newly discovered in the
+Phase-2 page sweep* (`W1-F-012…F-015`); `W1-F-001` is the pre-existing S3 carried from the earlier Phase-1/auth pass.
+Total open S3 = 5. No finding is double-counted.
+
+### 33.3 Explicitly NOT RUN
+
+| Dimension | State | Reason |
+|---|---|---|
+| Role × scenario matrix (any non-`super_admin` role) | **NOT RUN** | Requires approved test accounts; out of read-only scope. Super Admin access does **not** prove other roles. |
+| Cross-tenant / organisation isolation | **NOT RUN** | No probing of other organisations by guessing IDs (prohibited). |
+| Realtime RT-1…RT-6 (room scoping, event correctness, live UI refresh, tenant isolation, reconnect, idempotency) | **NOT RUN** | Requires a state change or a second session (write-enabled). Connection-only observation in §33.4. |
+| Write scenarios (create/update/delete/approve/refund/…) | **NOT RUN** | Read-only wave. |
+| Physical iPhone / Android device verification | **NOT RUN** | No device/simulator test performed. |
+
+### 33.4 Responsive and realtime observations
+
+| Check | Result |
+|---|---|
+| Desktop 1920×1080 | **PASS** — full sidebar + full data table |
+| Mobile 390×844 | **PASS with UX note** — hamburger + off-canvas sidebar; table horizontally scrollable; filter row clipped at 390 px (needs horizontal scroll); no layout break, no console errors |
+| Realtime connection | Realtime bundle loaded and the app showed a **"Connected"** indicator on `/admin/users` → transport established. **Event-level RT-1…RT-6 remain NOT RUN.** |
+
+### 33.5 W1 Exit Gate
+
+**NOT MET.** Reasons: 8 S2 findings open; role/tenant matrix NOT RUN; Realtime dimension NOT RUN; the §5.5
+transition-to-write gate has not been passed. Write-enabled UAT must not begin until the W1 output is explicitly
+approved and the §5.5 gate is recorded. **F-002 remains open by explicit Owner decision (§33.7.6) and is not counted
+as closed.**
+
+### 33.6 Percentage impact
+
+**None — overall completion remains 56 % (56 / 100).**
+
+Calculation/justification: the release percentage counts **only `DONE` items of the 100-item plan checklist** (§1).
+W1 is a discovery wave defined by the approved Test Constitution; it is **not** a scored checklist item, and this
+operation changed **no** item status (no item was added, removed or re-statused). Therefore the numerator and
+denominator are unchanged. This follows the same documented precedent as §32.4. Recalculation would only be
+required if a scored checklist item were re-statused; none was.
+
+### 33.7 F-002 read-only investigation (owner-approved, 2026-11-14)
+
+**Method (strictly read-only):** existing authenticated `super_admin` UI session; `/admin/users` list observation;
+host `/admin/users` page source; the project's own documentation (`E2E_SCENARIO_MATRIX.md`, `P6_HANDOVER_2026-11-02.md`);
+and `GET`-only page requests. **Not performed:** logging in as any QA account, password reset, deactivation,
+deletion, role/permission changes, DB/SQL access, credential or hash inspection, cross-organisation ID probing.
+**No phone numbers, emails, tokens or secrets are reproduced in this record.**
+
+#### 33.7.1 Accounts observed (display labels only — no contact data)
+
+Page 1 of the paginated `/admin/users` list showed **16** QA-named accounts, all with status **`active`**
+(no `suspended`/`banned`):
+
+| # | Display name (test label) | Roles shown | Status | Joined | Privileged? |
+|---|---|---|---|---|---|
+| 1 | QA Read Only | Read Only Admin, Player | active | 2026-11-11 | Yes (read-only admin) |
+| 2 | QA Master Admin | Master Admin, Player | active | 2026-11-11 | **Yes (platform master admin)** |
+| 3 | QA Auditor | Auditor, Player | active | 2026-11-11 | Yes (auditor) |
+| 4 | QA Accountant | Accountant, Player | active | 2026-11-11 | Yes (accountant) |
+| 5 | QA Finance Manager | Finance Manager, Player | active | 2026-11-11 | Yes (finance manager) |
+| 6 | CZ QA D11 | Player | active | 2026-11-02 | No |
+| 7 | CZ QA D09 | Player | active | 2026-11-02 | No |
+| 8 | QA Padel Acceptance | Player | active | 2026-11-02 | No |
+| 9–16 | CZ QA tpt05…tpt12 20261031 (8 accounts) | Player | active | 2026-10-31 | No |
+
+The list is paginated (20/page); **the total number of QA-named accounts was not queried** (avoiding unnecessary
+PII exposure). The five privileged accounts are **global-scope** roles: the list's role filter is populated from
+`GET /roles?scope=global`, and these role slugs are the platform (global) roles in the permission templates.
+
+#### 33.7.2 Provenance — confirmed
+
+- **CONFIRMED:** the five privileged accounts (#1–#5) were **deliberately created on 2026-11-11** as dedicated QA
+  actors for D4 authenticated authorization testing on Live. `E2E_SCENARIO_MATRIX.md` §3.4c records exactly five QA
+  accounts with the mapped roles (`finance-manager`, `accountant`, `auditor`, `master-admin`, `read-only-admin`),
+  states the existing `player` role was retained, and records that they were exercised against six financial-report
+  endpoints on Live. Names, roles and creation dates match the live list.
+- **CONFIRMED:** `P6_HANDOVER_2026-11-02.md` carries **D-05 — "QA/test data in production"** as **OPEN** (owner
+  decision pending: soft-hide vs delete), covering a QA tournament, coach accounts and TEST products.
+- **CONFIRMED (gap):** D-05 is dated **2026-11-02**, i.e. **before** the five privileged QA accounts were created
+  (2026-11-11). D-05 therefore does **not enumerate** these five platform-privileged accounts. The account-level
+  disposition is tracked only implicitly via the E2E matrix, not as a release open item.
+- **CONFIRMED:** no seed/fixture script in the repository creates these accounts (repo-wide search matched only
+  documentation). The handover records that QA credential/session files are stored **outside the repository**
+  (paths omitted there); credentials were **not** inspected here.
+- **CONFIRMED:** the account names are explicit QA labels (e.g. `QA …`, `CZ QA …`), and the E2E matrix documents
+  their test purpose — evidence supports classifying them as **test accounts, not legitimate operational accounts**.
+
+#### 33.7.3 Unknowns / assumptions (not established)
+
+| Item | State |
+|---|---|
+| Organisation associations | **UNKNOWN** — the Users list has no organisation column; the edit modal can show an organisation selector, but it was not opened (avoiding PII). Not probed via `/admin/users/:id/organisations`. |
+| Total count of QA accounts | **UNKNOWN** — page 1 only; total not queried. |
+| Credential strength / custody / rotation | **UNKNOWN** — files are outside the repo; not inspected. |
+| Recent authentication by these accounts | **UNKNOWN** — would require session/audit correlation (not performed). |
+| Whether suspension revokes live sessions | **PARTIALLY VERIFIED** — new login is blocked (`AccountNotActiveError`) and refresh resolution requires `account_status='active'`; the auth middleware itself has no `account_status` check, so an already-issued access token may remain valid until expiry (TTL not measured). |
+
+#### 33.7.4 Risk statement
+
+Five **active, platform-privileged** QA accounts (including **master-admin**) exist in production, and their
+credentials are held outside the repository. This is a credential-exposure / unauthorised-access risk. **No
+cross-tenant exposure and no privilege anomaly were discovered** (each account holds exactly the documented roles;
+no stop condition was triggered). Rated **S2**, with **potential S1** if credentials are weak, shared or leaked
+(not tested — testing would require an authentication attempt, which is out of scope).
+
+**Owner disposition (2026-11-14):** retain all 16 accounts active and unchanged pending the authorization test
+matrix; the exposure above remains **open and documented** (see §33.7.6).
+
+#### 33.7.5 Decision package (F-002) — inputs only (Owner decision in §33.7.6)
+
+| Option | Supporting evidence | Operational impact | Data/audit risk | Approval / permission | Reversible? |
+|---|---|---|---|---|---|
+| **A. Keep active** | Accounts are documented test actors; may be needed for the remaining role-matrix (D4) and W2–W4 waves | None now; keeps matrix testing unblocked | Credential-exposure risk persists indefinitely; S2 stays open | Owner decision (explicit `ACCEPTED_RISK`) | n/a |
+| **B. Disable / deactivate** (`account_status='suspended'` via `PUT /admin/users/:id`, `superAdminGuard`) | Removes login capability while retaining identity, roles and history; aligned with least privilege | Role-matrix tests using these actors pause until re-enabled | Lowest: user row, roles, scopes and history retained; emits `user:suspended`. Suspension blocks **new logins** (`AccountNotActiveError`, `auth.service.ts:537`) and **refresh** (session query requires `account_status='active'`, `auth.controller.ts:231`); an already-issued access token may remain valid until expiry (auth middleware has no `account_status` check; TTL not measured here) | `super_admin` | **Yes** — set back to `active` (emits `user:activated`) |
+| **C. Soft-delete** (`DELETE /admin/users/:id` → `deleted_at`, `account_status='deleted'`) | Hides accounts from the admin list; matches "soft-hide" wording in D-05 | Accounts disappear from admin views; harder to reuse for tests | Retains the DB row (soft), **but** cascades coach/seller/referee profile deactivation **and auto-cancels the user's non-terminal bookings** — side effects on any QA account that holds real bookings (e.g. a "Padel Acceptance" actor). No UI restore path | `adminGuard` + `users.delete` permission (`super_admin`) | **Partially** — technically restorable via DB/manual, **no application restore path** |
+| **D. Hard delete** (physical row removal) | Only if accounts are provably test-only **and** carry no financial/audit history | Full removal | Highest: may break referential/historical records; not supported by the current endpoint (which is soft) and contrary to the historical-data policy | Requires DB-level privileged action (prohibited without separate approval) | **No** |
+
+**Decision package (analysis retained for audit).** Options A–D above were the decision inputs. The Owner has
+selected **Option A — keep active** (see §33.7.6). **No option was executed** and no account was modified.
+
+#### 33.7.6 Owner decision record — F-002 (2026-11-14) — **DECIDED**
+
+The Project Owner reviewed the F-002 investigation and decision package and has **explicitly decided** to retain
+the QA accounts. This is a recorded **Owner decision**, not an unresolved recommendation to disable them.
+
+1. **Keep active** — all five privileged QA accounts remain `active`.
+2. **No mutation** — do not suspend, deactivate, delete, soft-delete, re-role, or reset the password of any of them.
+3. **Preserve** — all **16** observed QA accounts remain unchanged.
+4. **Classification** — the five privileged accounts are **intentionally retained QA/UAT identities**, pending
+   completion of the authorization test matrix.
+5. **Status** — the security exposure remains **documented and visible**; **F-002 is NOT resolved** and remains
+   **OPEN** (severity S2, potential S1).
+6. **Revisit trigger** — re-evaluate only when the authorization test matrix is complete, or earlier if a concrete
+   credential-exposure signal appears.
+
+**Owner rationale (recorded):** the five privileged accounts may be required shortly for the upcoming role and
+authorization testing, so disabling them now would block that work.
+
+This decision authorizes **no write-enabled UAT** and **no production change**; the §5.5 transition gate still
+applies. No account was modified while recording this decision.
+
+### 33.8 No-production-change confirmation
+
+- Business requests: **`GET` only**. No `POST`/`PUT`/`PATCH`/`DELETE` to business endpoints.
+- Only automatic `POST /auth/refresh` (session maintenance) occurred; no business data touched.
+- No SQL/DB access, no seeds, no migrations, no Docker build/restart, no Git staging/commit/push, no deployment.
+- No QA account was logged into, reset, disabled, deleted or re-roled; no credentials/hashes inspected.
+- **Owner decision recorded (F-002, 2026-11-14):** retain all 16 QA accounts active and unchanged pending the
+  authorization test matrix; **no account was modified**, and F-002 remains open (§33.7.6).
+- Working tree after this documentation operation: only ` M opencode.json` (pre-existing approved config) and this
+  file's edits (verified by `git status`).
+
+---
+
+## 34. P1 Inventory implementation, migration 211 and access hardening (2026-11-16)
+
+**Document role:** record of completed engineering work and its limits. **No UAT was executed for this work.**
+No phase percentage, phase state, or earlier decision (including F-002) is changed by this section.
+
+### 34.1 Commits (pushed to `origin/fix/courtzon-live-phase1`)
+
+| Commit | Subject | Scope |
+|---|---|---|
+| `127a525d` | `feat(inventory): organisation-scoped Inventory backend` | `inventory-access.ts` + repository, `/org/:orgId/inventory/*` routes, policy/templates (TS + MJS), permission registry |
+| `63ae5be0` | `fix(security): enforce platform and active-role authorization` | `requirePlatformAdmin`, global-only `isPlatformAdmin`/`hasGlobalPermission`, active-role predicates |
+| `3d374691` | `fix(users): prevent credential fields in admin user responses` | `credentials.ts`, explicit user columns, service redaction, two regression specs |
+| `31401e6f` | `feat(inventory): organisation Inventory workspace UI` | organisation scope context, capability-gated tabs/actions, org navigation + parity |
+| `617cfdd0` | `fix(admin): redirect inventory index to stock levels` | `/admin/inventory` -> `/admin/inventory/stock` + route test |
+| `ac0f0c2f` | `chore(deploy): make startup role-template sync opt-in` | entrypoint, compose, `.env.example` |
+| `591df819` | `feat(inventory): add P1 permissions and role grants` | `database/migrations/211_inventory_p1_permissions_grants.sql` |
+
+Verified at review time: `HEAD = 591df8198db217a4829b99e33693c28850de370f`,
+`origin/fix/courtzon-live-phase1 = 591df819...`, divergence `0 0`.
+
+### 34.2 Migration 211 (verified locally and inside the built image)
+
+| Item | Evidence |
+|---|---|
+| File | `database/migrations/211_inventory_p1_permissions_grants.sql` - 754 lines, 38,154 bytes, SHA-256 `A714AC5FCCDECDED11AD3B39367FA82E36F25B2E6BC3C183A2BB88D0A9522EEA` |
+| Classification | `-- COURTZON_MIGRATION_ENV: PRODUCTION_SAFE` (line 2) |
+| Design | `CREATE PROCEDURE ... SQL SECURITY INVOKER`; `START TRANSACTION` first; `EXIT HANDLER ... ROLLBACK/RESIGNAL`; row/gap locks before the snapshot; no `-- DOWN:` |
+| DML | exactly 8 permission inserts + 47 role grants (asserted with `ROW_COUNT`) |
+| Postconditions | 16 `inventory.%` keys; 5 `sidebar.inventory*` preserved; per-role 16/15/9/6/3/7/7 = 63; org-scoped Inventory grants = 0 |
+| Local execution (2026-11-15, local Docker DB only) | 8 rows (ids 22377-22384) + 47 grants; verified matrix 16/15/9/6/3/7/7; org-scoped = 0 |
+| Image verification (2026-11-16) | `courtzon-backend:latest` = `sha256:43b15d4132a30e9d97ecf342ffa474d902ad9333b50326a6b80b3fce38edd4ab`; the file inside the image matches the same SHA-256; `/app/expected-migration.txt` = `211_inventory_p1_permissions_grants` |
+
+**Not done:** migration 211 was **not** applied to Live from this session and no Live deployment occurred.
+Prerequisites before any production run: (a) read-only `--status` proving 211 is the only `[PENDING]` file;
+(b) the migration account must hold `CREATE ROUTINE` (211 creates a stored procedure); (c) explicit owner approval.
+
+**Environment note:** the local backend **container** still runs the previous image (`4e7e18d874d5`, healthy);
+the rebuilt image containing 211 exists but has not been activated (no restart was performed).
+
+### 34.3 `password_hash` exposure fix
+
+| Item | Evidence |
+|---|---|
+| Root cause | `RBACRepository.getUserById()` used `SELECT u.*`, so `users.password_hash` reached `GET`/`PUT /admin/users/:id` |
+| Fix | Explicit 25-column selection plus fail-closed `stripCredentialFields()` at the service boundary; both `GET` and `PUT` covered |
+| Files | `backend/src/shared/utils/credentials.ts`, `backend/src/modules/rbac/application/rbac.service.ts`, `backend/src/modules/rbac/infrastructure/repositories/rbac.repository.ts` |
+| Tests | `user-detail-credentials.spec.ts` (payload) and `user-detail-query-columns.spec.ts` (query shape); RBAC suite 278 tests passed |
+| Local runtime evidence | anonymised `GET /admin/users/:id` -> 200, 44 keys, 0 credential-like keys, `password_hash` absent |
+
+**Not verified:** the Live runtime response (no platform-admin session was used).
+
+### 34.4 `/admin/inventory` index redirect
+
+| Item | Evidence |
+|---|---|
+| Fix | `<Route path="inventory" element={<Navigate to="/admin/inventory/stock" replace />} />` inside the admin route group |
+| Files | `frontend/src/App.tsx` |
+| Test | `AdminInventoryRedirect.spec.tsx` (5 tests passed) |
+| Local runtime evidence | browser URL became `/admin/inventory/stock`; Stock Levels rendered; zero console errors |
+
+### 34.5 Role-template startup sync is now opt-in
+
+| Item | Evidence |
+|---|---|
+| Change | Sync wrapped by `COURTZON_ROLE_PERMISSION_SYNC_ON_STARTUP` (default `0`); migrations remain governed by `COURTZON_SKIP_STARTUP_DB_SYNC` |
+| Files | `backend/docker-entrypoint.sh`, `docker-compose.yml`, `.env.example` |
+| Verification | `bash -n` clean; startup log observed `COURTZON_SKIP_STARTUP_DB_SYNC=1 - skipping migrations and role-permission sync` |
+
+### 34.6 Impact on P6-06 (no percentage change)
+
+P6-06 requires **executing** marketplace/inventory/payments/subscriptions/accounting. The Inventory code and
+migration are complete, but **no UAT was executed**, so:
+
+| Sub-area | Status |
+|---|---|
+| Marketplace | NOT RUN |
+| Inventory | NOT RUN (code/migration complete; execution pending) |
+| Payments | NOT RUN (P5-05 remains BLOCKED) |
+| Subscriptions | NOT RUN |
+| Accounting | NOT RUN |
+
+=> P6-06 stays **TODO**; Phase 6 remains **5/10**; overall remains **56%**. No PASS is recorded in this section.
+
+### 34.7 Known UI/API discrepancy (found by code audit, not fixed here)
+
+`auditor` and `read-only-admin` hold `dashboard.view` and all five `sidebar.inventory*` keys, so the admin sidebar
+shows the Inventory section - but every `/admin/inventory/*` API call is rejected by `requirePlatformAdmin()`
+(`403 Platform administrator access required`) because neither holds `super_admin` or `platform.admin`.
+Server-side authorisation is correct; the UI is misleading. A separate ticket is required.
+
+### 34.8 No-production-change confirmation
+
+- No Live database write, no migration executed on Live, no seed, no account creation or modification.
+- No deployment, no Coolify/Hostinger change, no container restart, no Docker build during this documentation step.
+- No Git commit or push in this step; the working tree contains only this file's edit plus the pre-existing
+  `M opencode.json` and the untracked `docs/release/W1_READONLY_DISCOVERY_REPORT_2026-11-14.md`.
+- No UAT result is claimed; nothing in this section is evidence of a PASS.
+

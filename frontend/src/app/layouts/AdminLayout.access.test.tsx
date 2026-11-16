@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AdminLayout from './AdminLayout';
 import { useAuthStore } from '../../store/auth.store';
+import { getAdminRoutePermission } from '../../permissions/adminRoutePermissions';
 
 /**
  * P3-10 — per-section `/admin/*` authorization inside AdminLayout.
@@ -34,8 +35,10 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route element={<AdminLayout />}>
+          <Route path="/admin" element={<div>admin-home</div>} />
           <Route path="/admin/users" element={<div>users-page</div>} />
           <Route path="/admin/finance" element={<div>finance-page</div>} />
+          <Route path="/admin/inventory/stock" element={<div>inventory-page</div>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -90,5 +93,69 @@ describe('AdminLayout — per-section permission and accountant deny-list', () =
     renderAt('/admin/users');
     expect(screen.getByTestId('admin-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Access denied')).toBeInTheDocument();
+  });
+});
+
+// A1 (Inventory UAT 2026-11-16) — `/admin/inventory/*` is a platform
+// administration surface on the backend (`requirePlatformAdmin`). The route gate
+// must therefore require `platform.admin`, not the sidebar layout key, so a role
+// holding `sidebar.inventory*` gets the explicit Access denied surface instead
+// of a page whose every API call returns 403.
+describe('A1 — admin Inventory route requires platform.admin', () => {
+  const INVENTORY_NAV_KEYS = [
+    'sidebar.inventory',
+    'sidebar.inventory-stock',
+    'sidebar.inventory-warehouses',
+    'sidebar.inventory-suppliers',
+    'sidebar.inventory-purchase-orders',
+  ];
+
+  beforeEach(() => {
+    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false } as never);
+  });
+
+  it('maps the inventory route to platform.admin', () => {
+    expect(getAdminRoutePermission('/admin/inventory')).toBe('platform.admin');
+    expect(getAdminRoutePermission('/admin/inventory/stock')).toBe('platform.admin');
+    expect(getAdminRoutePermission('/admin/inventory/purchase-orders')).toBe('platform.admin');
+  });
+
+  it('denies a role that holds sidebar.inventory* + dashboard.view but not platform.admin', () => {
+    setUser(['dashboard.view', ...INVENTORY_NAV_KEYS], ['auditor']);
+    renderAt('/admin/inventory/stock');
+
+    expect(screen.queryByText('inventory-page')).toBeNull();
+    expect(screen.getByText('Access denied')).toBeInTheDocument();
+  });
+
+  it('denies the same role the read-only-admin role set', () => {
+    setUser(['dashboard.view', ...INVENTORY_NAV_KEYS], ['read-only-admin']);
+    renderAt('/admin/inventory/stock');
+
+    expect(screen.queryByText('inventory-page')).toBeNull();
+    expect(screen.getByText('Access denied')).toBeInTheDocument();
+  });
+
+  it('allows super_admin (platform.admin granted)', () => {
+    setUser(['*'], ['super_admin']);
+    renderAt('/admin/inventory/stock');
+
+    expect(screen.getByText('inventory-page')).toBeInTheDocument();
+    expect(screen.queryByText('Access denied')).toBeNull();
+  });
+
+  it('allows an explicit platform.admin holder', () => {
+    setUser(['dashboard.view', 'platform.admin', ...INVENTORY_NAV_KEYS], ['auditor']);
+    renderAt('/admin/inventory/stock');
+
+    expect(screen.getByText('inventory-page')).toBeInTheDocument();
+  });
+
+  it('keeps the /admin dashboard reachable with dashboard.view only (no regression)', () => {
+    setUser(['dashboard.view'], ['auditor']);
+    renderAt('/admin');
+
+    expect(screen.getByText('admin-home')).toBeInTheDocument();
+    expect(screen.queryByText('Access denied')).toBeNull();
   });
 });

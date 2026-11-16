@@ -427,6 +427,208 @@ scenario, and the destructive-SQL sub-item of **P7-02** is resolved.
 | C5 | Accountant/auditor | Posted journals | Open ledger/trial balance/report center | Balanced figures; permission-gated | None | — | — | **MISSING** |
 | C6 | Buyer/admin | Paid order/booking | Refund via UI | Refund recorded, reversal journal, status updated | Rows left | — | — | **MISSING** |
 
+### 3.3a Inventory scenarios (P6-06 Inventory sub-area) — documented 2026-11-16
+
+**Scope.** This subsection defines the Inventory scenarios that belong to the **P6-06 Inventory sub-area only**.
+It documents the behaviour targeted by the three Inventory UAT remediation items:
+
+| Item | Change documented here |
+|---|---|
+| **A1** | Admin Inventory **navigation and route authorization**: the sidebar key (`sidebar.inventory*`) is a layout/policy key, while every `/admin/inventory/*` endpoint requires `platform.admin` (`requirePlatformAdmin`); the menu and the route now require **both** (`requiresPermission` AND-gate + `adminRoutePermissions`). |
+| **A2** | **Accurate 403 messages**: the three documented backend messages are mapped to distinct user-facing sentences; any other 403 falls back to a generic permission-denied message and is never echoed. |
+| **B1** | **Read-only Transfers tab**: `inventory.transfers.view` opens the tab and its records; create / complete / cancel stay behind their own capabilities. |
+
+**Status semantics.** These are **scenario definitions only**. Nothing in this subsection was executed to produce
+this document, no row may be recorded as `PASS` without a separately authorised run, and related unit tests are **not**
+E2E evidence. Execution results belong in `COURTZON_RELEASE_PROGRESS.md`, never here.
+
+**Class.** C7–C11 are **Class R** (browser navigation + GET requests only; no DB writes). C12 exercises **denied**
+write attempts and is therefore **write-safety gated**: it may run only under an explicit approval that names the
+local target and the expected tables/impact (Amendment A1), and must not be part of a read-only sweep.
+
+**Related unit coverage (existing code-level tests — not E2E execution):**
+`frontend/src/pages/admin/inventory/InventoryAuthorizationUi.test.tsx`,
+`frontend/src/pages/admin/inventory/InventoryOrgContext.test.tsx`,
+`frontend/src/app/layouts/AdminLayout.access.test.tsx`,
+`frontend/src/navigation/parity/parity.test.ts`.
+
+| ID | Title | Class | Status |
+|---|---|---|---|
+| C7 | Inventory navigation and sidebar permission gating | R | **NOT RUN** |
+| C8 | Inventory API authorization matrix across the seven roles | R | **NOT RUN** |
+| C9 | Organization isolation (existing-other-organisation denial) | R | **NOT RUN** |
+| C10 | Transfers read-only access and independent write-action permissions | R | **NOT RUN** |
+| C11 | Auditor / read-only-admin UI–API authorization consistency | R | **NOT RUN** |
+| C12 | Inventory write-operation denial and safety controls | W (denied-path only; approval required) | **NOT RUN** |
+
+#### C7 — Inventory navigation and sidebar permission gating
+
+- **Preconditions.** Local Docker stack (frontend + backend) serving the A1 build; one authenticated session per
+  global role: `super_admin`, `org-admin`, `marketplace-manager`, `accountant`, `receptionist`, `auditor`,
+  `read-only-admin`. No database writes; no permission or role changes.
+- **Execution steps.**
+  1. Sign in as `super_admin`; open `/admin`; expand **Facilities**; record whether **Inventory** and its four
+     children (Stock Levels, Warehouses, Suppliers, Purchase Orders) are present; open `/admin/inventory` and record
+     the final URL.
+  2. Repeat for `auditor` and `read-only-admin` (both hold all five `sidebar.inventory*` keys plus `dashboard.view`,
+     and no `platform.admin`).
+  3. Repeat for `org-admin`, `marketplace-manager`, `accountant`, `receptionist` (none holds `platform.admin`).
+  4. For every role, request `/admin/inventory` and `/admin/inventory/stock` directly by URL.
+  5. As `auditor`, type `inventory` in the admin search palette and record whether any `/admin/inventory*` command is
+     offered.
+- **Expected result.**
+  - `super_admin` (`platform.admin` granted): **Inventory visible** with its four children; `/admin/inventory`
+    redirects to `/admin/inventory/stock` and the page renders.
+  - `auditor` / `read-only-admin`: **Inventory absent** from the sidebar despite holding `sidebar.inventory*`;
+    direct URL shows the explicit **Access denied** surface (no Inventory page, no organisation selector).
+  - All remaining roles: no Inventory entry; `dashboard.view` alone never reveals it; no `/admin/inventory/*`
+    request is issued from the UI (no 403 loop in the browser console).
+  - Search palette: no `/admin/inventory*` command for roles lacking `platform.admin`.
+- **Evidence to capture.** Per role: sidebar snapshot/tree (or screenshot) of the **Facilities** group, the final
+  URL after `/admin/inventory`, the Access-denied surface text, and the browser network log showing the absence of
+  `/admin/inventory/*` calls where the menu is hidden.
+- **Current status:** **NOT RUN**
+
+#### C8 — Inventory API authorization matrix across the seven roles
+
+- **Preconditions.** Same sessions as C7. A stock-bearing organisation with existing variants (the UAT target was
+  `organisation_id=1001130`, "Shop 1", 11 variant rows). Read-only: **GET only**.
+- **Execution steps.**
+  1. For each role, call `GET /org/:orgId/inventory/access` and record the returned capability count and keys.
+  2. For each role, call the organisation endpoints: `…/stock`, `…/variants/search`, `…/stock/logs`,
+     `…/stock-transfers`, `…/warehouses`, `…/suppliers`, `…/purchase-orders`.
+  3. For each role, call the platform endpoints: `GET /admin/inventory/stock`,
+     `GET /admin/inventory/warehouses`, `GET /admin/inventory/suppliers`, `GET /admin/inventory/purchase-orders`,
+     `GET /admin/inventory/organisations`.
+  4. For each response, confirm the returned rows belong to the requested organisation and that paging parameters are
+     honoured; do not treat HTTP 200 alone as a pass.
+- **Expected result.**
+  - `super_admin`: every organisation endpoint **200**; every `/admin/inventory/*` endpoint **200**; `access`
+    reports the full capability set with `isPlatformAdmin=true`.
+  - `org-admin`: all organisation endpoints **200** (15 capabilities).
+  - `marketplace-manager`: stock / variants / stock logs / transfers / warehouses **200**; suppliers and purchase
+    orders **403** (9 capabilities).
+  - `accountant`: stock / variants / stock logs / transfers / warehouses **200**; suppliers and purchase orders
+    **403** (6 capabilities).
+  - `receptionist`: stock / variants / transfers / warehouses **200**; **stock logs 403**; suppliers and purchase
+    orders **403** (3 capabilities).
+  - `auditor` / `read-only-admin`: every organisation endpoint **403** (no organisation membership) and every
+    `/admin/inventory/*` endpoint **403** `Platform administrator access required`.
+  - No role other than `super_admin` receives 200 from `/admin/inventory/*`.
+- **Evidence to capture.** A status matrix (role × endpoint) with the HTTP code, the capability count from
+  `access`, the scope actually returned (organisation id in the payload), and one representative response body per
+  outcome. Record `total`/row-count for the stock endpoint to prove the response is organisation-scoped.
+- **Current status:** **NOT RUN**
+
+#### C9 — Organization isolation (existing-other-organisation denial)
+
+- **Preconditions.** Same sessions as C7. Two **existing** organisations: the actor's own organisation and a second
+  organisation the actor does not belong to (the UAT target was `276002726`, "SIM Padel Club A"). A non-existent id
+  is used only as a secondary control, never as the primary isolation proof. Read-only: **GET only**.
+- **Execution steps.**
+  1. For each non-platform role, call the seven organisation endpoints against the **other existing** organisation.
+  2. Call `GET /org/<other>/inventory/access` for the same roles.
+  3. Call `GET /org/999999999/inventory/access` as a control.
+  4. Call `GET /org/<own>/inventory/access` with **no** session/cookies.
+  5. Open `/org/<other>/inventory` in the browser for at least `org-admin` and `receptionist`.
+- **Expected result.**
+  - Every cross-organisation request returns **403** with `You do not have access to this organisation`, and the
+    body contains **no** organisation name, row count, product, warehouse, supplier or transfer data.
+  - The non-existent organisation returns **403** `Organisation not found` (does not disclose whether other ids
+    exist).
+  - The unauthenticated request returns **401** `Missing or invalid token`.
+  - The UI shows the denial surface with an empty/org-less navigation — no data from the other organisation is
+    rendered for any frame.
+  - `super_admin` platform access is unchanged (covered by C8), and isolation is not weakened by A1/A2/B1.
+- **Evidence to capture.** The exact response bodies for cross-organisation and control calls, the HTTP codes, the
+  browser denial surface, and a screenshot/network capture proving no organisation data was rendered or fetched.
+- **Current status:** **NOT RUN**
+
+#### C10 — Transfers read-only access and independent write-action permissions
+
+- **Preconditions.** The B1 build. Roles covering the capability combinations: `transfers.view` only
+  (`accountant`, `receptionist`), `transfers.create` (`org-admin`, `marketplace-manager`), and
+  `transfers.complete` + `transfers.cancel` (`org-admin`, `marketplace-manager`, `super_admin`); legacy
+  `stock.manage` as the accepted alternative for the write actions. An organisation with at least one **pending**
+  stock transfer, plus an organisation with **no** transfers (the UAT target "Shop 1" had none). Read-only: only
+  presence/absence of controls and `GET …/stock-transfers` are exercised; no write is submitted.
+- **Execution steps.**
+  1. As a `transfers.view`-only role, open the organisation Inventory page and confirm the **Transfers** tab is
+     present; open it and record the rendered rows.
+  2. In the same session, record whether the creation form (`Transfer Stock Between Warehouses`), the per-row
+     complete action and the per-row cancel action are present.
+  3. Repeat for a `transfers.create` role, a `transfers.complete` + `transfers.cancel` role, and a `stock.manage`
+     role.
+  4. Open the same tab for the organisation with no transfers.
+  5. Force the transfer list request to fail (e.g. intercept the response) and use **Retry**.
+- **Expected result.**
+  - `transfers.view` only: tab **visible**, pending records **readable**, creation form **absent**, complete
+    **absent**, cancel **absent**; no write request is issued.
+  - `transfers.create`: creation form **visible**; complete/cancel remain absent unless separately granted
+    (or held through the `stock.manage` alternative).
+  - `transfers.complete`: complete action **visible** (calls the existing
+    `POST …/stock-transfers/:id/complete`); cancel visible only if `transfers.cancel` (or the `stock.manage`
+    alternative) is also held.
+  - `transfers.cancel`: cancel action **visible**; complete visible only if `transfers.complete` (or the
+    `stock.manage` alternative) is also held.
+  - `stock.manage`: creation, complete and cancel all **visible** (pre-existing behaviour preserved).
+  - Empty organisation: a valid empty state ("No pending transfers") with no row actions and no error.
+  - Failure path: the error surface with a working **Retry**, never a false empty state.
+  - `org-admin`, `marketplace-manager` and `super_admin` keep their previous behaviour.
+- **Evidence to capture.** Per role: tab presence, table rows, presence/absence of the three write controls
+  (screenshots or accessibility snapshots), the `GET …/stock-transfers` request/response, the empty-state text, and
+  the error + retry interaction.
+- **Current status:** **NOT RUN**
+
+#### C11 — Auditor / read-only-admin UI–API authorization consistency
+
+- **Preconditions.** Authenticated `auditor` and `read-only-admin` sessions (both hold `dashboard.view` and all five
+  `sidebar.inventory*` keys and no `platform.admin`). Local stack serving the A1 + A2 build.
+- **Execution steps.**
+  1. Sign in and open `/admin`; expand **Facilities** and record the Inventory entry.
+  2. Open `/admin/inventory` and `/admin/inventory/stock` directly.
+  3. Call `GET /admin/inventory/organisations` and `GET /admin/inventory/stock` in the same session.
+  4. Open `/org/1001130/inventory` (an organisation the role does not belong to).
+  5. Where a 403 is rendered, compare the displayed sentence with the server message.
+- **Expected result.**
+  - No Inventory menu entry, and direct URLs show the explicit **Access denied** surface — the UI no longer offers a
+    surface whose API always returns 403 (the pre-A1 contradiction).
+  - Both admin calls return **403** `Platform administrator access required`.
+  - The organisation URL redirects to `/admin` (no organisation membership) and renders no organisation data.
+  - Any 403 that is displayed maps to the A2 allowlist: organisation-scope denial → scope sentence; missing
+    capability → "Your role does not include this Inventory permission."; platform requirement → "Inventory
+    administration requires platform administrator access."; unknown → generic permission denial with **no** raw
+    server text.
+- **Evidence to capture.** Sidebar snapshot, both denial surfaces, the two 403 response bodies, the final URL for
+  the organisation route, and the rendered 403 sentences.
+- **Current status:** **NOT RUN**
+
+#### C12 — Inventory write-operation denial and safety controls
+
+- **Preconditions.** Read-only roles (`accountant`, `receptionist`, `auditor`, `read-only-admin`) plus a positive
+  control role. **Explicit approval is required before execution**: this scenario sends write requests (expected to
+  be rejected before reaching any handler) and must name the local target (`courtzon_v3` @ `127.0.0.1:3307`) and the
+  tables to be inspected. It must never run against Live.
+- **Execution steps.**
+  1. Record before-counts for the inventory tables (`inventory_logs`, `product_variants`, `stock_transfers`,
+     `suppliers`, `warehouses`, `purchase_orders`) and the latest `audit_logs` inventory entries.
+  2. As each read-only role, attempt the write endpoints with an invalid/placeholder payload and record the status:
+     `POST …/stock/adjust`, `POST …/stock/transfer`, `POST …/stock-transfers/:id/complete`,
+     `POST …/stock-transfers/:id/cancel`, `POST|PUT …/warehouses`, `POST|PUT …/suppliers`,
+     `POST|PUT …/purchase-orders`.
+  3. As the positive control, confirm the same endpoints are reachable for a role that holds the capability
+     (without submitting a business-valid change, or under the approved plan).
+  4. Re-read the before-counts and the audit log.
+- **Expected result.**
+  - Every write endpoint returns **403** for a role without the matching capability; no request reaches a handler
+    and no row is created, updated or deleted.
+  - Table counts and inventory audit entries are identical before and after the denied attempts.
+  - The UI never offers a write control to these roles (see C10) — no "client-only" protection is relied upon.
+  - The positive control shows the endpoints are alive, so a 403 is authorisation, not a missing route.
+- **Evidence to capture.** Per role × endpoint HTTP codes, before/after table counts, the audit-log query result,
+  and confirmation that no business data changed. Any unexpected 2xx is a **FAIL** and must stop the run.
+- **Current status:** **NOT RUN**
+
 ### 3.4 P6-07 — Notifications / reports / settlements / admin workflows
 
 | ID | Role | Setup | Action | Expected | Cleanup | Spec (source) | Class | Status |
@@ -773,7 +975,7 @@ All six pages rendered (HTTP 200, `#root` non-empty) — **no page was BLOCKED**
 |---|---|---|
 | P6-04 auth/RBAC | **A1–A8 all executed and PASS** (2026-11-03, local; §3.1d) | Row complete. Org/coach/referee actors remain absent (only player + `super_admin` covered); expiry timing stays integration-only |
 | P6-05 bookings/clubs | **7 of 7 rows executed** — B1/B2 (2026-11-04), B3/B5/B6 (2026-11-05) locally; B4/B7 Live (2026-11-02) | **Row complete** — no B-row is `MISSING`, `NOT RUN` or `BLOCKED`, so **P6-05 is DONE** (basis: this scenario matrix; the P7-02 spec fix only removed the obstacle, it did not by itself complete the task) |
-| P6-06 marketplace/payments | 2 rows, both gateway-dependent (C1/C2) | Marketplace, subscriptions, accounting, refund UI **not covered** |
+| P6-06 marketplace/payments | 2 rows, both gateway-dependent (C1/C2); the Inventory sub-area is now documented as **C7–C12 in §3.3a** (all **NOT RUN**) | Marketplace, subscriptions, accounting, refund UI **not covered**; Inventory **C7–C12** are documented only and remain **NOT RUN** — no execution is claimed |
 | P6-07 notifications/reports/settlements | **D5 PASS (2026-11-05, local; §3.4a)**; **D2 PASS (attributed to A3, 2026-11-03; §3.1d)**; D1 **PASS (2026-11-06, local)**; D3/D4 **MISSING** | Reports, settlements, notifications beyond one deep link **not covered** |
 | P6-08 responsive/a11y | E1/E2 (public surface only), E4, **E3 axe scan (local, 2026-11-02, light + dark)** | E3 **PASS** after fixes (A11Y-001…006 fixed and pushed; A11Y-007 excluded); consumer/admin pages still not scanned; E2 drawer gap open |
 | P6-09 realtime | **F1 executed and PASS** (2026-11-04; §3.6d), **F2 executed and PASS** (2026-11-03; §3.6b) and **F3 executed and PASS with an evidence limitation** (2026-11-03; §3.6c) | All three realtime scenarios now have executed evidence. **Docker shipment of the two F1 fixes: VERIFIED (2026-11-06, read-only container inspection).** Both source fixes exist in commit **`ebbaad6f`** — `frontend/src/pages/booking/BookingFormPage.tsx` (numeric `['resource-slots', Number(resourceId), date]` query key) and `backend/src/modules/realtime/application/socket-event-mapper.ts` (`normaliseBookingDate()` in `mapBookingEvent`) — and `ebbaad6f` is an **ancestor of `b13197fe`**. The **Backend service alone** was rebuilt on 2026-11-05 (for B6, §3.2e); the **Frontend service was not** rebuilt/recreated, yet the running Frontend container already serves the fixed bundle. Direct evidence from the running containers: **Backend** `courtzon-backend` (image `sha256:4a8af27c…fad6`, running/healthy) → `/app/dist/modules/realtime/application/socket-event-mapper.js` with `normaliseBookingDate` (L211), `value.toISOString().slice(0, 10)` (L215), date-part regex/slice (L220), `mapBookingEvent` (L222), `bookingDate: normaliseBookingDate(p.bookingDate)` (L262), plus runtime wiring `socket-publisher.js` → `realtime/index.js` → `server.js`/`app.js`; **Frontend** `courtzon-frontend` (image `sha256:1f135592…bfd8a`, running/healthy, no mounts shadowing the served files) → `/usr/share/nginx/html/assets/BookingFormPage-CCu53MYO.js` containing `` queryKey:[`resource-slots`,e?Number(e):null,L] `` (minified equivalent), referenced by the served entry bundle `index-BwpvIlsC.js`, with HTTP 200 and 7,896 bytes matching the in-container file. **Scope:** this is **static artifact verification only** — **no F1 end-to-end/runtime behavioural test was executed or re-executed**, so behavioural re-verification remains unperformed. F3's evidence remains the Playwright `passed` last-run status plus DB rows matching both phases (no assertion-level report), and the F3 spec does not inject synthetic duplicate frames, so dedupe of injected duplicates remains unproven |

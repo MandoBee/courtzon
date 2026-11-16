@@ -10,6 +10,18 @@ export interface NavDefinition {
   icon?: string;
   path: string;
   permissionKey?: string;
+  /**
+   * Additional (AND) permission that must ALSO be granted for the item to be
+   * rendered.
+   *
+   * `permissionKey` selects the nav owner / layout key (which also drives the
+   * admin Permissions screen), while `requiresPermission` expresses an
+   * API-side authority the surface cannot work without. Example: the admin
+   * Inventory module is gated in the sidebar by `sidebar.inventory`, but every
+   * `/admin/inventory/*` endpoint requires `platform.admin` on the backend, so
+   * both must be held before the menu may be shown.
+   */
+  requiresPermission?: string;
   requiredFlag?: string;
   featureFlag?: string;
   children?: NavDefinition[];
@@ -21,6 +33,7 @@ export interface ResolvedNavItem {
   icon?: string;
   path: string;
   permissionKey?: string;
+  requiresPermission?: string;
   requiredFlag?: string;
   featureFlag?: string;
   badgeCount?: number;

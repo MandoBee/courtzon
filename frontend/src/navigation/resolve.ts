@@ -23,6 +23,7 @@ function toResolved(
   };
   if (item.icon !== undefined) resolved.icon = item.icon;
   if (item.permissionKey !== undefined) resolved.permissionKey = item.permissionKey;
+  if (item.requiresPermission !== undefined) resolved.requiresPermission = item.requiresPermission;
   if (item.requiredFlag !== undefined) resolved.requiredFlag = item.requiredFlag;
   if (item.featureFlag !== undefined) resolved.featureFlag = item.featureFlag;
   const badge = (item as unknown as { badgeCount?: number }).badgeCount;
@@ -73,6 +74,11 @@ export function resolveAdminNav(
 
   const filterItem = (item: NavDefinition): ResolvedNavItem | null => {
     if (item.requiredFlag && !flag(item.requiredFlag)) return null;
+    // AND-gate: the nav key alone is not an authority. When a surface also
+    // requires an API-side permission (e.g. `platform.admin` for `/admin/inventory/*`),
+    // the item is only rendered when BOTH keys are granted. Evaluated before
+    // children so a gated section never leaks its leaves.
+    if (item.requiresPermission !== undefined && !can(item.requiresPermission)) return null;
     if (item.children && item.children.length > 0) {
       const filteredChildren = item.children
         .map((c) => filterItem(c))
@@ -84,6 +90,7 @@ export function resolveAdminNav(
         path: item.path,
         ...(item.icon !== undefined ? { icon: item.icon } : {}),
         ...(item.permissionKey !== undefined ? { permissionKey: item.permissionKey } : {}),
+        ...(item.requiresPermission !== undefined ? { requiresPermission: item.requiresPermission } : {}),
         ...(item.requiredFlag !== undefined ? { requiredFlag: item.requiredFlag } : {}),
         children: filteredChildren,
       };
@@ -95,6 +102,7 @@ export function resolveAdminNav(
       path: item.path,
       ...(item.icon !== undefined ? { icon: item.icon } : {}),
       ...(item.permissionKey !== undefined ? { permissionKey: item.permissionKey } : {}),
+      ...(item.requiresPermission !== undefined ? { requiresPermission: item.requiresPermission } : {}),
       ...(item.requiredFlag !== undefined ? { requiredFlag: item.requiredFlag } : {}),
     };
   };

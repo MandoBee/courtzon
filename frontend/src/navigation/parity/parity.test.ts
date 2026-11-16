@@ -1326,3 +1326,89 @@ describe('Group 1C — master-admin Tournament Admin Workbench reachability (fro
     }
   });
 });
+
+// A1 (Inventory UAT 2026-11-16) — the admin Inventory module is a platform
+// administration surface. `sidebar.inventory*` selects the nav/layout key, but
+// every `/admin/inventory/*` endpoint is guarded by `requirePlatformAdmin`, so
+// the menu must require `platform.admin` as an AND-condition as well.
+describe('A1 - admin Inventory nav requires platform.admin (AND-gate)', () => {
+  const INVENTORY_NAV_KEYS = [
+    'sidebar.inventory',
+    'sidebar.inventory-stock',
+    'sidebar.inventory-warehouses',
+    'sidebar.inventory-suppliers',
+    'sidebar.inventory-purchase-orders',
+  ];
+
+  const canWith = (...keys: string[]) => (permission: string) => keys.includes(permission);
+
+  const inventoryGroup = (nav: ResolvedNavItem[]): ResolvedNavItem | undefined =>
+    nav.find((d) => d.label === 'Facilities')?.children?.find((c) => c.id === 'nav.admin.inventory');
+
+  it('declares requiresPermission=platform.admin on the group and all four children', () => {
+    const facilities = ADMIN_NAV.find((d) => d.id === 'nav.admin.domain.facilities');
+    const group = facilities?.children?.find((c) => c.id === 'nav.admin.inventory');
+
+    expect(group?.permissionKey).toBe('sidebar.inventory');
+    expect(group?.requiresPermission).toBe('platform.admin');
+    expect(group?.children?.map((c) => c.requiresPermission)).toEqual([
+      'platform.admin',
+      'platform.admin',
+      'platform.admin',
+      'platform.admin',
+    ]);
+    // The layout/policy keys are preserved untouched (no registry/key change).
+    expect(group?.children?.map((c) => c.permissionKey)).toEqual([
+      'sidebar.inventory-stock',
+      'sidebar.inventory-warehouses',
+      'sidebar.inventory-suppliers',
+      'sidebar.inventory-purchase-orders',
+    ]);
+  });
+
+  it('hides Inventory when sidebar.inventory* is granted without platform.admin', () => {
+    const nav = resolveAdminNav(enT, canWith('sidebar.reception', ...INVENTORY_NAV_KEYS), allFlags);
+    const facilities = nav.find((d) => d.label === 'Facilities');
+
+    // The Facilities domain still renders for its other modules...
+    expect(facilities).toBeDefined();
+    expect(facilities?.children?.map((c) => c.id)).toContain('nav.admin.reception');
+    // ...but Inventory is never offered.
+    expect(inventoryGroup(nav)).toBeUndefined();
+  });
+
+  it('does not grant Inventory from dashboard.view alone', () => {
+    const nav = resolveAdminNav(enT, canWith('dashboard.view'), allFlags);
+
+    expect(inventoryGroup(nav)).toBeUndefined();
+    expect(nav).toHaveLength(0);
+  });
+
+  it('shows Inventory with its four children when platform.admin is granted', () => {
+    const nav = resolveAdminNav(enT, canWith('platform.admin', ...INVENTORY_NAV_KEYS), allFlags);
+    const group = inventoryGroup(nav);
+
+    expect(group).toBeDefined();
+    expect(group?.requiresPermission).toBe('platform.admin');
+    expect(group?.children?.map((c) => c.path)).toEqual([
+      '/admin/inventory/stock',
+      '/admin/inventory/warehouses',
+      '/admin/inventory/suppliers',
+      '/admin/inventory/purchase-orders',
+    ]);
+  });
+
+  it('keeps super_admin behaviour unchanged (all permissions)', () => {
+    const nav = resolveAdminNav(enT, allCan, allFlags);
+
+    expect(nav).toHaveLength(9);
+    expect(inventoryGroup(nav)?.children).toHaveLength(4);
+  });
+
+  it('does not leak Inventory through the admin search command palette', () => {
+    const nav = resolveAdminNav(enT, canWith('sidebar.reception', ...INVENTORY_NAV_KEYS), allFlags);
+    const commands = buildAdminSearchCommands(nav);
+
+    expect(commands.some((c) => c.path.startsWith('/admin/inventory'))).toBe(false);
+  });
+});

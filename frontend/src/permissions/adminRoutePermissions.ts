@@ -77,7 +77,11 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'queues': 'queue.manage',
   'webhooks': 'sidebar.webhooks',
   'integration/api-keys': 'integration.api-keys.view',
-  'inventory': 'sidebar.inventory',
+  // Admin Inventory is a platform-administration surface: the backend guards
+  // every `/admin/inventory/*` route with `requirePlatformAdmin()`. The sidebar
+  // key (`sidebar.inventory`) alone must never authorise the route, otherwise a
+  // role holding only nav keys reaches a page whose API always returns 403.
+  'inventory': 'platform.admin',
   'accounting': 'sidebar.accounting',
   'accounting/mappings': 'sidebar.accounting-mappings',
   'accounting/templates': 'sidebar.accounting-templates',

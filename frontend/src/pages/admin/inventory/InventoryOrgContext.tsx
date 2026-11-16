@@ -364,11 +364,54 @@ export function InventoryOrgGate({ org, children }: { org: InventoryOrgState; ch
   return <>{children}</>;
 }
 
+/**
+ * Allowlist of backend 403 messages the Inventory UI may translate into a
+ * specific, user-facing sentence. Anything outside this list is NEVER echoed:
+ * an unknown 403 always falls back to a generic permission-denied message.
+ *
+ * Server sources (single source of truth — this map only translates):
+ *  • `You do not have access to this organisation`
+ *      backend/src/modules/marketplace/application/inventory-access.ts
+ *      → resolveOrgInventoryScope() — the organisation scope is denied.
+ *  • `Insufficient Inventory permissions for this organisation`
+ *      backend/src/modules/marketplace/application/inventory-access.ts
+ *      → requireOrgInventoryPermission() — scope is valid, the role lacks the
+ *        required Inventory capability.
+ *  • `Platform administrator access required`
+ *      backend/src/shared/middleware/auth.middleware.ts
+ *      → requirePlatformAdmin() — legacy `/admin/inventory/*` surface.
+ */
+const FORBIDDEN_MESSAGE_ALLOWLIST: Readonly<Record<string, string>> = {
+  'You do not have access to this organisation': 'You do not have access to this organisation.',
+  'Insufficient Inventory permissions for this organisation':
+    'Your role does not include this Inventory permission.',
+  'Platform administrator access required':
+    'Inventory administration requires platform administrator access.',
+};
+
+/** Generic, non-revealing fallback for any other 403. */
+const GENERIC_FORBIDDEN_MESSAGE = "You don't have permission to perform this action.";
+
+/**
+ * Translate an allowlisted 403 message; never surface arbitrary backend text.
+ * The comparison is an exact match on the trimmed message, so a server-side
+ * rewording fails closed to the generic sentence instead of leaking it.
+ */
+function forbiddenMessage(error: unknown): string {
+  const raw = (error as { response?: { data?: { message?: unknown } } } | undefined)?.response?.data
+    ?.message;
+  if (typeof raw === 'string') {
+    const mapped = FORBIDDEN_MESSAGE_ALLOWLIST[raw.trim()];
+    if (mapped !== undefined) return mapped;
+  }
+  return GENERIC_FORBIDDEN_MESSAGE;
+}
+
 /** User-safe failure text; backend details are never surfaced. */
 export function inventoryErrorMessage(error: unknown): string {
   const status = (error as { response?: { status?: number } } | undefined)?.response?.status;
   if (status === 401) return 'Your session has expired. Please sign in again.';
-  if (status === 403) return 'You do not have access to this organisation.';
+  if (status === 403) return forbiddenMessage(error);
   if (status === 400) return 'The selected organisation is not valid for this account.';
   if (typeof status === 'number' && status >= 500) {
     return 'The server could not complete the request. Please try again.';

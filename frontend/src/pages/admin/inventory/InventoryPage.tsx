@@ -17,6 +17,20 @@ import {
 
 type Tab = 'stock' | 'adjust' | 'transfer' | 'logs';
 
+/**
+ * B1 (Inventory UAT 2026-11-16) — the Transfers tab is a read surface as well as
+ * a write one. `inventory.transfers.view` alone must open it; creation and the
+ * per-row complete/cancel actions stay behind their own capabilities inside
+ * `StockTransferTab`. `inventory.stock.manage` remains an accepted alternative
+ * for every transfer capability, mirroring the backend guards
+ * (`transfers.create|complete|cancel` ∨ `stock.manage`) and the P1 fallback map.
+ */
+const TRANSFER_TAB_PERMISSIONS = [
+  'inventory.transfers.view',
+  'inventory.transfers.create',
+  'inventory.stock.manage',
+];
+
 export default function InventoryPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('stock');
@@ -29,7 +43,7 @@ export default function InventoryPage() {
   const tabs: { key: Tab; label: string; permissions: string[] }[] = [
     { key: 'stock', label: t('inventory.stock.title'), permissions: ['inventory.stock.view'] },
     { key: 'adjust', label: t('inventory.stock.adjust'), permissions: ['inventory.stock.adjust', 'inventory.stock.manage'] },
-    { key: 'transfer', label: t('inventory.stock.transfer'), permissions: ['inventory.transfers.create', 'inventory.stock.manage'] },
+    { key: 'transfer', label: t('inventory.stock.transfer'), permissions: TRANSFER_TAB_PERMISSIONS },
     { key: 'logs', label: t('inventory.stock.logs'), permissions: org.mode === 'org' ? ['inventory.logs.view'] : ['inventory.stock.view'] },
   ];
 
@@ -59,7 +73,7 @@ export default function InventoryPage() {
       <InventoryOrgGate org={org}>
         {effectiveTab === 'stock' && canAny('inventory.stock.view') && <StockLevelsTab orgId={org.orgId} apiBase={apiBase} scopeParams={org.scopeParams ?? { orgId: org.orgId }} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
         {effectiveTab === 'adjust' && canAny('inventory.stock.adjust', 'inventory.stock.manage') && <StockAdjustTab orgId={org.orgId} apiBase={apiBase} scopeParams={org.scopeParams ?? { orgId: org.orgId }} />}
-        {effectiveTab === 'transfer' && canAny('inventory.transfers.create', 'inventory.stock.manage') && <StockTransferTab orgId={org.orgId} apiBase={apiBase} transfersBase={org.transfersBase ?? '/admin/stock-transfers'} scopeParams={org.scopeParams ?? { orgId: org.orgId }} />}
+        {effectiveTab === 'transfer' && canAny(...TRANSFER_TAB_PERMISSIONS) && <StockTransferTab orgId={org.orgId} apiBase={apiBase} transfersBase={org.transfersBase ?? '/admin/stock-transfers'} scopeParams={org.scopeParams ?? { orgId: org.orgId }} />}
         {effectiveTab === 'logs' && (org.mode === 'org' ? canAny('inventory.logs.view') : canAny('inventory.stock.view')) && <InventoryLogsTab orgId={org.orgId} apiBase={apiBase} scopeParams={org.scopeParams ?? { orgId: org.orgId }} page={page} pageSize={pageSize} setPage={setPage} setPageSize={setPageSize} />}
       </InventoryOrgGate>
     </div>
@@ -197,6 +211,13 @@ export function StockTransferTab({ orgId, apiBase, transfersBase, scopeParams }:
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const canAny = useInventoryCan();
+  // B1 — read and write capabilities are separate. `view` opens the tab/list;
+  // create/complete/cancel are gated individually. `stock.manage` stays an
+  // accepted alternative for the write actions (pre-existing policy, identical
+  // to the backend guards).
+  const canCreateTransfer = canAny('inventory.transfers.create', 'inventory.stock.manage');
+  const canCompleteTransfer = canAny('inventory.transfers.complete', 'inventory.stock.manage');
+  const canCancelTransfer = canAny('inventory.transfers.cancel', 'inventory.stock.manage');
   const [variantSearch, setVariantSearch] = useState('');
   const [variantResults, setVariantResults] = useState<any[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
@@ -218,6 +239,18 @@ export function StockTransferTab({ orgId, apiBase, transfersBase, scopeParams }:
     enabled: !!orgId,
   });
 
+  // B1 — complete a pending transfer (button visible only with
+  // `inventory.transfers.complete` / `inventory.stock.manage`).
+  const completeMutation = useMutation({
+    mutationFn: (id: number) => api.post(`${transfersBase}/${id}/complete`, {}, { params: scopeParams }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stock-transfers'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inventory'] });
+      showToast(t('inventory.stock.transferred'), 'success');
+    },
+    onError: (err: any) => showToast(getErrorMessage(err), 'error'),
+  });
+
   const cancelMutation = useMutation({
     mutationFn: (id: number) => api.post(`${transfersBase}/${id}/cancel`, {}, { params: scopeParams }),
     onSuccess: (res: any) => {
@@ -237,7 +270,9 @@ export function StockTransferTab({ orgId, apiBase, transfersBase, scopeParams }:
   const { data: warehouses } = useQuery({
     queryKey: ['admin', 'warehouses', 'list', orgId],
     queryFn: () => api.get(`${apiBase}/warehouses`, { params: { ...scopeParams, limit: 500 } }).then((r: any) => r.data.data),
-    enabled: !!orgId,
+    // Read-only users (transfers.view) have no creation form, so the warehouse
+    // list is only fetched when the write capability is actually present.
+    enabled: !!orgId && canCreateTransfer,
   });
 
   const searchVariants = async (q: string) => {
@@ -266,6 +301,7 @@ export function StockTransferTab({ orgId, apiBase, transfersBase, scopeParams }:
 
   return (
     <div className="space-y-6">
+      {canCreateTransfer && (
       <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 border max-w-lg">
       <h3 className="font-semibold text-[var(--color-text)] mb-4">{t('inventory.stock.transfer_title')}</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -305,6 +341,7 @@ export function StockTransferTab({ orgId, apiBase, transfersBase, scopeParams }:
         </button>
       </form>
       </div>
+      )}
 
       {cancelNotice && (
         <div className={`rounded-[var(--radius-lg)] border p-4 text-sm ${
@@ -352,9 +389,21 @@ export function StockTransferTab({ orgId, apiBase, transfersBase, scopeParams }:
                     <td className="px-4 py-3 text-center">{tr.quantity}</td>
                     <td className="px-4 py-3 text-[var(--color-text-muted)] whitespace-nowrap">{tr.created_at ? new Date(tr.created_at).toLocaleString() : '—'}</td>
                     <td className="px-4 py-3 text-right">
-                      {canAny('inventory.transfers.cancel', 'inventory.stock.manage') && (
-                        <button type="button" onClick={() => setCancelTarget(tr)} className="text-xs text-red-600 hover:underline">{t('inventory.stock.cancel_transfer')}</button>
-                      )}
+                      <div className="flex items-center justify-end gap-3">
+                        {canCompleteTransfer && (
+                          <button
+                            type="button"
+                            onClick={() => completeMutation.mutate(tr.id)}
+                            disabled={completeMutation.isPending}
+                            className="text-xs text-[var(--color-primary)] hover:underline disabled:opacity-60"
+                          >
+                            {t('common.confirm')}
+                          </button>
+                        )}
+                        {canCancelTransfer && (
+                          <button type="button" onClick={() => setCancelTarget(tr)} className="text-xs text-red-600 hover:underline">{t('inventory.stock.cancel_transfer')}</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

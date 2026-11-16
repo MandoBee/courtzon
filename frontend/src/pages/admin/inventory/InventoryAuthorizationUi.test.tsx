@@ -14,6 +14,8 @@ import type { ReactNode } from 'react';
  *     state is stale;
  *   • a read-only purchase-order user can open the detail view but cannot see
  *     create/status actions (L1).
+ *   • B1 — `inventory.transfers.view` opens the Transfers tab for reading while
+ *     creation/complete/cancel stay behind their own capabilities.
  */
 
 const apiMock = vi.hoisted(() => ({
@@ -201,5 +203,161 @@ describe('purchase-order read-only detail access (L1)', () => {
       '/org/5/inventory/purchase-orders/44',
       expect.objectContaining({ params: {} }),
     );
+  });
+});
+
+// B1 (Inventory UAT 2026-11-16) — the Transfers tab used to require a write
+// capability (`transfers.create`|`stock.manage`), so a role holding only
+// `inventory.transfers.view` had no way to read transfer records even though
+// `GET /org/:orgId/inventory/stock-transfers` allows it. The tab is now a read
+// surface; every write affordance inside it stays individually gated.
+describe('transfers tab read/write separation (B1)', () => {
+  const TRANSFER = {
+    id: 7,
+    status: 'pending',
+    variant_id: 9,
+    variant_name: 'Shirt',
+    sku: 'S',
+    quantity: 3,
+    from_warehouse_id: 1,
+    to_warehouse_id: 2,
+    from_warehouse_name: 'Main',
+    to_warehouse_name: 'Overflow',
+    created_at: '2026-01-01T00:00:00Z',
+  };
+
+  function mockTransfersApi(permissions: string[], transfers: any[] | 'error' = [TRANSFER]) {
+    apiMock.get.mockImplementation(async (url: string) => {
+      if (url === '/org/5/inventory/access') {
+        return { data: { data: { permissions } } };
+      }
+      if (url === '/org/5/inventory/stock-transfers') {
+        if (transfers === 'error') throw { response: { status: 500 } };
+        return { data: { data: transfers } };
+      }
+      return { data: { data: [], total: 0 } };
+    });
+  }
+
+  const transfersCalls = () =>
+    apiMock.get.mock.calls.filter(([url]: any[]) => url === '/org/5/inventory/stock-transfers').length;
+
+  it('1. transfers.view only — the Transfers tab is visible', async () => {
+    mockTransfersApi(['inventory.transfers.view']);
+    renderInOrg('5', <InventoryPage />);
+
+    expect(await screen.findByRole('button', { name: 'Transfer Stock' })).toBeTruthy();
+  });
+
+  it('2. transfers.view only — permitted transfer records are read', async () => {
+    mockTransfersApi(['inventory.transfers.view']);
+    renderInOrg('5', <InventoryPage />);
+
+    expect(await screen.findByText('Shirt (S)')).toBeTruthy();
+    expect(screen.getByText('Main')).toBeTruthy();
+    expect(screen.getByText('Overflow')).toBeTruthy();
+    expect(apiMock.get).toHaveBeenCalledWith('/org/5/inventory/stock-transfers', {
+      params: { status: 'pending' },
+    });
+  });
+
+  it('3. transfers.view only — no creation form', async () => {
+    mockTransfersApi(['inventory.transfers.view']);
+    renderInOrg('5', <InventoryPage />);
+
+    await screen.findByText('Shirt (S)');
+    expect(screen.queryByText('Transfer Stock Between Warehouses')).toBeNull();
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+  });
+
+  it('4. transfers.view only — no complete action', async () => {
+    mockTransfersApi(['inventory.transfers.view']);
+    renderInOrg('5', <InventoryPage />);
+
+    await screen.findByText('Shirt (S)');
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+  });
+
+  it('5. transfers.view only — no cancel action', async () => {
+    mockTransfersApi(['inventory.transfers.view']);
+    renderInOrg('5', <InventoryPage />);
+
+    await screen.findByText('Shirt (S)');
+    expect(screen.queryByRole('button', { name: 'Cancel Transfer' })).toBeNull();
+  });
+
+  it('6. transfers.create — the creation form remains visible and no row actions leak in', async () => {
+    mockTransfersApi(['inventory.transfers.view', 'inventory.transfers.create']);
+    renderInOrg('5', <InventoryPage />);
+
+    expect(await screen.findByText('Transfer Stock Between Warehouses')).toBeTruthy();
+    expect(screen.getByRole('spinbutton')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel Transfer' })).toBeNull();
+  });
+
+  it('7. transfers.complete — the complete action appears and calls the complete endpoint', async () => {
+    mockTransfersApi(['inventory.transfers.view', 'inventory.transfers.complete']);
+    apiMock.post.mockResolvedValue({ data: { success: true } });
+    const user = userEvent.setup();
+    renderInOrg('5', <InventoryPage />);
+
+    const confirm = await screen.findByRole('button', { name: 'Confirm' });
+    expect(screen.queryByRole('button', { name: 'Cancel Transfer' })).toBeNull();
+    expect(screen.queryByText('Transfer Stock Between Warehouses')).toBeNull();
+
+    await user.click(confirm);
+    await waitFor(() =>
+      expect(apiMock.post).toHaveBeenCalledWith(
+        '/org/5/inventory/stock-transfers/7/complete',
+        {},
+        { params: {} },
+      ),
+    );
+  });
+
+  it('8. transfers.cancel — the cancel action appears without complete', async () => {
+    mockTransfersApi(['inventory.transfers.view', 'inventory.transfers.cancel']);
+    renderInOrg('5', <InventoryPage />);
+
+    expect(await screen.findByRole('button', { name: 'Cancel Transfer' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+    expect(screen.queryByText('Transfer Stock Between Warehouses')).toBeNull();
+  });
+
+  it('9. stock.manage — existing create/complete/cancel behaviour is preserved', async () => {
+    mockTransfersApi(['inventory.stock.manage']);
+    const user = userEvent.setup();
+    renderInOrg('5', <InventoryPage />);
+
+    // `stock.manage` alone still opens the Transfers tab (legacy fallback).
+    await user.click(await screen.findByRole('button', { name: 'Transfer Stock' }));
+
+    expect(await screen.findByText('Transfer Stock Between Warehouses')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Confirm' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel Transfer' })).toBeTruthy();
+  });
+
+  it('10. empty records — a valid empty state with no actions', async () => {
+    mockTransfersApi(['inventory.transfers.view'], []);
+    renderInOrg('5', <InventoryPage />);
+
+    expect(await screen.findByText('No pending transfers')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel Transfer' })).toBeNull();
+  });
+
+  it('11. API error — the ErrorState renders and Retry re-queries', async () => {
+    mockTransfersApi(['inventory.transfers.view'], 'error');
+    const user = userEvent.setup();
+    renderInOrg('5', <InventoryPage />);
+
+    expect(await screen.findByText(/couldn't load inventory data/i)).toBeTruthy();
+    const retry = screen.getByRole('button', { name: /retry/i });
+    expect(screen.queryByText('No pending transfers')).toBeNull();
+
+    const before = transfersCalls();
+    await user.click(retry);
+    await waitFor(() => expect(transfersCalls()).toBeGreaterThan(before));
   });
 });
