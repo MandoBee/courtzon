@@ -5,6 +5,8 @@ import {
   canOrgRoleReceivePermission,
   filterOrgAssignablePermissionKeys,
 } from '../domain/org-permission-policy.js';
+import { ASSIGNABLE_ORG_ROLE_SLUGS } from '../../organisations/domain/org-staff-roles.js';
+import { permissionMatchesTemplate } from '../application/role-permission-templates.js';
 
 const REFUND_KEYS = [
   'refunds.view',
@@ -38,6 +40,7 @@ describe('R4 — organisation permission policy', () => {
       'marketplace.admin.orders',
       'marketplace.moderate',
       'marketplace.complaints.approve',
+      'marketplace.player.activate',
       'sidebar.withdrawals-queue',
       'files.view',
       'files.delete',
@@ -266,6 +269,58 @@ describe('R4 — organisation permission policy', () => {
         expect(canOrgRoleReceivePermission(role, 'inventory.future.key'), role).toBe(false);
         expect(canOrgRoleReceivePermission(role, 'inventory.stock.manage'), role).toBe(false);
       }
+    });
+  });
+
+  // B1 follow-up — the three platform marketplace capabilities must be denied
+  // for EVERY assignable organisation role (the list is the single source of
+  // truth, so future roles are covered automatically).
+  describe('platform marketplace capabilities are denied to all organisation roles', () => {
+    const PLATFORM_MARKETPLACE_KEYS = [
+      'marketplace.moderate',
+      'marketplace.complaints.approve',
+      'marketplace.player.activate',
+    ] as const;
+
+    it('covers exactly the eight assignable organisation roles', () => {
+      expect([...ASSIGNABLE_ORG_ROLE_SLUGS].sort()).toEqual(
+        [
+          'accountant',
+          'branch-mgr',
+          'coach',
+          'marketplace-manager',
+          'org-admin',
+          'receptionist',
+          'resource-mgr',
+          'shop-admin',
+        ].sort(),
+      );
+    });
+
+    it.each(PLATFORM_MARKETPLACE_KEYS)('%s is platform-only and not org-assignable', (key) => {
+      expect(isPlatformOnlyPermission(key), key).toBe(true);
+      expect(isOrgAssignablePermission(key), key).toBe(false);
+    });
+
+    it('denies each platform key for every assignable organisation role', () => {
+      for (const role of ASSIGNABLE_ORG_ROLE_SLUGS) {
+        for (const key of PLATFORM_MARKETPLACE_KEYS) {
+          expect(canOrgRoleReceivePermission(role, key), `${role}/${key}`).toBe(false);
+        }
+      }
+    });
+
+    it('keeps the GLOBAL marketplace-manager template unchanged (platform role)', () => {
+      for (const key of PLATFORM_MARKETPLACE_KEYS) {
+        expect(permissionMatchesTemplate('marketplace-manager', key), key).toBe(true);
+      }
+    });
+
+    it('keeps the approved organisation Inventory matrix unchanged', () => {
+      expect(canOrgRoleReceivePermission('marketplace-manager', 'inventory.stock.view')).toBe(true);
+      expect(canOrgRoleReceivePermission('marketplace-manager', 'inventory.transfers.create')).toBe(true);
+      expect(canOrgRoleReceivePermission('receptionist', 'inventory.transfers.view')).toBe(true);
+      expect(canOrgRoleReceivePermission('receptionist', 'inventory.transfers.create')).toBe(false);
     });
   });
 });

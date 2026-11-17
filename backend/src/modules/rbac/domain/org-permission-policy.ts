@@ -150,6 +150,11 @@ const PLATFORM_ONLY_PREFIXES: readonly string[] = [
   // `marketplace.complaints.manage` (org-scoped, `requireApprovedOrg`).
   'marketplace.moderate',
   'marketplace.complaints.approve',
+  // Player→seller activation is a platform onboarding capability. Organisation
+  // staff must never hold it: it would let an org role activate selling for
+  // other actors outside its tenant boundary. Org roles have no legitimate use
+  // for it (org sellers are provisioned through their own registration flow).
+  'marketplace.player.activate',
   'matches.admin.view',
   // Actor surfaces that never belong to organisation staff
   'player.',

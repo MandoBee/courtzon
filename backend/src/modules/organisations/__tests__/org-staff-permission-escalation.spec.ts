@@ -265,6 +265,7 @@ describe('organisation staff provisioning — marketplace-manager / receptionist
     606: 'inventory.transfers.create',
     607: 'marketplace.moderate',
     608: 'marketplace.complaints.approve',
+    609: 'marketplace.player.activate',
   };
 
   const TEMPLATES: Record<string, { id: number; slug: string; name: string; organisation_id: null }> = {
@@ -407,7 +408,7 @@ describe('organisation staff provisioning — marketplace-manager / receptionist
   });
 
   it.each(['marketplace-manager', 'receptionist'])(
-    'rejects platform marketplace moderation / refund-approval keys for %s before cloning',
+    'rejects platform marketplace moderation / refund-approval / activation keys for %s before cloning',
     async (slug) => {
       repoMock.getAssignableOrgRole.mockResolvedValue(TEMPLATES[slug]);
       repoMock.findUserByEmail.mockResolvedValue({ id: 42 });
@@ -416,10 +417,11 @@ describe('organisation staff provisioning — marketplace-manager / receptionist
       rbacMock.getPermissionsByIds.mockResolvedValue([
         { id: 607, permission_key: 'marketplace.moderate' },
         { id: 608, permission_key: 'marketplace.complaints.approve' },
+        { id: 609, permission_key: 'marketplace.player.activate' },
       ]);
 
       await expect(
-        addOrgStaff(ORG_ID, 'qa.staff@courtzon.test', slug, 1, undefined, undefined, [607, 608]),
+        addOrgStaff(ORG_ID, 'qa.staff@courtzon.test', slug, 1, undefined, undefined, [607, 608, 609]),
       ).rejects.toMatchObject({ statusCode: 403 });
 
       expect(rbacMock.cloneRoleForOrg).not.toHaveBeenCalled();
@@ -427,4 +429,25 @@ describe('organisation staff provisioning — marketplace-manager / receptionist
       expect(rbacServiceMock.setOrganisationRolePermissions).not.toHaveBeenCalled();
     },
   );
+
+  it('rejects granting platform marketplace keys to an EXISTING staff member (update path) with no writes', async () => {
+    repoMock.listOrgStaff.mockResolvedValue(STAFF);
+    rbacMock.getRoleById.mockResolvedValue({
+      id: 901,
+      organisation_id: ORG_ID,
+      slug: 'marketplace-manager',
+    });
+    rbacMock.getPermissionsByIds.mockResolvedValue([
+      { id: 609, permission_key: 'marketplace.player.activate' },
+    ]);
+
+    await expect(updateStaffPermissions(ORG_ID, 42, [609])).rejects.toMatchObject({
+      statusCode: 403,
+    });
+
+    // No INSERT/UPDATE may run before the rejection.
+    expect(rbacMock.setRolePermissions).not.toHaveBeenCalled();
+    expect(rbacServiceMock.setOrganisationRolePermissions).not.toHaveBeenCalled();
+    expect(repoMock.addStaffScope).not.toHaveBeenCalled();
+  });
 });

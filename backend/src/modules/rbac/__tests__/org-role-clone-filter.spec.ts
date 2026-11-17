@@ -123,6 +123,7 @@ describe('cloneRoleForOrg — organization policy filtering', () => {
         // `marketplace.admin.` but equally platform-only.
         { permission_id: 11, permission_key: 'marketplace.moderate' },
         { permission_id: 12, permission_key: 'marketplace.complaints.approve' },
+        { permission_id: 13, permission_key: 'marketplace.player.activate' },
       ],
     });
 
@@ -149,6 +150,7 @@ describe('cloneRoleForOrg — organization policy filtering', () => {
     expect(sql).not.toContain('(901, 9)');
     expect(sql).not.toContain('(901, 11)');
     expect(sql).not.toContain('(901, 12)');
+    expect(sql).not.toContain('(901, 13)');
   });
 
   it('receptionist clone keeps read-only Inventory keys and drops write/platform keys', async () => {
