@@ -119,6 +119,10 @@ describe('cloneRoleForOrg — organization policy filtering', () => {
         { permission_id: 8, permission_key: 'financial.reconcile' },
         { permission_id: 9, permission_key: 'users.view' },
         { permission_id: 10, permission_key: 'org.marketplace.manage' },
+        // Platform marketplace moderation / refund approval — not under
+        // `marketplace.admin.` but equally platform-only.
+        { permission_id: 11, permission_key: 'marketplace.moderate' },
+        { permission_id: 12, permission_key: 'marketplace.complaints.approve' },
       ],
     });
 
@@ -143,6 +147,8 @@ describe('cloneRoleForOrg — organization policy filtering', () => {
     expect(sql).not.toContain('(901, 7)');
     expect(sql).not.toContain('(901, 8)');
     expect(sql).not.toContain('(901, 9)');
+    expect(sql).not.toContain('(901, 11)');
+    expect(sql).not.toContain('(901, 12)');
   });
 
   it('receptionist clone keeps read-only Inventory keys and drops write/platform keys', async () => {

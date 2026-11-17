@@ -263,6 +263,8 @@ describe('organisation staff provisioning — marketplace-manager / receptionist
     604: 'inventory.stock.view',
     605: 'inventory.transfers.view',
     606: 'inventory.transfers.create',
+    607: 'marketplace.moderate',
+    608: 'marketplace.complaints.approve',
   };
 
   const TEMPLATES: Record<string, { id: number; slug: string; name: string; organisation_id: null }> = {
@@ -403,4 +405,26 @@ describe('organisation staff provisioning — marketplace-manager / receptionist
       1,
     );
   });
+
+  it.each(['marketplace-manager', 'receptionist'])(
+    'rejects platform marketplace moderation / refund-approval keys for %s before cloning',
+    async (slug) => {
+      repoMock.getAssignableOrgRole.mockResolvedValue(TEMPLATES[slug]);
+      repoMock.findUserByEmail.mockResolvedValue({ id: 42 });
+      repoMock.getOrgOwnerId.mockResolvedValue(1);
+      repoMock.listOrgStaff.mockResolvedValue([]);
+      rbacMock.getPermissionsByIds.mockResolvedValue([
+        { id: 607, permission_key: 'marketplace.moderate' },
+        { id: 608, permission_key: 'marketplace.complaints.approve' },
+      ]);
+
+      await expect(
+        addOrgStaff(ORG_ID, 'qa.staff@courtzon.test', slug, 1, undefined, undefined, [607, 608]),
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(rbacMock.cloneRoleForOrg).not.toHaveBeenCalled();
+      expect(repoMock.addStaffScope).not.toHaveBeenCalled();
+      expect(rbacServiceMock.setOrganisationRolePermissions).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -36,6 +36,8 @@ describe('R4 — organisation permission policy', () => {
       'settlements.admin',
       'subscription.assignments.status',
       'marketplace.admin.orders',
+      'marketplace.moderate',
+      'marketplace.complaints.approve',
       'sidebar.withdrawals-queue',
       'files.view',
       'files.delete',
@@ -247,6 +249,8 @@ describe('R4 — organisation permission policy', () => {
         'sidebar.reception',
         'marketplace.admin.products',
         'marketplace.admin.orders',
+        'marketplace.moderate',
+        'marketplace.complaints.approve',
         'notifications.config.manage',
         'organisations.edit.name',
       ];

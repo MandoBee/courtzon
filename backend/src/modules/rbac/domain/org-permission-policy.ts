@@ -141,6 +141,15 @@ const PLATFORM_ONLY_PREFIXES: readonly string[] = [
   'subscription.',
   'subscription-plans.',
   'marketplace.admin.',
+  // Marketplace platform moderation + CourtZon-level refund approval are NOT
+  // under `marketplace.admin.` but are platform capabilities: they guard
+  // `/marketplace/admin/*` (all sellers/orders/products/reviews/upgrade
+  // requests) and `/admin/marketplace/complaints/*` (over-threshold refunds)
+  // with no organisation scoping. They must never be cloned or granted to an
+  // organisation role — org staff resolve their own cases through
+  // `marketplace.complaints.manage` (org-scoped, `requireApprovedOrg`).
+  'marketplace.moderate',
+  'marketplace.complaints.approve',
   'matches.admin.view',
   // Actor surfaces that never belong to organisation staff
   'player.',
