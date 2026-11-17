@@ -13,8 +13,16 @@ import { getPool } from '../../../database/mysql.js';
 import { recordAudit } from '../../audit-log/index.js';
 import { positionService } from '../../financial/application/position.service.js';
 import { unifiedSettlementService } from '../../settlement/application/unified-settlement.service.js';
+import { ASSIGNABLE_ORG_ROLE_SLUGS } from '../domain/org-staff-roles.js';
 
-const ASSIGNABLE_ROLES = ['org-admin', 'shop-admin', 'branch-mgr', 'resource-mgr', 'coach', 'accountant'] as const;
+/**
+ * Single source of truth for assignable staff roles.
+ *
+ * The domain constant is the authoritative allowlist (the repository also uses
+ * it for the runtime lookup). Deriving the request schema from it prevents the
+ * validation layer from drifting away from the service layer.
+ */
+const ASSIGNABLE_ROLES = [...ASSIGNABLE_ORG_ROLE_SLUGS] as [string, ...string[]];
 // Legacy `/payment-settings` payload keys that this endpoint actually applies.
 // Any other key (except the explicit tax_id rejection) is ignored and must not
 // be reported as updated in the audit trail.

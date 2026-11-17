@@ -2,6 +2,9 @@ import type mysql from 'mysql2/promise';
 import { getPool } from '../../../../database/mysql.js';
 import { ValidationError } from '../../../../shared/errors/app-error.js';
 import { buildPagination, paginationClause } from '../../../../shared/utils/pagination.js';
+import { ASSIGNABLE_ORG_ROLE_SLUGS } from '../../domain/org-staff-roles.js';
+
+export { ASSIGNABLE_ORG_ROLE_SLUGS };
 
 type RowData = mysql.RowDataPacket[];
 
@@ -153,8 +156,9 @@ export async function listOrgBranches(orgId: number) {
 
 // ── Org staff management (D5) ──────────────────────────────────────────────
 
-/** Org roles that an org-admin/owner may assign to staff. */
-export const ASSIGNABLE_ORG_ROLE_SLUGS = ['org-admin', 'shop-admin', 'branch-mgr', 'resource-mgr', 'coach', 'accountant'] as const;
+// The allowlist lives in the domain layer so request validation and the runtime
+// lookup share one source of truth (see `domain/org-staff-roles.ts`). It is
+// imported and re-exported at the top of this module.
 
 export async function getOrgOwnerId(orgId: number): Promise<number | null> {
   const pool = getPool();

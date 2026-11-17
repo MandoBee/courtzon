@@ -248,3 +248,159 @@ describe('R4 — organisation staff permission escalation', () => {
     expect(rbacMock.cloneRoleForOrg).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================================
+// B1 follow-up — organisation-scoped provisioning for marketplace-manager and
+// receptionist. The clone must be organisation-bound, the scope must be the
+// organisation (never global), and platform-only overrides must be rejected
+// before any role is created.
+// ============================================================================
+describe('organisation staff provisioning — marketplace-manager / receptionist', () => {
+  const NEW_PERMISSION_KEYS: Record<number, string> = {
+    601: 'marketplace.products.manage',
+    602: 'marketplace.admin.products',
+    603: 'platform.admin',
+    604: 'inventory.stock.view',
+    605: 'inventory.transfers.view',
+    606: 'inventory.transfers.create',
+  };
+
+  const TEMPLATES: Record<string, { id: number; slug: string; name: string; organisation_id: null }> = {
+    'marketplace-manager': {
+      id: 960,
+      slug: 'marketplace-manager',
+      name: 'Marketplace Manager',
+      organisation_id: null,
+    },
+    receptionist: { id: 970, slug: 'receptionist', name: 'Receptionist', organisation_id: null },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each(['marketplace-manager', 'receptionist'])(
+    'clones the %s template into the organisation and records ONLY an organisation scope',
+    async (slug) => {
+      repoMock.getAssignableOrgRole.mockResolvedValue(TEMPLATES[slug]);
+      repoMock.findUserByEmail.mockResolvedValue({ id: 42 });
+      repoMock.getOrgOwnerId.mockResolvedValue(1);
+      repoMock.listOrgStaff.mockResolvedValue([]);
+      rbacMock.cloneRoleForOrg.mockResolvedValue(901);
+
+      const result = await addOrgStaff(ORG_ID, 'qa.staff@courtzon.test', slug, 1);
+
+      expect(result).toMatchObject({ userId: 42, roleSlug: slug });
+      expect(rbacMock.cloneRoleForOrg).toHaveBeenCalledWith(TEMPLATES[slug].id, ORG_ID);
+      expect(repoMock.addStaffScope).toHaveBeenCalledWith(42, 901, ORG_ID, 1, undefined, undefined);
+      // No global role assignment path is used.
+      expect(rbacServiceMock.setOrganisationRolePermissions).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['marketplace-manager', 'receptionist'])(
+    'rejects a platform-only permission override for %s before cloning',
+    async (slug) => {
+      repoMock.getAssignableOrgRole.mockResolvedValue(TEMPLATES[slug]);
+      repoMock.findUserByEmail.mockResolvedValue({ id: 42 });
+      repoMock.getOrgOwnerId.mockResolvedValue(1);
+      repoMock.listOrgStaff.mockResolvedValue([]);
+      rbacMock.getPermissionsByIds.mockResolvedValue([
+        { id: 602, permission_key: 'marketplace.admin.products' },
+        { id: 603, permission_key: 'platform.admin' },
+      ]);
+
+      await expect(
+        addOrgStaff(ORG_ID, 'qa.staff@courtzon.test', slug, 1, undefined, undefined, [602, 603]),
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(rbacMock.cloneRoleForOrg).not.toHaveBeenCalled();
+      expect(repoMock.addStaffScope).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects an Inventory capability outside the marketplace-manager matrix', async () => {
+    repoMock.getAssignableOrgRole.mockResolvedValue(TEMPLATES['marketplace-manager']);
+    repoMock.findUserByEmail.mockResolvedValue({ id: 42 });
+    repoMock.getOrgOwnerId.mockResolvedValue(1);
+    repoMock.listOrgStaff.mockResolvedValue([]);
+    rbacMock.getPermissionsByIds.mockResolvedValue([
+      { id: 599, permission_key: 'inventory.reports.export' },
+    ]);
+
+    await expect(
+      addOrgStaff(ORG_ID, 'qa.staff@courtzon.test', 'marketplace-manager', 1, undefined, undefined, [599]),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(rbacMock.cloneRoleForOrg).not.toHaveBeenCalled();
+  });
+
+  it('rejects inventory writes for receptionist but accepts its read-only Inventory keys', async () => {
+    repoMock.getAssignableOrgRole.mockResolvedValue(TEMPLATES.receptionist);
+    repoMock.findUserByEmail.mockResolvedValue({ id: 42 });
+    repoMock.getOrgOwnerId.mockResolvedValue(1);
+    repoMock.listOrgStaff.mockResolvedValue([]);
+    rbacMock.cloneRoleForOrg.mockResolvedValue(901);
+
+    // write key → rejected, nothing created
+    rbacMock.getPermissionsByIds.mockResolvedValue([
+      { id: 606, permission_key: 'inventory.transfers.create' },
+    ]);
+    await expect(
+      addOrgStaff(ORG_ID, 'qa.staff@courtzon.test', 'receptionist', 1, undefined, undefined, [606]),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(rbacMock.cloneRoleForOrg).not.toHaveBeenCalled();
+
+    // read-only keys → accepted through the policy-enforcing service
+    rbacMock.getPermissionsByIds.mockResolvedValue([
+      { id: 604, permission_key: 'inventory.stock.view' },
+      { id: 605, permission_key: 'inventory.transfers.view' },
+    ]);
+    const result = await addOrgStaff(
+      ORG_ID,
+      'qa.staff@courtzon.test',
+      'receptionist',
+      1,
+      undefined,
+      undefined,
+      [604, 605],
+    );
+    expect(result.roleSlug).toBe('receptionist');
+    expect(rbacMock.cloneRoleForOrg).toHaveBeenCalledWith(TEMPLATES.receptionist.id, ORG_ID);
+    expect(rbacServiceMock.setOrganisationRolePermissions).toHaveBeenCalledWith(
+      ORG_ID,
+      901,
+      [604, 605],
+      1,
+    );
+  });
+
+  it('accepts marketplace-manager organisation marketplace + Inventory overrides', async () => {
+    repoMock.getAssignableOrgRole.mockResolvedValue(TEMPLATES['marketplace-manager']);
+    repoMock.findUserByEmail.mockResolvedValue({ id: 42 });
+    repoMock.getOrgOwnerId.mockResolvedValue(1);
+    repoMock.listOrgStaff.mockResolvedValue([]);
+    rbacMock.cloneRoleForOrg.mockResolvedValue(901);
+    rbacMock.getPermissionsByIds.mockResolvedValue([
+      { id: 601, permission_key: 'marketplace.products.manage' },
+      { id: 604, permission_key: 'inventory.stock.view' },
+    ]);
+
+    const result = await addOrgStaff(
+      ORG_ID,
+      'qa.staff@courtzon.test',
+      'marketplace-manager',
+      1,
+      undefined,
+      undefined,
+      [601, 604],
+    );
+
+    expect(result.roleSlug).toBe('marketplace-manager');
+    expect(rbacServiceMock.setOrganisationRolePermissions).toHaveBeenCalledWith(
+      ORG_ID,
+      901,
+      [601, 604],
+      1,
+    );
+  });
+});

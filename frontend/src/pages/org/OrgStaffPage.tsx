@@ -7,17 +7,8 @@ import { Can } from '../../permissions/Can';
 import { Modal } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import UpgradeRequestModal from '../../components/subscription/UpgradeRequestModal';
+import { ORG_STAFF_ROLE_OPTIONS, orgStaffRoleLabel } from './orgStaffRoles';
 
-const ROLE_OPTIONS = [
-  { slug: 'org-admin', label: 'Org Admin' },
-  { slug: 'branch-mgr', label: 'Branch Manager' },
-  { slug: 'resource-mgr', label: 'Resource Manager' },
-  { slug: 'shop-admin', label: 'Shop Admin' },
-  { slug: 'coach', label: 'Coach' },
-  { slug: 'accountant', label: 'Accountant' },
-];
-
-const roleLabel = (slug: string) => ROLE_OPTIONS.find((r) => r.slug === slug)?.label || slug;
 const scopeSummary = (branchIds: number[], resourceIds: number[], branches: any[], resources: any[]) => {
   const parts: string[] = [];
   if (branchIds.length === 0 && resourceIds.length === 0) return 'All branches & resources';
@@ -170,7 +161,7 @@ export default function OrgStaffPage() {
       setEditStaffRoleSlug(s.role_slug);
       setEditStaffBranchIds(s.branch_ids || []);
       setEditStaffResourceIds(s.resource_ids || []);
-      setEditStaffRoleName(data.roleName || roleLabel(s.role_slug));
+      setEditStaffRoleName(data.roleName || orgStaffRoleLabel(s.role_slug));
       setEditStaffOpen(true);
     } catch (err: any) {
       showToast('Failed to load staff data: ' + errMsg(err), 'error');
@@ -286,7 +277,7 @@ export default function OrgStaffPage() {
                   <p className="font-medium text-[var(--color-text)] truncate">{s.full_name || '—'}</p>
                   <p className="text-xs text-[var(--color-text-muted)] truncate">{s.email}</p>
                   <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                    {roleLabel(s.role_slug)} &middot; {scopeSummary(s.branch_ids || [], s.resource_ids || [], branches, resources)}
+                    {orgStaffRoleLabel(s.role_slug)} &middot; {scopeSummary(s.branch_ids || [], s.resource_ids || [], branches, resources)}
                   </p>
                 </div>
               </div>
@@ -321,7 +312,7 @@ export default function OrgStaffPage() {
             <span className="text-xs font-medium text-[var(--color-text-muted)]">Role *</span>
             <select value={roleSlug} onChange={(e) => { setRoleSlug(e.target.value); setSelectedBranchIds([]); setSelectedResourceIds([]); }}
               className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]">
-              {ROLE_OPTIONS.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
+              {ORG_STAFF_ROLE_OPTIONS.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
           </label>
 
@@ -341,7 +332,7 @@ export default function OrgStaffPage() {
           {templatePerms.length > 0 && (
             <fieldset className="border border-[var(--color-border)] rounded-md p-3">
               <legend className="text-xs font-medium text-[var(--color-text-muted)] px-1 flex items-center gap-2">
-                Permissions for {roleLabel(roleSlug)}
+                Permissions for {orgStaffRoleLabel(roleSlug)}
                 <button type="button" onClick={() => setSelectedPermIds(templatePerms.map((p) => p.id))} className="text-[var(--color-primary)] hover:underline text-xs">Select all</button>
                 <button type="button" onClick={() => setSelectedPermIds([])} className="text-[var(--color-primary)] hover:underline text-xs">Deselect all</button>
               </legend>
@@ -369,7 +360,7 @@ export default function OrgStaffPage() {
             <span className="text-xs font-medium text-[var(--color-text-muted)]">Role</span>
             <select value={editStaffRoleSlug} onChange={(e) => { setEditStaffRoleSlug(e.target.value); setEditStaffBranchIds([]); setEditStaffResourceIds([]); }}
               className="mt-1 w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] text-sm text-[var(--color-text)]">
-              {ROLE_OPTIONS.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
+              {ORG_STAFF_ROLE_OPTIONS.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
           </label>
           <fieldset>

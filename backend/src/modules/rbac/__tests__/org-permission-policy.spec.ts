@@ -182,4 +182,86 @@ describe('R4 — organisation permission policy', () => {
     expect(isOrgAssignablePermission('')).toBe(false);
     expect(isPlatformOnlyPermission('')).toBe(true);
   });
+
+  // B1 follow-up — marketplace-manager / receptionist are now assignable as
+  // organisation staff. Their Inventory capabilities stay matrix-bounded and
+  // their platform capabilities stay non-assignable.
+  describe('organisation-staff roles added for the Inventory UAT', () => {
+    const MM_KEYS = [
+      'inventory.warehouses.view',
+      'inventory.warehouses.manage',
+      'inventory.stock.view',
+      'inventory.stock.adjust',
+      'inventory.transfers.view',
+      'inventory.transfers.create',
+      'inventory.transfers.complete',
+      'inventory.transfers.cancel',
+      'inventory.logs.view',
+    ];
+    const RECEPTIONIST_KEYS = [
+      'inventory.warehouses.view',
+      'inventory.stock.view',
+      'inventory.transfers.view',
+    ];
+
+    it('marketplace-manager receives exactly its organisation Inventory matrix', () => {
+      for (const key of MM_KEYS) {
+        expect(canOrgRoleReceivePermission('marketplace-manager', key), key).toBe(true);
+      }
+      for (const key of [
+        'inventory.suppliers.view',
+        'inventory.purchase-orders.view',
+        'inventory.reports.view',
+        'inventory.reports.export',
+      ]) {
+        expect(canOrgRoleReceivePermission('marketplace-manager', key), key).toBe(false);
+      }
+    });
+
+    it('receptionist receives read-only Inventory capabilities only', () => {
+      for (const key of RECEPTIONIST_KEYS) {
+        expect(canOrgRoleReceivePermission('receptionist', key), key).toBe(true);
+      }
+      for (const key of [
+        'inventory.stock.adjust',
+        'inventory.transfers.create',
+        'inventory.transfers.complete',
+        'inventory.transfers.cancel',
+        'inventory.logs.view',
+        'inventory.reports.view',
+      ]) {
+        expect(canOrgRoleReceivePermission('receptionist', key), key).toBe(false);
+      }
+    });
+
+    it('never grants platform-wide keys to the two new organisation roles', () => {
+      const platformKeys = [
+        'platform.admin',
+        'users.view',
+        'roles.update',
+        'permissions.view',
+        'financial.reconcile',
+        'accounting.view',
+        'reports.view',
+        'sidebar.marketplace',
+        'sidebar.reception',
+        'marketplace.admin.products',
+        'marketplace.admin.orders',
+        'notifications.config.manage',
+        'organisations.edit.name',
+      ];
+      for (const role of ['marketplace-manager', 'receptionist']) {
+        for (const key of platformKeys) {
+          expect(canOrgRoleReceivePermission(role, key), `${role}/${key}`).toBe(false);
+        }
+      }
+    });
+
+    it('keeps unknown Inventory keys fail-closed for the two new roles', () => {
+      for (const role of ['marketplace-manager', 'receptionist']) {
+        expect(canOrgRoleReceivePermission(role, 'inventory.future.key'), role).toBe(false);
+        expect(canOrgRoleReceivePermission(role, 'inventory.stock.manage'), role).toBe(false);
+      }
+    });
+  });
 });

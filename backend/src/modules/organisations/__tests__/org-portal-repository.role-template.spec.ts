@@ -38,4 +38,30 @@ describe('getAssignableOrgRole — global template resolution', () => {
     expect(role).toBeNull();
     expect(execute).not.toHaveBeenCalled();
   });
+
+  // B1 follow-up — organisation-scoped provisioning for the Inventory roles.
+  it.each(['marketplace-manager', 'receptionist'])(
+    'resolves the global %s template for organisation staff provisioning',
+    async (slug) => {
+      execute.mockResolvedValueOnce([
+        [{ id: 950, slug, name: slug, organisation_id: null }],
+        [],
+      ]);
+
+      const role = await getAssignableOrgRole(slug);
+
+      expect(role).toMatchObject({ slug, organisation_id: null });
+      const [sql, params] = execute.mock.calls[0];
+      expect(sql).toContain('organisation_id IS NULL');
+      expect(params).toEqual([slug]);
+    },
+  );
+
+  it('keeps platform-only templates non-assignable', async () => {
+    for (const slug of ['super_admin', 'master-admin', 'finance-manager', 'auditor', 'read-only-admin']) {
+      const role = await getAssignableOrgRole(slug);
+      expect(role, slug).toBeNull();
+    }
+    expect(execute).not.toHaveBeenCalled();
+  });
 });

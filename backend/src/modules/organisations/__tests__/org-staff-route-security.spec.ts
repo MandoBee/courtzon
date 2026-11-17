@@ -9,6 +9,7 @@ import Fastify from 'fastify';
 
 const mocks = vi.hoisted(() => ({
   updateStaffPermissions: vi.fn(async () => ({ success: true })),
+  addOrgStaff: vi.fn(async () => ({ userId: 42, roleSlug: 'org-admin' })),
   manageAllowed: false,
 }));
 
@@ -26,6 +27,7 @@ const makeStubModule = vi.hoisted(() => () => {
 
 vi.mock('../application/org-portal.service.js', () => ({
   updateStaffPermissions: mocks.updateStaffPermissions,
+  addOrgStaff: mocks.addOrgStaff,
 }));
 vi.mock('../infrastructure/repositories/org-portal.repository.js', makeStubModule);
 vi.mock('../infrastructure/repositories/branch.repository.js', makeStubModule);
@@ -72,6 +74,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   mocks.updateStaffPermissions.mockClear();
+  mocks.addOrgStaff.mockClear();
   mocks.manageAllowed = false;
 });
 
@@ -127,5 +130,63 @@ describe('PUT /org/:orgId/staff/:userId/permissions', () => {
 
     expect(res.statusCode).toBe(200);
     expect(mocks.updateStaffPermissions).toHaveBeenCalledWith(7, 42, [1, 2], 1);
+  });
+});
+
+// ============================================================================
+// POST /org/:orgId/staff — the request schema must accept exactly the
+// repository allowlist. This guards against the validation layer drifting away
+// from `ASSIGNABLE_ORG_ROLE_SLUGS` (which is the runtime gate).
+// ============================================================================
+describe('POST /org/:orgId/staff — assignable role validation', () => {
+  function postStaff(payload: Record<string, unknown>, opts: { user?: number; manage?: boolean } = {}) {
+    mocks.manageAllowed = opts.manage ?? false;
+    return app.inject({
+      method: 'POST',
+      url: '/org/7/staff',
+      headers: opts.user ? { 'x-user': String(opts.user) } : {},
+      payload: payload as any,
+    });
+  }
+
+  it.each(['org-admin', 'shop-admin', 'branch-mgr', 'resource-mgr', 'coach', 'accountant', 'marketplace-manager', 'receptionist'])(
+    'accepts %s through the schema for a manager',
+    async (roleSlug) => {
+      const res = await postStaff({ email: 'qa.staff@courtzon.test', roleSlug }, { user: 1, manage: true });
+      expect(res.statusCode, roleSlug).toBe(201);
+      expect(mocks.addOrgStaff).toHaveBeenCalled();
+    },
+  );
+
+  it('rejects platform roles at the schema layer', async () => {
+    for (const roleSlug of ['super_admin', 'super-admin', 'master-admin', 'auditor', 'read-only-admin', 'finance-manager', 'player']) {
+      const res = await postStaff({ email: 'qa.staff@courtzon.test', roleSlug }, { user: 1, manage: true });
+      expect(res.statusCode, roleSlug).toBe(400);
+    }
+    expect(mocks.addOrgStaff).not.toHaveBeenCalled();
+  });
+
+  it('denies provisioning without authentication or organisation management', async () => {
+    mocks.addOrgStaff.mockClear();
+
+    const anonymous = await postStaff({ email: 'qa.staff@courtzon.test', roleSlug: 'receptionist' });
+    expect(anonymous.statusCode).toBe(401);
+
+    const notManager = await postStaff(
+      { email: 'qa.staff@courtzon.test', roleSlug: 'receptionist' },
+      { user: 1, manage: false },
+    );
+    expect(notManager.statusCode).toBe(403);
+    expect(mocks.addOrgStaff).not.toHaveBeenCalled();
+  });
+
+  it('recognises super admin management through the org-manage guard dependency', async () => {
+    // `checkOrgManage` is the sole authority (owner | super_admin | scoped
+    // org.staff.manage). A super-admin session resolves to `manage: true`.
+    const res = await postStaff(
+      { email: 'qa.staff@courtzon.test', roleSlug: 'marketplace-manager' },
+      { user: 1, manage: true },
+    );
+    expect(res.statusCode).toBe(201);
   });
 });

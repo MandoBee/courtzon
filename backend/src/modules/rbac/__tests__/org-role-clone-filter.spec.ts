@@ -102,4 +102,80 @@ describe('cloneRoleForOrg — organization policy filtering', () => {
     );
     expect(execute).toHaveBeenCalledTimes(1);
   });
+
+  // B1 follow-up — marketplace-manager / receptionist organisation clones must
+  // never inherit platform-wide capabilities.
+  it('marketplace-manager clone keeps org marketplace + Inventory keys and drops platform keys', async () => {
+    arrangeClone({
+      template: TEMPLATE({ id: 960, slug: 'marketplace-manager', name: 'Marketplace Manager' }),
+      permissions: [
+        { permission_id: 1, permission_key: 'marketplace.products.manage' },
+        { permission_id: 2, permission_key: 'marketplace.admin.products' },
+        { permission_id: 3, permission_key: 'inventory.stock.view' },
+        { permission_id: 4, permission_key: 'inventory.transfers.create' },
+        { permission_id: 5, permission_key: 'inventory.reports.export' },
+        { permission_id: 6, permission_key: 'platform.admin' },
+        { permission_id: 7, permission_key: 'sidebar.marketplace' },
+        { permission_id: 8, permission_key: 'financial.reconcile' },
+        { permission_id: 9, permission_key: 'users.view' },
+        { permission_id: 10, permission_key: 'org.marketplace.manage' },
+      ],
+    });
+
+    const repo = new RBACRepository();
+    const roleId = await repo.cloneRoleForOrg(960, 7);
+
+    expect(roleId).toBe(901);
+    const insert = execute.mock.calls.find((call) =>
+      String(call[0]).includes('INSERT IGNORE INTO role_permissions'),
+    );
+    expect(insert).toBeDefined();
+    const sql = String(insert![0]);
+    // Allowed organisation capabilities
+    expect(sql).toContain('(901, 1)');
+    expect(sql).toContain('(901, 3)');
+    expect(sql).toContain('(901, 4)');
+    expect(sql).toContain('(901, 10)');
+    // Platform-only / out-of-matrix keys
+    expect(sql).not.toContain('(901, 2)');
+    expect(sql).not.toContain('(901, 5)');
+    expect(sql).not.toContain('(901, 6)');
+    expect(sql).not.toContain('(901, 7)');
+    expect(sql).not.toContain('(901, 8)');
+    expect(sql).not.toContain('(901, 9)');
+  });
+
+  it('receptionist clone keeps read-only Inventory keys and drops write/platform keys', async () => {
+    arrangeClone({
+      template: TEMPLATE({ id: 970, slug: 'receptionist', name: 'Receptionist' }),
+      permissions: [
+        { permission_id: 1, permission_key: 'bookings.view' },
+        { permission_id: 2, permission_key: 'bookings.create' },
+        { permission_id: 3, permission_key: 'inventory.stock.view' },
+        { permission_id: 4, permission_key: 'inventory.transfers.view' },
+        { permission_id: 5, permission_key: 'inventory.transfers.create' },
+        { permission_id: 6, permission_key: 'inventory.stock.adjust' },
+        { permission_id: 7, permission_key: 'platform.admin' },
+        { permission_id: 8, permission_key: 'sidebar.reception' },
+        { permission_id: 9, permission_key: 'admin.users' },
+      ],
+    });
+
+    const repo = new RBACRepository();
+    await repo.cloneRoleForOrg(970, 7);
+
+    const insert = execute.mock.calls.find((call) =>
+      String(call[0]).includes('INSERT IGNORE INTO role_permissions'),
+    );
+    const sql = String(insert![0]);
+    expect(sql).toContain('(901, 1)');
+    expect(sql).toContain('(901, 2)');
+    expect(sql).toContain('(901, 3)');
+    expect(sql).toContain('(901, 4)');
+    expect(sql).not.toContain('(901, 5)');
+    expect(sql).not.toContain('(901, 6)');
+    expect(sql).not.toContain('(901, 7)');
+    expect(sql).not.toContain('(901, 8)');
+    expect(sql).not.toContain('(901, 9)');
+  });
 });
