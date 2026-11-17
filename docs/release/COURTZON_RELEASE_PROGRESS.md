@@ -5082,3 +5082,39 @@ percentage is changed by this section.** Phase 6 remains **5/10**, overall remai
 Documentation only: no application code, database, account, role, membership, scope or permission was modified; no
 backup/temp files, migrations, seeds, Docker rebuild/restart, Git push or deployment were performed for this update.
 
+---
+
+## 36. C7 org-admin extension — Hostinger Live (2026-11-18)
+
+**Document role:** append-only record of one read-only UAT execution. **No phase state,
+checklist row, or percentage is changed by this section.** Phase 6 remains **5/10**,
+overall remains **56 %**, **P6-06 remains TODO**, and **C7 remains PARTIAL**.
+
+**Deployment:** `b894197ebb174af150a3f9b8a3e8eaf8cd7984f9` · Hostinger Live · migration 211.
+
+**Identity:** TEST_ADMIN · User **127** · `org-admin` · role **1116** · organisation **35**
+(existing documented account; no account created).
+
+### 36.1 Observed results
+
+| Check | Result |
+|---|---|
+| `/org/35/info`, `/org/35/dashboard` | **200** (org context `TEST_ORG`) |
+| `/admin` | Visible **Access denied** |
+| `/admin/inventory` | Final URL unchanged · visible **Access denied** |
+| `/admin/inventory/stock` | Final URL unchanged · visible **Access denied** |
+| Document navigation | **HTTP 200** SPA HTML — **not** an API 403 |
+| XHR `/admin/inventory/*` | **0** |
+| POST/PUT/PATCH/DELETE | **0** |
+| Console errors / 403 loop | **0** |
+| Admin sidebar / Command Palette | **NOT OBSERVABLE** (`/admin` denied first) |
+
+### 36.2 C7 status (unchanged score)
+
+**C7 — PARTIAL.** `super_admin` / `auditor` / `read-only-admin` / `accountant` verified
+earlier; **org-admin PARTIAL** (admin shell denial verified, sidebar/palette not
+observable); `marketplace-manager` / `receptionist` **BLOCKED**.
+
+**No PASS is recorded for C7 or P6-06 by this section. No backend 403 is claimed.**
+No database write, account/permission change, code edit, deployment or restart occurred.
+

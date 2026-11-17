@@ -616,3 +616,66 @@ Why 403 is the correct outcome: the three keys are platform-only (`org-permissio
 ### A19.5 Safety confirmation
 
 No database write, no account/role/membership/scope change, no business mutation, no payment call, no code edit, no deployment/restart. The requests were read-only GETs; no response body was read.
+
+---
+
+## A20 — C7 org-admin extension (2026-11-18, Hostinger Live, read-only)
+
+**Environment:** Hostinger Live · deployed commit `b894197ebb174af150a3f9b8a3e8eaf8cd7984f9`
+· `courtzon_v3` · migration 211.
+
+**Test identity (existing QA account — no account was created):**
+
+| Field | Value |
+|---|---|
+| User ID | **127** |
+| QA identity | TEST_ADMIN (`docs/HANDOVER_CURRENT/48_TEST_IDENTITIES_CREATED.md`, 2026-10-05) |
+| Role | `org-admin` |
+| Role ID | **1116** |
+| Organisation ID | **35** (`TEST_ORG`) |
+
+**Method.** Browser navigation and document GETs only; no XHR issued by the tester,
+no credentials/cookies/localStorage read, no account or permission change, no database
+access, no business mutation. Observed `2026-11-17T22:11–22:14Z` (screenshots retained
+by the owner; references listed in the C7 report).
+
+### A20.1 Observed results
+
+| Check | Result |
+|---|---|
+| `GET /org/35/info` and `/org/35/dashboard` | **HTTP 200** — organisation context `TEST_ORG` (org 35) |
+| `/admin` | Visible **"Access denied — You don't have permission to view the admin workspace."** |
+| `/admin/inventory` | Final URL **unchanged**; visible **Access denied** |
+| `/admin/inventory/stock` | Final URL **unchanged**; visible **Access denied** |
+| Document navigation responses | **HTTP 200** with SPA HTML (not an API response) |
+| XHR requests to `/admin/inventory/*` | **0** |
+| POST/PUT/PATCH/DELETE requests | **0** |
+| Console errors / 403 loop | **0** |
+| Org workspace sidebar | No **Facilities** section; no **Inventory** entry |
+| Admin sidebar (Facilities tree) | **NOT OBSERVABLE** — `/admin` denied before the Admin shell rendered |
+| Admin Command Palette (`/admin/inventory*` commands) | **NOT OBSERVABLE** — same reason; `Ctrl+K` opened no palette |
+
+**No backend HTTP 403 is claimed.** The denial observed here is the **application's
+Access-denied surface rendered by a 200 SPA document**; no `/admin/inventory/*` API
+request was sent, therefore no API status code exists to report.
+
+### A20.2 Classification (C7, org-admin)
+
+| Sub-check | Classification |
+|---|---|
+| Admin workspace denial | **VERIFIED** |
+| Direct Inventory route denial | **VERIFIED** |
+| No Inventory XHR requests | **VERIFIED** |
+| No console 403 loop | **VERIFIED** |
+| Admin sidebar gating | **NOT OBSERVABLE** |
+| Admin Command Palette gating | **NOT OBSERVABLE** |
+
+### A20.3 C7 status wording
+
+**C7 — PARTIAL.** Coverage: `super_admin`, `auditor`, `read-only-admin`, `accountant`
+verified earlier (A13/A15); **org-admin: PARTIAL** (admin shell denied before the
+sidebar/palette; all observable exposure checks passed); `marketplace-manager` and
+`receptionist` remain **BLOCKED** (no accounts; no account was created).
+
+**Safety.** Read-only; no database write, no role/permission/membership change, no
+business mutation, no deployment or restart.
