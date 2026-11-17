@@ -5,7 +5,7 @@
 | Document | `docs/release/COURTZON_RELEASE_PROGRESS.md` |
 | Plan | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
 | Document role | **Status authority** — the single source of status, percentages, blockers, evidence and audit trail (plan §1.1) |
-| Last updated | 2026-11-16 - P1 Inventory implementation, migration 211 and access hardening committed/pushed as `591df819` (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-14 (W1 read-only Live discovery recorded — §33: 119 routes inspected, 90 PASS / 22 hard FAIL / 7 partial FAIL, 8 open S2, 4 newly-discovered open S3 (+1 pre-existing), 3 S4; F-002 QA-account read-only investigation and decision package. Owner decision (2026-11-14): F-002 RETAINED — all 16 QA accounts stay active/unchanged pending the authorization test matrix; exposure documented, F-002 NOT resolved. Documentation only; Phase dashboard and percentages intentionally unchanged. Previous 2026-11-13: Refund Engine hardening B1-A/B2-A committed and pushed as `136318d8`; Docker backend/frontend rebuilt and backend restarted healthy; local migrations 209/210 applied through the canonical runner — §31, §32) |
+| Last updated | 2026-11-17 - Post-remediation RBAC verification (Scenario A) recorded in §35 (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-16 - P1 Inventory implementation, migration 211 and access hardening committed/pushed as `591df819` (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-14 (W1 read-only Live discovery recorded — §33: 119 routes inspected, 90 PASS / 22 hard FAIL / 7 partial FAIL, 8 open S2, 4 newly-discovered open S3 (+1 pre-existing), 3 S4; F-002 QA-account read-only investigation and decision package. Owner decision (2026-11-14): F-002 RETAINED — all 16 QA accounts stay active/unchanged pending the authorization test matrix; exposure documented, F-002 NOT resolved. Documentation only; Phase dashboard and percentages intentionally unchanged. Previous 2026-11-13: Refund Engine hardening B1-A/B2-A committed and pushed as `136318d8`; Docker backend/frontend rebuilt and backend restarted healthy; local migrations 209/210 applied through the canonical runner — §31, §32) |
 | Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 OPEN/DEFERRED)** + **Phase 6 IN_PROGRESS (5/10)** (P6-06 remains TODO - Inventory P1 code/migration complete 2026-11-16, UAT NOT RUN) under recorded deviation **D-01** (§25) |
 | Overall completion | **56 %** (56 / 100 DONE items) |
 
@@ -5022,4 +5022,63 @@ Server-side authorisation is correct; the UI is misleading. A separate ticket is
 - No Git commit or push in this step; the working tree contains only this file's edit plus the pre-existing
   `M opencode.json` and the untracked `docs/release/W1_READONLY_DISCOVERY_REPORT_2026-11-14.md`.
 - No UAT result is claimed; nothing in this section is evidence of a PASS.
+
+---
+
+## 35. Post-remediation RBAC verification — Scenario A (2026-11-17)
+
+**Document role:** append-only record of one completed Live verification. **No phase state, checklist row, or
+percentage is changed by this section.** Phase 6 remains **5/10**, overall remains **56 %**, **P6-06 remains TODO**
+(the Inventory UAT C7–C12 statuses are unchanged), and no programme-wide completion is claimed.
+
+**Deployment:** Hostinger Live · commit `5742fb45b2576a9583596de9fb56a20b7b69575e`
+(`/health/version`: `gitCommitSource=image`, `gitCommitConsistent=true`, `buildTime 2026-11-17T06:45:58Z`) ·
+`courtzon_v3` · MySQL 8.0.46.
+
+### 35.1 Remediation applied before this verification (owner-authorised)
+
+| Item | Value |
+|---|---|
+| Rows removed | **44** `role_permissions` (22 organisation roles × 2 keys) |
+| Keys removed from organisation roles | `marketplace.moderate` (216) · `marketplace.player.activate` (22646) |
+| Roles affected | 12 `org-admin` + 10 `shop-admin`, 21 organisations (6, 19–38) |
+| `role_permissions` total | 7,726 → **7,682** |
+| Organisation-role links for both keys after | **0** |
+| Global links after | `marketplace.moderate` **5** · `marketplace.player.activate` **6** · `marketplace.complaints.approve` **4** |
+| Global role 14 (`marketplace-manager`) | unchanged — **73** permissions, **3** keys |
+| Policy guard | `org-permission-policy.ts` `PLATFORM_ONLY_PREFIXES` (`:151/:152/:157`), rejection before `ORG_ASSIGNABLE_PATTERNS` |
+
+### 35.2 Scenario A — authenticated organisation-role denial
+
+| Field | Value |
+|---|---|
+| Test identity | User **127** · TEST_ADMIN (existing documented identity) · role `org-admin` · role ID **1116** · organisation **35** |
+| Executed by | **Project owner manually**, Chrome DevTools Console on `https://www.courtzon.cloud` (OpenCode did not execute) |
+| Request shape | same-origin `fetch` · GET only · `credentials: 'include'` · `Accept: application/json` · no body read · no redirects |
+
+| ID | GET route | Expected | Actual | `Content-Type` | UTC |
+|---|---|---|---|---|---|
+| A1 | `/marketplace/admin/products` | 403 | **403** | `application/json; charset=utf-8` | 2026-11-17T20:49:52.240Z |
+| A2 | `/admin/marketplace/complaints` | 403 | **403** | `application/json; charset=utf-8` | 2026-11-17T20:49:52.603Z |
+| A3 | `/marketplace/admin/orders` | 403 | **403** | `application/json; charset=utf-8` | 2026-11-17T20:49:52.744Z |
+| A4 | `/marketplace/admin/sellers` | 403 | **403** | `application/json; charset=utf-8` | 2026-11-17T20:49:52.862Z |
+| A5 | `/marketplace/admin/upgrade-requests` | 403 | **403** | `application/json; charset=utf-8` | 2026-11-17T20:49:52.969Z |
+| A6 | `/marketplace/admin/reviews` | 403 | **403** | `application/json; charset=utf-8` | 2026-11-17T20:49:53.100Z |
+
+**Scenario A result: PASS — 6/6 authenticated HTTP authorization checks.** See
+`docs/release/COURTZON_LIVE_C7_C12_AUDIT.md` **A19** (linked to the earlier A14/A15/A18 blocked attempts).
+
+### 35.3 Unchanged statuses (explicit)
+
+| Item | Status |
+|---|---|
+| Scenario B — global Marketplace Manager | **BLOCKED** (no active user holds global role 14; no account created) |
+| Scenario C — Inventory organisation isolation | **BLOCKED** (no organisation role holds `inventory.*`; no account created) |
+| C7–C12 Inventory UAT | **Unchanged** (all still NOT RUN / PARTIAL as previously recorded) |
+| Phase 6 / overall percentage | **Unchanged (5/10 · 56 %)** — not re-scored by this verification |
+
+### 35.4 No-change confirmation
+
+Documentation only: no application code, database, account, role, membership, scope or permission was modified; no
+backup/temp files, migrations, seeds, Docker rebuild/restart, Git push or deployment were performed for this update.
 
