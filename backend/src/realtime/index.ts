@@ -108,7 +108,7 @@ export function setupRealtime(app: FastifyInstance): SocketIOServer {
          JOIN roles r ON r.id = ur.role_id
          WHERE ur.user_id = ? AND ur.is_active = TRUE
            AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
-           AND r.deleted_at IS NULL`,
+           AND r.is_active = TRUE AND r.deleted_at IS NULL`,
         [userId],
       );
 

@@ -147,19 +147,26 @@ describe('AdminRoute — permission-based /admin guard', () => {
     expect(screen.queryByText('admin-home')).not.toBeInTheDocument();
   });
 
-  it('renders the admin outlet for a user granted dashboard.view', () => {
-    setUser(['dashboard.view']);
+  it('renders the admin outlet for a user granted platform.admin', () => {
+    setUser(['platform.admin']);
     renderAdminRoute();
     expect(screen.getByText('admin-home')).toBeInTheDocument();
   });
 
-  it('renders a nested admin section for a user granted dashboard.view', () => {
-    setUser(['dashboard.view']);
+  it('renders a nested admin section for a user granted platform.admin', () => {
+    setUser(['platform.admin']);
     renderAdminRoute('/admin/finance');
     expect(screen.getByText('admin-finance')).toBeInTheDocument();
   });
 
-  it('accepts the platform.admin fallback key used by the backend adminGuard', () => {
+  it('denies a user granted only the broader UI dashboard.view key', () => {
+    setUser(['dashboard.view']);
+    renderAdminRoute();
+    expect(screen.queryByText('admin-home')).not.toBeInTheDocument();
+    expect(screen.getByText('Access denied')).toBeInTheDocument();
+  });
+
+  it('accepts the canonical platform.admin key used by the backend adminGuard', () => {
     setUser(['platform.admin']);
     renderAdminRoute();
     expect(screen.getByText('admin-home')).toBeInTheDocument();
@@ -178,8 +185,8 @@ describe('AdminRoute — permission-based /admin guard', () => {
     expect(screen.getByText('Access denied')).toBeInTheDocument();
   });
 
-  it('allows a user with dashboard.view even without an admin role string', () => {
-    setUser(['dashboard.view'], ['player']);
+  it('allows a user with platform.admin even without an admin role string', () => {
+    setUser(['platform.admin'], ['player']);
     renderAdminRoute();
     expect(screen.getByText('admin-home')).toBeInTheDocument();
   });
@@ -191,7 +198,7 @@ describe('AdminRoute — permission-based /admin guard', () => {
   });
 
   it('re-evaluates access when the permission is revoked while mounted', () => {
-    setUser(['dashboard.view']);
+    setUser(['platform.admin']);
     renderAdminRoute();
     expect(screen.getByText('admin-home')).toBeInTheDocument();
 
@@ -214,8 +221,15 @@ describe('ProtectedRoute — platform-staff detection uses permissions', () => {
     expect(screen.getByText('bookings-page')).toBeInTheDocument();
   });
 
-  it('redirects a dashboard.view holder away from consumer routes to /admin', () => {
+  it('does not treat a dashboard.view holder as platform staff', () => {
     setUser(['dashboard.view'], ['auditor']);
+    renderProtectedRoute('/bookings');
+    expect(screen.getByText('bookings-page')).toBeInTheDocument();
+    expect(screen.queryByText('admin-home')).not.toBeInTheDocument();
+  });
+
+  it('redirects a platform.admin holder away from consumer routes to /admin', () => {
+    setUser(['platform.admin'], ['auditor']);
     renderProtectedRoute('/bookings');
     expect(screen.getByText('admin-home')).toBeInTheDocument();
   });
@@ -227,13 +241,13 @@ describe('ProtectedRoute — platform-staff detection uses permissions', () => {
   });
 
   it('keeps /notifications reachable for platform staff', () => {
-    setUser(['dashboard.view'], ['accountant']);
+    setUser(['platform.admin'], ['accountant']);
     renderProtectedRoute('/notifications');
     expect(screen.getByText('notifications-page')).toBeInTheDocument();
   });
 
   it('keeps the organisation portal reachable for platform staff', () => {
-    setUser(['dashboard.view'], ['master-admin']);
+    setUser(['platform.admin'], ['master-admin']);
     renderProtectedRoute('/org/42/dashboard');
     expect(screen.getByText('org-dashboard')).toBeInTheDocument();
   });
@@ -251,14 +265,14 @@ describe('ProtectedRoute — platform-staff detection uses permissions', () => {
     renderProtectedRoute('/bookings');
     expect(screen.getByText('bookings-page')).toBeInTheDocument();
 
-    setUser(['dashboard.view'], ['player']);
+    setUser(['platform.admin'], ['player']);
     expect(screen.getByText('admin-home')).toBeInTheDocument();
   });
 });
 
 describe('admin route permission model', () => {
   it('keeps the guard key aligned with the canonical /admin route permission', () => {
-    expect(getAdminRoutePermission('/admin')).toBe('dashboard.view');
+    expect(getAdminRoutePermission('/admin')).toBe('platform.admin');
     expect(PLATFORM_ADMIN_PERMISSIONS).toContain(getAdminRoutePermission('/admin'));
   });
 });

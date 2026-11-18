@@ -144,7 +144,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Action Center */}
-      <ActionCenter canAccess={canAccess} title="Action Center" actions={[
+      <ActionCenter canAccess={canAccess} can={can} title="Action Center" actions={[
         { label: 'Pending Organisations', icon: '🏢', path: '/admin/organisations', count: stats?.pendingOrganisations ?? 0, color: 'bg-yellow-100 text-yellow-700' },
         { label: 'Today\'s Bookings', icon: '📅', path: '/admin/bookings', count: stats?.todayBookings ?? 0 },
         { label: 'Active Users Today', icon: '👥', path: '/admin/users', count: stats?.activeUsersToday ?? 0 },

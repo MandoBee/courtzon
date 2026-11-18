@@ -28,7 +28,9 @@ async function getExpiresAt(tokenHash: string): Promise<string | null> {
     `SELECT expires_at FROM user_sessions WHERE session_token_hash = ? LIMIT 1`,
     [tokenHash],
   );
-  return rows.length ? (rows[0].expires_at as string) : null;
+  if (!rows.length) return null;
+  const raw = rows[0].expires_at as unknown;
+  return raw instanceof Date ? raw.toISOString() : String(raw);
 }
 
 let phoneCounter = 0;
@@ -53,7 +55,7 @@ async function registerAndLogin(): Promise<AuthResponse> {
     { ip: '127.0.0.1' },
   );
   return authService.login(
-    { phoneNumber: phone, countryCode: '+971', password: 'test123456' },
+    { phoneNumber: phone, countryCode: '+20', password: 'test123456' },
     { ip: '127.0.0.1' },
   );
 }
@@ -115,6 +117,7 @@ describe('Session Expiry Regression (090_user_sessions_expires_at_no_on_update)'
     const oldTokenHash = hashToken(result.session.sessionToken);
     const oldExpiry = await getExpiresAt(oldTokenHash);
 
+    await sleep(1100);
     const refreshed = await authService.refresh(result.session.refreshToken);
     expect(refreshed.session.sessionToken).not.toBe(result.session.sessionToken);
     expect(refreshed.session.refreshToken).not.toBe(result.session.refreshToken);

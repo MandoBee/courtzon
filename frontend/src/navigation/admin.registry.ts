@@ -9,7 +9,9 @@ export const ADMIN_NAV: NavDefinition[] = [
     icon: '📊',
     path: '/admin',
     children: [
-      { id: 'nav.admin.dashboard', label: T('admin.sidebar.dashboard'), icon: '📊', path: '/admin', permissionKey: 'sidebar.dashboard' },
+      // The landing page is super-admin-only on the backend. Keep the legacy
+      // nav key for layout/parity, but require the platform gate as an AND check.
+      { id: 'nav.admin.dashboard', label: T('admin.sidebar.dashboard'), icon: '📊', path: '/admin', permissionKey: 'sidebar.dashboard', requiresPermission: 'platform.admin' },
       { id: 'nav.admin.reports', label: T('admin.sidebar.reports'), icon: '📈', path: '/admin/reports', permissionKey: 'sidebar.reports' },
     ],
   },

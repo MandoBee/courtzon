@@ -331,7 +331,10 @@ initRouteGuard({
       `      SELECT 1 FROM organisations WHERE id = ? AND (owner_id = ? OR ? IN (
         SELECT user_id FROM user_roles ur
         JOIN roles r ON r.id = ur.role_id
-        WHERE ur.user_id = ? AND r.slug IN ('super_admin', 'super-admin')
+        WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.is_active = TRUE AND r.deleted_at IS NULL
+          AND r.slug IN ('super_admin', 'super-admin')
       )) LIMIT 1`,
       [orgId, userId, userId, userId],
     );
@@ -339,7 +342,10 @@ initRouteGuard({
     const [orgRows] = await pool.execute<RowData>(
       `SELECT 1 FROM user_role_scopes urs
        JOIN user_roles ur ON ur.id = urs.user_role_id
+       JOIN roles r ON r.id = ur.role_id
        WHERE ur.user_id = ? AND urs.scope_type = 'organisation' AND urs.scope_id = ? AND ur.is_active = TRUE
+         AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         AND r.is_active = TRUE AND r.deleted_at IS NULL
        LIMIT 1`,
       [userId, orgId],
     );
@@ -354,6 +360,8 @@ initRouteGuard({
     const [adminRows] = await pool.execute<RowData>(
       `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
         WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.is_active = TRUE AND r.deleted_at IS NULL
           AND r.slug IN ('super_admin', 'super-admin') LIMIT 1`,
       [userId],
     );
@@ -362,9 +370,12 @@ initRouteGuard({
       `SELECT 1
          FROM user_role_scopes urs
          JOIN user_roles ur ON ur.id = urs.user_role_id
+         JOIN roles r ON r.id = ur.role_id
          JOIN role_permissions rp ON rp.role_id = ur.role_id
          JOIN permissions p ON p.id = rp.permission_id
         WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.is_active = TRUE AND r.deleted_at IS NULL
           AND urs.scope_type = 'organisation' AND urs.scope_id = ?
           AND p.permission_key = 'org.staff.manage'
         LIMIT 1`,
@@ -381,6 +392,8 @@ initRouteGuard({
     const [adminRows] = await pool.execute<RowData>(
       `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
         WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.is_active = TRUE AND r.deleted_at IS NULL
           AND r.slug IN ('super_admin', 'super-admin') LIMIT 1`,
       [userId],
     );
@@ -389,9 +402,12 @@ initRouteGuard({
       `SELECT 1
          FROM user_role_scopes urs
          JOIN user_roles ur ON ur.id = urs.user_role_id
+         JOIN roles r ON r.id = ur.role_id
          JOIN role_permissions rp ON rp.role_id = ur.role_id
          JOIN permissions p ON p.id = rp.permission_id
         WHERE ur.user_id = ? AND ur.is_active = TRUE
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+          AND r.is_active = TRUE AND r.deleted_at IS NULL
           AND urs.scope_type = 'organisation' AND urs.scope_id = ?
           AND p.permission_key = ?
         LIMIT 1`,

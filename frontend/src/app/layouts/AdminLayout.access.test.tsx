@@ -151,11 +151,23 @@ describe('A1 — admin Inventory route requires platform.admin', () => {
     expect(screen.getByText('inventory-page')).toBeInTheDocument();
   });
 
-  it('keeps the /admin dashboard reachable with dashboard.view only (no regression)', () => {
-    setUser(['dashboard.view'], ['auditor']);
+  it('maps the /admin landing route to platform.admin (not the broader dashboard.view)', () => {
+    expect(getAdminRoutePermission('/admin')).toBe('platform.admin');
+  });
+
+  it('reaches the /admin dashboard with platform.admin', () => {
+    setUser(['platform.admin'], ['auditor']);
     renderAt('/admin');
 
     expect(screen.getByText('admin-home')).toBeInTheDocument();
     expect(screen.queryByText('Access denied')).toBeNull();
+  });
+
+  it('denies the /admin dashboard to a dashboard.view-only actor', () => {
+    setUser(['dashboard.view'], ['auditor']);
+    renderAt('/admin');
+
+    expect(screen.queryByText('admin-home')).toBeNull();
+    expect(screen.getByText('Access denied')).toBeInTheDocument();
   });
 });

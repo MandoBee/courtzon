@@ -277,7 +277,8 @@ export class RBACRepository {
        JOIN roles r ON r.id = ur.role_id
        LEFT JOIN organisations o ON o.id = r.organisation_id
        WHERE ur.user_id = ? AND ur.is_active = TRUE
-       AND (ur.expires_at IS NULL OR ur.expires_at > NOW())`,
+       AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+       AND r.is_active = TRUE AND r.deleted_at IS NULL`,
       [userId]
     );
     return rows;

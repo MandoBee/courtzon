@@ -1,16 +1,16 @@
 /**
- * Platform-workspace access policy (P3-05).
+ * Platform-workspace access policy.
  *
- * Permission keys only — never role strings.
+ * Permission keys only — never role strings. `platform.admin` is the sole coarse
+ * gate for the platform workspace. The backend dashboard endpoints are restricted
+ * to the global super-admin role, so accepting a broader UI-only key would let a
+ * viewer into `/admin` only to receive a 403 from every dashboard API.
  *
- * - `dashboard.view` is the canonical UI permission for the `/admin` landing route
- *   (`permissions/adminRoutePermissions.ts` maps `/admin` → `dashboard.view`). It is
- *   registered in the UI registry and held only by platform staff templates.
- * - `platform.admin` mirrors the backend `adminGuard` ("platform admin API access",
- *   granted to `super_admin`) so legacy super-admin sessions keep working if the UI
- *   dashboard key is ever missing from a session payload.
+ * Sections inside `/admin` keep their own independently mapped permissions via
+ * `canAccessAdminPath()`; this predicate only decides whether the workspace is
+ * enterable at all.
  */
-export const PLATFORM_ADMIN_PERMISSIONS = ['dashboard.view', 'platform.admin'] as const;
+export const PLATFORM_ADMIN_PERMISSIONS = ['platform.admin'] as const;
 
 export function hasPlatformAdminAccess(can: (permission: string) => boolean): boolean {
   return PLATFORM_ADMIN_PERMISSIONS.some((permission) => can(permission));

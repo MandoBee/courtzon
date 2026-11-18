@@ -76,7 +76,7 @@ describe('HTTP auth', () => {
       url: '/auth/login',
       payload: {
         phoneNumber: '05000000099',
-        countryCode: '+971',
+        countryCode: '+20',
         password: 'test123456',
       },
     });

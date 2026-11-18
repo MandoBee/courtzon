@@ -104,12 +104,17 @@ describe('Phase 1 parity gate — admin sidebar (buildNavItems vs Navigation Reg
     expect(legacy.length).toBe(0);
   });
 
-  it('permission-filtered: granting only sidebar.dashboard shows only the Dashboard domain', () => {
-    const nav = resolveAdminNav(enT, (p) => p === 'sidebar.dashboard', allFlags);
+  it('permission-filtered: granting sidebar.dashboard + platform.admin shows only the Dashboard domain', () => {
+    const nav = resolveAdminNav(enT, (p) => p === 'sidebar.dashboard' || p === 'platform.admin', allFlags);
     expect(nav.length).toBe(1);
     expect(nav[0].label).toBe('Dashboard');
     expect(nav[0].children?.length).toBe(1);
     expect(nav[0].children?.[0].permissionKey).toBe('sidebar.dashboard');
+  });
+
+  it('hides the Dashboard nav when sidebar.dashboard is granted without platform.admin', () => {
+    const nav = resolveAdminNav(enT, (p) => p === 'sidebar.dashboard', allFlags);
+    expect(nav.find((d) => d.id === 'nav.admin.domain.dashboard')).toBeUndefined();
   });
 
   it('feature-flag filtered: disabling marketplace flag removes Marketplace section but keeps Commerce domain', () => {
@@ -467,7 +472,7 @@ describe('Commit 12 — Search finds all modules under new domain paths', () => 
   });
 
   it('search is permission-gated: only granted modules surface', () => {
-    const commands = buildAdminSearchCommands(resolveAdminNav(enT, (p) => p === 'sidebar.dashboard', allFlags));
+    const commands = buildAdminSearchCommands(resolveAdminNav(enT, (p) => p === 'sidebar.dashboard' || p === 'platform.admin', allFlags));
     expect(commands.map((c) => c.id).sort()).toEqual(['nav.admin.dashboard', 'nav.admin.domain.dashboard']);
   });
 

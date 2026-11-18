@@ -19,10 +19,16 @@ function sessionCookie(res: { cookies: { name: string; value: string }[] }): str
   return c.value;
 }
 
+function clientIpFor(phone: string): string {
+  return `127.0.0.${(parseInt(phone.slice(-3), 10) % 200) + 1}`;
+}
+
 async function registerPlayer(phone: string, email: string, name: string): Promise<string> {
+  const clientIp = clientIpFor(phone);
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register-player',
+    remoteAddress: clientIp,
     payload: {
       countryId: 1,
       phoneNumber: phone,
@@ -38,7 +44,8 @@ async function registerPlayer(phone: string, email: string, name: string): Promi
   const login = await app.inject({
     method: 'POST',
     url: '/auth/login',
-    payload: { phoneNumber: phone, countryCode: '+971', password: 'test123456' },
+    remoteAddress: clientIp,
+    payload: { phoneNumber: phone, countryCode: '+20', password: 'test123456' },
   });
   expect(login.statusCode).toBe(200);
   return sessionCookie(login);
@@ -59,6 +66,19 @@ async function createOrg(ownerId: number, name: string): Promise<number> {
     [randomUUID(), ownerId, name, name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + randomUUID().slice(0, 4)],
   );
   return (r as { insertId: number }).insertId;
+}
+
+async function assignOrgAdminRole(userId: number, orgId: number): Promise<void> {
+  const [r] = await getPool().execute(
+    `INSERT INTO user_roles (user_id, role_id, assigned_by, is_active)
+     SELECT ?, id, ?, TRUE FROM roles WHERE slug = 'org-admin' LIMIT 1`,
+    [userId, userId],
+  );
+  await getPool().execute(
+    `INSERT IGNORE INTO user_role_scopes (user_role_id, scope_type, scope_id)
+     VALUES (?, 'organisation', ?)`,
+    [(r as { insertId: number }).insertId, orgId],
+  );
 }
 
 async function createBranch(orgId: number, name: string): Promise<number> {
@@ -208,6 +228,7 @@ describe('A3 — cross-organisation booking mutation', () => {
     ownerId = await userIdFor('05111111111');
     strangerId = await userIdFor('05111111112');
     orgId = await createOrg(ownerId, 'Booking Org');
+    await assignOrgAdminRole(ownerId, orgId);
     branchId = await createBranch(orgId, 'Booking Branch');
     resourceId = await createResource(branchId, 'Court 1');
     const [r] = await getPool().execute(
@@ -330,6 +351,7 @@ describe('A6 — branch financial details cross-organisation access', () => {
     ownerId = await userIdFor('05111111141');
     strangerId = await userIdFor('05111111142');
     orgId = await createOrg(ownerId, 'Branch Fin Org');
+    await assignOrgAdminRole(ownerId, orgId);
     branchId = await createBranch(orgId, 'BF Branch');
   });
 
@@ -377,10 +399,10 @@ describe('A7 — GET /transactions/:id ownership', () => {
     ownerId = await userIdFor('05111111151');
     strangerId = await userIdFor('05111111152');
     const [wr] = await getPool().execute(
-      `INSERT INTO user_wallets (user_id, balance) VALUES (?, 0)`,
+      `SELECT id FROM user_wallets WHERE user_id = ? LIMIT 1`,
       [ownerId],
     );
-    walletId = (wr as { insertId: number }).insertId;
+    walletId = (wr as { id: number }[])[0].id;
     const [tr] = await getPool().execute(
       `INSERT INTO transactions (type, source_type, source_id, total_amount, status)
        VALUES ('wallet_topup', 'wallet', 1, 50, 'completed')`,

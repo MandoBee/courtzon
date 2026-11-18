@@ -55,7 +55,7 @@ function renderPage() {
 beforeEach(() => {
   mockGet.mockReset();
   mockGet.mockResolvedValue({ data: { data: {} } });
-  mockAuth.user = { permissions: ['dashboard.view'], roles: [], fullName: 'QA Accountant' };
+  mockAuth.user = { permissions: ['platform.admin'], roles: [], fullName: 'QA Accountant' };
 });
 
 describe('AdminDashboard — 403 data handling', () => {
@@ -78,7 +78,7 @@ describe('AdminDashboard — 403 data handling', () => {
   });
 
   it('UR-07: shows all assigned roles instead of an arbitrary first role', async () => {
-    mockAuth.user = { permissions: ['dashboard.view'], roles: ['player', 'accountant'], fullName: 'QA Accountant' };
+    mockAuth.user = { permissions: ['platform.admin'], roles: ['player', 'accountant'], fullName: 'QA Accountant' };
     renderPage();
 
     await waitFor(() => expect(screen.getByText('player · accountant')).toBeTruthy());
@@ -89,7 +89,7 @@ describe('AdminDashboard — 403 data handling', () => {
 describe('AdminDashboard — quick actions follow route permissions', () => {
   beforeEach(() => {
     mockAuth.user = {
-      permissions: ['dashboard.view', 'users.view', 'roles.view', 'organisations.view', 'organisations.create', 'audit.view', 'sidebar.audit', 'subscription.view', 'sidebar.subscription', 'reports.view'],
+      permissions: ['platform.admin', 'users.view', 'roles.view', 'organisations.view', 'organisations.create', 'audit.view', 'sidebar.audit', 'subscription.view', 'sidebar.subscription', 'reports.view'],
       roles: [],
       fullName: 'Platform Admin',
     };
@@ -107,7 +107,7 @@ describe('AdminDashboard — quick actions follow route permissions', () => {
 
   it('omits quick actions the actor cannot open (no CSS hiding)', async () => {
     mockAuth.user = {
-      permissions: ['dashboard.view', 'reports.view', 'settlements.view', 'bookings.view', 'admin.bookings.view'],
+      permissions: ['platform.admin', 'reports.view', 'settlements.view', 'bookings.view', 'admin.bookings.view'],
       roles: ['accountant'],
       fullName: 'QA Accountant',
     };

@@ -9,13 +9,16 @@
  * Keep this list in sync with the /admin routes declared in App.tsx.
  */
 export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
-  '': 'dashboard.view',
+  // The landing page serves the backend `/admin/dashboard` aggregates, which are
+  // super-admin-only. Do not gate it with the broader UI `dashboard.view` key.
+  '': 'platform.admin',
   'organisations': 'organisations.view',
   'branch-access': 'organisations.view',
   'branches': 'organisations.view',
   'reports': 'reports.view',
   'roles': 'roles.view',
   'permissions': 'ui-permissions.view',
+  'ui-permissions': 'ui-permissions.view',
   'feature-flags': 'feature-flags.view',
   'cms': 'cms.view',
   'payment-methods': 'sidebar.payment-methods',
@@ -69,6 +72,9 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'marketplace/upgrade-requests': 'marketplace.admin.upgrades',
   'marketplace/reviews': 'marketplace.admin.reviews',
   'marketplace/shipping-rates': 'marketplace.admin.shipping-rates',
+  'marketplace/complaints': 'marketplace.complaints.view',
+  'refunds': 'refunds.view',
+  'refunds/:id': 'refunds.view',
   'brands': 'sidebar.brands',
   'tags': 'sidebar.tags',
   'approvals': 'marketplace.admin.approvals',
@@ -92,6 +98,7 @@ export const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
   'sports-engine': 'sidebar.sports-engine',
   'mobile/dashboard': 'mobile.dashboard.view',
   'bookings': 'admin.bookings.view',
+  'recurring': 'admin.bookings.view',
   'match-results': 'matches.result.manage',
   'matches': 'matches.admin.view',
 };
@@ -139,6 +146,9 @@ export function isAdminDeniedRoute(pathname: string): boolean {
  * so a link can never point at a surface the same actor would be denied.
  * `roles` is only consulted for the pre-existing restricted-finance-role
  * deny-list; all other decisions use permission keys via `can`.
+ *
+ * Unmapped paths are denied. A missing route mapping must never be treated as
+ * permission to enter an admin surface (fail closed).
  */
 export function canAccessAdminPath(
   pathname: string,
@@ -147,5 +157,5 @@ export function canAccessAdminPath(
 ): boolean {
   if (roles.includes('accountant') && isAdminDeniedRoute(pathname)) return false;
   const required = getAdminRoutePermission(pathname);
-  return required === null || can(required);
+  return required !== null && can(required);
 }

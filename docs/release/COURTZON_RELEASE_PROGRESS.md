@@ -5181,6 +5181,116 @@ Code commit: `ce768f64` (`fix(uat): resolve Nov 18 live review defects locally`)
 
 ---
 
+## 38. Post-deployment verification + frontend stabilisation + baseline governance review (2026-11-18)
+
+**Document role:** append-only investigation record. **No phase state, checklist row or percentage changes.**
+Phase 6 remains **5/10**, Phase 7 **10 %**, overall **56 %**, P6-06 **TODO**, P5-05 **OPEN/DEFERRED** under D-01.
+This section is **NOT** an authorisation to change baseline artifacts, database structures or deployment.
+
+### 38.1 Current state and preservation
+
+| Item | Observed value |
+|---|---|
+| Branch / HEAD / remote | `fix/courtzon-live-phase1` · `d506fb12b83649421da864f1402ad4cc5a2876e8` (both local and remote) |
+| Pre-existing uncommitted work | `M opencode.json`, `?? docs/release/W1_READONLY_DISCOVERY_REPORT_2026-11-14.md` — untouched, excluded from all work |
+| Live API | `https://api.courtzon.cloud/health` **HTTP 200** (db/redis/memory ok); `https://www.courtzon.cloud/health` returns SPA HTML, not JSON |
+| Live version | `/health/version` **HTTP 200** — `gitCommit=d506fb12…`, `gitCommitSource=image`, `gitCommitConsistent=true`, `buildTime=2026-11-18T03:26:15Z`, `expectedMigration=211_inventory_p1_permissions_grants`, `platformGitCommit=unknown` (ADR-006, UR-06) |
+| Docker | all six containers up; `courtzon-backend`, `courtzon-frontend`, `courtzon-mysql`, `courtzon-redis` healthy |
+
+### 38.2 Live read-only UAT result
+
+| ID | Result | Evidence |
+|---|---|---|
+| UR-01 | **PASS** | `/admin/dashboard` XHR 403 → visible `Access denied` / `You don't have permission to view dashboard data.` after removing a stale service worker + 3 caches; both stale bundle `AdminDashboard-IRoQRbeW.js` and fresh `AdminDashboard-Bc-_yhtO.js` + `AdminDataErrorState-BChySxSk.js` checked |
+| UR-02 | **PASS** | `/admin/withdrawals?page=1&limit=20`, `?page=2&limit=5`, `?page=999&limit=7` → **200** with JSON `{data:[],total:0,page,limit}`; withdrawal queue page renders `No withdrawal requests.` |
+| UR-04 | **PASS** | `/admin/bookings` XHR 403 → visible `Access denied` / `…booking data.`; `/marketplace/admin/orders` XHR 403 → visible `Access denied` / `…marketplace order data.` |
+| UR-03 | **BLOCKED** | Dashboard quick actions / Action Center not observable: the only account (`qa.acc@courtzon.test`, roles `player`+`accountant`, 199 permissions, `platform.admin=false`) is denied `/admin/dashboard` |
+| UR-07 | **BLOCKED** | Deployed bundle contains the all-role rendering (`E.join(' · ')`), but the badge cannot be observed on a denied dashboard; no second account/OTP available |
+
+No Live write, payment, gateway call, migration, seed, deployment or manual SQL was performed.
+
+### 38.3 Frontend test stabilisation (test-only)
+
+Five reported files were re-investigated. Only four were changed; `TournamentCreatePage.spec.tsx`
+passed 46/46 in isolation, in the 5-file group and in two full runs — its 10 timeouts were worker/resource
+pressure, and an attempted `findByText`→`getByText` rewrite broke 26 tests and was fully reverted.
+
+| File | Root cause | Minimal fix |
+|---|---|---|
+| `EligibilityFormGenderAge.phase4.test.tsx` | live React Query `useQuery('/player-levels')` could settle after unmount under load | mock `useQuery` to return `{data:[]}` synchronously; drop wrapper |
+| `OrgAccountingRecordsPage.test.tsx` | two `findByText('Accounting Records')` polled a heading rendered synchronously | `getByText` at those two assertions |
+| `OrgAccountingPeriodsPage.test.tsx` | module-level `QueryClient` shared state; `confirm` stub could leak | fresh `QueryClient` per render; `afterEach(vi.unstubAllGlobals)` |
+| `AdminInventoryRedirect.spec.tsx` | fixed 1500/800/500 ms sleeps instead of condition waits | `findByText` / `findAllByRole` / `waitFor` / `act` flush |
+
+Verification (independently re-executed by the coordinator): 5 files together **84/84 PASS**;
+full suite **172 files / 1649 tests PASS** (127.02 s); `tsc -b --force` clean (agent run).
+No timeout was increased, no test skipped, no assertion weakened, no product source changed.
+
+### 38.4 Backend baseline divergence — evidence
+
+| Question | Evidence-backed answer |
+|---|---|
+| Source of 210 | `database/baseline/baseline-requirements.json:5` (`schemaHead`), `:8` (`schemaHeadEvidence.head`); committed `database/baseline/001_courtzon_v3.manifest.json:12`, `:13-21`, `:73897-73898`, `:75573-75574` |
+| Source of 211 | `database/migrations/211_inventory_p1_permissions_grants.sql` (highest prefix, `PRODUCTION_SAFE`, DML-only); static validator `computedHead`; Docker-baked `expected-migration.txt`; Live `/health/version` `expectedMigration` |
+| Why | Commit `591df819` changed **only** the 754-line migration file (`1 file changed`). Comparable migration commits (`f0795aca`, `427efa0b`, `7d2a7a56`) updated both baseline artifacts. This is an omission, not a deliberate earlier-baseline marker. |
+| Implementation | §34.2: 8 permission inserts + 47 grants, fail-closed preconditions, local Docker execution verified, image SHA-256 verified |
+| Applied on Live | **NOT OBSERVABLE** read-only. Documentary record §36 names deployment `b894197e` with migration 211; Live reports the baked *expected* migration. No `migration_history` row was inspected. |
+| Code expectation | `baseline-manifest.ts:675-686` requires `schemaHead === max(migration prefix)`; `static-validation.ts:646-655`; `Dockerfile:63`; all expect 211 |
+| Dependent checks | `baseline-manifest.spec.ts` (42 skipped, driver throws), `static-validation.spec.ts` (1 failure, 8 drift findings), `bootstrap-preflight.spec.ts` (17 cascading failures, `fatal.stage='static'`); **not** `scripts/ci-validate.js` (only checks file existence) |
+| Read-only gate | `npx tsx backend/scripts/baseline-manifest.ts --check` → `requirement 'schemaHead' failed: highest migration prefix is 211, requirements pin 210`, exit 2 |
+| Targeted reproduction | 3 spec files → **18 failed / 26 passed / 42 skipped**; full backend suite **5826 passed / 18 failed / 42 skipped** |
+| Other failures | 4 former timeouts (rate-limit, academy G1/G3, checksum/guard) no longer reproduce; classified as load flakes, no timeout changes made |
+
+**Conclusion:** the divergence is an **erroneous stale artifact**, not an intentional earlier baseline and not evidence of a
+Live schema inconsistency. Updating it cannot hide a schema defect because the generator independently parses 211 and
+rejects DDL in a content-only/PRODUCTION_SAFE head.
+
+### 38.5 Baseline change proposal — NOT IMPLEMENTED, owner approval required
+
+**Recommended: Option A (minimal).** No change may be applied without explicit owner approval.
+
+1. `database/baseline/baseline-requirements.json`
+   - line 5: `"schemaHead": "210"` → `"211"`
+   - line 8: `"schemaHeadEvidence": { "head": "210" }` → `"head": "211"`
+   - `contentOnly` is left unchanged: adding `"211"` is optional and would enlarge the diff; the validator does not require the head to be listed there.
+2. `database/baseline/001_courtzon_v3.manifest.json` — regenerate only with
+   `npx tsx backend/scripts/baseline-manifest.ts --write` (pure file-based, no DB connection). Expected derived changes:
+   `schema.schemaHead 210→211`, `requirements.schemaHead 210→211`, `requirements.sha256` recomputed,
+   `migrations.count 217→218`, `distinctPrefixes 208→209`, `migrations.sha256` recomputed, new file entry for 211.
+3. Test pins (expectation updates, not weakened checks):
+   - `backend/src/infrastructure/migrations/__tests__/baseline-manifest.spec.ts` lines 237, 511, 512, 550, 588, 624, 681, 708, 732-734, 977-978 (and the head test title/semantics: 211 is DML, not statement-free)
+   - `backend/src/infrastructure/migrations/__tests__/migration-baseline-integrity.spec.ts` lines 138, 286-287
+   - `backend/src/infrastructure/migrations/__tests__/static-validation.spec.ts` line 169
+
+Alternatives: **B** (change manifest/reporting) is wrong — the manifest agrees with the migration chain;
+**C** (preserve both) contradicts an explicit fail-closed invariant in the validator;
+**D** (do nothing) keeps 18 backend failures and a red preflight permanently.
+Risks of A: baseline files and test pins change, so they must be reviewed and the generator must remain the only writer.
+No migration, seed, `migration_history`, schema, Docker or Live operation is part of this proposal.
+
+### 38.6 CI classification (after comment correction)
+
+`node scripts/ci-validate.js` → **216 errors / 1 warning / BUILD BLOCKED**. Breakdown:
+**185** `SQL outside repository` + **29** `Presentation layer DB access` (genuine pre-existing layering debt)
+and **2** `Backend guard key "a"/"b"` (pre-existing false positives from the comment at
+`backend/src/modules/accounting/presentation/accounting.routes.ts:100`). Warning `AppLayout may need cz-pb-safe on main`
+is pre-existing (`frontend/src/App.tsx` unchanged). Parent `c79aec19` already had 216/1.
+The single release-attributable error (a new comment containing the literal `pool.query(` in
+`withdrawal.service.ts:148`) was corrected by rewording it to `text-protocol query API`; the count returned
+217 → 216 with no rule change. No new genuine violation remains.
+
+### 38.7 Modified files in this investigation (all uncommitted)
+
+`backend/src/modules/wallet/application/withdrawal.service.ts` (comment only),
+`frontend/src/components/tournaments/EligibilityFormGenderAge.phase4.test.tsx`,
+`frontend/src/pages/org/OrgAccountingRecordsPage.test.tsx`,
+`frontend/src/pages/org/OrgAccountingPeriodsPage.test.tsx`,
+`frontend/src/pages/admin/inventory/__tests__/AdminInventoryRedirect.spec.tsx`,
+`docs/release/COURTZON_RELEASE_PROGRESS.md` (this section).
+No baseline artifact, migration, seed, CI rule, Docker image, Git commit/push or Live state was changed.
+
+---
+
 ## 39. Approved parser extension + baseline Option A completed (2026-11-18)
 
 **Document role:** append-only evidence record. **No phase status, checklist row or percentage
@@ -5245,4 +5355,60 @@ Read-only file operations and local unit tests only. No DB connection/query/writ
 execution against a database, no migration or seed, no schema or `migration_history` change,
 no Live operation, no Docker build/restart, no CI rule change, no commit/push/deploy.
 All pre-existing modifications were preserved; no unrelated file was changed.
+
+---
+
+### 40. UR-03 / UR-07 — Option A+ local authorization hardening (uncommitted)
+
+**Status: IMPLEMENTED + LOCALLY VALIDATED; OWNER AUTHORIZED COMMIT/PUSH/LOCAL DOCKER (2026-11-18).**
+
+Scope (owner-approved Option A+): dashboard access alignment, fail-open route mapping
+closure, `ActionCenter`/`QuickActions` hardening, unified active-role resolution.
+
+**Changes**
+
+| Area | Result |
+|---|---|
+| `/admin` landing + `PLATFORM_ADMIN_PERMISSIONS` | `dashboard.view` → `platform.admin` |
+| `ADMIN_ROUTE_PERMISSIONS` | +5 real routes mapped; unmapped paths now deny (`required !== null && can(required)`) |
+| Nav / Search | Dashboard nav requires `sidebar.dashboard` **and** `platform.admin` |
+| `ActionCenter` / `QuickActions` | `canAccess` + `can` mandatory; actions omitted unless both pass; debug `[deployed]` alert removed; keyboard activation added |
+| Active-role predicate | `ur.is_active`, `ur.expires_at` unexpired, `r.is_active`, `r.deleted_at IS NULL` unified across auth, RBAC repo, route guard, realtime |
+| Backend dashboard endpoints | UNCHANGED — `requireRole(['super_admin','super-admin'])` retained |
+| DB / seeds / grants / permissions / cross-tenant scope | NO CHANGE — no new key, no sync, no migration |
+
+Route-map audit: every `/admin/*` route declared in `App.tsx` resolves via longest-prefix
+match; fail-closed therefore does not lock out super_admin on real routes.
+
+**Verification (executed evidence)**
+
+| Command | Result |
+|---|---|
+| Affected frontend suite (7 files) | **PASS** — 164 tests |
+| Affected backend regression (active-role SQL) | **PASS** — 1 test |
+| `npm test` (frontend full) | **PASS** — 174 files / 1665 tests |
+| `npm test` (backend full) | **PASS** — 408 files / 5902 tests, exit 0 |
+| `npm run build` (frontend, includes `tsc -b`) | **PASS** after fixing new test fixture type |
+| `npm run build` (backend, includes `tsc`) | **PASS** |
+| `node scripts/ci-validate.js` | **RE-RUN (2026-11-18): 216 errors / 1 warning, BUILD BLOCKED** — the documented pre-existing baseline (§38.6/§5273: 185 SQL-outside-repository + 29 presentation-layer DB access + 2 guard-key `a`/`b` false positives from the comment at `accounting.routes.ts:100`). Zero violations are in any Option A+ changed file. The earlier "PASS" cell in this table was inaccurate and is corrected here; this is a carry-over condition, not a regression. |
+| `npm run test:int` (environment) | **RESOLVED** — root cause: `bash` on PATH was the WSL stub, and `scripts/seed.sh` invokes plain `mysql` (not `MYSQL_BIN`). Environment-only fix: temporarily prepend `C:\Program Files\Git\bin`, `C:\Program Files\Git\usr\bin`, `C:\xampp\mysql\bin` to PATH and set `MYSQL_BIN` for the test process. No source/test/data change. |
+| `npm run test:int` (4 relevant specs, first run) | **RAN** — 4 files, 41 tests: **14 passed / 12 failed / 15 skipped**. Root cause was a pre-existing committed-fixture defect: `database/seeds/001_baseline.sql:154` gives country `id=1` (Egypt) phone code `+20`, while integration specs hardcode `countryCode: '+971'` at login — 11 `InvalidCredentialsError`, 5 cascading expected-200/got-401, 2 rate-limit expected-200/got-429. Both files were unchanged at HEAD; login code is untouched by this work. |
+| Integration fixture corrections (test files only) | Four specs had `+971 → +20` aligned to the seeded country. `session-expiry.integration.spec.ts` also normalises mysql2 `Date` results to ISO strings and waits 1.1s before the strictly-later refresh assertion. `authorization-idor.integration.spec.ts` also assigns the seeded `org-admin` role/scope to fixture org owners, isolates each simulated login behind a deterministic `remoteAddress`, and reuses the wallet created by registration instead of inserting a duplicate. No assertion was removed/weakened; no production logic, seed, migration, DB, rate-limit setting, or authentication behaviour changed. |
+| `npm run test:int` (4 relevant specs, final rerun) | **PASS** — 4 files / **41 passed / 0 failed / 0 skipped**, exit 0 (`int-subset-final2.log`). No failure is related to Option A+; the authoritative active-role predicate was exercised only indirectly and produced no regression. |
+| Full-suite timeout classification (2026-11-18) | Runs executed concurrently with other heavy jobs produced 1 frontend and 5 backend failures, **all timeouts (not assertion failures)**. Solo frontend rerun: **174 files / 1665 tests PASS**, exit 0. The 3 backend timeout files rerun in isolation: **43/43 PASS**, exit 0. No assertion was weakened and no timeout value was increased. |
+| `node scripts/ci-validate.js` changed-file audit | **216 errors / 1 warning** (pre-existing baseline, zero in changed files). Cross-check of all 216 ERROR lines against the 24 staged paths returned **0 matches**. |
+| `npm run test:int` (2 additional org specs, first run) | **RAN** — 2 files / 13 tests: 11 passed / 2 failed (`int-rbac-new3.log`). `organisation-access-model` 9/9 PASS. Both `org-portal` failures were pre-existing and unrelated to Option A+: (a) lines 59/86 used `countryCode: '+971'` while registration uses `countryId: 1` (Egypt, `+20`); (b) line 139 expected `≥400` for an unknown webhook reference while `payment.controller.ts:223-226` deliberately returns 200 with `{received:true, note:'transaction not found'}` for idempotency. |
+| `org-portal` corrections | **OWNER-APPROVED (2026-11-18)** — test file only: `+971` → `+20` at lines 59/86; unknown-ref assertion replaced with `expect(res.statusCode).toBe(200)` + `expect(res.json()).toMatchObject({received:true, note:'transaction not found'})`. `res.json()` is the Fastify-inject JSON accessor; `res.body` is a raw JSON string. Production webhook code, DB, seeds, migrations and CI rules untouched. |
+| `npm run test:int` (org-portal rerun after corrections) | **PASS** — 4/4 tests, exit 0 (`int-org-portal-approved2.log`). |
+| `npm run test:int` (all 6 relevant specs, final run) | **PASS** — 6 files / **54 passed / 0 failed / 0 skipped**, exit 0 (`int-all6-final.log`): 41 (four corrected specs) + 4 (org-portal) + 9 (organisation-access-model). Every failure was inspected individually; none remains. |
+
+**Live status (unchanged):** UR-03 `BLOCKED` (no approved multi-role super_admin Live identity);
+UR-07 `BLOCKED` (no approved partial-permission dashboard-capable Live actor). Local tests are
+not treated as Live PASS evidence. The remaining ~159 integration spec files were **NOT EXECUTED**
+in this task (full suite is serial and multi-hour).
+
+**Delivery (owner-authorized 2026-11-18):** owner approved both `org-portal` corrections, final
+diff review, staging of approved files only, commit + push to `origin/fix/courtzon-live-phase1`,
+local Docker rebuild/recreate and `/health` verification. Unrelated pre-existing changes stay
+unstaged. Live/Hostinger untouched; no DB, seed, migration, production-webhook or CI-rule change.
 

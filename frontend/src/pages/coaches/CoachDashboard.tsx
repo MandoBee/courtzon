@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
+import { useCan } from '../../hooks/useCan';
 import { formatDateTimeLocal } from '../../utils/formatDate';
 import { SkeletonRow } from '../../components/ui';
 import { WorkspaceHero, StatCard, SectionHeader, EmptyStateCard, SummaryCard } from '../../components/workspace';
@@ -9,6 +10,10 @@ import { ActionCenter, QuickActions } from '../../components/dashboard/ActionCen
 
 export default function CoachDashboard() {
   const user = useAuthStore((s) => s.user);
+  const { can } = useCan();
+  // Coach destinations are inside the authenticated coach workspace; the
+  // action-level permission keys below provide the fine-grained gate.
+  const canAccess = (path: string) => path.startsWith('/coach/');
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['coach-stats'],
@@ -47,15 +52,15 @@ export default function CoachDashboard() {
       )}
 
       {/* Action Center */}
-      <ActionCenter title="Pending" actions={[
-        { label: 'Today\'s Sessions', path: '/coach/sessions', icon: '📋', count: stats?.todaySessions },
-        { label: 'Upcoming', path: '/coach/sessions', icon: '📅', count: upcoming.length },
+      <ActionCenter canAccess={canAccess} can={can} title="Pending" actions={[
+        { label: 'Today\'s Sessions', path: '/coach/sessions', icon: '📋', count: stats?.todaySessions, permission: 'coaches.sessions.view' },
+        { label: 'Upcoming', path: '/coach/sessions', icon: '📅', count: upcoming.length, permission: 'coaches.sessions.view' },
       ]} />
 
-      <QuickActions actions={[
-        { label: 'Set Availability', icon: '🕐', path: '/coach/availability' },
-        { label: 'My Profile', icon: '👤', path: '/coach/profile' },
-        { label: 'Players', icon: '👥', path: '/coach/players' },
+      <QuickActions canAccess={canAccess} can={can} actions={[
+        { label: 'Set Availability', icon: '🕐', path: '/coach/availability', permission: 'coaches.availability.manage' },
+        { label: 'My Profile', icon: '👤', path: '/coach/profile', permission: 'coaches.profile' },
+        { label: 'Players', icon: '👥', path: '/coach/players', permission: 'coaches.view' },
       ]} />
 
       <section>
@@ -73,10 +78,10 @@ export default function CoachDashboard() {
         ))}
       </section>
 
-      <QuickActions actions={[
-        { label: 'My Sessions', icon: '📋', path: '/coach/sessions' },
-        { label: 'Set Availability', icon: '🕐', path: '/coach/availability' },
-        { label: 'My Profile', icon: '👤', path: '/coach/profile' },
+      <QuickActions canAccess={canAccess} can={can} actions={[
+        { label: 'My Sessions', icon: '📋', path: '/coach/sessions', permission: 'coaches.sessions.view' },
+        { label: 'Set Availability', icon: '🕐', path: '/coach/availability', permission: 'coaches.availability.manage' },
+        { label: 'My Profile', icon: '👤', path: '/coach/profile', permission: 'coaches.profile' },
       ]} />
 
       <SummaryCard icon="💰" title="Earnings" description="Summary coming soon" accentColor="var(--color-warning)" />

@@ -97,7 +97,7 @@ describe('Auth Integration', () => {
     const result: AuthResponse = await authService.login(
       {
         phoneNumber: '05000000001',
-        countryCode: '+971',
+        countryCode: '+20',
         password: 'test123456',
       },
       { ip: '127.0.0.1', deviceFingerprint: 'test-fingerprint-1' }
@@ -113,7 +113,7 @@ describe('Auth Integration', () => {
     await expect(
       authService.login(
         { phoneNumber: '05000000001',
-        countryCode: '+971', password: 'wrongpassword' },
+        countryCode: '+20', password: 'wrongpassword' },
         { ip: '127.0.0.1' }
       )
     ).rejects.toThrow(/Invalid/i);
@@ -122,7 +122,7 @@ describe('Auth Integration', () => {
   it('should reject login with non-existent phone', async () => {
     await expect(
       authService.login(
-        { phoneNumber: '05999999999', countryCode: '+971', password: 'test123456' },
+        { phoneNumber: '05999999999', countryCode: '+20', password: 'test123456' },
         { ip: '127.0.0.1' }
       )
     ).rejects.toThrow(/Invalid/i);
@@ -131,7 +131,7 @@ describe('Auth Integration', () => {
   it('should get user profile', async () => {
     const result: AuthResponse = await authService.login(
       { phoneNumber: '05000000001',
-        countryCode: '+971', password: 'test123456' },
+        countryCode: '+20', password: 'test123456' },
       { ip: '127.0.0.1' }
     );
 
@@ -170,7 +170,7 @@ describe('Auth Integration', () => {
   it('should update user profile', async () => {
     const result: AuthResponse = await authService.login(
       { phoneNumber: '05000000001',
-        countryCode: '+971', password: 'test123456' },
+        countryCode: '+20', password: 'test123456' },
       { ip: '127.0.0.1' }
     );
 
@@ -186,7 +186,7 @@ describe('Auth Integration', () => {
   it('should save and load multiple emergency contacts', async () => {
     const result: AuthResponse = await authService.login(
       { phoneNumber: '05000000001',
-        countryCode: '+971', password: 'test123456' },
+        countryCode: '+20', password: 'test123456' },
       { ip: '127.0.0.1' }
     );
 
@@ -209,7 +209,7 @@ describe('Auth Integration', () => {
   it('should keep legacy emergency contact columns in sync', async () => {
     const result: AuthResponse = await authService.login(
       { phoneNumber: '05000000001',
-        countryCode: '+971', password: 'test123456' },
+        countryCode: '+20', password: 'test123456' },
       { ip: '127.0.0.1' }
     );
 

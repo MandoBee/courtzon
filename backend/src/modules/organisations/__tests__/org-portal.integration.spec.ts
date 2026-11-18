@@ -56,7 +56,7 @@ describe('Org portal IDOR', () => {
       url: '/auth/login',
       payload: {
         phoneNumber: '05000000001',
-        countryCode: '+971',
+        countryCode: '+20',
         password: 'test123456',
       },
     });
@@ -83,7 +83,7 @@ describe('Org portal IDOR', () => {
       url: '/auth/login',
       payload: {
         phoneNumber: '05000000001',
-        countryCode: '+971',
+        countryCode: '+20',
         password: 'test123456',
       },
     });
@@ -136,6 +136,10 @@ describe('Payment webhook', () => {
         order: { id: 'nonexistent_ref_xyz' },
       },
     });
-    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      received: true,
+      note: 'transaction not found'
+    });
   });
 });

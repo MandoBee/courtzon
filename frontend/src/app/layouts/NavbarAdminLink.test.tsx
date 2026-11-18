@@ -83,13 +83,20 @@ describe('Navbar admin link mirrors the /admin permission guard', () => {
     useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false } as never);
   });
 
-  it('shows the Admin link for a user granted dashboard.view (no admin role string)', async () => {
-    setUser(['dashboard.view'], ['auditor']);
+  it('shows the Admin link for a user granted platform.admin (no admin role string)', async () => {
+    setUser(['platform.admin'], ['auditor']);
     await renderAppAt('/notifications');
     await waitFor(() => expect(adminLink()).not.toBeNull());
   });
 
-  it('shows the Admin link for the platform.admin fallback key', async () => {
+  it('hides the Admin link for a user granted only the broader dashboard.view key', async () => {
+    setUser(['dashboard.view'], ['auditor']);
+    await renderAppAt('/notifications');
+    await waitFor(() => expect(screen.queryAllByRole('link').length).toBeGreaterThan(0));
+    expect(adminLink()).toBeNull();
+  });
+
+  it('shows the Admin link for the canonical platform.admin key', async () => {
     setUser(['platform.admin'], ['super_admin']);
     await renderAppAt('/notifications');
     await waitFor(() => expect(adminLink()).not.toBeNull());
@@ -114,7 +121,7 @@ describe('Navbar admin link mirrors the /admin permission guard', () => {
     await renderAppAt('/notifications');
     expect(adminLink()).toBeNull();
 
-    setUser(['dashboard.view'], ['auditor']);
+    setUser(['platform.admin'], ['auditor']);
     await waitFor(() => expect(adminLink()).not.toBeNull());
     // /notifications is exempt from the /app → /admin bounce: no navigation occurs.
     expect(window.location.pathname).toBe('/notifications');
