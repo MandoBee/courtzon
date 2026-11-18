@@ -3,10 +3,13 @@ import { Link } from 'react-router-dom';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
+import { useCan } from '../../hooks/useCan';
+import { canAccessAdminPath } from '../../permissions/adminRoutePermissions';
 import { useTranslation } from '../../i18n';
 import { formatPrice } from '../../utils/currency';
 import { Sparkline } from '../../components/ui';
 import { ActionCenter } from '../../components/dashboard/ActionCenter';
+import { AdminDataErrorState } from '../../components/ui/AdminDataErrorState';
 import type { ApiData } from '../../types/api';
 import type { DashboardStats, DashboardTrends } from '../../types/admin/dashboard';
 import { getChartColor, CHART_STROKE_PRIMARY } from '../../theme/chart-colors';
@@ -18,16 +21,33 @@ function Skeleton({ h = 'h-24' }: { h?: string }) {
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
+  const roles = useAuthStore((s) => s.user?.roles ?? []);
+  const { can } = useCan();
+  // Same predicate as the /admin route guard — a shortcut must never lead
+  // somewhere this actor would get "Access denied" (UAT UR-03).
+  const canAccess = (path: string) => canAccessAdminPath(path, can, roles ?? []);
 
-  const { data: stats, isLoading: loading } = useQuery({
+  const { data: stats, isLoading: loading, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['admin', 'dashboard'],
     queryFn: () => api.get<ApiData<DashboardStats>>('/admin/dashboard').then((r) => r.data?.data ?? {}),
   });
 
-  const { data: trends, isLoading: loadingTrends } = useQuery({
+  const { data: trends, isLoading: loadingTrends, error: trendsError, refetch: refetchTrends } = useQuery({
     queryKey: ['admin', 'dashboard-trends'],
     queryFn: () => api.get<ApiData<DashboardTrends>>('/admin/dashboard/trends').then((r) => r.data?.data ?? {}),
   });
+
+  // UR-01/UR-04: a 403 is an authorisation failure, not an empty dashboard.
+  const dataError = statsError || trendsError;
+  if (dataError) {
+    return (
+      <AdminDataErrorState
+        error={dataError}
+        resource="dashboard data"
+        onRetry={() => { void refetchStats(); void refetchTrends(); }}
+      />
+    );
+  }
 
   if (loading || loadingTrends) {
     return (
@@ -64,6 +84,18 @@ export default function AdminDashboard() {
   const health = trends?.systemHealth ?? {};
   const activity = trends?.recentActivity || {};
 
+  const quickActions: { label: string; to: string; icon: string; permission?: string }[] = [
+    { label: t('admin.dashboard.create_org'), to: '/admin/organisations/new', icon: '➕', permission: 'organisations.create' },
+    { label: t('admin.dashboard.manage_roles'), to: '/admin/roles', icon: '🔐' },
+    { label: t('admin.dashboard.subscriptions'), to: '/admin/subscription', icon: '💳' },
+    { label: t('admin.dashboard.view_reports'), to: '/admin/reports', icon: '📈' },
+    { label: t('admin.dashboard.manage_users'), to: '/admin/users', icon: '👥' },
+    { label: t('admin.dashboard.audit_log'), to: '/admin/audit-logs', icon: '📋' },
+  ];
+  const visibleQuickActions = quickActions.filter(
+    (item) => canAccess(item.to) && (!item.permission || can(item.permission)),
+  );
+
   const sparklineMap: Record<string, { value: number }[]> = {
     [t('admin.dashboard.revenue')]: revData.map((d) => ({ value: d.amount })),
     [t('admin.dashboard.total_bookings')]: bookData.map((d) => ({ value: d.count })),
@@ -77,8 +109,13 @@ export default function AdminDashboard() {
           <h1 className="text-2xl font-bold text-[var(--color-text)]">{t('admin.dashboard.title')}</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{t('admin.dashboard.welcome', { name: user?.fullName || user?.email || '' })}</p>
         </div>
-        <span className="px-3 py-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-medium rounded-full">
-          {user?.roles?.[0] || t('admin.dashboard.admin')}
+        {/* UR-07: show every assigned role. `roles[0]` is arbitrary on a
+            multi-role account and made an admin session look like "player". */}
+        <span
+          className="max-w-full truncate px-3 py-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-medium rounded-full"
+          title={roles.length ? roles.join(' · ') : undefined}
+        >
+          {roles.length ? roles.join(' · ') : t('admin.dashboard.admin')}
         </span>
       </div>
 
@@ -107,7 +144,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Action Center */}
-      <ActionCenter title="Action Center" actions={[
+      <ActionCenter canAccess={canAccess} title="Action Center" actions={[
         { label: 'Pending Organisations', icon: '🏢', path: '/admin/organisations', count: stats?.pendingOrganisations ?? 0, color: 'bg-yellow-100 text-yellow-700' },
         { label: 'Today\'s Bookings', icon: '📅', path: '/admin/bookings', count: stats?.todayBookings ?? 0 },
         { label: 'Active Users Today', icon: '👥', path: '/admin/users', count: stats?.activeUsersToday ?? 0 },
@@ -228,14 +265,7 @@ export default function AdminDashboard() {
           <div className="bg-[var(--color-surface)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 border">
             <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">{t('admin.dashboard.quick_actions')}</h3>
             <div className="space-y-1">
-              {[
-                { label: t('admin.dashboard.create_org'), to: '/admin/organisations/new', icon: '➕' },
-                { label: t('admin.dashboard.manage_roles'), to: '/admin/roles', icon: '🔐' },
-                { label: t('admin.dashboard.subscriptions'), to: '/admin/subscription', icon: '💳' },
-                { label: t('admin.dashboard.view_reports'), to: '/admin/reports', icon: '📈' },
-                { label: t('admin.dashboard.manage_users'), to: '/admin/users', icon: '👥' },
-                { label: t('admin.dashboard.audit_log'), to: '/admin/audit-logs', icon: '📋' },
-              ].map((item) => (
+              {visibleQuickActions.map((item) => (
                 <Link key={item.to} to={item.to}
                   className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-xs text-[var(--color-text)] hover:bg-[var(--color-border)] hover:bg-[var(--color-bg)] transition-colors">
                   <span>{item.icon}</span> {item.label}

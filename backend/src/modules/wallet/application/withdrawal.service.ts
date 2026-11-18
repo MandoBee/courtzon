@@ -145,8 +145,13 @@ export const withdrawalService = {
 
   async list(filters: { status?: string; search?: string; page?: number; limit?: number; assignedTo?: number; unassigned?: boolean; overdue?: boolean; dueToday?: boolean }) {
     const pool = getPool();
-    const page = filters.page || 1;
-    const limit = filters.limit || 20;
+    // UAT UR-02 / W1-F-009: this query runs through pool.query() (text protocol),
+    // so LIMIT/OFFSET placeholders MUST be numbers. Passing strings produced
+    // `LIMIT '20' OFFSET '0'` and MySQL rejected it with ER_PARSE_ERROR (1064),
+    // making the whole admin list endpoint return 500. Bound the values as a
+    // second layer of defence (they are used as numeric literals, not identifiers).
+    const page = Math.max(1, Math.floor(Number(filters.page) || 1));
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(filters.limit) || 20)));
     const offset = (page - 1) * limit;
     let where = 'WHERE 1=1';
     const params: any[] = [];
@@ -156,18 +161,21 @@ export const withdrawalService = {
     if (filters.overdue) { where += ' AND wr.sla_due_at < NOW() AND wr.status NOT IN (\'completed\',\'rejected\',\'cancelled\')'; }
     if (filters.dueToday) { where += ' AND DATE(wr.sla_due_at) = CURDATE() AND wr.status NOT IN (\'completed\',\'rejected\',\'cancelled\')'; }
     if (filters.search) { where += ' AND (u.full_name LIKE ? OR u.email LIKE ? OR u.phone_number LIKE ?)'; params.push('%'+filters.search+'%', '%'+filters.search+'%', '%'+filters.search+'%'); }
-    const [count] = await pool.execute<RowData>(`SELECT COUNT(*) as total FROM withdrawal_requests wr JOIN users u ON u.id = wr.user_id ${where}`, params) as any;
+    // Count must use the same joins as the data query, otherwise rows filtered
+    // out by the wallet/assignee joins inflate the reported total.
+    const from = `FROM withdrawal_requests wr
+       JOIN users u ON u.id = wr.user_id
+       JOIN user_wallets uw ON uw.user_id = wr.user_id
+       LEFT JOIN users assigned ON assigned.id = wr.assigned_to`;
+    const [count] = await pool.execute<RowData>(`SELECT COUNT(*) as total ${from} ${where}`, params) as any;
     const [rows] = await pool.query<RowData>(
       `SELECT wr.*, u.full_name, u.email, u.phone_number, uw.balance AS wallet_balance, uw.reserved_balance,
               assigned.full_name AS assigned_name
-       FROM withdrawal_requests wr
-       JOIN users u ON u.id = wr.user_id
-       JOIN user_wallets uw ON uw.user_id = wr.user_id
-       LEFT JOIN users assigned ON assigned.id = wr.assigned_to
+       ${from}
        ${where}
        ORDER BY FIELD(wr.status, 'pending','under_review','approved','processing') ASC, wr.created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, String(limit), String(offset)],
+      [...params, limit, offset],
     ) as any;
     return { data: rows, total: Number(count[0].total), page, limit };
   },

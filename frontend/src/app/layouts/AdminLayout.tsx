@@ -6,7 +6,7 @@ import { ErrorBoundary } from '../../components/ErrorBoundary';
 import OfflineBanner from '../../components/pwa/OfflineBanner';
 import { useCan } from '../../hooks/useCan';
 import { useAuthStore } from '../../store/auth.store';
-import { getAdminRoutePermission, isAdminDeniedRoute } from '../../permissions/adminRoutePermissions';
+import { canAccessAdminPath } from '../../permissions/adminRoutePermissions';
 
 export default function AdminLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -19,10 +19,7 @@ export default function AdminLayout() {
     setDrawerOpen(false);
   }
 
-  const isRestrictedFinanceRole = roles.includes('accountant');
-  const denied = isRestrictedFinanceRole && isAdminDeniedRoute(location.pathname);
-  const required = getAdminRoutePermission(location.pathname);
-  const forbidden = denied || (required !== null && !can(required));
+  const forbidden = !canAccessAdminPath(location.pathname, can, roles ?? []);
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg)] contain-paint">

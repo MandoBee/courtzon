@@ -131,3 +131,21 @@ export function isAdminDeniedRoute(pathname: string): boolean {
   const rest = pathname.replace(/^\/admin/, '').replace(/^\//, '');
   return ADMIN_DENY_PREFIXES.some((prefix) => rest === prefix || rest.startsWith(`${prefix}/`));
 }
+
+/**
+ * Single source of truth for "may this actor open this /admin path?".
+ *
+ * Used by the route guard (AdminLayout) AND by navigation/quick-action links,
+ * so a link can never point at a surface the same actor would be denied.
+ * `roles` is only consulted for the pre-existing restricted-finance-role
+ * deny-list; all other decisions use permission keys via `can`.
+ */
+export function canAccessAdminPath(
+  pathname: string,
+  can: (permission: string) => boolean,
+  roles: string[] = [],
+): boolean {
+  if (roles.includes('accountant') && isAdminDeniedRoute(pathname)) return false;
+  const required = getAdminRoutePermission(pathname);
+  return required === null || can(required);
+}

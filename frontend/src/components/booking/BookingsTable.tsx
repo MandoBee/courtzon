@@ -8,6 +8,7 @@ import { useToast } from '../ui/Toast';
 import { formatPrice } from '../../utils/currency';
 import { formatISODate } from '../../utils/formatDate';
 import { Card, Badge } from '../ui';
+import { AdminDataErrorState } from '../ui/AdminDataErrorState';
 import { useTranslation } from '../../i18n';
 import type { ApiData, PaginatedResult } from '../../types/api';
 import type { BranchSummary, OrganisationSummary, ResourceSummary } from '../../types/admin/common';
@@ -110,7 +111,7 @@ export default function BookingsTable({ context }: BookingsTableProps) {
   if (filterBookingType) queryParams.bookingType = filterBookingType;
   if (debouncedSearch) queryParams.q = debouncedSearch;
 
-  const { data: response, isLoading, isFetching } = useQuery({
+  const { data: response, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: isAdmin ? ['admin', 'bookings', JSON.stringify(queryParams)] : ['org-bookings', orgId, JSON.stringify(queryParams)],
     queryFn: isAdmin
       ? () =>
@@ -173,6 +174,17 @@ export default function BookingsTable({ context }: BookingsTableProps) {
   const statusPermKey = isAdmin ? 'admin.bookings.update-status' : 'org.bookings.update-status';
 
   if (!isAdmin && !orgId) return <div className="text-[var(--color-text-muted)]">Invalid organisation</div>;
+
+  // UR-01/UR-04: never present a 403 as "No bookings found" plus zero KPIs.
+  if (error) {
+    return (
+      <AdminDataErrorState
+        error={error}
+        resource={isAdmin ? 'booking data' : 'organisation bookings'}
+        onRetry={() => { void refetch(); }}
+      />
+    );
+  }
 
   const summaryCards = [
     { label: 'Total', value: total, variant: 'default' as const },

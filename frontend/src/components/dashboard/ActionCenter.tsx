@@ -15,13 +15,25 @@ interface QuickActionItem {
   path: string;
 }
 
-export function ActionCenter({ actions, title = 'Action Center' }: { actions: ActionItem[]; title?: string }) {
+interface ActionCenterProps {
+  actions: ActionItem[];
+  title?: string;
+  /**
+   * Optional access predicate. When supplied, actions pointing at surfaces the
+   * actor cannot open are omitted entirely (not CSS-hidden). Callers should
+   * use the shared canAccessAdminPath() predicate so links match route guards.
+   */
+  canAccess?: (path: string) => boolean;
+}
+
+export function ActionCenter({ actions, title = 'Action Center', canAccess }: ActionCenterProps) {
   const navigate = useNavigate();
+  const visibleActions = canAccess ? actions.filter((a) => canAccess(a.path)) : actions;
   return (
     <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
       <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">{title}</h2>
       <div className="space-y-2">
-        {actions.map((a, i) => (
+        {visibleActions.map((a, i) => (
           <div key={i} onClick={() => { window.alert(`[deployed] "${a.label}" clicked, navigating to: ${a.path}`); a.onClick?.(); navigate(a.path); }}
             className="flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer hover:bg-[var(--color-bg)] transition-colors">
             <div className="flex items-center gap-2">

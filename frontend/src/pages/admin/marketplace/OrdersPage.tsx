@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../../services/api';
 import { formatPrice } from '../../../utils/currency';
+import { AdminDataErrorState } from '../../../components/ui/AdminDataErrorState';
 
 const STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
 
@@ -22,12 +23,12 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-marketplace-orders', statusFilter, search, sellerId, page],
     queryFn: () => api.get('/marketplace/admin/orders', { params: { status: statusFilter || undefined, search: search || undefined, sellerId: sellerId || undefined, page, limit } }).then((r: any) => r.data),
   });
 
-  const { data: sellers } = useQuery({
+  const { data: sellers, error: sellersError, refetch: refetchSellers } = useQuery({
     queryKey: ['admin-marketplace-sellers-list'],
     queryFn: () => api.get('/marketplace/admin/sellers', { params: { limit: 500 } }).then((r: any) => r.data.data),
   });
@@ -36,6 +37,18 @@ export default function OrdersPage() {
     mutationFn: ({ id, status }: { id: number; status: string }) => api.put(`/marketplace/orders/${id}/status`, { status, note: `Admin update to ${status}` }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-marketplace-orders'] }),
   });
+
+  // UR-01/UR-04: a forbidden orders or sellers response is not "No orders found".
+  const dataError = error || sellersError;
+  if (dataError) {
+    return (
+      <AdminDataErrorState
+        error={dataError}
+        resource="marketplace order data"
+        onRetry={() => { void refetch(); void refetchSellers(); }}
+      />
+    );
+  }
 
   if (isLoading) return <div className="p-6 text-center text-[var(--color-text-muted)]">Loading...</div>;
 

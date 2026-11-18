@@ -5,7 +5,7 @@
 | Document | `docs/release/COURTZON_RELEASE_PROGRESS.md` |
 | Plan | [`COURTZON_RELEASE_READINESS_PLAN.md`](./COURTZON_RELEASE_READINESS_PLAN.md) |
 | Document role | **Status authority** — the single source of status, percentages, blockers, evidence and audit trail (plan §1.1) |
-| Last updated | 2026-11-17 - Post-remediation RBAC verification (Scenario A) recorded in §35 (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-16 - P1 Inventory implementation, migration 211 and access hardening committed/pushed as `591df819` (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-14 (W1 read-only Live discovery recorded — §33: 119 routes inspected, 90 PASS / 22 hard FAIL / 7 partial FAIL, 8 open S2, 4 newly-discovered open S3 (+1 pre-existing), 3 S4; F-002 QA-account read-only investigation and decision package. Owner decision (2026-11-14): F-002 RETAINED — all 16 QA accounts stay active/unchanged pending the authorization test matrix; exposure documented, F-002 NOT resolved. Documentation only; Phase dashboard and percentages intentionally unchanged. Previous 2026-11-13: Refund Engine hardening B1-A/B2-A committed and pushed as `136318d8`; Docker backend/frontend rebuilt and backend restarted healthy; local migrations 209/210 applied through the canonical runner — §31, §32) |
+| Last updated | 2026-11-18 - Nov 18 Live real-user review fixes recorded in §37 (LOCAL-ONLY: UR-01/02/03/04/07 fixed, UR-05/06/08 reviewed; no percentage change, no Live deployment). Previous 2026-11-17 - Post-remediation RBAC verification (Scenario A) recorded in §35 (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-16 - P1 Inventory implementation, migration 211 and access hardening committed/pushed as `591df819` (documentation-only; dashboard, phase states and percentages unchanged). Previous 2026-11-14 (W1 read-only Live discovery recorded — §33: 119 routes inspected, 90 PASS / 22 hard FAIL / 7 partial FAIL, 8 open S2, 4 newly-discovered open S3 (+1 pre-existing), 3 S4; F-002 QA-account read-only investigation and decision package. Owner decision (2026-11-14): F-002 RETAINED — all 16 QA accounts stay active/unchanged pending the authorization test matrix; exposure documented, F-002 NOT resolved. Documentation only; Phase dashboard and percentages intentionally unchanged. Previous 2026-11-13: Refund Engine hardening B1-A/B2-A committed and pushed as `136318d8`; Docker backend/frontend rebuilt and backend restarted healthy; local migrations 209/210 applied through the canonical runner — §31, §32) |
 | Current phase | **Phase 5 (9/10, acceptance NOT MET — P5-05 OPEN/DEFERRED)** + **Phase 6 IN_PROGRESS (5/10)** (P6-06 remains TODO - Inventory P1 code/migration complete 2026-11-16, UAT NOT RUN) under recorded deviation **D-01** (§25) |
 | Overall completion | **56 %** (56 / 100 DONE items) |
 
@@ -5117,4 +5117,63 @@ observable); `marketplace-manager` / `receptionist` **BLOCKED**.
 
 **No PASS is recorded for C7 or P6-06 by this section. No backend 403 is claimed.**
 No database write, account/permission change, code edit, deployment or restart occurred.
+
+---
+
+## 37. Nov 18 Live real-user review — LOCAL-ONLY defect fixes (2026-11-18)
+
+Scope: local code fixes for review findings UR-01…UR-08. Branch `fix/courtzon-live-phase1`,
+base `c79aec19bf8d30a687d4bd5be3d82d2937ec466c`. **No Live write/deployment, no schema or seed
+change, no role/permission assignment change, no Live or user-data modification. The local
+integration test inserts and removes only its own fixture rows in the local `courtzon_v3`.** Pre-existing
+uncommitted files (`opencode.json`, `docs/release/W1_READONLY_DISCOVERY_REPORT_2026-11-14.md`)
+were left untouched and are excluded from the commit.
+
+### 37.1 Fixes applied (executed evidence)
+
+| ID | Class | Root cause | Fix | Evidence |
+|---|---|---|---|---|
+| UR-02 / W1-F-009 | S2 bug | `withdrawalService.list()` ran through `pool.query()` (text protocol) but passed `LIMIT`/`OFFSET` as strings → MySQL `ERROR 1064` and a 500 on `/admin/withdrawals` | Numeric, clamped `page`/`limit`/`offset` and numeric params; count-query joins aligned with the data query (`user_wallets`, `assigned`) | Local SQL reproduction: `LIMIT '20' OFFSET '0'` → 1064, numeric literals OK; `withdrawal-list.unit.spec.ts` **4 PASS**; `withdrawal-list.integration.spec.ts` **2 PASS** against local `courtzon_v3` |
+| UR-01 / UR-04 | S2/S3 bug | HTTP 403 from dashboard/bookings/orders APIs was treated as empty query data → zero KPIs plus "No bookings/orders found" | New shared `AdminDataErrorState` (403 → "Access denied"; 401 → session expired; 5xx/network → retryable; never echoes backend text) wired into `AdminDashboard`, `BookingsTable`, `OrdersPage` | 4 new frontend test files (**14 PASS**) covering 403 vs genuine 200-empty; existing route-guard/AdminLayout suite **34 PASS** |
+| UR-03 | S3 RBAC bug | Dashboard quick actions and Action Center links rendered regardless of the viewer's route permissions | Shared `canAccessAdminPath()` is now the single predicate for both the `/admin` route guard and links; "Create Organisation" additionally requires `organisations.create`; unauthorized actions are omitted (not CSS-hidden) | `AdminDashboard.access.test.tsx` allowed + denied cases PASS; `AdminLayout.access.test.tsx` / `routeGuards.test.tsx` **34 PASS** |
+| UR-07 | S4 UI bug | Badge rendered only `roles[0]`, which is arbitrary on a multi-role account (admin session displayed "player") | Render all assigned roles, truncating visually with the full list in `title` | New regression assertion PASS (`player · accountant`) |
+
+### 37.2 Reviewed — no code change justified
+
+| ID | Finding | Disposition |
+|---|---|---|
+| UR-05 | Live gateway is `paymob` | Live configuration, not a code defect. No mock/simulation exists; gateway config and credentials untouched (out of scope). |
+| UR-06 | `platformGitCommit: "unknown"` | Traced to `backend/src/app.ts:532` → env-only runtime `SOURCE_COMMIT`; Coolify supplies it at **build** time only. Canonical `gitCommit` / `imageGitCommit` with `gitCommitSource: "image"`, `gitCommitConsistent: true` is documented and correct (ADR-006, health contract §61). No reporting change made. |
+| UR-08 | Consumer surfaces redirect to `/admin` | Intentional permission-based routing in `ProtectedRoute` via `hasPlatformAdminAccess()` (`dashboard.view` / `platform.admin`), already covered by `routeGuards.test.tsx:217`. This is account permission data, not a code defect; no role/permission assignments were changed. |
+
+### 37.3 Verification (honest, includes failures)
+
+| Check | Result |
+|---|---|
+| Targeted frontend tests (6 files) | **48 PASS** |
+| Targeted backend tests (2 files) | **15 PASS** |
+| Full frontend suite | **FAIL** — 17 failures/3 worker timeouts in 5 unrelated files (tournament eligibility 3×5s timeouts, tournament create wizard 10×5s timeouts, org accounting 3×5s timeouts, `AdminInventoryRedirect` 1 failure under load). `AdminInventoryRedirect` + `AdminTournamentsRedirect` re-run in isolation: **12 PASS**, confirming load-related flakiness, not a regression from this work. |
+| Full backend suite | **FAIL** — 22 failures in 8 files, all outside the change set: manifest drift (`211_inventory_p1_permissions_grants.sql` present but pinned `schemaHead=210`, hash/count mismatch), 17 `bootstrap-preflight` assertions, bash/guard timeouts, 2 academy 5s timeouts; **5814 tests passed**. |
+| `node scripts/ci-validate.js` | **FAIL — BUILD BLOCKED, 217 pre-existing errors** (SQL outside repository / presentation-layer DB access across hundreds of legacy files; guard keys `a`/`b` from test fixtures). No new violation was introduced by the changed files. |
+| `npm run build` (frontend) | **PASS** (`tsc -b` + Vite + PWA injection) |
+| `npm run build` (backend) | **PASS** (translation artifact + `tsc`) |
+| Docker rebuild / health | see §37.4 |
+
+### 37.4 Local container state (executed 2026-11-18)
+
+| Check | Result |
+|---|---|
+| `docker compose build backend frontend` | **PASS** — exit `0`; backend config digest `sha256:25a6aef9afc3726a843d06c7f8e413900fd36de04e1efb3472a9b4a25b2e3be4`, frontend config digest `sha256:419044420ca99f757cbeb90653dcca86fd2b67ba45770f353787d62f4cd4c858`; no errors (only npm/Vite/Browserslist/chunk-size warnings) |
+| `docker compose up -d backend frontend` | **PASS** — both containers recreated from the new images; MySQL/Redis remained up; `backend healthy`, `frontend healthy` |
+| `curl http://localhost:3000/health` | **HTTP 200** — `status:"ok"`, database/redis/memory all `ok` |
+| `curl http://localhost:3000/health/version` | **HTTP 200** — local image reports `gitCommit:"unknown"`, `gitCommitSource:"unknown"` because this local `docker compose build` has no `SOURCE_COMMIT` build argument; this does not alter the UR-06 Live finding or code |
+| `curl http://localhost:5173` | **HTTP 200** |
+
+No production/Live container, image, database or deployment was touched.
+
+### 37.5 Status
+
+No phase status or percentage changes: these are local defect fixes under the existing
+**Phase 5 (9/10) + Phase 6 (5/10), D-01** state; overall completion stays **56 %**.
+Live deployment is **NOT authorized** in this campaign; Hostinger was not contacted.
 
