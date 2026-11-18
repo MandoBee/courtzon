@@ -5176,4 +5176,6 @@ No production/Live container, image, database or deployment was touched.
 No phase status or percentage changes: these are local defect fixes under the existing
 **Phase 5 (9/10) + Phase 6 (5/10), D-01** state; overall completion stays **56 %**.
 Live deployment is **NOT authorized** in this campaign; Hostinger was not contacted.
+Code commit: `ce768f64` (`fix(uat): resolve Nov 18 live review defects locally`), pushed to
+`origin/fix/courtzon-live-phase1`.
 
