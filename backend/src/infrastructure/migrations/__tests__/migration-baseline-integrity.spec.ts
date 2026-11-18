@@ -135,7 +135,7 @@ describe('baseline sanity bounds', () => {
     expect(manifest.schema.tableCount).toBe(332);
     expect(new Set(names).size).toBe(332);
     expect(baselineModel.triggers).toHaveLength(manifest.schema.triggerCount);
-    expect(manifest.schema.schemaHead).toBe('210');
+    expect(manifest.schema.schemaHead).toBe('211');
   });
 
   it('contains required foundational tables', () => {
@@ -283,8 +283,8 @@ describe('baseline convergence decisions 1B/2A (P8.6.21)', () => {
       .filter((line) => !line.trimStart().startsWith('--'))
       .join('\n');
     expect(executable).not.toMatch(/DROP\s+(INDEX|TABLE|COLUMN|CONSTRAINT)/i);
-    expect(manifest.schema.schemaHead).toBe('210');
-    expect(manifest.migrations.count).toBe(217);
+    expect(manifest.schema.schemaHead).toBe('211');
+    expect(manifest.migrations.count).toBe(218);
 
     // 207 (the last schema mutation) and the baseline must tell the SAME story:
     // pair-level uniqueness, the FK-supporting index kept, the legacy global

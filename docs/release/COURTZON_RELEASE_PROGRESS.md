@@ -5179,3 +5179,70 @@ Live deployment is **NOT authorized** in this campaign; Hostinger was not contac
 Code commit: `ce768f64` (`fix(uat): resolve Nov 18 live review defects locally`), pushed to
 `origin/fix/courtzon-live-phase1`.
 
+---
+
+## 39. Approved parser extension + baseline Option A completed (2026-11-18)
+
+**Document role:** append-only evidence record. **No phase status, checklist row or percentage
+changes.** Phase 6 remains **5/10**, Phase 7 **10 %**, overall **56 %**, P6-06 **TODO**,
+P5-05 **OPEN/DEFERRED** under D-01. This section records owner-authorised file work only;
+it is **NOT** a deployment or database authorisation.
+
+### 39.1 Parser extension (`parse-baseline.ts`)
+
+Prior failure: `unsupported CREATE target 'PROCEDURE' (line 51)`. Root cause was twofold:
+`DELIMITER $$` was tracked, but `$` is a word character, so `END$$` was tokenised as one word
+and the custom terminator was never emitted; `CREATE PROCEDURE` was then rejected in
+migration mode.
+
+Minimum change, file-only:
+1. Word tokenisation stops at the active custom delimiter (`END$$` -> word `END` + delim `$$`).
+2. `parseStatement` now receives the statement terminator and declared delimiter directives.
+3. `parseProcedure` accepts ONLY a migration-mode, custom-delimiter-terminated routine; it
+   validates routine name, balanced parameter list, `BEGIN`, final `END`, declared terminator,
+   and rejects schema-mutating keywords anywhere in the routine body.
+4. VIEW / EVENT / FUNCTION / other unsupported CREATE targets and baseline-mode PROCEDURE
+   remain rejected; DDL outside the routine is still parsed and detected normally.
+
+### 39.2 Option A artifacts
+
+| Artifact | Before | After |
+|---|---|---|
+| `baseline-requirements.json:5 schemaHead` | `210` | `211` |
+| `baseline-requirements.json:8 schemaHeadEvidence.head` | `210` | `211` |
+| `contentOnly` | `196,197,198,199,200,201,206` | unchanged |
+| manifest `schema.schemaHead` | `210` | `211` |
+| manifest `requirements.schemaHead` | `210` | `211` |
+| manifest `migrations.count` | `217` | `218` |
+| manifest `distinctPrefixes` | `208` | `209` |
+| manifest `PRODUCTION_SAFE` count | `217` | `218` |
+| manifest `requirements.sha256` | `f4f4ec19…606ea` | `1ba53404…1cfe` |
+| manifest `migrations.sha256` | `beb193ee…652a` | `3244fe9f…781c5` |
+
+Manifest regenerated **only** by `npx tsx backend/scripts/baseline-manifest.ts --write`.
+Migration 211 entry appears exactly once (`sha256 a714ac5f…2eea`, `PRODUCTION_SAFE`).
+No baseline SQL, migration, seed, generator script or schema was changed.
+
+### 39.3 Verification
+
+| Command | Result |
+|---|---|
+| `npx vitest run .../parse-procedure.spec.ts` | 1 file / **15 passed** |
+| 5-file targeted suite (parser, manifest, integrity, static, preflight) | 5 files / **123 passed**, exit 0 |
+| `npx tsx backend/scripts/baseline-manifest.ts --check` | **OK**, schemaHead=211, migrations=218, exit 0 |
+| `npm test` (backend full suite) | **407 files / 5901 tests passed**, 0 failed, exit 0, 72.51 s |
+| `npx tsc --noEmit -p tsconfig.json` (backend) | clean, exit 0 |
+
+Previous 18 baseline-drift failures and 42 skipped tests are resolved. New test file:
+`backend/src/infrastructure/migrations/__tests__/parse-procedure.spec.ts` (supported routine,
+semicolon handling, real 211 DML-only contract, baseline-mode rejection, CREATE
+VIEW/EVENT/FUNCTION rejection, CREATE TRIGGER tracking, in-body DDL rejection, missing BEGIN,
+missing END, wrong delimiter, undeclared delimiter, post-routine concealment).
+
+### 39.4 Safety
+
+Read-only file operations and local unit tests only. No DB connection/query/write, no SQL
+execution against a database, no migration or seed, no schema or `migration_history` change,
+no Live operation, no Docker build/restart, no CI rule change, no commit/push/deploy.
+All pre-existing modifications were preserved; no unrelated file was changed.
+

@@ -9,7 +9,7 @@
     "sha256": "d40e142c062a4b576f587f5db9ef2f30ea691cae75142057e9623d420cf44b11"
   },
   "schema": {
-    "schemaHead": "210",
+    "schemaHead": "211",
     "contentOnly": [
       "196",
       "197",
@@ -30,7 +30,7 @@
     "dropTableStatementCount": 319,
     "inventorySha256": "a253a471accad35177cd1e4d553d194672bd2092df0d72d07f36bdeeeb28acec",
     "objectSha256": "965b171cc58f32a009631e609588101b28d9086d060b70e1d3ed10f8af8df872",
-    "schemaSha256": "d300bafd50a5cbb1de6b2736df64ffa6f71b2e5186ce3be7d2e80a9273688d27",
+    "schemaSha256": "380c08666c04d62194306d3368e4e4e17f9756ee3584003f33e9fcc43bb0725a",
     "tables": {
       "academies": {
         "signature": {
@@ -73894,8 +73894,8 @@
   "migrations": {
     "directory": "database/migrations",
     "hashKind": "content_sha256_lf",
-    "count": 217,
-    "distinctPrefixes": 208,
+    "count": 218,
+    "distinctPrefixes": 209,
     "duplicatePrefixes": [
       {
         "prefix": "002",
@@ -73942,7 +73942,7 @@
       "076"
     ],
     "classifications": {
-      "PRODUCTION_SAFE": 217,
+      "PRODUCTION_SAFE": 218,
       "LOCAL_DOCKER_ONLY": 0,
       "INVALID": 0
     },
@@ -75465,9 +75465,16 @@
         "sha256": "3399dbfc6ac6734ea76d81f85500463c8dfda7826c69931fe934f601f2c4217f",
         "classification": "PRODUCTION_SAFE",
         "marker": "PRODUCTION_SAFE"
+      },
+      {
+        "file": "211_inventory_p1_permissions_grants.sql",
+        "prefix": "211",
+        "sha256": "a714ac5fccdecded11ad3b39367fa82e36f25b2e6bc3c183a2bb88d0a9522eea",
+        "classification": "PRODUCTION_SAFE",
+        "marker": "PRODUCTION_SAFE"
       }
     ],
-    "sha256": "beb193eea0eef6cd07ee52ecc60a45690d1730ef3d9acc93bfcbcacee3b1652a"
+    "sha256": "3244fe9f42758ac83acf1b96510f2fb5c99f9f07e3981be4fdc04963a80781c5"
   },
   "requirements": {
     "version": 1,
@@ -75570,8 +75577,8 @@
       "201",
       "206"
     ],
-    "schemaHead": "210",
-    "sha256": "f4f4ec196debaacbdab8ed30fa5937c0eba5c58f123f54b74c337f5b269606ea"
+    "schemaHead": "211",
+    "sha256": "1ba53404f8bf9efde2a7d6138b21e364a2fac844452e5a07077475e6cf0d1cfe"
   },
   "knownGaps": [
     {

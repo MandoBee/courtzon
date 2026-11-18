@@ -325,8 +325,15 @@ function scan(
     {
       const m = WORD_RE.exec(text.slice(i));
       if (m) {
-        push({ type: 'word', value: m[0], raw: m[0] });
-        i += m[0].length;
+        let word = m[0];
+        // A custom DELIMITER may share characters with identifiers (`$$` is a
+        // valid word character). Stop the word at the active delimiter so a
+        // routine terminator such as `END$$` is emitted as `END` + delimiter,
+        // rather than swallowed into one word token.
+        const cut = word.indexOf(state.delimiter, 1);
+        if (cut > 0) word = word.slice(0, cut);
+        push({ type: 'word', value: word, raw: word });
+        i += word.length;
         continue;
       }
     }
@@ -1698,7 +1705,108 @@ function collectPreparedDdl(model: MutableModel, statement: SqlToken[], depth: n
 // Statement dispatch
 // ---------------------------------------------------------------------------
 
-function parseStatement(model: MutableModel, statement: SqlToken[], depth: number): void {
+/** Schema-mutating keywords that must never be concealed inside a routine body. */
+const PROCEDURE_FORBIDDEN_KEYWORDS = new Set([
+  'CREATE',
+  'ALTER',
+  'DROP',
+  'TRUNCATE',
+  'RENAME',
+  'GRANT',
+  'REVOKE',
+  'LOAD',
+]);
+
+/**
+ * Migration-only, non-schema object: a DELIMITER-terminated CREATE PROCEDURE.
+ *
+ * The whole routine body arrives as one statement because the tokenizer now
+ * honours the active custom delimiter. The body is application logic, not part
+ * of the schema inventory, so it is not added to the model; its outer shape is
+ * validated strictly and schema-mutating keywords inside it are rejected. Any
+ * malformed or unterminated routine therefore fails closed.
+ */
+function parseProcedure(
+  model: MutableModel,
+  statement: SqlToken[],
+  kindIndex: number,
+  terminator: string,
+  delimiters: readonly DelimiterDirective[],
+): void {
+  const line = statement[0].line;
+  if (model.mode !== 'migration') {
+    throw new BaselineParseError('CREATE PROCEDURE is not allowed in the baseline', line);
+  }
+  if (terminator === '' || terminator === ';') {
+    throw new BaselineParseError(
+      "CREATE PROCEDURE must be closed by a custom DELIMITER, not ';'",
+      line,
+    );
+  }
+  if (!delimiters.some((d) => d.value === terminator && d.line <= line)) {
+    throw new BaselineParseError(
+      `CREATE PROCEDURE terminator '${terminator}' has no preceding DELIMITER directive`,
+      line,
+    );
+  }
+
+  const name = statement[kindIndex + 1];
+  if (!name || (name.type !== 'word' && name.type !== 'ident')) {
+    throw new BaselineParseError('CREATE PROCEDURE requires a routine name', line);
+  }
+
+  let i = kindIndex + 2;
+  if (!statement[i] || statement[i].type !== 'punct' || statement[i].value !== '(') {
+    throw new BaselineParseError('CREATE PROCEDURE requires a parameter list', line);
+  }
+  let parens = 0;
+  for (; i < statement.length; i += 1) {
+    const token = statement[i];
+    if (token.type === 'punct' && token.value === '(') parens += 1;
+    if (token.type === 'punct' && token.value === ')') {
+      parens -= 1;
+      if (parens === 0) {
+        i += 1;
+        break;
+      }
+    }
+  }
+  if (parens !== 0) {
+    throw new BaselineParseError('CREATE PROCEDURE has an unbalanced parameter list', line);
+  }
+
+  const begin = statement.findIndex(
+    (token, index) => index >= i && token.type === 'word' && upper(token.value) === 'BEGIN',
+  );
+  if (begin === -1) {
+    throw new BaselineParseError('CREATE PROCEDURE requires a BEGIN block', line);
+  }
+  const last = statement[statement.length - 1];
+  if (!last || last.type !== 'word' || upper(last.value) !== 'END') {
+    throw new BaselineParseError('CREATE PROCEDURE block is not terminated by END', line);
+  }
+  if (statement.some((token) => token.type === 'delim')) {
+    throw new BaselineParseError('CREATE PROCEDURE body contains an unexpected statement delimiter', line);
+  }
+
+  for (let index = 1; index < statement.length; index += 1) {
+    const token = statement[index];
+    if (token.type === 'word' && PROCEDURE_FORBIDDEN_KEYWORDS.has(upper(token.value))) {
+      throw new BaselineParseError(
+        `schema-mutating statement '${upper(token.value)}' is not allowed inside CREATE PROCEDURE`,
+        token.line,
+      );
+    }
+  }
+}
+
+function parseStatement(
+  model: MutableModel,
+  statement: SqlToken[],
+  depth: number,
+  terminator: string = ';',
+  delimiters: readonly DelimiterDirective[] = [],
+): void {
   const first = upper(statement[0].value);
   model.statementCount += 1;
 
@@ -1753,10 +1861,14 @@ function parseStatement(model: MutableModel, statement: SqlToken[], depth: numbe
         model.preparedDdl.indexes.push({ table: tableName, index });
         return;
       }
+      if (kind === 'PROCEDURE' && model.mode === 'migration') {
+        parseProcedure(model, statement, i, terminator, delimiters);
+        return;
+      }
       if (model.mode === 'baseline') {
         throw new BaselineParseError(`unsupported CREATE target '${kind}'`, statement[0].line);
       }
-      // Migration mode: other CREATE targets (VIEW/PROCEDURE/...) are not
+      // Migration mode: other CREATE targets (VIEW/EVENT/FUNCTION/...) are not
       // schema objects this manifest tracks, and they never appear in the
       // audited 196–203 slice. Reject them so a new kind is never ignored.
       throw new BaselineParseError(`unsupported CREATE target '${kind}'`, statement[0].line);
@@ -1871,17 +1983,17 @@ function parseSqlInternal(sql: string, mode: ParseMode, depth: number): Internal
  */
 export function parseSql(sql: string, mode: ParseMode = 'baseline'): ParsedSql {
   const { tokens, delimiters } = tokenize(sql);
-  const statements: SqlToken[][] = [];
+  const statements: Array<{ tokens: SqlToken[]; terminator: string }> = [];
   let current: SqlToken[] = [];
   for (const token of tokens) {
     if (token.type === 'delim') {
-      if (current.length > 0) statements.push(current);
+      if (current.length > 0) statements.push({ tokens: current, terminator: token.value });
       current = [];
       continue;
     }
     current.push(token);
   }
-  if (current.length > 0) statements.push(current);
+  if (current.length > 0) statements.push({ tokens: current, terminator: '' });
 
   const model: MutableModel = {
     mode,
@@ -1895,7 +2007,7 @@ export function parseSql(sql: string, mode: ParseMode = 'baseline'): ParsedSql {
   };
 
   for (const statement of statements) {
-    parseStatement(model, statement, 0);
+    parseStatement(model, statement.tokens, 0, statement.terminator, delimiters);
   }
 
   assertGlobalIdentities(model);

@@ -234,7 +234,7 @@ describe('committed baseline manifest', () => {
   });
 
   it('contains the exact audited schema counts (no loose lower bounds)', () => {
-    expect(real.manifest.schema.schemaHead).toBe('210');
+    expect(real.manifest.schema.schemaHead).toBe('211');
     expect(real.manifest.schema.contentOnly).toEqual(['196', '197', '198', '199', '200', '201', '206']);
     expect(real.manifest.schema.tableCount).toBe(332);
     expect(real.manifest.schema.columnCount).toBe(3717);
@@ -508,8 +508,8 @@ ALTER TABLE \`positioning\` MODIFY COLUMN \`a\` bigint NOT NULL;
 describe('migration chain index', () => {
   it('captures every file, prefix, duplicate and missing prefix exactly', () => {
     const migrations = real.manifest.migrations;
-    expect(migrations.count).toBe(217);
-    expect(migrations.distinctPrefixes).toBe(208);
+    expect(migrations.count).toBe(218);
+    expect(migrations.distinctPrefixes).toBe(209);
     expect(migrations.duplicatePrefixes).toEqual([
       {
         prefix: '002',
@@ -547,7 +547,7 @@ describe('migration chain index', () => {
     ]);
     expect(migrations.missingPrefixes).toEqual(['001', '076']);
     expect(migrations.classifications).toEqual({
-      PRODUCTION_SAFE: 217,
+      PRODUCTION_SAFE: 218,
       LOCAL_DOCKER_ONLY: 0,
       INVALID: 0,
     });
@@ -585,7 +585,7 @@ describe('migration chain index', () => {
     ).toBe('LOCAL_DOCKER_ONLY');
   });
 
-  it('verifies schemaHead=210 from content, not from the numeric prefix alone', () => {
+  it('verifies schemaHead=211 from content, not from the numeric prefix alone', () => {
     // 196–201 and 206 are content-only by PARSING; 202–205 mutate schema.
     for (const prefix of ['196', '197', '198', '199', '200', '201', '206']) {
       const file = real.manifest.migrations.files.find((candidate) => candidate.prefix === prefix);
@@ -618,10 +618,11 @@ describe('migration chain index', () => {
     // 207 is the last settlement SCHEMA mutation: it widens
     // settlement_entitlements uniqueness to (settlement_id, entitlement_id) and
     // drops the legacy uk_se_entitlement. 209 then adds the three additive
-    // Refund Engine tables, and 210 is the statement-free head (documentation
-    // only) because the additive-head contract cannot host an index DROP
-    // (parse-baseline supports only ADD / MODIFY / CHANGE).
-    expect(real.manifest.schema.schemaHead).toBe('210');
+    // Refund Engine tables. 210 is the statement-free head (documentation only)
+    // because the additive-head contract cannot host an index DROP
+    // (parse-baseline supports only ADD / MODIFY / CHANGE); 211 is the DML-only
+    // permission-grant head and is deliberately NOT statement-free.
+    expect(real.manifest.schema.schemaHead).toBe('211');
     const sql205 = real.migrationContents['205_tournaments_max_events_check.sql'];
     expect(classifyMigration(sql205).classification).toBe('PRODUCTION_SAFE');
     expect(sql205).toContain('information_schema.table_constraints');
@@ -666,7 +667,7 @@ describe('migration chain index', () => {
     expect(real.manifest.schema.tables.refund_cases).toBeDefined();
     expect(real.manifest.schema.tables.refund_case_lines).toBeDefined();
     expect(real.manifest.schema.tables.refund_case_payouts).toBeDefined();
-    // 210 is the statement-free head.
+    // 210 is statement-free; 211 is the DML-only head.
     const sql210 = real.migrationContents['210_refund_engine_head.sql'];
     expect(classifyMigration(sql210).classification).toBe('PRODUCTION_SAFE');
     expect(hasSchemaDdl(sql210)).toBe(false);
@@ -675,10 +676,15 @@ describe('migration chain index', () => {
         .split(/\r?\n/)
         .filter((line) => line.trim().length > 0 && !line.trimStart().startsWith('--')),
     ).toEqual([]);
+    // 211 is the approved head: executable DML, but no schema DDL.
+    const sql211 = real.migrationContents['211_inventory_p1_permissions_grants.sql'];
+    expect(classifyMigration(sql211).classification).toBe('PRODUCTION_SAFE');
+    expect(hasSchemaDdl(sql211)).toBe(false);
+    expect(parseSql(sql211, 'migration').statementCount).toBe(3);
     // The head claims no index repair.
     const evidence = parseRequirements(real.requirementsRaw).schemaHeadEvidence;
     expect(evidence).toEqual({
-      head: '210',
+      head: '211',
       repairs: [],
     });
   });
@@ -705,7 +711,7 @@ describe('migration chain index', () => {
 describe('requirements resolution', () => {
   it('resolves every curated pin and reports the pin count', () => {
     expect(real.manifest.requirements.pinCount).toBe(79);
-    expect(real.manifest.requirements.schemaHead).toBe('210');
+    expect(real.manifest.requirements.schemaHead).toBe('211');
     expect(real.manifest.requirements.contentOnly).toEqual([
       '196',
       '197',
@@ -728,10 +734,10 @@ describe('requirements resolution', () => {
     expect(ids).toContain('payment_allocations_docs_column_count');
   });
 
-  it('retains the migration 204 index and pins migration 210 as the statement-free head with no index repairs', () => {
-    expect(real.manifest.schema.schemaHead).toBe('210');
-    expect(real.manifest.requirements.schemaHead).toBe('210');
-    expect(real.manifest.migrations.count).toBe(217);
+  it('retains the migration 204 index and pins migration 211 as the DML-only head with no index repairs', () => {
+    expect(real.manifest.schema.schemaHead).toBe('211');
+    expect(real.manifest.requirements.schemaHead).toBe('211');
+    expect(real.manifest.migrations.count).toBe(218);
     const index = real.manifest.schema.tables.organisation_subscriptions.signature.indexes.find(
       (candidate) => candidate.name === 'idx_status_enddate',
     );
@@ -974,7 +980,7 @@ describe('manifest data exposed to the integrity spec', () => {
     // The manifest is a static artefact. Tier B (information_schema parity) is
     // a separate, DB-backed phase; nothing here may be read as hydration proof.
     expect(real.manifest.manifestVersion).toBe(1);
-    expect(real.manifest.schema.schemaHead).toBe('210');
-    expect(real.manifest.requirements.schemaHead).toBe('210');
+    expect(real.manifest.schema.schemaHead).toBe('211');
+    expect(real.manifest.requirements.schemaHead).toBe('211');
   });
 });
