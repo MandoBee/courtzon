@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import EligibilityFormSection, { EMPTY_ELIGIBILITY, type TournamentEligibilityFormValue } from './EligibilityFormSection';
 import {
   eligibilityAgeCategoryIds,
@@ -21,19 +20,20 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-function wrapper() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  );
-}
+// These specs cover gender/age selection logic only. `EligibilityFormSection`
+// loads player levels with React Query; leaving that async query live creates a
+// pending promise that can settle after the test (and its unmount) under worker
+// pressure. Return the empty option list synchronously so every case is
+// deterministic and no QueryClientProvider is needed.
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: [] }),
+}));
 
 /** Controlled render with a value mirror so assertions can read the latest state. */
 function setup(initial: TournamentEligibilityFormValue) {
   let value: TournamentEligibilityFormValue = JSON.parse(JSON.stringify(initial));
   const view = render(
     <EligibilityFormSection value={value} onChange={(v) => { value = v; }} />,
-    { wrapper: wrapper() },
   );
   const rerender = () => view.rerender(
     <EligibilityFormSection value={value} onChange={(v) => { value = v; }} />,
@@ -98,7 +98,6 @@ describe('Phase 4 Step 1 — per-gender age blocks', () => {
   it('legacy behaviour: with no male/female selected, only the global age block renders', () => {
     render(
       <EligibilityFormSection value={{ ...EMPTY_ELIGIBILITY, ageMode: 'categories' }} onChange={() => {}} />,
-      { wrapper: wrapper() },
     );
     expect(screen.getByRole('group', { name: 'Age Categories' })).toBeDefined();
     expect(screen.queryByRole('group', { name: 'Male age categories' })).toBeNull();
@@ -108,7 +107,6 @@ describe('Phase 4 Step 1 — per-gender age blocks', () => {
   it('mixed-only remains a single (non gender-specific) age block', () => {
     render(
       <EligibilityFormSection value={{ ...EMPTY_ELIGIBILITY, ageMode: 'categories', genderCategories: ['mixed'] }} onChange={() => {}} />,
-      { wrapper: wrapper() },
     );
     expect(screen.getByRole('group', { name: 'Age Categories' })).toBeDefined();
     expect(screen.queryByRole('group', { name: /Male age categories/ })).toBeNull();
@@ -211,7 +209,6 @@ describe('Phase 4 Step 1 — per-gender age blocks', () => {
     };
     render(
       <EligibilityFormSection value={value} onChange={(v) => { value = v; }} locked />,
-      { wrapper: wrapper() },
     );
     const male = screen.getByRole('group', { name: 'Male age categories' });
     expect(within(male).getByRole('checkbox', { name: 'U17' })).toBeDisabled();

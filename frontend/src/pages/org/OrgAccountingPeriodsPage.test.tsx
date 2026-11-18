@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -11,8 +11,6 @@ vi.mock('../../components/ui/Toast', () => ({ useToast: () => ({ showToast: vi.f
 
 const mockGet = vi.mocked(api.get);
 const mockPost = vi.mocked(api.post);
-
-const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 function makePeriods(mode: 'open' | 'p2-closed' | 'p1-11-closed'): any[] {
   return Array.from({ length: 12 }, (_, i) => {
@@ -34,6 +32,10 @@ function makePeriods(mode: 'open' | 'p2-closed' | 'p1-11-closed'): any[] {
 const history = [{ id: 1, fiscal_year: 2026, net_income: 1200, status: 'completed', close_count: 1, cycle_count: 1, created_at: '2026-09-01' }];
 
 function renderPage(orgId = '6') {
+  // A fresh cache per test: previous tests used one module-level QueryClient,
+  // so cached period/history responses leaked across cases and forced extra
+  // refetches (which could exceed RTL's 1s findBy timeout under load).
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter initialEntries={[`/org/${orgId}/accounting/periods`]}>
       <Routes>
@@ -53,6 +55,10 @@ describe('OrgAccountingPeriodsPage — org-scoped accounting periods & year clos
     mockPost.mockReset();
     mockPost.mockResolvedValue({ data: { data: {} } } as any);
   });
+
+  // The year-close case stubs window.confirm; an early failure must not leave
+  // that stub installed for subsequent tests in the same worker.
+  afterEach(() => vi.unstubAllGlobals());
 
   it('renders only the organisation periods via the org-scoped endpoint', async () => {
     mockGet.mockImplementation((url: string) => {

@@ -337,7 +337,8 @@ describe('OrgAccountingRecordsPage — canonical journal-entry view', () => {
   it('keeps hook order stable when the view permission is revoked while mounted', async () => {
     grant(VIEW, CREATE);
     renderHost();
-    await screen.findByText('Accounting Records');
+    // The heading is part of the synchronous granted-permission render.
+    expect(screen.getByText('Accounting Records')).toBeTruthy();
     expect(useQueryMock.mock.calls.length).toBeGreaterThanOrEqual(PAGE_QUERY_HOOKS);
 
     useQueryMock.mockClear();
@@ -365,6 +366,6 @@ describe('OrgAccountingRecordsPage — canonical journal-entry view', () => {
     grant(VIEW, CREATE);
     expect(() => forceRerender()).not.toThrow();
     expect(useQueryMock.mock.calls.length).toBeGreaterThanOrEqual(PAGE_QUERY_HOOKS);
-    expect(await screen.findByText('Accounting Records')).toBeTruthy();
+    expect(screen.getByText('Accounting Records')).toBeTruthy();
   });
 });

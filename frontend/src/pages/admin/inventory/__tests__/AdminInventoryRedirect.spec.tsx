@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import App from '../../../../App';
 import { useAuthStore } from '../../../../store/auth.store';
 import { ADMIN_NAV } from '../../../../navigation/admin.registry';
@@ -114,7 +114,9 @@ describe('/admin/inventory index redirect', () => {
 
     render(<App />);
 
-    await new Promise((r) => setTimeout(r, 1500));
+    // Wait for the guard's actual decision surface instead of a fixed sleep:
+    // under worker load a lazy route can take longer than an arbitrary 1.5s.
+    expect(await screen.findByText('Access denied')).toBeTruthy();
     expect(window.location.pathname).not.toBe('/admin/inventory/stock');
     expect(has404Surface()).toBe(false);
   }, 30000);
@@ -129,7 +131,9 @@ describe('/admin/inventory index redirect', () => {
     render(<App />);
 
     await waitFor(() => expect(window.location.pathname).toBe('/admin/inventory/stock'), { timeout: 15000 });
-    await new Promise((r) => setTimeout(r, 500));
+    // Flush any queued navigation effects; a real bounce-back would happen
+    // during this act() rather than after an arbitrary wall-clock delay.
+    await act(async () => {});
     expect(window.location.pathname).toBe('/admin/inventory/stock');
   }, 30000);
 
@@ -147,8 +151,10 @@ describe('/admin/inventory index redirect', () => {
       } as any);
 
       const { unmount } = render(<App />);
-      await new Promise((r) => setTimeout(r, 800));
-      expect(window.location.pathname).toBe(path);
+      // Await the lazily-loaded route's heading rather than sleeping 800ms:
+      // the old sleep could expire before the chunk rendered under load.
+      expect((await screen.findAllByRole('heading', { level: 1 })).length).toBeGreaterThan(0);
+      await waitFor(() => expect(window.location.pathname).toBe(path), { timeout: 15000 });
       expect(has404Surface()).toBe(false);
       unmount();
     }

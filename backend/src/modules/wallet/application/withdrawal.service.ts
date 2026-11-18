@@ -145,7 +145,7 @@ export const withdrawalService = {
 
   async list(filters: { status?: string; search?: string; page?: number; limit?: number; assignedTo?: number; unassigned?: boolean; overdue?: boolean; dueToday?: boolean }) {
     const pool = getPool();
-    // UAT UR-02 / W1-F-009: this query runs through pool.query() (text protocol),
+    // UAT UR-02 / W1-F-009: this query uses the text-protocol query API,
     // so LIMIT/OFFSET placeholders MUST be numbers. Passing strings produced
     // `LIMIT '20' OFFSET '0'` and MySQL rejected it with ER_PARSE_ERROR (1064),
     // making the whole admin list endpoint return 500. Bound the values as a
